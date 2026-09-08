@@ -4,6 +4,8 @@ import {
   defineThread,
   emit,
   invoke,
+  isWithdrawnError,
+  parseEffectId,
   spawn,
   wait,
   type EventEnvelope,
@@ -101,6 +103,7 @@ export const agentThread = defineThread<AgentState>({
     pendingSteer: null,
     input: ctx.input,
     output: null,
+    pendingEffectTools: {},
   }),
   reduce(state, event, ctx) {
     switch (event.type) {
@@ -234,8 +237,10 @@ export const agentThread = defineThread<AgentState>({
         const toolCallId = readString(payload, 'toolCallId') ?? ''
         const rawEffects = payload.effects
         // SAFETY: handler serialized RuntimeEffect values into the event payload.
+        // Copy so fold stays pure — mutating the payload array would append another
+        // waitOn wait on every wake-loop replay.
         const effects: RuntimeEffect[] = Array.isArray(rawEffects)
-          ? (rawEffects as RuntimeEffect[])
+          ? [...(rawEffects as RuntimeEffect[])]
           : []
         const waitOn = payload.waitOn
         if (Predicate.isObject(waitOn) && Predicate.isString(waitOn.type)) {
@@ -247,7 +252,44 @@ export const agentThread = defineThread<AgentState>({
             }),
           )
         }
-        return { state, effects }
+        const pending = state.pendingToolCalls.find((item) => item.id === toolCallId)
+        return {
+          state: {
+            ...state,
+            pendingEffectTools: {
+              ...state.pendingEffectTools,
+              [String(event.seq)]: { toolCallId, name: pending?.name ?? 'tool' },
+            },
+          },
+          effects,
+        }
+      }
+      case 'runtime.effect.failed': {
+        const payload = asObject(event.payload)
+        const error = readString(payload, 'error') ?? 'effect failed'
+        if (isWithdrawnError(error)) return { state }
+        const parsed = event.effectId ? parseEffectId(event.effectId) : null
+        const causingKey = parsed ? String(parsed.causingSeq) : ''
+        const pending = causingKey ? state.pendingEffectTools?.[causingKey] : undefined
+        if (!pending || !causingKey) return { state }
+        const rest = { ...state.pendingEffectTools }
+        delete rest[causingKey]
+        return {
+          state: { ...state, pendingEffectTools: rest },
+          effects: [
+            emit({
+              type: 'agent.tool.result',
+              payload: {
+                turn: state.turn,
+                toolCallId: pending.toolCallId,
+                name: pending.name,
+                result: null,
+                error,
+              },
+              threadId: ctx.threadId,
+            }),
+          ],
+        }
       }
       case 'runtime.wait.satisfied': {
         const payload = asObject(event.payload)

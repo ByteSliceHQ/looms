@@ -4,6 +4,7 @@ import {
   defineThread,
   fail,
   invoke,
+  isWithdrawnError,
   spawn,
   wait,
   type JsonValue,
@@ -154,6 +155,34 @@ export const workflowThread = defineThread<WorkflowState>({
             const tag = Predicate.isObject(effect.tag) ? { ...effect.tag, nodeId } : { nodeId }
             return { ...effect, tag }
           }),
+        }
+      }
+      case 'runtime.effect.failed': {
+        const payload = asObject(event.payload)
+        const error = readString(payload, 'error') ?? 'effect failed'
+        if (isWithdrawnError(error)) return { state }
+        const running = Object.entries(state.nodes).find(([, node]) => node.status === 'running')
+        if (!running) return { state }
+        const nodeId = running[0]
+        const message = `Node ${nodeId} failed: ${error}`
+        return {
+          state: {
+            ...state,
+            nodes: {
+              ...state.nodes,
+              [nodeId]: { status: 'failed', result: null, error: message },
+            },
+          },
+          effects: [
+            {
+              type: 'runtime.emit',
+              event: {
+                type: 'workflow.node.finished',
+                payload: asJson({ nodeId, result: null, error: message }),
+                threadId: ctx.threadId,
+              },
+            },
+          ],
         }
       }
       case 'runtime.wait.satisfied': {

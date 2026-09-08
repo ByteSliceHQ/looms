@@ -184,6 +184,166 @@ describe('foldRun', () => {
     expect(state.waits).toEqual({})
     expect(state.outstandingEffects[0]?.effect.type).toBe('runtime.complete')
   })
+
+  test('unhandled effect.failed fails the thread and drops its waits', () => {
+    const registry = composeModules([counterModule])
+    const runId = 'run_fail'
+    const threadId = 'thr_fail'
+    const effectId = createEffectId(threadId, 2, 0)
+    const events = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.registered',
+        payload: {
+          waitId: 'w_orphan',
+          threadId,
+          on: { type: 'never.happens' },
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.effect.failed',
+        payload: { effectId, error: 'Invalid input: amount: expected number' },
+        threadId,
+        effectId,
+        origin: { type: 'system' },
+      }),
+    ])
+    const state = foldRun(events, registry)
+    expect(state.threads[threadId]?.status).toBe('failed')
+    expect(state.threads[threadId]?.error).toBe('Invalid input: amount: expected number')
+    expect(state.waits).toEqual({})
+    expect(state.outstandingEffects).toEqual([])
+  })
+
+  test('withdrawn effect.failed does not fail the thread', () => {
+    const registry = composeModules([counterModule])
+    const runId = 'run_withdrawn'
+    const threadId = 'thr_withdrawn'
+    const events = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.effect.failed',
+        payload: { effectId: createEffectId(threadId, 1, 1), error: 'withdrawn: sibling effect x failed' },
+        threadId,
+        effectId: createEffectId(threadId, 1, 1),
+        origin: { type: 'system' },
+      }),
+    ])
+    const state = foldRun(events, registry)
+    expect(state.threads[threadId]?.status).toBe('running')
+    expect(state.outstandingEffects[0]?.effect.type).toBe('counter.tick')
+  })
+
+  test('handled effect.failed leaves the thread running', () => {
+    const handler = defineThread<{ saw: boolean }>({
+      kind: 'handler',
+      initialState: () => ({ saw: false }),
+      reduce(state, event) {
+        if (event.type === 'runtime.effect.failed') {
+          return { state: { saw: true }, effects: [invoke('handler.recover', {})] }
+        }
+        return { state }
+      },
+    })
+    const registry = composeModules([
+      defineRuntimeModule({
+        namespace: 'handler',
+        protocolVersion: '1.0.0',
+        threads: { handler },
+      }),
+    ])
+    const runId = 'run_handled'
+    const threadId = 'thr_handled'
+    const events = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'handler',
+          definitionName: 'handler',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.effect.failed',
+        payload: { effectId: createEffectId(threadId, 1, 0), error: 'boom' },
+        threadId,
+        effectId: createEffectId(threadId, 1, 0),
+        origin: { type: 'system' },
+      }),
+    ])
+    const state = foldRun(events, registry)
+    expect(state.threads[threadId]?.status).toBe('running')
+    expect(state.threads[threadId]?.state).toEqual({ saw: true })
+    expect(state.outstandingEffects[0]?.effect.type).toBe('handler.recover')
+  })
+
+  test('thread.failed clears waits and outstanding effects', () => {
+    const registry = composeModules([counterModule])
+    const runId = 'run_clear'
+    const threadId = 'thr_clear'
+    const events = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.registered',
+        payload: {
+          waitId: 'w_clear',
+          threadId,
+          on: { type: 'never.happens' },
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.thread.failed',
+        payload: { threadId, error: 'stopped' },
+        threadId,
+        origin: { type: 'system' },
+      }),
+    ])
+    const state = foldRun(events, registry)
+    expect(state.threads[threadId]?.status).toBe('failed')
+    expect(state.waits).toEqual({})
+    expect(state.outstandingEffects).toEqual([])
+  })
 })
 
 describe('match', () => {

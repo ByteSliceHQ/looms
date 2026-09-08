@@ -253,6 +253,28 @@ export const executeToolEffect = defineEffect({
         }
         case 'thread': {
           const mapped = tool.mapInput ? tool.mapInput(input.toolCall.arguments) : input.toolCall.arguments
+          const validated = yield* Effect.tryPromise({
+            try: () => validateInput(tool.input, mapped),
+            catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+          }).pipe(
+            Effect.map((value) => ({ ok: true as const, value })),
+            Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+          )
+          if (!validated.ok) {
+            return [
+              {
+                type: 'agent.tool.result',
+                payload: {
+                  turn: input.turn,
+                  toolCallId: input.toolCall.id,
+                  name: input.toolCall.name,
+                  result: null,
+                  error: validated.error,
+                },
+                threadId,
+              },
+            ]
+          }
           const childThreadId = createThreadId()
           return [
             {
@@ -261,7 +283,7 @@ export const executeToolEffect = defineEffect({
                 childThreadId,
                 kind: tool.childKind,
                 definitionName: tool.childName,
-                input: mapped,
+                input: validated.value,
                 toolCallId: input.toolCall.id,
               },
               threadId,

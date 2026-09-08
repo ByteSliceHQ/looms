@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { defineEffect, type EffectContext } from './effects'
 
 const ctx: EffectContext = {
@@ -31,5 +31,21 @@ describe('defineEffect', () => {
     })
     const events = await Effect.runPromise(effect.execute({}, ctx))
     expect(events).toEqual([{ type: 'demo.pong', payload: { effectId: 'eff_1' } }])
+  })
+
+  test('preserves validateInput error messages', async () => {
+    const effect = defineEffect({
+      type: 'demo.charge',
+      input: Schema.Struct({ amount: Schema.Number }),
+      execute: () => [],
+    })
+    let message = ''
+    try {
+      await Effect.runPromise(effect.execute({}, ctx))
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err)
+    }
+    expect(message).toContain('amount')
+    expect(message).not.toContain('An error occurred in Effect.tryPromise')
   })
 })

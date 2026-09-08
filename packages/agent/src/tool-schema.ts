@@ -56,6 +56,7 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
     case 'function':
       return tool.input
     case 'thread':
+      return tool.input
     case 'effects':
       return undefined
     default: {

@@ -88,6 +88,16 @@ export function isWaitOnEvent(on: WaitCondition): on is WaitOnEvent {
   return 'type' in on
 }
 
+export const WITHDRAWN_ERROR_PREFIX = 'withdrawn:'
+
+export function withdrawnError(siblingEffectId: string): string {
+  return `${WITHDRAWN_ERROR_PREFIX} sibling effect ${siblingEffectId} failed`
+}
+
+export function isWithdrawnError(error: string): boolean {
+  return error.startsWith(WITHDRAWN_ERROR_PREFIX)
+}
+
 export interface EffectContext {
   readonly effectId: string
   readonly runId: string
@@ -152,7 +162,12 @@ export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(de
     execute: (raw, ctx) =>
       closeHandlerRequirements(
         Effect.gen(function* () {
-          const input = def.input ? yield* Effect.tryPromise(() => validateInput(def.input, raw)) : raw
+          const input = def.input
+            ? yield* Effect.tryPromise({
+                try: () => validateInput(def.input, raw),
+                catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+              })
+            : raw
           return yield* liftHandlerResult(def.execute(input, ctx))
         }),
       ),

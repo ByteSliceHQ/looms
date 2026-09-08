@@ -12,6 +12,7 @@ import {
   isRunTerminal,
   isWaitOnTimer,
   matchingWaits,
+  withdrawnError,
   project,
   replayTo,
   shouldTakeSnapshot,
@@ -31,7 +32,7 @@ import {
   type RunState,
   type RuntimeEffect,
 } from '@looms/core'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Predicate } from 'effect'
 
 export type { RegisteredDefinition } from '@looms/core'
 
@@ -106,6 +107,105 @@ function moduleServices(
   return merged
 }
 
+function groupOutstanding(items: readonly { threadId: string; causingSeq: number }[]): string[] {
+  const keys: string[] = []
+  const seen = new Set<string>()
+  for (const item of items) {
+    const key = `${item.threadId}:${item.causingSeq}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    keys.push(key)
+  }
+  return keys
+}
+
+/**
+ * Every `runtime.thread.started` in the log goes through this helper so
+ * definition input is validated and Standard Schema defaults are applied.
+ * A future third producer of thread.started must call this; do not emit the
+ * event with raw input.
+ */
+function threadStartedEvents(
+  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  args: {
+    kind: string
+    definitionName: string
+    input: JsonValue
+    threadId: string
+    parentThreadId: string | null
+  },
+): Effect.Effect<ReadonlyArray<EventInput>, Error> {
+  return Effect.gen(function* () {
+    const def = definitions.get(`${args.kind}:${args.definitionName}`)
+    const raw = args.input ?? null
+    let startedInput = raw
+    let validationError: string | undefined
+    if (def?.input) {
+      const validated = yield* Effect.tryPromise({
+        try: () => {
+          // SAFETY: RegisteredDefinition.input is a Standard Schema when present.
+          return validateInput(def.input as never, raw)
+        },
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      }).pipe(
+        Effect.map((value) => ({ ok: true as const, value })),
+        Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+      )
+      if (validated.ok) {
+        startedInput = validated.value
+      } else {
+        validationError = validated.error
+      }
+    }
+    const started: EventInput = {
+      type: 'runtime.thread.started',
+      payload: {
+        threadId: args.threadId,
+        kind: args.kind,
+        definitionName: args.definitionName,
+        input: startedInput,
+        parentThreadId: args.parentThreadId,
+      },
+      threadId: args.threadId,
+      parentThreadId: args.parentThreadId,
+    }
+    if (!validationError) return [started]
+    return [
+      started,
+      {
+        type: 'runtime.thread.failed',
+        payload: { threadId: args.threadId, error: validationError },
+        threadId: args.threadId,
+      },
+    ]
+  })
+}
+
+function synthesizedThreadFailed(
+  before: RunState,
+  after: RunState,
+  written: readonly EventEnvelope[],
+): EventInput[] {
+  const out: EventInput[] = []
+  for (const [threadId, thread] of Object.entries(after.threads)) {
+    if (thread.status !== 'failed') continue
+    const prev = before.threads[threadId]
+    if (prev?.status === 'failed') continue
+    const already = written.some((event) => {
+      if (event.type !== 'runtime.thread.failed') return false
+      if (event.threadId === threadId) return true
+      return Predicate.isObject(event.payload) && event.payload.threadId === threadId
+    })
+    if (already) continue
+    out.push({
+      type: 'runtime.thread.failed',
+      payload: { threadId, error: thread.error ?? 'failed' },
+      threadId,
+    })
+  }
+  return out
+}
+
 function waitSatisfiedEvents(state: RunState, events: readonly EventEnvelope[]): EventInput[] {
   const produced: EventInput[] = []
   const remaining = { ...state.waits }
@@ -176,22 +276,21 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
     startRun: (args) =>
       Effect.gen(function* () {
-        const def = definitions.get(`${args.kind}:${args.definitionName}`)
-        if (!def) {
+        if (!definitions.get(`${args.kind}:${args.definitionName}`)) {
           return yield* Effect.fail(new Error(`Unknown definition ${args.kind}:${args.definitionName}`))
         }
-        const rawInput = args.input ?? null
-        const validated = def.input
-          ? yield* Effect.tryPromise({
-              try: () => {
-                // SAFETY: RegisteredDefinition.input is a Standard Schema when present.
-                return validateInput(def.input as never, rawInput)
-              },
-              catch: (err) => (err instanceof Error ? err : new Error(String(err))),
-            })
-          : rawInput
         const runId = args.runId ?? createRunId()
         const threadId = args.threadId ?? createThreadId()
+        const startedEvents = yield* threadStartedEvents(definitions, {
+          kind: args.kind,
+          definitionName: args.definitionName,
+          input: args.input ?? null,
+          threadId,
+          parentThreadId: null,
+        })
+        const started = startedEvents[0]
+        const startedInput =
+          started && Predicate.isObject(started.payload) ? (started.payload.input ?? null) : (args.input ?? null)
         const store = yield* EventStoreTag
         const batch = [
           createEvent(runId, {
@@ -200,23 +299,17 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               rootThreadId: threadId,
               kind: args.kind,
               definitionName: args.definitionName,
-              input: validated,
+              input: startedInput,
             },
             threadId: null,
             origin: { type: 'system' },
           }),
-          createEvent(runId, {
-            type: 'runtime.thread.started',
-            payload: {
-              threadId,
-              kind: args.kind,
-              definitionName: args.definitionName,
-              input: validated,
-              parentThreadId: null,
-            },
-            threadId,
-            origin: { type: 'system' },
-          }),
+          ...startedEvents.map((input) =>
+            createEvent(runId, {
+              ...input,
+              origin: { type: 'system' },
+            }),
+          ),
         ]
         yield* store.append(runId, stripSeq(batch))
         const state = yield* runtime.wake(runId)
@@ -305,59 +398,96 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             if (outstanding.length === 0) break
 
             const produced: EventEnvelope[] = []
-            for (const item of outstanding) {
-              const outcomes = yield* dispatchEffect(registry, services, item.effect, {
-                effectId: item.effectId,
-                runId,
-                threadId: item.threadId,
-                causingEventId: item.causingEventId,
-                emit: (input) => {
+            for (const groupKey of groupOutstanding(outstanding)) {
+              const group = outstanding.filter((item) => `${item.threadId}:${item.causingSeq}` === groupKey)
+              let failedEffectId: string | undefined
+              for (const item of group) {
+                if (failedEffectId && item.effect.type === 'runtime.wait') {
+                  produced.push(
+                    createEvent(runId, {
+                      type: 'runtime.effect.failed',
+                      payload: { effectId: item.effectId, error: withdrawnError(failedEffectId) },
+                      threadId: item.threadId,
+                      effectId: item.effectId,
+                      causationId: item.causingEventId,
+                      origin: { type: 'system' },
+                    }),
+                  )
+                  continue
+                }
+                const outcomes = yield* dispatchEffect(registry, services, definitions, item.effect, {
+                  effectId: item.effectId,
+                  runId,
+                  threadId: item.threadId,
+                  causingEventId: item.causingEventId,
+                  emit: (input) => {
+                    const targetThreadId = input.threadId ?? item.threadId
+                    const ephemeral = createEvent(runId, {
+                      ...input,
+                      effectId: item.effectId,
+                      causationId: item.causingEventId,
+                      threadId: targetThreadId,
+                      ephemeral: true,
+                      origin: input.origin ?? { type: 'thread', threadId: item.threadId },
+                    })
+                    void Effect.runPromise(store.append(runId, stripSeq([ephemeral])))
+                  },
+                })
+                const before = produced.length
+                if (outcomes.length === 0) {
+                  produced.push(
+                    createEvent(runId, {
+                      type: 'runtime.effect.failed',
+                      payload: { effectId: item.effectId, error: 'empty-outcome' },
+                      threadId: item.threadId,
+                      effectId: item.effectId,
+                      causationId: item.causingEventId,
+                      origin: { type: 'system' },
+                    }),
+                  )
+                }
+                for (const input of outcomes) {
                   const targetThreadId = input.threadId ?? item.threadId
-                  const ephemeral = createEvent(runId, {
-                    ...input,
-                    effectId: item.effectId,
-                    causationId: item.causingEventId,
-                    threadId: targetThreadId,
-                    ephemeral: true,
-                    origin: input.origin ?? { type: 'thread', threadId: item.threadId },
-                  })
-                  void Effect.runPromise(store.append(runId, stripSeq([ephemeral])))
-                },
-              })
-              if (outcomes.length === 0) {
-                produced.push(
-                  createEvent(runId, {
-                    type: 'runtime.effect.failed',
-                    payload: { effectId: item.effectId, error: 'empty-outcome' },
-                    threadId: item.threadId,
-                    effectId: item.effectId,
-                    causationId: item.causingEventId,
-                    origin: { type: 'system' },
-                  }),
-                )
-              }
-              for (const input of outcomes) {
-                const targetThreadId = input.threadId ?? item.threadId
-                produced.push(
-                  createEvent(runId, {
-                    ...input,
-                    effectId: input.effectId ?? item.effectId,
-                    causationId: input.causationId ?? item.causingEventId,
-                    threadId: targetThreadId,
-                    origin: input.origin ?? { type: 'thread', threadId: item.threadId },
-                    id: input.id,
-                    ts: input.ts,
-                  }),
-                )
+                  produced.push(
+                    createEvent(runId, {
+                      ...input,
+                      effectId: input.effectId ?? item.effectId,
+                      causationId: input.causationId ?? item.causingEventId,
+                      threadId: targetThreadId,
+                      origin: input.origin ?? { type: 'thread', threadId: item.threadId },
+                      id: input.id,
+                      ts: input.ts,
+                    }),
+                  )
+                }
+                const groupOutcomes = produced.slice(before)
+                if (
+                  item.effect.type !== 'runtime.wait' &&
+                  groupOutcomes.some((event) => event.type === 'runtime.effect.failed')
+                ) {
+                  failedEffectId = item.effectId
+                }
               }
             }
 
             if (produced.length === 0) break
+            const beforeFold = state
             yield* store.append(runId, stripSeq(produced))
             events = yield* store.read(runId)
             state = foldFromSnapshots(events, registry, { runId })
             const written = events.slice(-produced.length)
-            const satisfied = waitSatisfiedEvents(state, written)
+            const synthesized = synthesizedThreadFailed(beforeFold, state, written)
+            if (synthesized.length > 0) {
+              yield* store.append(
+                runId,
+                synthesized.map((input) => createEvent(runId, input)),
+              )
+              events = yield* store.read(runId)
+              state = foldFromSnapshots(events, registry, { runId })
+            }
+            const waitSources =
+              synthesized.length > 0 ? events.slice(-(produced.length + synthesized.length)) : written
+            const satisfied = waitSatisfiedEvents(state, waitSources)
             if (satisfied.length > 0) {
               yield* store.append(
                 runId,
@@ -405,6 +535,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 function dispatchEffect(
   registry: ComposedRegistry,
   services: Layer.Layer<never, never, never>,
+  definitions: ReadonlyMap<string, RegisteredDefinition>,
   effect: RuntimeEffect,
   ctx: EffectContext,
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
@@ -414,20 +545,13 @@ function dispatchEffect(
     switch (effect.type) {
       case 'runtime.spawn': {
         const childThreadId = effect.childThreadId ?? ''
-        return Effect.succeed([
-          {
-            type: 'runtime.thread.started',
-            payload: {
-              threadId: childThreadId,
-              kind: effect.kind,
-              definitionName: effect.definitionName,
-              input: effect.input,
-              parentThreadId: currentThreadId,
-            },
-            threadId: childThreadId,
-            parentThreadId: currentThreadId,
-          },
-        ])
+        return threadStartedEvents(definitions, {
+          kind: effect.kind,
+          definitionName: effect.definitionName,
+          input: effect.input,
+          threadId: childThreadId,
+          parentThreadId: currentThreadId,
+        })
       }
       case 'runtime.wait': {
         const events: EventInput[] = [

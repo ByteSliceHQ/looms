@@ -1,6 +1,16 @@
-import { decision, pendingApprovals } from '@looms/approval'
-import { foldRun, treeFromRun } from '@looms/core'
+import { agent, asEffectsTool, defineAgent } from '@looms/agent'
+import { decision, gate, pendingApprovals } from '@looms/approval'
+import {
+  defineEffect,
+  defineRuntimeModule,
+  foldRun,
+  isJsonObject,
+  isJsonString,
+  treeFromRun,
+} from '@looms/core'
+import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
+import { Effect } from 'effect'
 import { z } from 'zod'
 import { assistant, checkout, definitions, echo, orchestrator, pipeline } from './definitions'
 import { demoModules } from './runtime'
@@ -125,6 +135,119 @@ export async function verifyDemo(): Promise<void> {
     const root = rootOf(state)
     if (root?.status !== 'running' && root?.status !== 'waiting') {
       throw new Error(`assistant expected running, got ${root?.status}`)
+    }
+  }
+
+  {
+    const caller = defineAgent({
+      name: 'checkout_caller',
+      instructions: 'run checkout',
+      tools: [checkout],
+      runTurn: ({ turn }) => {
+        if (turn === 1) {
+          return {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{ id: 'call_checkout', name: 'checkout', arguments: {} }],
+            },
+            toolCalls: [{ id: 'call_checkout', name: 'checkout', arguments: {} }],
+          }
+        }
+        return {
+          message: { role: 'assistant', content: 'checkout finished' },
+          done: true,
+          output: { ok: true },
+        }
+      },
+    })
+    const scripted = createLooms({
+      definitions: [...definitions, caller],
+      modules: demoModules(),
+    })
+    const { runId, state } = await scripted.start(caller, 'run checkout')
+    if (rootOf(state)?.status !== 'waiting') {
+      throw new Error(`checkout_caller expected waiting on approval, got ${rootOf(state)?.status}`)
+    }
+    const child = Object.values(state.threads).find((thread) => thread.definitionName === 'checkout')
+    if (!child) throw new Error('checkout_caller missing checkout child')
+    const childInput = z.object({ amount: z.number(), currency: z.string() }).safeParse(child.input)
+    if (!childInput.success || childInput.data.amount !== 150 || childInput.data.currency !== 'USD') {
+      throw new Error(`checkout_caller expected defaulted input, got ${JSON.stringify(child.input)}`)
+    }
+    const pending = await scripted.project(runId, pendingApprovals)
+    const approvalId = pending.items.find((item) => item.status === 'pending')?.approvalId
+    if (!approvalId) throw new Error('checkout_caller missing pending approval')
+    const next = await scripted.signal(runId, [decision(approvalId, 'approve')])
+    if (next.status !== 'completed') {
+      throw new Error(`checkout_caller after approve expected completed, got ${next.status}`)
+    }
+    const events = await scripted.getEvents(runId)
+    if (!events.some((event) => event.type === 'payments.charge.authorized')) {
+      throw new Error('checkout_caller expected payments.charge.authorized')
+    }
+  }
+
+  {
+    const failingApproval = defineRuntimeModule({
+      namespace: 'approval',
+      protocolVersion: '1.0.0',
+      effects: {
+        request: defineEffect({
+          type: 'approval.request',
+          execute: () => Effect.fail(new Error('approval handler down')),
+        }),
+      },
+    })
+    const asker = defineAgent({
+      name: 'asker',
+      instructions: 'ask',
+      tools: [
+        asEffectsTool({
+          name: 'ask_approval',
+          description: 'Ask a human to approve or reject a request',
+          effects: () => gate({ title: 'Approve this request?' }),
+          waitOn: { type: 'approval.decided' },
+        }),
+      ],
+      runTurn: ({ turn, messages }) => {
+        if (turn === 1) {
+          return {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{ id: 't1', name: 'ask_approval', arguments: {} }],
+            },
+            toolCalls: [{ id: 't1', name: 'ask_approval', arguments: {} }],
+          }
+        }
+        const last = messages.at(-1)?.content ?? ''
+        return {
+          message: { role: 'assistant', content: last },
+          done: true,
+          output: { text: last },
+        }
+      },
+    })
+    const failing = createLooms({
+      definitions: [asker],
+      modules: [agent(), workflow(), failingApproval],
+    })
+    const { runId, state } = await failing.start(asker, 'please approve')
+    if (state.status !== 'completed') {
+      throw new Error(`asker expected completed after handler failure, got ${state.status}`)
+    }
+    if (Object.keys(state.waits).length > 0) {
+      throw new Error(`asker parked on waits after handler failure: ${JSON.stringify(state.waits)}`)
+    }
+    const events = await failing.getEvents(runId)
+    if (events.some((event) => event.type === 'runtime.wait.registered')) {
+      throw new Error('asker should not register approval waits after handler failure')
+    }
+    const toolResult = events.find((event) => event.type === 'agent.tool.result')
+    const error = toolResult && isJsonObject(toolResult.payload) ? toolResult.payload.error : null
+    if (!isJsonString(error) || !error.includes('approval handler down')) {
+      throw new Error(`asker expected tool error, got ${JSON.stringify(toolResult?.payload)}`)
     }
   }
 }

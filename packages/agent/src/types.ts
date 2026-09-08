@@ -21,6 +21,11 @@ export interface TokenUsage {
   output: number
 }
 
+export interface PendingEffectTool {
+  toolCallId: string
+  name: string
+}
+
 export interface AgentState {
   lines: Message[]
   pendingToolCalls: ToolCall[]
@@ -29,4 +34,5 @@ export interface AgentState {
   pendingSteer: Message | null
   input: JsonValue
   output: JsonValue | null
+  pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
 }

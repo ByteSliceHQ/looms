@@ -26,6 +26,7 @@ export interface ThreadTool {
   readonly kind: 'thread'
   readonly name: string
   readonly description: string
+  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
   readonly inputSchema?: JsonValue
   readonly childKind: string
   readonly childName: string
@@ -44,7 +45,15 @@ export interface EffectsTool {
 
 export type ToolLike = FunctionTool | ThreadTool | EffectsTool
 
-export type AgentToolEntry = ToolLike | { kind: string; name: string; instructions?: string; description?: string }
+export type AgentToolEntry =
+  | ToolLike
+  | {
+      kind: string
+      name: string
+      instructions?: string
+      description?: string
+      input?: StandardSchemaV1<JsonValue, JsonValue>
+    }
 
 export interface AgentTurnContext<TInput = JsonValue> {
   readonly threadId: string
@@ -96,6 +105,7 @@ export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolL
           : 'description' in entry && entry.description
             ? entry.description
             : entry.name,
+      input: 'input' in entry ? entry.input : undefined,
     })
   })
 }
@@ -143,6 +153,7 @@ export function defineAgent<
 export function asThreadTool(def: {
   name?: string
   description?: string
+  input?: StandardSchemaV1<JsonValue, JsonValue>
   inputSchema?: JsonValue
   child: { kind: string; name: string }
   mapInput?: (input: JsonValue) => JsonValue
@@ -151,6 +162,7 @@ export function asThreadTool(def: {
     kind: 'thread',
     name: def.name ?? def.child.name,
     description: def.description ?? def.child.name,
+    input: def.input,
     inputSchema: def.inputSchema,
     childKind: def.child.kind,
     childName: def.child.name,
@@ -162,6 +174,7 @@ export function asThreadTool(def: {
 export function asAgentTool(def: {
   name?: string
   description?: string
+  input?: StandardSchemaV1<JsonValue, JsonValue>
   inputSchema?: JsonValue
   agent: { kind: 'agent'; name: string; instructions?: string }
   mapInput?: (input: JsonValue) => JsonValue
@@ -169,6 +182,7 @@ export function asAgentTool(def: {
   return asThreadTool({
     name: def.name,
     description: def.description ?? def.agent.instructions,
+    input: def.input,
     inputSchema: def.inputSchema,
     child: { kind: 'agent', name: def.agent.name },
     mapInput: def.mapInput,

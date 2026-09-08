@@ -36,4 +36,53 @@ describe('@looms/workflow module', () => {
     })
     expect(def.kind).toBe('workflow')
   })
+
+  test('effect.failed finishes the running node and fails the thread', () => {
+    const registry = composeModules([workflow()])
+    const runId = 'run_wf_fail'
+    const threadId = 'thr_wf_fail'
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'workflow',
+              definitionName: 'pipe',
+              input: { nodeIds: ['charge'] },
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'workflow.node.started',
+            payload: { nodeId: 'charge' },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 2,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'runtime.effect.failed',
+            payload: { effectId: `${threadId}:3:0`, error: 'Invalid input: amount: expected number' },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 3,
+        },
+      ],
+      registry,
+    )
+    const threadState = state.threads[threadId]?.state
+    expect(JSON.stringify(threadState)).toContain('"status":"failed"')
+    const emitted = state.outstandingEffects.find((item) => item.effect.type === 'runtime.emit')
+    expect(emitted).toBeDefined()
+    expect(JSON.stringify(emitted?.effect)).toContain('workflow.node.finished')
+  })
 })

@@ -3,7 +3,7 @@ import { createEffectId } from './ids'
 import type { EventEnvelope } from './envelope'
 import type { ThreadDefinition, ReduceContext } from './thread'
 import { isTerminalStatus } from './thread'
-import type { RuntimeEffect } from './effects'
+import { isWithdrawnError, type RuntimeEffect } from './effects'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { emptyRunState } from './state'
 import type { JsonValue } from './types'
@@ -65,6 +65,18 @@ function removeWait(state: RunState, waitId: string): RunState {
 
 function threadWaits(state: RunState, threadId: string): WaitRecord[] {
   return Object.values(state.waits).filter((record) => record.threadId === threadId)
+}
+
+function dropThreadWork(state: RunState, threadId: string): RunState {
+  const waits: RunState['waits'] = {}
+  for (const [waitId, record] of Object.entries(state.waits)) {
+    if (record.threadId !== threadId) waits[waitId] = record
+  }
+  return {
+    ...state,
+    waits,
+    outstandingEffects: state.outstandingEffects.filter((item) => item.threadId !== threadId),
+  }
 }
 
 function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
@@ -131,22 +143,28 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       if (!threadId) return state
       const existing = state.threads[threadId]
       if (!existing) return state
-      return putThread(state, {
-        ...existing,
-        status: 'failed',
-        error: readString(payload, 'error') ?? 'failed',
-      })
+      return dropThreadWork(
+        putThread(state, {
+          ...existing,
+          status: 'failed',
+          error: readString(payload, 'error') ?? 'failed',
+        }),
+        threadId,
+      )
     }
     case 'runtime.thread.cancelled': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
       if (!threadId) return state
       const existing = state.threads[threadId]
       if (!existing) return state
-      return putThread(state, {
-        ...existing,
-        status: 'cancelled',
-        error: readString(payload, 'reason') ?? existing.error,
-      })
+      return dropThreadWork(
+        putThread(state, {
+          ...existing,
+          status: 'cancelled',
+          error: readString(payload, 'reason') ?? existing.error,
+        }),
+        threadId,
+      )
     }
     case 'runtime.wait.registered': {
       const waitId = readString(payload, 'waitId')
@@ -240,6 +258,26 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   return appendEffects(next, threadId, event, result.effects ?? [])
 }
 
+function failUnhandledEffect(state: RunState, event: EventEnvelope, effectsBeforeDeliver: number): RunState {
+  if (event.type !== 'runtime.effect.failed') return state
+  const payload = payloadObject(event)
+  const error = readString(payload, 'error') ?? 'effect failed'
+  if (isWithdrawnError(error)) return state
+  if (state.outstandingEffects.length > effectsBeforeDeliver) return state
+  const threadId = event.threadId
+  if (!threadId) return state
+  const existing = state.threads[threadId]
+  if (!existing || isTerminalStatus(existing.status)) return state
+  return dropThreadWork(
+    putThread(state, {
+      ...existing,
+      status: 'failed',
+      error,
+    }),
+    threadId,
+  )
+}
+
 export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
   if (event.ephemeral) return state
   let next = cloneState(state)
@@ -250,8 +288,9 @@ export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldR
     next = completeEffect(next, event.effectId)
   }
   next = applyProtocol(next, event, registry)
+  const effectsBeforeDeliver = next.outstandingEffects.length
   next = deliver(next, event, registry)
-  return next
+  return failUnhandledEffect(next, event, effectsBeforeDeliver)
 }
 
 export function foldRun(
