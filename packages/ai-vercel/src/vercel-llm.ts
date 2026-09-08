@@ -1,5 +1,5 @@
-import type { LlmAdapter } from '@looms/agent'
-import type { AgentTurnResult, JsonValue, LlmToolSpec } from '@looms/core'
+import type { AgentTurnResult, LlmAdapter, LlmToolSpec } from '@looms/agent'
+import type { JsonValue } from '@looms/core'
 import { generateText, jsonSchema, streamText, tool, type LanguageModel } from 'ai'
 import { toLoomsToolCalls, toModelMessages } from './messages'
 
@@ -61,17 +61,24 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
           }
         }
 
-        const [text, rawToolCalls] = await Promise.all([result.text, result.toolCalls])
-        const toolCalls = toLoomsToolCalls(
-          rawToolCalls.map((call) => ({
-            toolCallId: call.toolCallId,
-            toolName: call.toolName,
-            input: toolCallInput(call),
-          })),
-        )
-        return {
-          message: { role: 'assistant', content: text, toolCalls },
-          toolCalls,
+        try {
+          const [text, rawToolCalls] = await Promise.all([result.text, result.toolCalls])
+          const toolCalls = toLoomsToolCalls(
+            rawToolCalls.map((call) => ({
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              input: toolCallInput(call),
+            })),
+          )
+          return {
+            message: { role: 'assistant', content: text, toolCalls },
+            toolCalls,
+            usage: { input: 0, output: text.length },
+          }
+        } catch (err) {
+          if (!(err instanceof Error) || !err.message.includes('No output generated')) {
+            throw err
+          }
         }
       }
 
@@ -100,6 +107,10 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
       return {
         message: { role: 'assistant', content: result.text, toolCalls },
         toolCalls,
+        usage: {
+          input: result.usage?.inputTokens ?? 0,
+          output: result.usage?.outputTokens ?? result.text.length,
+        },
       }
     },
   }

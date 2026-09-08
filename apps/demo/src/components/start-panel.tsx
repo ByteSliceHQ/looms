@@ -1,51 +1,52 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { createLoomsClient } from '@looms/client'
-import type { definitions } from '../definitions'
+import { checkout, echo, greeter, orchestrator, pipeline } from '../definitions'
 
-const loomsClient = createLoomsClient<typeof definitions>()
+const loomsClient = createLoomsClient()
 
 const DEFINITIONS = [
   {
-    name: 'echo',
+    name: echo.name,
     label: 'echo (agent)',
     placeholder: 'hi',
-    start: (text: string) => loomsClient.startAgent('echo', { text: text || 'hi' }),
+    start: (text: string) => loomsClient.start(echo, { text: text || 'hi' }),
   },
   {
-    name: 'greeter',
+    name: greeter.name,
     label: 'greeter (agent + tool)',
     placeholder: 'Ada',
-    start: (name: string) => loomsClient.startAgent('greeter', { name: name || 'world' }),
+    start: (name: string) => loomsClient.start(greeter, { name: name || 'world' }),
   },
   {
-    name: 'orchestrator',
+    name: orchestrator.name,
     label: 'orchestrator (sub-agent)',
     placeholder: 'summarize',
-    start: (task: string) => loomsClient.startAgent('orchestrator', { task: task || 'summarize' }),
+    start: (task: string) => loomsClient.start(orchestrator, { task: task || 'summarize' }),
   },
   {
-    name: 'hitl',
-    label: 'hitl (review gate)',
-    placeholder: 'draft document',
-    start: (doc: string) => loomsClient.startWorkflow('hitl', { doc: doc || 'draft' }),
+    name: checkout.name,
+    label: 'checkout (approval + payments)',
+    placeholder: '150',
+    start: (amount: string) =>
+      loomsClient.start(checkout, { amount: Number(amount) || 150, currency: 'USD' }),
   },
   {
-    name: 'pipeline',
+    name: pipeline.name,
     label: 'pipeline (DAG + spawn)',
     placeholder: '21',
-    start: (n: string) => loomsClient.startWorkflow('pipeline', { n: Number(n) || 21 }),
+    start: (n: string) => loomsClient.start(pipeline, { n: Number(n) || 21 }),
   },
 ]
 
 export function StartPanel() {
   const navigate = useNavigate()
-  const [selected, setSelected] = useState(DEFINITIONS[0]!.name)
+  const [selected, setSelected] = useState<string>(DEFINITIONS[0]!.name)
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  const def = DEFINITIONS.find((d) => d.name === selected) ?? DEFINITIONS[0]!
+  const def = DEFINITIONS.find((item) => item.name === selected) ?? DEFINITIONS[0]!
 
   async function onStart() {
     setError(null)
@@ -53,8 +54,8 @@ export function StartPanel() {
     try {
       const result = await def.start(input.trim())
       await navigate({
-        to: '/actors/$actorId',
-        params: { actorId: result.actorId },
+        to: '/runs/$runId',
+        params: { runId: result.runId },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -65,10 +66,10 @@ export function StartPanel() {
 
   return (
     <section className="panel">
-      <h2>Start a session</h2>
+      <h2>Start a run</h2>
       <p className="muted">
-        Creates an agent or workflow actor on the Looms host. LiveStore then syncs the event log
-        through s2-lite.
+        Creates a run on the Looms kernel. Open the debugger to inspect the thread tree, or chat
+        for conversational agents.
       </p>
       <div className="row">
         <select
@@ -78,9 +79,9 @@ export function StartPanel() {
             setInput('')
           }}
         >
-          {DEFINITIONS.map((d) => (
-            <option key={d.name} value={d.name}>
-              {d.label}
+          {DEFINITIONS.map((item) => (
+            <option key={item.name} value={item.name}>
+              {item.label}
             </option>
           ))}
         </select>

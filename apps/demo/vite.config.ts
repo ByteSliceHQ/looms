@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
           client: {
             // Allow `@looms/livestore/react` and `@looms/client` in the browser; block host packages.
             specifiers: [
-              /^@looms\/(core|runtime|agent|s2|workflow)(\/|$)/,
+              /^@looms\/(runtime|s2)(\/|$)/,
               /^@looms\/livestore$/,
             ],
           },

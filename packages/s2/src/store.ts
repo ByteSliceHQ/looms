@@ -9,14 +9,14 @@ import {
   EventStoreConflictError,
   EventStoreError,
   EventStoreTag,
+  EventEnvelopeSchema,
   fromWireEvent,
-  LoomsEventSchema,
   type AppendResult,
   type EventStore,
-  type LoomsEvent,
+  type EventEnvelope,
 } from '@looms/core'
 import { Effect, Layer, Queue, Schema, Stream } from 'effect'
-import { S2ConfigSchema, streamNameForActor, type S2Config } from './config'
+import { S2ConfigSchema, streamNameForRun, type S2Config } from './config'
 
 function toStoreError(cause: unknown, message: string): EventStoreError {
   if (cause instanceof EventStoreError) return cause
@@ -24,9 +24,16 @@ function toStoreError(cause: unknown, message: string): EventStoreError {
   return new EventStoreError(`${message}: ${detail}`, cause)
 }
 
-function parseEvent(body: string, seqNum: number): LoomsEvent {
+function isUnsatisfiableRead(err: EventStoreError): boolean {
+  const cause = err.cause
+  if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) return true
+  const text = `${err.message} ${cause instanceof Error ? cause.message : ''}`
+  return text.includes('out of range') || text.includes('Range not satisfiable')
+}
+
+function parseEvent(body: string, seqNum: number): EventEnvelope {
   const raw: unknown = JSON.parse(body)
-  const decoded = Schema.decodeUnknownSync(LoomsEventSchema)(raw)
+  const decoded = Schema.decodeUnknownSync(EventEnvelopeSchema)(raw)
   return fromWireEvent({ ...decoded, seq: seqNum + 1 })
 }
 
@@ -78,12 +85,12 @@ export function s2(config: S2Config): EventStore {
     catch: (cause) => toStoreError(cause, `Failed to ensure basin ${parsed.basin}`),
   })
 
-  const ensureStream = (actorId: string) =>
+  const ensureStream = (runId: string) =>
     Effect.gen(function* () {
       yield* ensureBasin
       return yield* Effect.tryPromise({
         try: async () => {
-          const name = streamNameForActor(actorId)
+          const name = streamNameForRun(runId)
           if (ensured.has(name)) return basin.stream(name)
           try {
             await basin.streams.create({ stream: name })
@@ -99,22 +106,22 @@ export function s2(config: S2Config): EventStore {
           ensured.add(name)
           return basin.stream(name)
         },
-        catch: (cause) => toStoreError(cause, `Failed to open stream for ${actorId}`),
+        catch: (cause) => toStoreError(cause, `Failed to open stream for ${runId}`),
       })
     })
 
   const service: EventStore = {
-    append: (actorId, events, options) =>
+    append: (runId, events, options) =>
       Effect.gen(function* () {
         if (events.length === 0) {
-          const tail = yield* service.tail(actorId)
+          const tail = yield* service.tail(runId)
           return { sequences: [], tail } satisfies AppendResult
         }
-        const stream = yield* ensureStream(actorId)
+        const stream = yield* ensureStream(runId)
         const records = events.map((partial) => {
           const body = JSON.stringify({
             ...partial,
-            actorId,
+            runId,
             seq: partial.seq ?? 0,
           })
           return AppendRecord.string({
@@ -148,13 +155,13 @@ export function s2(config: S2Config): EventStore {
             const actualTail = tailCheck?.tail?.seqNum ?? 0
             return yield* Effect.fail(
               new EventStoreConflictError(
-                actorId,
+                runId,
                 options?.expectedTail ?? 0,
                 actualTail,
               ),
             )
           }
-          return yield* Effect.fail(toStoreError(cause, `Append failed for ${actorId}`))
+          return yield* Effect.fail(toStoreError(cause, `Append failed for ${runId}`))
         }
 
         const ack = appendResult.ack
@@ -165,9 +172,9 @@ export function s2(config: S2Config): EventStore {
         return { sequences, tail: ack.tail.seqNum }
       }),
 
-    read: (actorId, options) =>
+    read: (runId, options) =>
       Effect.gen(function* () {
-        const stream = yield* ensureStream(actorId)
+        const stream = yield* ensureStream(runId)
         const fromSeq = options?.fromSeq ?? 1
         const s2From = Math.max(0, fromSeq - 1)
         const limit = options?.limit ?? 1000
@@ -177,12 +184,10 @@ export function s2(config: S2Config): EventStore {
               start: { from: { seqNum: s2From }, clamp: true },
               stop: { limits: { count: limit } },
             }),
-          catch: (cause) => toStoreError(cause, `Read failed for ${actorId}`),
+          catch: (cause) => toStoreError(cause, `Read failed for ${runId}`),
         }).pipe(
           Effect.catch((err) =>
-            err.cause instanceof S2Error && err.cause.status === 404
-              ? Effect.succeed(null)
-              : Effect.fail(err),
+            isUnsatisfiableRead(err) ? Effect.succeed(null) : Effect.fail(err),
           ),
         )
         if (!batch) return []
@@ -191,12 +196,12 @@ export function s2(config: S2Config): EventStore {
           .map((r) => parseEvent(r.body, r.seqNum))
       }),
 
-    tail: (actorId) =>
+    tail: (runId) =>
       Effect.gen(function* () {
-        const stream = yield* ensureStream(actorId)
+        const stream = yield* ensureStream(runId)
         const res = yield* Effect.tryPromise({
           try: () => stream.checkTail(),
-          catch: (cause) => toStoreError(cause, `Tail failed for ${actorId}`),
+          catch: (cause) => toStoreError(cause, `Tail failed for ${runId}`),
         }).pipe(
           Effect.catch((err) =>
             err.cause instanceof S2Error && err.cause.status === 404
@@ -207,15 +212,15 @@ export function s2(config: S2Config): EventStore {
         return res.tail.seqNum
       }),
 
-    subscribe: (actorId, options) =>
-      Stream.callback<LoomsEvent, EventStoreError>((queue) =>
+    subscribe: (runId, options) =>
+      Stream.callback<EventEnvelope, EventStoreError>((queue) =>
         Effect.callback<void>((resume) => {
           const fromSeq = options?.fromSeq ?? 1
           const s2From = Math.max(0, fromSeq - 1)
           let stopped = false
           const run = async () => {
             try {
-              const stream = await Effect.runPromise(ensureStream(actorId))
+              const stream = await Effect.runPromise(ensureStream(runId))
               const session = await stream.readSession({
                 start: { from: { seqNum: s2From }, clamp: true },
               })
@@ -228,7 +233,7 @@ export function s2(config: S2Config): EventStore {
               resume(Effect.void)
             } catch (cause) {
               await Effect.runPromise(
-                Queue.fail(queue, toStoreError(cause, `Subscribe failed for ${actorId}`)),
+                Queue.fail(queue, toStoreError(cause, `Subscribe failed for ${runId}`)),
               )
               resume(Effect.void)
             }
@@ -240,16 +245,16 @@ export function s2(config: S2Config): EventStore {
         }),
       ),
 
-    listActors: () =>
+    listRuns: () =>
       Effect.tryPromise({
         try: async () => {
-          const listed = await basin.streams.list({ prefix: 'actors/' })
+          const listed = await basin.streams.list({ prefix: 'runs/' })
           return listed.streams
             .map((s) => s.name)
-            .filter((name) => name.startsWith('actors/'))
-            .map((name) => name.slice('actors/'.length))
+            .filter((name) => name.startsWith('runs/'))
+            .map((name) => name.slice('runs/'.length))
         },
-        catch: (cause) => toStoreError(cause, 'listActors failed'),
+        catch: (cause) => toStoreError(cause, 'listRuns failed'),
       }),
   }
 

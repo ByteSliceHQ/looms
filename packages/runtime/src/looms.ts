@@ -1,106 +1,77 @@
-import {
-  llmFromAdapter,
-  LlmTag,
-  StubLlmLive,
-  type LlmAdapter,
-  type StubLlmPolicy,
-} from '@looms/agent'
+import { agent } from '@looms/agent'
+import { approval } from '@looms/approval'
 import {
   EventStoreTag,
   makeMemoryEventStore,
-  type ActorState,
-  type AgentDefinition,
-  type AnyDefinition,
+  type AnyRuntimeModule,
+  type DefinitionInput,
+  type DefinitionRef,
+  type EventEnvelope,
+  type EventInput,
   type EventStore,
   type JsonValue,
-  type Message,
-  type LoomsEvent,
-  type LoomsEventSignal,
-  type WorkflowDefinition,
+  type ProjectionDefinition,
+  type RegisteredDefinition,
+  type ReplayStep,
+  type RunState,
 } from '@looms/core'
-import { withProjectors, type Projector, type ProjectorErrorHandler } from '@looms/projectors'
-import { Effect, Layer, Predicate } from 'effect'
-import { createRegistry } from './registry'
-import { createLoomsRuntime, type LoomsRuntime } from './runtime'
-import {
-  createFetchHandler,
-  isLoomsApiPath,
-  serveHttp,
-  type RunningServer,
-} from './server'
+import { workflow } from '@looms/workflow'
+import { Effect, Predicate } from 'effect'
+import { createRuntime, type LoomsRuntime } from './runtime'
+import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
 
 export interface CreateLoomsOptions {
-  readonly definitions?: ReadonlyArray<AnyDefinition>
+  /** Anything with `{ kind, name }`: agents, workflows, or definitions from your own modules. */
+  readonly definitions?: ReadonlyArray<DefinitionRef>
+  /** Defaults to `[agent(), workflow(), approval()]`. Pass your own list to add or swap modules. */
+  readonly modules?: readonly AnyRuntimeModule[]
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
-  readonly llm?: LlmAdapter
-  readonly llmPolicy?: StubLlmPolicy
   readonly serve?: boolean | { port?: number; hostname?: string }
-  readonly projectors?: ReadonlyArray<Projector>
-  readonly onProjectorError?: ProjectorErrorHandler
+}
+
+export interface StartResult {
+  readonly runId: string
+  readonly threadId: string
+  readonly state: RunState
 }
 
 export interface Looms {
-  readonly definitions: ReadonlyArray<AnyDefinition>
+  readonly runtime: Promise<LoomsRuntime>
+  readonly store: Promise<EventStore>
   ready(): Promise<{ store: EventStore; runtime: LoomsRuntime }>
-  startAgent<TInput = JsonValue, TOutput extends JsonValue = JsonValue>(
-    definition: AgentDefinition<string, TInput, TOutput>,
-    input: TInput,
-    options?: { actorId?: string },
-  ): Promise<{ actorId: string; state: ActorState; output: TOutput | null }>
-  startAgent(
-    definitionName: string,
-    input?: JsonValue,
-    options?: { actorId?: string },
-  ): Promise<{ actorId: string; state: ActorState; output: JsonValue | null }>
-
-  startWorkflow<TInput = JsonValue, TOutput extends JsonValue = JsonValue>(
-    definition: WorkflowDefinition<string, TInput, TOutput>,
-    input: TInput,
-    options?: { actorId?: string },
-  ): Promise<{ actorId: string; state: ActorState; output: TOutput | null }>
-  startWorkflow(
-    definitionName: string,
-    input?: JsonValue,
-    options?: { actorId?: string },
-  ): Promise<{ actorId: string; state: ActorState; output: JsonValue | null }>
-
-  getState(actorId: string): Promise<ActorState>
-  getEvents(
-    actorId: string,
-    options?: { fromSeq?: number; limit?: number },
-  ): Promise<LoomsEvent[]>
-  sendMessage(actorId: string, message: string | Message): Promise<ActorState>
-  decideReview(
-    actorId: string,
-    reviewId: string,
-    decision: { actionId: string; outcome: 'approve' | 'reject'; payload?: JsonValue },
-  ): Promise<ActorState>
-  steer(
-    actorId: string,
-    message: string | Message,
-    options?: { interrupt?: boolean; turn?: number },
-  ): Promise<ActorState>
-  signal(actorId: string, events: ReadonlyArray<LoomsEventSignal>): Promise<ActorState>
-  wake(actorId: string): Promise<ActorState>
-
+  /** Start a run from a definition object; the input type follows the definition's schema. */
+  start<TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>): Promise<StartResult>
+  /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
+  startRun(args: { kind: string; definitionName: string; input?: JsonValue; runId?: string }): Promise<StartResult>
+  getRun(runId: string): Promise<RunState>
+  getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
+  signal(runId: string, events: ReadonlyArray<EventInput>): Promise<RunState>
+  wake(runId: string): Promise<RunState>
+  project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
+  replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
-
-  readonly runtime: Promise<LoomsRuntime>
-  readonly store: Promise<EventStore>
 }
 
 interface Initialized {
   readonly runtime: LoomsRuntime
   readonly store: EventStore
-  readonly provide: <A, E>(effect: Effect.Effect<A, E, LlmTag>) => Effect.Effect<A, E>
   readonly fetchHandler: (req: Request) => Promise<Response | null>
-  readonly projectors: ReadonlyArray<Projector>
+}
+
+function toRegistered(definitions: ReadonlyArray<DefinitionRef>): RegisteredDefinition[] {
+  return definitions.map((def) => ({
+    kind: def.kind,
+    name: def.name,
+    input: def.input,
+    value: def,
+  }))
 }
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const definitions = options.definitions ? [...options.definitions] : []
+  const modules = options.modules ?? [agent(), workflow(), approval()]
   let initPromise: Promise<Initialized> | undefined
   let runningServer: RunningServer | undefined
 
@@ -115,153 +86,72 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         } else {
           store = await options.store
         }
-
-        const projectors = options.projectors ?? []
-        await Promise.all(projectors.map((projector) => projector.init?.() ?? Promise.resolve()))
-        if (projectors.length > 0) {
-          store = withProjectors(store, projectors, { onError: options.onProjectorError })
-        }
-
-        let llmLayer: Layer.Layer<LlmTag>
-        if (options.llm) {
-          llmLayer = Layer.succeed(LlmTag, llmFromAdapter(options.llm))
-        } else {
-          llmLayer = StubLlmLive(options.llmPolicy)
-        }
-
-        const registry = createRegistry(definitions)
-        const runtime = createLoomsRuntime(registry)
-        const provide = <A, E>(effect: Effect.Effect<A, E, LlmTag>) =>
-          Effect.provide(effect, llmLayer)
-        const fetchHandler = createFetchHandler({ runtime, store, provide })
-
-        return { runtime, store, provide, fetchHandler, projectors }
+        const runtime = createRuntime({
+          modules,
+          store,
+          definitions: toRegistered(definitions),
+        })
+        const fetchHandler = createFetchHandler({ runtime, store })
+        return { runtime, store, fetchHandler }
       })()
     }
     return initPromise
   }
 
   const runEffect = async <A>(
-    fn: (init: Initialized) => Effect.Effect<A, Error, EventStoreTag | LlmTag>,
+    fn: (init: Initialized) => Effect.Effect<A, Error, EventStoreTag>,
   ): Promise<A> => {
     const init = await getInit()
-    const withStore = Effect.provideService(fn(init), EventStoreTag, init.store)
-    return Effect.runPromise(init.provide(withStore))
+    return Effect.runPromise(Effect.provideService(fn(init), EventStoreTag, init.store))
   }
 
   const looms: Looms = {
-    definitions,
-
+    get runtime() {
+      return getInit().then((i) => i.runtime)
+    },
+    get store() {
+      return getInit().then((i) => i.store)
+    },
     ready: async () => {
       const init = await getInit()
       return { store: init.store, runtime: init.runtime }
     },
-
-    get runtime() {
-      return getInit().then((i) => i.runtime)
-    },
-
-    get store() {
-      return getInit().then((i) => i.store)
-    },
-
-    startAgent: async (defOrName: any, input?: any, opts?: { actorId?: string }) => {
-      const init = await getInit()
-      const defName: string = Predicate.isString(defOrName) ? defOrName : defOrName.name
-      if (!init.runtime.registry.agents.has(defName)) {
-        throw new Error(
-          `Unknown agent: "${defName}". Registered agents: ${[...init.runtime.registry.agents.keys()].join(', ')}`,
-        )
-      }
-
-      const result = await runEffect((i) =>
-        i.runtime.startAgent(defName, input ?? null, opts),
-      )
-      // SAFETY: actor outcome and state match the startAgent return signature.
-      return {
-        actorId: result.actorId,
-        state: result.state,
-        output: result.state.output,
-      } as any
-    },
-
-    startWorkflow: async (defOrName: any, input?: any, opts?: { actorId?: string }) => {
-      const init = await getInit()
-      const defName: string = Predicate.isString(defOrName) ? defOrName : defOrName.name
-      if (!init.runtime.registry.workflows.has(defName)) {
-        throw new Error(
-          `Unknown workflow: "${defName}". Registered workflows: ${[...init.runtime.registry.workflows.keys()].join(', ')}`,
-        )
-      }
-
-      const result = await runEffect((i) =>
-        i.runtime.startWorkflow(defName, input ?? null, opts),
-      )
-      // SAFETY: workflow outcome and state match the startWorkflow return signature.
-      return {
-        actorId: result.actorId,
-        state: result.state,
-        output: result.state.output,
-      } as any
-    },
-
-    getState: (actorId) => runEffect((i) => i.runtime.getState(actorId)),
-
-    getEvents: (actorId, opts) => runEffect((i) => i.runtime.getEvents(actorId, opts)),
-
-    sendMessage: (actorId, message) => {
-      const msg: Message = Predicate.isString(message)
-        ? { role: 'user', content: message }
-        : message
-      return runEffect((i) =>
-        i.runtime.signal(actorId, [
-          {
-            type: 'agent.message.received',
-            payload: { message: msg },
-          },
-        ]),
-      )
-    },
-
-    decideReview: (actorId, reviewId, decision) =>
-      runEffect((i) => i.runtime.decideReview(actorId, reviewId, decision)),
-
-    steer: (actorId, message, opts) =>
-      runEffect((i) => i.runtime.steer(actorId, message, opts)),
-
-    signal: (actorId, events) => runEffect((i) => i.runtime.signal(actorId, events)),
-
-    wake: (actorId) => runEffect((i) => i.runtime.wake(actorId)),
-
-    fetch: async (req: Request) => {
-      if (!isLoomsApiPath(new URL(req.url).pathname)) {
-        return null
-      }
+    startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
+    start: (definition, input) =>
+      runEffect((i) =>
+        i.runtime.startRun({
+          kind: definition.kind,
+          definitionName: definition.name,
+          // SAFETY: input is validated against the definition's schema inside startRun.
+          input: input as JsonValue | undefined,
+        }),
+      ),
+    getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),
+    getEvents: (runId, opts) => runEffect((i) => i.runtime.getEvents(runId, opts)),
+    signal: (runId, events) => runEffect((i) => i.runtime.signal(runId, events)),
+    wake: (runId) => runEffect((i) => i.runtime.wake(runId)),
+    project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
+    replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
+    fetch: async (req) => {
+      if (!isLoomsApiPath(new URL(req.url).pathname)) return null
       const { fetchHandler } = await getInit()
       return fetchHandler(req)
     },
-
     serve: (serveOpts) => {
       if (runningServer) return runningServer
       runningServer = serveHttp((req) => looms.fetch(req), serveOpts)
       return runningServer
     },
-
     stop: async () => {
       if (runningServer) {
         runningServer.stop()
         runningServer = undefined
       }
-      if (initPromise) {
-        const init = await initPromise
-        await Promise.all(init.projectors.map((projector) => projector.dispose?.() ?? Promise.resolve()))
-      }
     },
   }
 
   if (options.serve) {
-    const serveOpts = options.serve === true ? {} : options.serve
-    looms.serve(serveOpts)
+    looms.serve(options.serve === true ? {} : options.serve)
   }
 
   return looms

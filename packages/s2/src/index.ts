@@ -1,7 +1,7 @@
 export {
   S2ConfigSchema,
   s2ConfigFromEnv,
-  streamNameForActor,
+  streamNameForRun,
   type S2Config,
 } from './config'
 export {

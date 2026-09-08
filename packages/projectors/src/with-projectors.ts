@@ -1,4 +1,4 @@
-import { EventStoreTag, type EventStore, type LoomsEvent } from '@looms/core'
+import { EventStoreTag, type EventStore, type EventEnvelope } from '@looms/core'
 import { Effect, Layer } from 'effect'
 import type { Projector, ProjectorErrorHandler } from './projector'
 
@@ -46,14 +46,14 @@ export function withProjectors(
     read: (actorId, readOptions) => store.read(actorId, readOptions),
     tail: (actorId) => store.tail(actorId),
     subscribe: (actorId, subscribeOptions) => store.subscribe(actorId, subscribeOptions),
-    listActors: () => store.listActors(),
+    listRuns: () => store.listRuns(),
   }
 }
 
 /** Project events after the fact (e.g. from a runtime hook). */
 export async function projectEvents(
   projectors: ReadonlyArray<Projector>,
-  events: readonly LoomsEvent[],
+  events: readonly EventEnvelope[],
 ): Promise<void> {
   for (const projector of projectors) {
     await projector.project(events)

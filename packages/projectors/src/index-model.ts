@@ -1,4 +1,5 @@
-import type { LoomsEvent } from '@looms/core'
+import type { EventEnvelope, JsonValue } from '@looms/core'
+import { Predicate } from 'effect'
 import type { Projector } from './projector'
 
 export interface ActorIndexRow {
@@ -62,104 +63,108 @@ export interface IndexProjector extends Projector {
   listReviews: (actorId?: string) => Promise<ReviewIndexRow[]>
 }
 
-export function indexOpsFor(event: LoomsEvent): IndexOp[] {
+function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
+  if (!Predicate.isObject(event.payload)) return {}
+  return event.payload
+}
+
+function readString(obj: { [key: string]: JsonValue }, key: string): string | undefined {
+  const value = obj[key]
+  return Predicate.isString(value) ? value : undefined
+}
+
+export function indexOpsFor(event: EventEnvelope): IndexOp[] {
+  const payload = payloadObject(event)
   switch (event.type) {
-    case 'actor.started':
+    case 'runtime.run.started':
       return [
         {
           type: 'upsertActor',
-          actorId: event.actorId,
-          kind: event.payload.kind,
+          actorId: event.runId,
+          kind: readString(payload, 'kind') ?? null,
           status: 'running',
-          definitionName: event.payload.definitionName,
-          parentActorId: event.payload.parentActorId,
+          definitionName: readString(payload, 'definitionName') ?? null,
+          parentActorId: null,
           updatedAt: event.ts,
         },
       ]
-    case 'actor.completed':
+    case 'runtime.thread.started':
+      return [
+        {
+          type: 'upsertActor',
+          actorId:
+            readString(payload, 'threadId') ??
+            event.threadId ??
+            event.runId,
+          kind: readString(payload, 'kind') ?? null,
+          status: 'running',
+          definitionName: readString(payload, 'definitionName') ?? null,
+          parentActorId:
+            readString(payload, 'parentThreadId') ?? null,
+          updatedAt: event.ts,
+        },
+      ]
+    case 'runtime.run.completed':
+    case 'runtime.thread.completed':
       return [
         {
           type: 'setActorStatus',
-          actorId: event.actorId,
+          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
           status: 'completed',
           updatedAt: event.ts,
         },
       ]
-    case 'actor.failed':
+    case 'runtime.thread.failed':
       return [
         {
           type: 'setActorStatus',
-          actorId: event.actorId,
+          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
           status: 'failed',
           updatedAt: event.ts,
         },
       ]
-    case 'actor.cancelled':
+    case 'runtime.thread.cancelled':
       return [
         {
           type: 'setActorStatus',
-          actorId: event.actorId,
+          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
           status: 'cancelled',
           updatedAt: event.ts,
         },
       ]
-    case 'review.requested':
+    case 'approval.requested':
       return [
         {
-          type: 'setActorStatus',
-          actorId: event.actorId,
-          status: 'waiting_review',
-          updatedAt: event.ts,
-        },
-        {
           type: 'upsertReview',
-          reviewId: event.payload.reviewId,
-          actorId: event.actorId,
+          reviewId: readString(payload, 'approvalId') ?? 'unknown',
+          actorId: event.runId,
           status: 'pending',
-          title: event.payload.title,
+          title: readString(payload, 'title') ?? 'Approval',
           updatedAt: event.ts,
         },
       ]
-    case 'review.decided':
+    case 'approval.decided':
       return [
         {
           type: 'upsertReview',
-          reviewId: event.payload.reviewId,
-          actorId: event.actorId,
-          status: event.payload.outcome === 'approve' ? 'approved' : 'rejected',
-          title: 'Review',
+          reviewId: readString(payload, 'approvalId') ?? 'unknown',
+          actorId: event.runId,
+          status: payload.outcome === 'reject' ? 'rejected' : 'approved',
+          title: 'Approval',
           updatedAt: event.ts,
         },
       ]
-    case 'review.timed_out':
+    case 'approval.timed_out':
       return [
         {
           type: 'setReviewStatus',
-          reviewId: event.payload.reviewId,
+          reviewId: readString(payload, 'approvalId') ?? 'unknown',
           status: 'timed_out',
           updatedAt: event.ts,
         },
       ]
-    case 'agent.message.received':
-    case 'agent.turn.started':
-    case 'agent.turn.text_delta':
-    case 'agent.turn.steered':
-    case 'agent.message':
-    case 'agent.tool_call.requested':
-    case 'tool.result':
-    case 'child.spawned':
-    case 'child.completed':
-    case 'workflow.node.started':
-    case 'workflow.node.finished':
-    case 'workflow.node.skipped':
-    case 'timer.set':
-    case 'timer.fired':
-    case 'snapshot.taken':
+    default:
       return []
-    default: {
-      const _exhaustive: never = event
-      return _exhaustive
-    }
   }
 }
 

@@ -1,22 +1,21 @@
 import {
   decodeLoomsEvent,
-  encodeAppendableLoomsEvent,
-  eventFromSignal,
-  type LiveStoreGlobalEncoded,
-  type LoomsEvent,
-  type LoomsEventSignal,
+  project,
+  type EventEnvelope,
+  type EventInput,
+  type ProjectionDefinition,
 } from '@looms/core'
-import { emptyTables, type EventRow, type MaterializedTables, type MessageRow, type NodeRow, type ReviewRow, type ActorRow } from './tables'
+import { emptyTables, type MaterializedTables } from './tables'
 import { materializeEvents } from './materialize'
 
 export type StoreListener = (tables: MaterializedTables) => void
 
 export interface LoomsClientStoreOptions {
-  /** Actor / LiveStore id. */
+  /** Run id / LiveStore store id. */
   storeId: string
   /**
    * Base URL of the Looms host (e.g. http://127.0.0.1:8787).
-   * Polls `${endpoint}/api/livestore?storeId=` by default.
+   * Polls `${endpoint}/runs/:id/events` by default.
    */
   endpoint: string
   pollIntervalMs?: number
@@ -24,76 +23,35 @@ export interface LoomsClientStoreOptions {
 }
 
 export interface LoomsStoreQuery {
-  messages: (actorId?: string) => MessageRow[]
-  reviews: (actorId?: string) => ReviewRow[]
-  nodes: (actorId?: string) => NodeRow[]
-  events: (actorId?: string) => EventRow[]
-  actors: () => ActorRow[]
+  events: () => EventEnvelope[]
+  runs: () => MaterializedTables['runs']
+  threads: () => MaterializedTables['threads']
 }
 
 export interface LoomsClientStore {
   storeId: string
   getState: () => MaterializedTables
+  events: () => EventEnvelope[]
   query: LoomsStoreQuery
   subscribe: (listener: StoreListener) => () => void
-  /**
-   * Push a client event via the LiveStore proxy.
-   * Intended for `review.decided` and `agent.message.received`.
-   */
-  commit: (eventPartial: LoomsEventSignal) => Promise<void>
-  /** Pull once from the endpoint. */
+  project<S>(definition: ProjectionDefinition<S>): S
+  commit: (event: EventInput) => Promise<void>
   sync: () => Promise<void>
   dispose: () => void
 }
 
-function makeQuery(getTables: () => MaterializedTables): LoomsStoreQuery {
-  return {
-    messages: (actorId) => {
-      const msgs = getTables().messages
-      return actorId ? msgs.filter((m) => m.actorId === actorId) : msgs
-    },
-    reviews: (actorId) => {
-      const rows = [...getTables().reviews.values()]
-      return actorId ? rows.filter((r) => r.actorId === actorId) : rows
-    },
-    nodes: (actorId) => {
-      const rows = [...getTables().nodes.values()]
-      return actorId ? rows.filter((n) => n.actorId === actorId) : rows
-    },
-    events: (actorId) => {
-      const evts = getTables().events
-      return actorId ? evts.filter((e) => e.actorId === actorId) : evts
-    },
-    actors: () => [...getTables().actors.values()],
-  }
-}
-
 /**
- * In-memory client store that polls Looms HTTP and materializes events.
- *
- * ```ts
- * const store = createLoomsStore({
- *   storeId: actorId,
- *   endpoint: 'http://127.0.0.1:8787',
- *   pollIntervalMs: 500,
- * })
- * store.subscribe((tables) => console.log(tables.reviews.size))
- * await store.commit({
- *   type: 'review.decided',
- *   payload: { reviewId, actionId: 'approve', outcome: 'approve' },
- * })
- * ```
- *
- * For full LiveStore + React, use `@looms/livestore/react`
- * (`useActorStore` / `LoomsLiveStoreProvider`).
+ * In-memory client store that polls a run's event log and materializes
+ * generic `runs` / `threads` / `events_log` tables.
  */
 export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientStore {
   const endpoint = options.endpoint.replace(/\/$/, '')
   const fetchFn = options.fetch ?? fetch
   const pollIntervalMs = options.pollIntervalMs ?? 750
   const listeners = new Set<StoreListener>()
+  const events: EventEnvelope[] = []
   let tables = emptyTables()
-  let cursor = 0
+  let fromSeq = 1
   let disposed = false
   let timer: ReturnType<typeof setInterval> | undefined
   let syncing: Promise<void> | null = null
@@ -102,25 +60,36 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     for (const listener of listeners) listener(tables)
   }
 
-  const applyBatch = (events: LoomsEvent[]) => {
-    if (events.length === 0) return
-    tables = materializeEvents(events, tables)
-    const last = events[events.length - 1]
-    if (last) cursor = Math.max(cursor, last.seq)
+  const applyBatch = (batch: EventEnvelope[]) => {
+    if (batch.length === 0) return
+    tables = materializeEvents(batch, tables)
+    for (const event of batch) {
+      events.push(event)
+      fromSeq = Math.max(fromSeq, event.seq + 1)
+    }
     notify()
   }
 
-  const pullLivestore = async () => {
-    const url = `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
+  const pull = async () => {
+    const url = `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?fromSeq=${fromSeq}`
     const res = await fetchFn(url)
-    if (!res.ok) throw new Error(`livestore pull failed: ${res.status}`)
-    // SAFETY: response JSON is an object; batch items are decoded with canonical codec.
-    const body = (await res.json()) as { batch?: LiveStoreGlobalEncoded[]; head?: number; cursor?: number }
+    if (!res.ok) {
+      if (res.status === 404 || res.status === 416) return
+      const text = await res.text()
+      if (text.includes('out of range') || text.includes('Range not satisfiable')) return
+      throw new Error(`run events pull failed: ${res.status}`)
+    }
+    // SAFETY: host returns { events: EventEnvelope[] }.
+    const body = (await res.json()) as { events?: unknown[] }
     applyBatch(
-      (body.batch ?? []).map((raw) => decodeLoomsEvent(raw, options.storeId)),
+      (body.events ?? []).map((raw) =>
+        decodeLoomsEvent(
+          // SAFETY: host event JSON is EventEnvelope | LiveStoreGlobalEncoded.
+          raw as Parameters<typeof decodeLoomsEvent>[0],
+          options.storeId,
+        ),
+      ),
     )
-    if (body.head !== undefined) cursor = Math.max(cursor, body.head)
-    else if (body.cursor !== undefined) cursor = Math.max(cursor, body.cursor)
   }
 
   const sync = async () => {
@@ -128,7 +97,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     if (syncing) return syncing
     syncing = (async () => {
       try {
-        await pullLivestore()
+        await pull()
       } finally {
         syncing = null
       }
@@ -137,7 +106,11 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const startPolling = () => {
-    void sync()
+    disposed = false
+    void sync().catch(() => {
+      // transient network errors are ignored; next tick retries
+    })
+    if (timer !== undefined) return
     timer = setInterval(() => {
       void sync().catch(() => {
         // transient network errors are ignored; next tick retries
@@ -150,35 +123,40 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   const store: LoomsClientStore = {
     storeId: options.storeId,
     getState: () => tables,
-    query: makeQuery(() => tables),
+    events: () => events.slice(),
+    query: {
+      events: () => events.slice(),
+      runs: () => tables.runs,
+      threads: () => tables.threads,
+    },
     subscribe: (listener) => {
       listeners.add(listener)
       listener(tables)
+      startPolling()
       return () => {
         listeners.delete(listener)
       }
     },
+    project: (definition) => project(definition, events),
     sync,
-    commit: async (eventPartial) => {
-      const event = eventFromSignal(eventPartial, options.storeId)
-      const encoded = encodeAppendableLoomsEvent(event, { parentSeqNum: cursor })
-      const res = await fetchFn(`${endpoint}/api/livestore`, {
+    commit: async (event) => {
+      const res = await fetchFn(`${endpoint}/runs/${encodeURIComponent(options.storeId)}/events`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          storeId: options.storeId,
-          batch: [encoded],
-        }),
+        body: JSON.stringify(event),
       })
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(`livestore commit failed: ${res.status} ${text}`)
+        throw new Error(`run signal failed: ${res.status} ${text}`)
       }
       await sync()
     },
     dispose: () => {
       disposed = true
-      if (timer) clearInterval(timer)
+      if (timer !== undefined) {
+        clearInterval(timer)
+        timer = undefined
+      }
       listeners.clear()
     },
   }

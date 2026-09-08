@@ -9,10 +9,10 @@ function Landing() {
   return (
     <div className="landing">
       <p className="landing-brand">Looms</p>
-      <h2>Deploy durable agents and workflows.</h2>
-      <p>Subscribe from any client via an event log.</p>
+      <h2>Durable agents, workflows, and human approvals — composed like packages.</h2>
+      <p>Each run is an event log you can replay, subscribe to, and extend with your own domain.</p>
       <Link to="/docs/quickstart" className="cta">
-        Quickstart
+        Get started
       </Link>
       <ul className="landing-links">
         {docsNav.map((item) => (

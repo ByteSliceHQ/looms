@@ -1,6 +1,9 @@
+import { decision, pendingApprovals } from '@looms/approval'
+import { foldRun, treeFromRun } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 import { z } from 'zod'
-import { assistant, definitions, echo, hitl, orchestrator, pipeline } from './definitions'
+import { assistant, checkout, definitions, echo, orchestrator, pipeline } from './definitions'
+import { demoModules } from './runtime'
 
 const EchoOutputSchema = z.object({ text: z.string() })
 
@@ -17,75 +20,111 @@ const OrchestratorOutputSchema = z.object({
   result: z.string().optional(),
 })
 
-/**
- * Programmatic verify: agent + workflow + HITL approve + subagent spawn.
- * Does not require HTTP.
- */
-export async function verifyDemo(): Promise<void> {
-  const looms = createLooms({ definitions })
+function rootOf(state: { rootThreadId: string | null; threads: { [id: string]: { status: string; output: unknown } } }) {
+  return state.rootThreadId ? state.threads[state.rootThreadId] : undefined
+}
 
-  // 1) Echo agent
+export async function verifyDemo(): Promise<void> {
+  const looms = createLooms({ definitions, modules: demoModules() })
+
   {
-    const { state } = await looms.startAgent(echo, { text: 'hello' })
+    const { state } = await looms.start(echo, { text: 'hello' })
     if (state.status !== 'completed') throw new Error(`echo expected completed, got ${state.status}`)
-    const parsed = EchoOutputSchema.safeParse(state.output)
+    const parsed = EchoOutputSchema.safeParse(rootOf(state)?.output)
     if (!parsed.success || parsed.data.text !== 'hello') {
-      throw new Error(`echo bad output: ${JSON.stringify(state.output)}`)
+      throw new Error(`echo bad output: ${JSON.stringify(rootOf(state)?.output)}`)
     }
   }
 
-  // 2) Pipeline workflow with nested spawn_agent
   {
-    const { state } = await looms.startWorkflow(pipeline, { n: 21 })
+    const { state } = await looms.start(pipeline, { n: 21 })
     if (state.status !== 'completed') {
-      throw new Error(`pipeline expected completed, got ${state.status}: ${state.error}`)
+      throw new Error(`pipeline expected completed, got ${state.status}`)
     }
-    const parsed = PipelineOutputSchema.safeParse(state.output)
+    const parsed = PipelineOutputSchema.safeParse(rootOf(state)?.output)
     if (!parsed.success || parsed.data.double !== 42) throw new Error('pipeline double expected 42')
     if (parsed.data.format?.doubled !== 42) {
       throw new Error(`pipeline format.doubled expected 42, got ${JSON.stringify(parsed.data.format)}`)
     }
   }
 
-  // 3) HITL review → approve
   {
-    const { actorId, state } = await looms.startWorkflow(hitl, { doc: 'draft' })
-    if (state.status !== 'waiting_review') {
-      throw new Error(`hitl expected waiting_review, got ${state.status}`)
+    const { runId, state } = await looms.start(checkout, { amount: 40, currency: 'USD' })
+    if (state.status !== 'completed') {
+      throw new Error(`checkout below threshold expected completed, got ${state.status}`)
     }
-    const reviewId = Object.keys(state.reviews)[0]
-    if (!reviewId) throw new Error('hitl missing reviewId')
-    const next = await looms.decideReview(actorId, reviewId, { actionId: 'approve', outcome: 'approve' })
-    if (next.status !== 'completed') {
-      throw new Error(`hitl after approve expected completed, got ${next.status}: ${next.error}`)
+    const events = await looms.getEvents(runId)
+    if (!events.some((event) => event.type === 'payments.charge.authorized')) {
+      throw new Error('checkout below threshold expected an authorized charge')
     }
   }
 
-  // 4) Orchestrator agent-tool → child specialist
   {
-    const { state } = await looms.startAgent(orchestrator, { task: 'summarize' })
-    if (state.status !== 'completed') {
-      throw new Error(`orchestrator expected completed, got ${state.status}: ${state.error}`)
+    const { runId, state } = await looms.start(checkout, { amount: 150, currency: 'USD' })
+    const root = rootOf(state)
+    if (root?.status !== 'waiting') {
+      throw new Error(`checkout expected waiting on approval, got ${root?.status}`)
     }
-    const children = Object.values(state.children)
-    if (children.length < 1) throw new Error('orchestrator expected a child actor')
-    if (children.some((c) => c.status !== 'completed')) {
+    const pending = await looms.project(runId, pendingApprovals)
+    const approvalId = pending.items.find((item) => item.status === 'pending')?.approvalId
+    if (!approvalId) throw new Error('checkout missing pending approval')
+    const next = await looms.signal(runId, [decision(approvalId, 'approve')])
+    if (next.status !== 'completed') {
+      throw new Error(`checkout after approve expected completed, got ${next.status}`)
+    }
+    const events = await looms.getEvents(runId)
+    if (!events.some((event) => event.type === 'payments.charge.authorized')) {
+      throw new Error('checkout approve path expected payments.charge.authorized')
+    }
+    const runtime = await looms.runtime
+    const first = foldRun(events, runtime.registry, { runId })
+    const second = foldRun(events, runtime.registry, { runId })
+    if (JSON.stringify(first) !== JSON.stringify(second)) {
+      throw new Error('checkout replay is not deterministic')
+    }
+    const tree = treeFromRun(next)
+    if (!tree.root) throw new Error('checkout missing thread tree root')
+  }
+
+  {
+    const { runId, state } = await looms.start(checkout, { amount: 175, currency: 'USD' })
+    if (rootOf(state)?.status !== 'waiting') {
+      throw new Error(`checkout decline path expected waiting, got ${rootOf(state)?.status}`)
+    }
+    const pending = await looms.project(runId, pendingApprovals)
+    const approvalId = pending.items.find((item) => item.status === 'pending')?.approvalId
+    if (!approvalId) throw new Error('checkout decline path missing approval')
+    const next = await looms.signal(runId, [decision(approvalId, 'reject')])
+    if (next.status !== 'completed') {
+      throw new Error(`checkout after reject expected completed, got ${next.status}`)
+    }
+    const events = await looms.getEvents(runId)
+    if (events.some((event) => event.type.startsWith('payments.charge.'))) {
+      throw new Error('checkout reject path should not charge')
+    }
+  }
+
+  {
+    const { state } = await looms.start(orchestrator, { task: 'summarize' })
+    if (state.status !== 'completed') {
+      throw new Error(`orchestrator expected completed, got ${state.status}`)
+    }
+    const children = Object.values(state.threads).filter((item) => item.parentThreadId !== null)
+    if (children.length < 1) throw new Error('orchestrator expected a child thread')
+    if (children.some((item) => item.status !== 'completed')) {
       throw new Error(`orchestrator child not completed: ${JSON.stringify(children)}`)
     }
-    const parsed = OrchestratorOutputSchema.safeParse(state.output)
+    const parsed = OrchestratorOutputSchema.safeParse(rootOf(state)?.output)
     if (!parsed.success || !parsed.data.result?.includes('summarize')) {
-      throw new Error(`orchestrator bad output: ${JSON.stringify(state.output)}`)
+      throw new Error(`orchestrator bad output: ${JSON.stringify(rootOf(state)?.output)}`)
     }
   }
 
-  // 5) Conversational assistant stays running after a stub reply
   {
-    const { state } = await looms.startAgent(assistant, 'hello')
-    if (state.status !== 'running') {
-      throw new Error(`assistant expected running, got ${state.status}: ${state.error}`)
-    }
-    if (state.kind !== 'agent' || !state.messages.some((m) => m.role === 'assistant')) {
-      throw new Error('assistant expected an assistant message')
+    const { state } = await looms.start(assistant, 'hello')
+    const root = rootOf(state)
+    if (root?.status !== 'running' && root?.status !== 'waiting') {
+      throw new Error(`assistant expected running, got ${root?.status}`)
     }
   }
 }

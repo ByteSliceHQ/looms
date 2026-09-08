@@ -1,3 +1,5 @@
+import { steer as steerEvent } from '@looms/agent'
+import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
 import type { JsonValue } from '@looms/core'
 import { createLooms } from '@looms/runtime'
@@ -69,114 +71,125 @@ const serve = Command.make(
 ).pipe(Command.withDescription('Start the Looms runtime host'), Command.withShortDescription('Start the runtime'))
 
 const loomsBase = Command.make('looms').pipe(
-  Command.withDescription('Looms durable agents & workflows'),
+  Command.withDescription('Looms thread runtime'),
   Command.withSharedFlags({ url: urlFlag }),
 )
 
-const callAgent = Command.make(
-  'agent',
+const start = Command.make(
+  'start',
   {
-    name: Argument.string('name').pipe(Argument.withDescription('Agent definition name')),
+    kind: Argument.string('kind').pipe(Argument.withDescription('Thread kind (e.g. agent, workflow)')),
+    name: Argument.string('name').pipe(Argument.withDescription('Definition name')),
     json: Argument.string('json').pipe(
       Argument.withDescription('Optional JSON input'),
       Argument.optional,
     ),
   },
-  Effect.fn('callAgent')(function* ({ name, json }) {
+  Effect.fn('start')(function* ({ kind, name, json }) {
     const { url } = yield* loomsBase
-    const result = yield* tryClient(() => clientFor(url).startAgent(name, parseJsonArg(json)))
+    const result = yield* tryClient(() =>
+      clientFor(url).startRun({ kind, definitionName: name, input: parseJsonArg(json) }),
+    )
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('Start an agent'), Command.withShortDescription('Start an agent'))
-
-const callWorkflow = Command.make(
-  'workflow',
-  {
-    name: Argument.string('name').pipe(Argument.withDescription('Workflow definition name')),
-    json: Argument.string('json').pipe(
-      Argument.withDescription('Optional JSON input'),
-      Argument.optional,
-    ),
-  },
-  Effect.fn('callWorkflow')(function* ({ name, json }) {
-    const { url } = yield* loomsBase
-    const result = yield* tryClient(() => clientFor(url).startWorkflow(name, parseJsonArg(json)))
-    yield* Console.log(JSON.stringify(result, null, 2))
-  }),
-).pipe(Command.withDescription('Start a workflow'), Command.withShortDescription('Start a workflow'))
-
-const call = Command.make('call').pipe(
-  Command.withDescription('Start an agent or workflow'),
-  Command.withShortDescription('Start an agent or workflow'),
-  Command.withSubcommands([callAgent, callWorkflow]),
+).pipe(
+  Command.withDescription('Start a run from a registered definition: looms start agent echo \'{"text":"hi"}\''),
+  Command.withShortDescription('Start a run'),
 )
 
 const events = Command.make(
   'events',
   {
-    actorId: Argument.string('actorId').pipe(Argument.withDescription('Actor id')),
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
   },
-  Effect.fn('events')(function* ({ actorId }) {
+  Effect.fn('events')(function* ({ runId }) {
     const { url } = yield* loomsBase
-    const result = yield* tryClient(() => clientFor(url).getEvents(actorId))
+    const result = yield* tryClient(() => clientFor(url).getEvents(runId))
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('List events for an actor'), Command.withShortDescription('List actor events'))
+).pipe(Command.withDescription('List events for a run'), Command.withShortDescription('List run events'))
 
 const state = Command.make(
   'state',
   {
-    actorId: Argument.string('actorId').pipe(Argument.withDescription('Actor id')),
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
   },
-  Effect.fn('state')(function* ({ actorId }) {
+  Effect.fn('state')(function* ({ runId }) {
     const { url } = yield* loomsBase
-    const result = yield* tryClient(() => clientFor(url).getState(actorId))
+    const result = yield* tryClient(() => clientFor(url).getRun(runId))
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('Show actor state'), Command.withShortDescription('Show actor state'))
+).pipe(Command.withDescription('Show run state'), Command.withShortDescription('Show run state'))
 
-const review = Command.make(
-  'review',
+const approve = Command.make(
+  'approve',
   {
-    actorId: Argument.string('actorId').pipe(Argument.withDescription('Actor id')),
-    reviewId: Argument.string('reviewId').pipe(Argument.withDescription('Pending review id')),
-    approve: Flag.boolean('approve').pipe(
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    approvalId: Argument.string('approvalId').pipe(Argument.withDescription('Pending approval id')),
+    accept: Flag.boolean('approve').pipe(
       Flag.withAlias('a'),
-      Flag.withDescription('Approve the review'),
+      Flag.withDescription('Approve the request'),
       Flag.withDefault(false),
     ),
     reject: Flag.boolean('reject').pipe(
       Flag.withAlias('r'),
-      Flag.withDescription('Reject the review'),
+      Flag.withDescription('Reject the request'),
       Flag.withDefault(false),
     ),
   },
-  Effect.fn('review')(function* ({ actorId, reviewId, approve, reject }) {
-    if (approve === reject) {
+  Effect.fn('approve')(function* ({ runId, approvalId, accept, reject }) {
+    if (accept === reject) {
       return yield* new CliError.UserError({
         cause: new Error('Specify exactly one of --approve or --reject'),
         userMessage: 'Specify exactly one of --approve or --reject',
       })
     }
-    const outcome = approve ? 'approve' : 'reject'
+    const outcome = accept ? 'approve' : 'reject'
     const { url } = yield* loomsBase
-    const result = yield* tryClient(() =>
-      clientFor(url).decideReview(actorId, reviewId, {
-        actionId: outcome,
-        outcome,
-      }),
-    )
+    const result = yield* tryClient(() => clientFor(url).signal(runId, [decision(approvalId, outcome)]))
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
-  Command.withDescription('Approve or reject a human review'),
-  Command.withShortDescription('Decide a review'),
+  Command.withDescription('Approve or reject a pending approval'),
+  Command.withShortDescription('Decide an approval'),
 )
+
+const replay = Command.make(
+  'replay',
+  {
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    seq: Argument.integer('seq').pipe(Argument.withDescription('Event sequence to replay through')),
+  },
+  Effect.fn('replay')(function* ({ runId, seq }) {
+    const { url } = yield* loomsBase
+    const result = yield* tryClient(() => clientFor(url).replayTo(runId, seq))
+    yield* Console.log(JSON.stringify(result, null, 2))
+  }),
+).pipe(Command.withDescription('Replay a run to a sequence'), Command.withShortDescription('Replay to seq'))
+
+const signal = Command.make(
+  'signal',
+  {
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    type: Argument.string('type').pipe(Argument.withDescription('Event type')),
+    json: Argument.string('json').pipe(
+      Argument.withDescription('Optional JSON payload'),
+      Argument.optional,
+    ),
+  },
+  Effect.fn('signal')(function* ({ runId, type, json }) {
+    const { url } = yield* loomsBase
+    const result = yield* tryClient(() =>
+      clientFor(url).signal(runId, [{ type, payload: parseJsonArg(json) }]),
+    )
+    yield* Console.log(JSON.stringify(result, null, 2))
+  }),
+).pipe(Command.withDescription('Append an external event and wake the run'), Command.withShortDescription('Signal a run'))
 
 const steer = Command.make(
   'steer',
   {
-    actorId: Argument.string('actorId').pipe(Argument.withDescription('Actor id')),
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
     message: Argument.string('message').pipe(
       Argument.withDescription('Steering message'),
       Argument.variadic({ min: 1 }),
@@ -186,34 +199,34 @@ const steer = Command.make(
       Flag.withDefault(true),
     ),
   },
-  Effect.fn('steer')(function* ({ actorId, message, interrupt }) {
+  Effect.fn('steer')(function* ({ runId, message, interrupt }) {
     const { url } = yield* loomsBase
     const result = yield* tryClient(() =>
-      clientFor(url).steer(actorId, message.join(' '), { interrupt }),
+      clientFor(url).signal(runId, [steerEvent(message.join(' '), { interrupt })]),
     )
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
-  Command.withDescription('Send a steering message to a running actor'),
-  Command.withShortDescription('Steer an actor'),
+  Command.withDescription('Send a steering message to a running agent'),
+  Command.withShortDescription('Steer an agent'),
 )
 
 const tail = Command.make(
   'tail',
   {
-    actorId: Argument.string('actorId').pipe(Argument.withDescription('Actor id')),
+    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
   },
-  Effect.fn('tail')(function* ({ actorId }) {
+  Effect.fn('tail')(function* ({ runId }) {
     const { url } = yield* loomsBase
     const client = clientFor(url)
 
-    yield* Console.log(`Tailing ${actorId} (ctrl-c to stop)`)
+    yield* Console.log(`Tailing ${runId} (ctrl-c to stop)`)
     yield* Effect.scoped(
       Effect.gen(function* () {
         const queue = yield* Queue.unbounded<string>()
         yield* Effect.acquireRelease(
           Effect.sync(() =>
-            client.subscribeEvents(actorId, (event) => {
+            client.subscribeEvents(runId, (event) => {
               Queue.offerUnsafe(queue, JSON.stringify(event))
             }),
           ),
@@ -224,12 +237,12 @@ const tail = Command.make(
     )
   }),
 ).pipe(
-  Command.withDescription('Stream events for an actor'),
-  Command.withShortDescription('Tail actor events'),
+  Command.withDescription('Stream events for a run'),
+  Command.withShortDescription('Tail run events'),
 )
 
 export const looms = loomsBase.pipe(
-  Command.withSubcommands([serve, call, events, state, review, steer, tail]),
+  Command.withSubcommands([serve, start, events, state, approve, replay, signal, steer, tail]),
 )
 
 export const cliTestLayer = Layer.mergeAll(

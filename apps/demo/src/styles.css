@@ -330,6 +330,47 @@ code {
   color: #c792ea;
 }
 
-.evt.family-actor .type {
+.evt.family-actor .type,
+.evt.family-runtime .type {
   color: var(--ok);
+}
+
+.evt.family-approval .type {
+  color: var(--warn);
+}
+
+.evt.family-payments .type {
+  color: #7ee0c2;
+}
+
+.evt.family-wait .type {
+  color: #f0b429;
+}
+
+.debugger {
+  display: grid;
+  grid-template-columns: 0.9fr 1.2fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .debugger {
+    grid-template-columns: 1fr;
+  }
+}
+
+.timeline-group {
+  margin-bottom: 1rem;
+}
+
+.evt {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.45rem 0;
 }

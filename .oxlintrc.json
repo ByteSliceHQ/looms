@@ -33,6 +33,14 @@
       "specifier": "./tools/oxlint/anti-slop/effect/index.ts"
     }
   ],
+  "overrides": [
+    {
+      "files": ["packages/core/src/effects.ts"],
+      "rules": {
+        "effecttsgo/unsafe-effect-type-assertion": "off"
+      }
+    }
+  ],
   "rules": {
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",

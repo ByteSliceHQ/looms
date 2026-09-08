@@ -1,0 +1,44 @@
+import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
+import { Predicate } from 'effect'
+import type { NodeState } from './thread'
+
+function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
+  if (!Predicate.isObject(event.payload)) return {}
+  return event.payload
+}
+
+export const nodes = defineProjection<{ nodes: { [nodeId: string]: NodeState } }>({
+  name: 'nodes',
+  initialState: { nodes: {} },
+  reduce(state, event) {
+    const payload = payloadObject(event)
+    const nodeId = Predicate.isString(payload.nodeId) ? payload.nodeId : undefined
+    if (!nodeId) return state
+    switch (event.type) {
+      case 'workflow.node.started':
+        return {
+          nodes: { ...state.nodes, [nodeId]: { status: 'running', result: null, error: null } },
+        }
+      case 'workflow.node.finished': {
+        const error = payload.error
+        const failed = Predicate.isString(error) && error.length > 0
+        return {
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              status: failed ? 'failed' : 'completed',
+              result: payload.result ?? null,
+              error: failed ? error : null,
+            },
+          },
+        }
+      }
+      case 'workflow.node.skipped':
+        return {
+          nodes: { ...state.nodes, [nodeId]: { status: 'skipped', result: null, error: null } },
+        }
+      default:
+        return state
+    }
+  },
+})

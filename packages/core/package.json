@@ -1,7 +1,7 @@
 {
   "name": "@looms/core",
   "version": "0.1.0",
-  "description": "Event model, reducers, and definitions for Looms agents and workflows",
+  "description": "Event-sourced thread kernel: envelopes, catalogs, effects, fold, replay, projections",
   "type": "module",
   "license": "Apache-2.0",
   "exports": {

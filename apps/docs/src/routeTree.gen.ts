@@ -15,6 +15,7 @@ import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
+import { Route as DocsModulesRouteImport } from './routes/docs.modules'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
 
@@ -48,6 +49,11 @@ const DocsExamplesRoute = DocsExamplesRouteImport.update({
   path: '/examples',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsModulesRoute = DocsModulesRouteImport.update({
+  id: '/modules',
+  path: '/modules',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsProjectorsRoute = DocsProjectorsRouteImport.update({
   id: '/projectors',
   path: '/projectors',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/modules': typeof DocsModulesRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/': typeof DocsIndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/modules': typeof DocsModulesRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs': typeof DocsIndexRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/modules': typeof DocsModulesRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/': typeof DocsIndexRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/examples'
+    | '/docs/modules'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/examples'
+    | '/docs/modules'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/examples'
+    | '/docs/modules'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/'
@@ -170,6 +182,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsExamplesRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/modules': {
+      id: '/docs/modules'
+      path: '/modules'
+      fullPath: '/docs/modules'
+      preLoaderRoute: typeof DocsModulesRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/projectors': {
       id: '/docs/projectors'
       path: '/projectors'
@@ -191,6 +210,7 @@ interface DocsRouteChildren {
   DocsApiRoute: typeof DocsApiRoute
   DocsConceptsRoute: typeof DocsConceptsRoute
   DocsExamplesRoute: typeof DocsExamplesRoute
+  DocsModulesRoute: typeof DocsModulesRoute
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -200,6 +220,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsApiRoute: DocsApiRoute,
   DocsConceptsRoute: DocsConceptsRoute,
   DocsExamplesRoute: DocsExamplesRoute,
+  DocsModulesRoute: DocsModulesRoute,
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
   DocsIndexRoute: DocsIndexRoute,

@@ -1,103 +1,41 @@
-import type { Schema } from 'effect'
-
-/** JSON-compatible values used in event payloads and tool I/O. */
+/** JSON-compatible values used in event payloads and effect I/O. */
 export type JsonPrimitive = string | number | boolean | null
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
+export type JsonValue = JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue }
+export type JsonObject = { readonly [key: string]: JsonValue }
 
-export type ActorKind = 'agent' | 'workflow'
-export type ActorStatus =
-  | 'pending'
-  | 'running'
-  | 'waiting_review'
-  | 'waiting_child'
-  | 'waiting_timer'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-
-export type NodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'waiting_review'
-
-export interface Message {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  toolCallId?: string
-  name?: string
-  toolCalls?: ToolCall[]
+/** Structs that JSON-serialize to event payloads. */
+export interface JsonPayload {
+  readonly [key: string]: JsonValue | JsonPayload | readonly (JsonValue | JsonPayload)[] | undefined
 }
 
-export interface ToolCall {
-  id: string
-  name: string
-  arguments: JsonValue
+/** Mark a JSON-serializable struct as a log payload. */
+export function asJson<T>(payload: T): JsonValue {
+  // SAFETY: callers pass JSON-serializable structs; undefined keys drop on the wire.
+  return payload as JsonValue
 }
 
-export interface ChildRef {
-  kind: ActorKind
-  definitionName: string
-  status: ActorStatus
-  output?: JsonValue | null
-  error?: string | null
+/** Recover a typed struct previously written as JSON. */
+export function fromJsonStruct<T>(value: JsonValue): T {
+  // SAFETY: value is a JSON struct previously produced as T.
+  return value as T
 }
 
-export interface ReviewRequest {
-  reviewId: string
-  title: string
-  description?: string
-  schema?: JsonValue
-  actions: Array<{ id: string; label: string; outcome: 'approve' | 'reject' }>
-  nodeId?: string
-  status: 'pending' | 'approved' | 'rejected' | 'timed_out'
-  decision?: JsonValue
+export function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
+  return Object.prototype.toString.call(value) === '[object Object]'
 }
 
-export interface NodeState {
-  status: NodeStatus
-  result: JsonValue | null
-  error: string | null
-  reviewId?: string
+export function isJsonString(value: unknown): value is string {
+  return Object.prototype.toString.call(value) === '[object String]' && !(value instanceof String)
 }
 
-export interface ActorBase {
-  actorId: string
-  kind: ActorKind
-  status: ActorStatus
-  definitionName: string
-  input: JsonValue
-  output: JsonValue | null
-  error: string | null
-  parentActorId: string | null
-  children: Record<string, ChildRef>
-  reviews: Record<string, ReviewRequest>
-  owed: OwedWork[]
+export function isJsonNumber(value: unknown): value is number {
+  return (
+    Object.prototype.toString.call(value) === '[object Number]' &&
+    !(value instanceof Number) &&
+    Number.isFinite(Number(value))
+  )
 }
 
-export interface AgentState extends ActorBase {
-  kind: 'agent'
-  messages: Message[]
-  pendingToolCalls: ToolCall[]
-  turn: number
-  maxTurns: number
-  /** Mid-turn steer waiting to be applied between tool steps. */
-  pendingSteer: Message | null
-}
+export type ThreadStatus = 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled'
 
-export interface WorkflowState extends ActorBase {
-  kind: 'workflow'
-  nodes: Record<string, NodeState>
-  concurrency: number
-}
-
-export type ActorState = AgentState | WorkflowState
-
-/** Work the host must still perform after reducing the log. */
-export type OwedWork =
-  | { type: 'agent.turn'; turn: number }
-  | { type: 'tool.execute'; turn: number; toolCall: ToolCall }
-  | { type: 'workflow.schedule' }
-  | { type: 'workflow.run_node'; nodeId: string }
-  | { type: 'review.wait'; reviewId: string }
-  | { type: 'child.wait'; childActorId: string }
-  | { type: 'timer.wait'; timerId: string; wakeAt: number }
-  | { type: 'finalize' }
-
-export type SchemaType<A> = Schema.Schema.Type<A>
+export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled'

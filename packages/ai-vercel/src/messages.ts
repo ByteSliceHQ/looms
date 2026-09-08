@@ -1,4 +1,5 @@
-import type { JsonValue, Message, ToolCall } from '@looms/core'
+import type { Message, ToolCall } from '@looms/agent'
+import type { JsonValue } from '@looms/core'
 import { type ModelMessage } from 'ai'
 
 export function toModelMessages(messages: Message[]): ModelMessage[] {

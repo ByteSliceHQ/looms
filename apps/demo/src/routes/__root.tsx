@@ -38,8 +38,8 @@ function RootComponent() {
             </Link>
           </h1>
           <p className="sub">
-            Start agents and workflows, then watch LiveStore materialize state via sync-s2 →
-            s2-lite.{' '}
+            Event-sourced thread kernel with pluggable modules. Start a run, then inspect the
+            debugger or chat.{' '}
             <Link to="/chat">Chat</Link>
           </p>
           <Outlet />

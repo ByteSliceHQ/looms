@@ -1,13 +1,13 @@
-import type {
-  AgentTurnContext,
-  AgentTurnResult,
-  LlmToolSpec,
-  Message,
-  ToolCall,
-  ToolLike,
-} from '@looms/core'
 import type { JsonValue } from '@looms/core'
 import { Context, Effect, Layer, Predicate } from 'effect'
+import type { AgentTurnContext, AgentTurnResult, ToolLike } from './definitions'
+import type { Message, ToolCall } from './types'
+
+export interface LlmToolSpec {
+  readonly name: string
+  readonly description: string
+  readonly inputJsonSchema: JsonValue
+}
 
 export interface LlmCompleteArgs {
   model?: string
@@ -40,24 +40,15 @@ export function llmFromAdapter(adapter: LlmAdapter): LlmService {
 export class LlmTag extends Context.Service<LlmTag, LlmService>()('looms/Llm') {}
 
 export interface StubLlmPolicy {
-  /**
-   * Optional tool-call policy. When the last user/tool message matches,
-   * emit the given tool calls instead of an echo reply.
-   */
   toolCallsFor?: (ctx: AgentTurnContext) => ToolCall[] | undefined
-  /** When true, mark the turn done after a text reply (default true if no tools). */
   doneAfterText?: boolean
 }
 
-/**
- * Deterministic LLM stub for tests: echoes the last user message,
- * or emits tool calls from a simple policy.
- */
 export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
   complete: (args) =>
     Effect.sync(() => {
       const ctx: AgentTurnContext = {
-        actorId: 'stub',
+        threadId: 'stub',
         turn: 0,
         messages: args.messages,
         input: null,
@@ -67,11 +58,7 @@ export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
       const toolCalls = policy.toolCallsFor?.(ctx)
       if (toolCalls && toolCalls.length > 0) {
         return {
-          message: {
-            role: 'assistant',
-            content: '',
-            toolCalls,
-          },
+          message: { role: 'assistant', content: '', toolCalls },
           toolCalls,
         }
       }
@@ -80,11 +67,11 @@ export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
       const content =
         lastUser?.content ??
         (Predicate.isString(lastContent) ? lastContent : JSON.stringify(lastContent ?? null))
-      const done = policy.doneAfterText !== false
       return {
         message: { role: 'assistant', content },
-        done,
-        output: { text: content } satisfies JsonValue,
+        done: policy.doneAfterText !== false,
+        output: { text: content },
+        usage: { input: 0, output: content.length },
       }
     }),
 })

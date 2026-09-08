@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/docs/examples')({
   component: Examples,
@@ -8,75 +8,165 @@ function Examples() {
   return (
     <>
       <h1>Examples</h1>
-      <h2>React LiveStore</h2>
+      <p>
+        Patterns you can copy into an app. The demo at{' '}
+        <code>bun run demo</code> is a fuller version of the same pieces: checkout,
+        an assistant, a run debugger, and chat.
+      </p>
+
+      <h2>Agent with tools</h2>
+      <pre>
+        <code>{`import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
+import { gate } from '@looms/approval'
+import { z } from 'zod'
+
+const greet = defineTool({
+  name: 'greet',
+  description: 'Return a greeting',
+  input: z.object({ name: z.string() }),
+  handler: ({ name }) => ({ greeting: \`Hello, \${name}!\` }),
+})
+
+const specialist = defineAgent({
+  name: 'specialist',
+  instructions: 'Do a short task and return the result.',
+  input: z.object({ task: z.string() }),
+})
+
+const askApproval = asEffectsTool({
+  name: 'ask_approval',
+  description: 'Ask a human to approve or reject',
+  effects: (input) =>
+    gate({ title: typeof input.title === 'string' ? input.title : 'Approve?' }),
+  waitOn: { type: 'approval.decided' },
+})
+
+export const assistant = defineAgent({
+  name: 'assistant',
+  conversational: true,
+  instructions: 'Greet people, delegate work, or ask for approval.',
+  input: z.string(),
+  tools: [greet, asAgentTool({ agent: specialist }), askApproval, checkout],
+})`}</code>
+      </pre>
+      <p>
+        A tool can be a function, another agent, a workflow, or a human gate. The
+        parent run waits until the child or approval finishes.
+      </p>
+
+      <h2>Workflow with approval and a domain module</h2>
+      <pre>
+        <code>{`import { gate } from '@looms/approval'
+import { createWaitId, invoke, wait } from '@looms/core'
+import { defineWorkflow } from '@looms/workflow'
+import { z } from 'zod'
+
+export const checkout = defineWorkflow({
+  name: 'checkout',
+  input: z.object({
+    amount: z.number().default(150),
+    currency: z.string().default('USD'),
+  }),
+  nodes: [
+    {
+      id: 'gate',
+      run: (ctx) => {
+        if (ctx.input.amount < 100) return { skipped: true }
+        return ctx.effects(gate({ title: \`Approve \${ctx.input.amount}?\` }))
+      },
+    },
+    {
+      id: 'charge',
+      deps: ['gate'],
+      run: (ctx) =>
+        ctx.effects([
+          invoke('payments.charge', {
+            amount: ctx.input.amount,
+            currency: ctx.input.currency,
+          }),
+          wait({ waitId: createWaitId(), on: { type: 'payments.charge.authorized' } }),
+          wait({ waitId: createWaitId(), on: { type: 'payments.charge.declined' } }),
+        ]),
+    },
+  ],
+})`}</code>
+      </pre>
+      <p>
+        Nodes run after their <code>deps</code>. <code>ctx.effects</code> parks the
+        node until matching events land. Author the payments module in{' '}
+        <Link to="/docs/modules">Modules</Link>.
+      </p>
+
+      <h2>React: chat and approvals</h2>
       <pre>
         <code>{`import {
   LoomsLiveStoreProvider,
-  useActorStore,
-  queries,
-  decideReview,
+  useRunStore,
+  useProjection,
 } from '@looms/livestore/react'
+import { conversation, userMessage } from '@looms/agent'
+import { decision, pendingApprovals } from '@looms/approval'
+import { ledger } from './modules/payments'
 
-const store = useActorStore(actorId)
-const messages = store.useQuery(queries.messages)
-decideReview(store, { reviewId, outcome: 'approve' })`}</code>
+function RunView({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const convo = useProjection(store, conversation)
+  const approvals = useProjection(store, pendingApprovals)
+  const charges = useProjection(store, ledger)
+
+  const send = (text: string) => store.commit(userMessage(text))
+  const approve = (approvalId: string) => store.commit(decision(approvalId, 'approve'))
+
+  return (
+    <>
+      {convo.lines.map((m, i) => (
+        <p key={i}>{m.role}: {m.content}</p>
+      ))}
+      {approvals.items.filter((a) => a.status === 'pending').map((a) => (
+        <button key={a.approvalId} onClick={() => approve(a.approvalId)}>
+          {a.title}
+        </button>
+      ))}
+      <input onKeyDown={(e) => e.key === 'Enter' && send(e.currentTarget.value)} />
+    </>
+  )
+}`}</code>
       </pre>
-      <h2>Light store</h2>
-      <pre>
-        <code>{`import { createLoomsStore } from '@looms/livestore'
+      <p>
+        The same projection reducers run on the host and in the browser, so the UI
+        cannot drift from the log.
+      </p>
 
-const store = createLoomsStore({
-  storeId: actorId,
-  endpoint: 'http://127.0.0.1:8787',
-})
-store.subscribe(() => {
-  console.log(store.query.messages())
-  console.log(store.query.reviews())
-})
-await store.commit({
-  type: 'review.decided',
-  payload: { reviewId, actionId: 'approve', outcome: 'approve' },
-})`}</code>
-      </pre>
-      <h2>Projectors</h2>
-      <pre>
-        <code>{`import { createLooms } from '@looms/runtime'
-import type { Projector } from '@looms/projectors'
-import { sqlite } from '@looms/projectors/sqlite'
-
-const slack: Projector = {
-  name: 'slack-reviews',
-  project: async (events) => {
-    for (const event of events) {
-      if (event.type === 'review.requested') {
-        await notifySlack(event.payload.title)
-      }
-    }
-  },
-}
-
-const looms = createLooms({
-  definitions,
-  projectors: [sqlite({ path: './looms.db' }), slack],
-})`}</code>
-      </pre>
       <h2>HTTP client</h2>
       <pre>
-        <code>{`import { createLoomsClient } from '@looms/client'
+        <code>{`import { userMessage } from '@looms/agent'
+import { decision } from '@looms/approval'
+import { createLoomsClient } from '@looms/client'
+import { assistant, checkout } from './definitions'
 
-const client = createLoomsClient()
-const { actorId } = await client.startAgent('echo', { text: 'hi' })
-await client.decideReview(actorId, reviewId, {
-  actionId: 'approve',
-  outcome: 'approve',
-})`}</code>
+const client = createLoomsClient({ baseUrl: 'https://runs.example.com' })
+
+const { runId } = await client.start(checkout, { amount: 150, currency: 'USD' })
+await client.signal(runId, [decision(approvalId, 'approve')])
+
+const { runId: chatId } = await client.start(assistant, 'Charge $40')
+await client.signal(chatId, [userMessage('Also greet Maya')])
+client.subscribeEvents(chatId, (event) => console.log(event.type))`}</code>
       </pre>
+      <p>
+        The client has two verbs for input — <code>start</code> a definition and{' '}
+        <code>signal</code> events — and modules provide the event builders. When
+        you only have names (no definition object), use{' '}
+        <code>startRun({'{ kind, definitionName, input }'})</code>.
+      </p>
+
       <h2>CLI</h2>
       <pre>
         <code>{`export LOOMS_URL=http://127.0.0.1:8787
-bun run --filter @looms/cli looms -- call agent echo '{"text":"hi"}'
-bun run --filter @looms/cli looms -- events <actorId>
-bun run --filter @looms/cli looms -- review <actorId> <reviewId> --approve`}</code>
+bun run --filter @looms/cli looms -- start agent echo '{"text":"hi"}'
+bun run --filter @looms/cli looms -- events <runId>
+bun run --filter @looms/cli looms -- approve <runId> <approvalId> --approve
+bun run --filter @looms/cli looms -- replay <runId> 4`}</code>
       </pre>
     </>
   )

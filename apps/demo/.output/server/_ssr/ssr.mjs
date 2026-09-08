@@ -1,18 +1,1453 @@
-import { __commonJSMin, __exportAll$1 as __exportAll, __require, __toESM } from "./rolldown-runtime-DaEwE2D6.mjs";
-import { require_jsx_runtime, require_react } from "../_libs/livestore__react+react.mjs";
-import { RouterProvider, defineHandlerCallback, renderRouterToStream } from "../_libs/@tanstack/react-router+[...].mjs";
-import { Service, addFinalizer, callback, catchDefect, catch_, effect, fail, gen, isBoolean, isFunction, isNumber, isObject, isReadonlyObject, isString$1 as isString, map, promise, provide, provideService, runFork, runPromise, succeed as succeed$1, succeed$1 as succeed, sync, tryPromise, void_ } from "../_libs/@effect/opentelemetry+[...].mjs";
-import { ArraySchema, Boolean as Boolean$1, Literal, Literals, MutableJson, NullOr, Number as Number$1, Record, String as String$1, Struct, Union, callback as callback$1, decodeUnknownExit, decodeUnknownSync, endUnsafe, fail$1, interrupt, is, isSchema, mutable, offerUnsafe, optional, runForEach, toStandardSchemaV1 } from "../_libs/@livestore/common+[...].mjs";
-import { get, make as make$1, update } from "../_libs/@livestore/livestore+[...].mjs";
-import { numberType, objectType, stringType } from "../_libs/zod.mjs";
+import { __exportAll as __exportAll$1 } from "../_runtime.mjs";
+import { RouterProvider, defineHandlerCallback, renderRouterToStream, require_jsx_runtime, require_react } from "../_libs/@tanstack/react-router+[...].mjs";
+import { ArraySchema, Boolean as Boolean$1, Literal, MutableJson, NullOr, Number as Number$1, Service, String as String$1, Struct, Union, addFinalizer, callback, callback$1, catchDefect, catch_, decodeUnknownSync, effect, empty, endUnsafe, fail as fail$2, fail$1, gen, get, interrupt, is, isBoolean, isEffect, isFunction, isNumber, isObject, isReadonlyObject, isSchema, isString, make as make$1, map, merge, offerUnsafe, optional, promise, provide, provideService, runDrain, runFork, runPromise, succeed, succeed$1, sync, tap, toStandardJSONSchemaV1, toStandardSchemaV1, tryPromise, update, void_ } from "../_libs/effect.mjs";
+import { _enum, jsonSchema, number, object, string, tool } from "../_libs/@ai-sdk/gateway+[...].mjs";
+import { generateText, streamText } from "../_libs/ai.mjs";
+import { createOpenRouter } from "../_libs/@openrouter/ai-sdk-provider+[...].mjs";
+import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as childProcess from "node:child_process";
 import * as net from "node:net";
 import * as os from "node:os";
+//#region node_modules/.nitro/vite/services/ssr/assets/src--Gwg1zp4.js
+/** Mark a JSON-serializable struct as a log payload. */
+function asJson(payload) {
+	return payload;
+}
+/** Recover a typed struct previously written as JSON. */
+function fromJsonStruct(value) {
+	return value;
+}
+function isJsonObject$1(value) {
+	return Object.prototype.toString.call(value) === "[object Object]";
+}
+function isJsonString(value) {
+	return Object.prototype.toString.call(value) === "[object String]" && !(value instanceof String);
+}
+function isJsonNumber(value) {
+	return Object.prototype.toString.call(value) === "[object Number]" && !(value instanceof Number) && Number.isFinite(Number(value));
+}
+var counter = 0;
+function token() {
+	counter += 1;
+	return `${Date.now().toString(36)}_${counter.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+function createEventId() {
+	return `evt_${token()}`;
+}
+function createRunId() {
+	return `run_${token()}`;
+}
+function createThreadId() {
+	return `thr_${token()}`;
+}
+function createWaitId() {
+	return `wait_${token()}`;
+}
+function createEffectId(threadId, causingSeq, index) {
+	return `${threadId}:${causingSeq}:${index}`;
+}
+var JsonValueSchema = MutableJson;
+var EventOriginSchema = Union([
+	Struct({
+		type: Literal("thread"),
+		threadId: String$1
+	}),
+	Struct({
+		type: Literal("execution"),
+		executionId: String$1
+	}),
+	Struct({
+		type: Literal("external"),
+		actorId: optional(String$1)
+	}),
+	Struct({ type: Literal("system") })
+]);
+var EventEnvelopeSchema = Struct({
+	id: String$1,
+	runId: String$1,
+	seq: Number$1,
+	ts: Number$1,
+	type: String$1,
+	payload: JsonValueSchema,
+	threadId: NullOr(String$1),
+	parentThreadId: optional(NullOr(String$1)),
+	executionId: optional(NullOr(String$1)),
+	parentExecutionId: optional(NullOr(String$1)),
+	causationId: optional(NullOr(String$1)),
+	correlationId: optional(NullOr(String$1)),
+	effectId: optional(NullOr(String$1)),
+	origin: EventOriginSchema,
+	ephemeral: optional(Boolean$1)
+});
+function payloadAsJson(payload) {
+	return JSON.parse(JSON.stringify(payload));
+}
+function withAssignedSeq(partial, runId, seq) {
+	return {
+		...partial,
+		runId,
+		seq
+	};
+}
+function createEvent(runId, input, options) {
+	const threadId = input.threadId ?? input.executionId ?? null;
+	const parentThreadId = input.parentThreadId ?? input.parentExecutionId ?? null;
+	return {
+		id: input.id ?? createEventId(),
+		runId,
+		seq: options?.seq ?? 0,
+		ts: input.ts ?? Date.now(),
+		type: input.type,
+		payload: input.payload,
+		threadId,
+		parentThreadId,
+		executionId: threadId,
+		parentExecutionId: parentThreadId,
+		causationId: input.causationId,
+		correlationId: input.correlationId,
+		effectId: input.effectId,
+		origin: input.origin ?? { type: "system" },
+		ephemeral: input.ephemeral
+	};
+}
+function fromWireEvent(wire) {
+	const threadId = wire.threadId ?? wire.executionId ?? null;
+	const parentThreadId = wire.parentThreadId ?? wire.parentExecutionId ?? null;
+	return {
+		...wire,
+		threadId,
+		parentThreadId,
+		executionId: threadId,
+		parentExecutionId: parentThreadId
+	};
+}
+/**
+* Declare a catalog event's payload type when you do not have a Zod / Standard Schema.
+*
+* `payload<{ amount: number }>()` is a compile-time marker — not a cast of `{}`.
+*/
+function payload() {
+	return {};
+}
+function eventType(namespace, key) {
+	return `${namespace}.${key}`;
+}
+function defineEventCatalog(namespace, entries) {
+	return {
+		namespace,
+		entries,
+		event(key, payload, meta) {
+			const { runId, ...rest } = meta;
+			return createEvent(runId, {
+				...rest,
+				type: eventType(namespace, key),
+				payload: asJson(payload)
+			});
+		}
+	};
+}
+var WaitOnEventSchema = Struct({
+	type: String$1,
+	match: optional(JsonValueSchema)
+});
+var WaitOnTimerSchema = Struct({ timerAt: Number$1 });
+var WaitConditionSchema = Union([WaitOnEventSchema, WaitOnTimerSchema]);
+var protocolCatalog = defineEventCatalog("runtime", {
+	"run.started": Struct({
+		rootThreadId: optional(String$1),
+		rootExecutionId: optional(String$1),
+		kind: String$1,
+		definitionName: String$1,
+		input: JsonValueSchema
+	}),
+	"run.completed": Struct({
+		output: NullOr(JsonValueSchema),
+		error: NullOr(String$1)
+	}),
+	"thread.started": Struct({
+		threadId: String$1,
+		kind: String$1,
+		definitionName: String$1,
+		input: JsonValueSchema,
+		parentThreadId: NullOr(String$1)
+	}),
+	"thread.completed": Struct({
+		threadId: String$1,
+		output: JsonValueSchema
+	}),
+	"thread.failed": Struct({
+		threadId: String$1,
+		error: String$1
+	}),
+	"thread.cancelled": Struct({
+		threadId: String$1,
+		reason: optional(String$1)
+	}),
+	"execution.started": Struct({
+		executionId: String$1,
+		kind: String$1,
+		definitionName: String$1,
+		input: JsonValueSchema,
+		parentExecutionId: NullOr(String$1)
+	}),
+	"execution.completed": Struct({
+		executionId: String$1,
+		output: JsonValueSchema
+	}),
+	"execution.failed": Struct({
+		executionId: String$1,
+		error: String$1
+	}),
+	"execution.cancelled": Struct({
+		executionId: String$1,
+		reason: optional(String$1)
+	}),
+	"wait.registered": Struct({
+		waitId: String$1,
+		threadId: optional(String$1),
+		executionId: optional(String$1),
+		on: WaitConditionSchema,
+		tag: optional(JsonValueSchema)
+	}),
+	"wait.satisfied": Struct({
+		waitId: String$1,
+		tag: optional(JsonValueSchema),
+		event: Struct({
+			id: String$1,
+			type: String$1,
+			payload: JsonValueSchema
+		})
+	}),
+	"timer.set": Struct({
+		timerId: String$1,
+		waitId: String$1,
+		wakeAt: Number$1
+	}),
+	"timer.fired": Struct({
+		timerId: String$1,
+		waitId: String$1
+	}),
+	"effect.failed": Struct({
+		effectId: String$1,
+		error: String$1
+	}),
+	"snapshot.taken": Struct({
+		seq: Number$1,
+		stateHash: String$1,
+		state: optional(JsonValueSchema)
+	}),
+	"signal.received": Struct({ signalType: String$1 })
+});
+function defineThread(def) {
+	return def;
+}
+function isTerminalStatus(status) {
+	return status === "completed" || status === "failed" || status === "cancelled";
+}
+function emptyRunState(runId) {
+	const threads = {};
+	return {
+		runId,
+		status: "running",
+		rootThreadId: null,
+		rootExecutionId: null,
+		threads,
+		executions: threads,
+		waits: {},
+		outstandingEffects: []
+	};
+}
+function isRunTerminal(state) {
+	return state.status === "completed" || state.status === "failed" || state.status === "cancelled";
+}
+function isRunParked(state) {
+	if (isRunTerminal(state)) return true;
+	if (state.outstandingEffects.length > 0) return false;
+	const records = Object.values(state.threads);
+	if (records.length === 0) return false;
+	return records.every((record) => record.status === "waiting" || record.status === "completed" || record.status === "failed" || record.status === "cancelled");
+}
+function payloadObject$4(event) {
+	const payload = event.payload;
+	if (payload === null || Array.isArray(payload)) return {};
+	if (isReadonlyObject(payload)) return payload;
+	return {};
+}
+function readString$1$1(obj, key) {
+	const value = obj[key];
+	return isString(value) ? value : void 0;
+}
+function cloneState(state) {
+	const threads = { ...state.threads };
+	return {
+		runId: state.runId,
+		status: state.status,
+		rootThreadId: state.rootThreadId,
+		rootExecutionId: state.rootThreadId,
+		threads,
+		executions: threads,
+		waits: { ...state.waits },
+		outstandingEffects: [...state.outstandingEffects]
+	};
+}
+function completeEffect(state, effectId) {
+	return {
+		...state,
+		outstandingEffects: state.outstandingEffects.filter((item) => item.effectId !== effectId)
+	};
+}
+function putThread(state, record) {
+	const threads = {
+		...state.threads,
+		[record.threadId]: record
+	};
+	return {
+		...state,
+		threads,
+		executions: threads
+	};
+}
+function addWait(state, record) {
+	return {
+		...state,
+		waits: {
+			...state.waits,
+			[record.waitId]: record
+		}
+	};
+}
+function removeWait(state, waitId) {
+	const { [waitId]: _removed, ...rest } = state.waits;
+	return {
+		...state,
+		waits: rest
+	};
+}
+function threadWaits(state, threadId) {
+	return Object.values(state.waits).filter((record) => record.threadId === threadId);
+}
+function applyProtocol(state, event, registry) {
+	const payload = payloadObject$4(event);
+	switch (event.type) {
+		case "runtime.run.started": {
+			const rootThreadId = readString$1$1(payload, "rootThreadId") ?? readString$1$1(payload, "rootExecutionId") ?? null;
+			return {
+				...state,
+				runId: event.runId,
+				rootThreadId,
+				rootExecutionId: rootThreadId,
+				status: "running"
+			};
+		}
+		case "runtime.run.completed": {
+			const error = payload.error;
+			const status = isString(error) && error.length > 0 ? "failed" : "completed";
+			return {
+				...state,
+				status
+			};
+		}
+		case "runtime.thread.started":
+		case "runtime.execution.started": {
+			const threadId = readString$1$1(payload, "threadId") ?? readString$1$1(payload, "executionId") ?? event.threadId ?? event.executionId;
+			const kind = readString$1$1(payload, "kind");
+			const definitionName = readString$1$1(payload, "definitionName");
+			if (!threadId || !kind || !definitionName) return state;
+			const parent = payload.parentThreadId ?? payload.parentExecutionId;
+			const parentThreadId = parent === null || isString(parent) ? parent : null;
+			const input = payload.input ?? null;
+			const definition = registry.threads.get(kind) ?? registry.executions?.get(kind);
+			let next = putThread(state, {
+				threadId,
+				executionId: threadId,
+				kind,
+				definitionName,
+				parentThreadId,
+				parentExecutionId: parentThreadId,
+				status: "running",
+				input,
+				output: null,
+				error: null,
+				state: definition ? definition.initialState({
+					runId: event.runId,
+					threadId,
+					parentThreadId,
+					definitionName,
+					input
+				}) : {}
+			});
+			if (!next.rootThreadId) next = {
+				...next,
+				rootThreadId: threadId,
+				rootExecutionId: threadId
+			};
+			return next;
+		}
+		case "runtime.thread.completed":
+		case "runtime.execution.completed": {
+			const threadId = readString$1$1(payload, "threadId") ?? readString$1$1(payload, "executionId") ?? event.threadId ?? event.executionId;
+			if (!threadId) return state;
+			const existing = state.threads[threadId];
+			if (!existing) return state;
+			return putThread(state, {
+				...existing,
+				status: "completed",
+				output: payload.output ?? null,
+				error: null
+			});
+		}
+		case "runtime.thread.failed":
+		case "runtime.execution.failed": {
+			const threadId = readString$1$1(payload, "threadId") ?? readString$1$1(payload, "executionId") ?? event.threadId ?? event.executionId;
+			if (!threadId) return state;
+			const existing = state.threads[threadId];
+			if (!existing) return state;
+			return putThread(state, {
+				...existing,
+				status: "failed",
+				error: readString$1$1(payload, "error") ?? "failed"
+			});
+		}
+		case "runtime.thread.cancelled":
+		case "runtime.execution.cancelled": {
+			const threadId = readString$1$1(payload, "threadId") ?? readString$1$1(payload, "executionId") ?? event.threadId ?? event.executionId;
+			if (!threadId) return state;
+			const existing = state.threads[threadId];
+			if (!existing) return state;
+			return putThread(state, {
+				...existing,
+				status: "cancelled",
+				error: readString$1$1(payload, "reason") ?? existing.error
+			});
+		}
+		case "runtime.wait.registered": {
+			const waitId = readString$1$1(payload, "waitId");
+			const threadId = readString$1$1(payload, "threadId") ?? readString$1$1(payload, "executionId") ?? event.threadId ?? event.executionId;
+			const on = payload.on;
+			if (!waitId || !threadId || !on || !isObject(on)) return state;
+			const record = {
+				waitId,
+				threadId,
+				executionId: threadId,
+				on
+			};
+			if (payload.tag !== void 0) record.tag = payload.tag;
+			let next = addWait(state, record);
+			const existing = next.threads[threadId];
+			if (existing && !isTerminalStatus(existing.status)) next = putThread(next, {
+				...existing,
+				status: "waiting"
+			});
+			return next;
+		}
+		case "runtime.wait.satisfied": {
+			const waitId = readString$1$1(payload, "waitId");
+			if (!waitId) return state;
+			const existingWait = state.waits[waitId];
+			let next = removeWait(state, waitId);
+			if (existingWait?.tag !== void 0) {
+				const tagJson = JSON.stringify(existingWait.tag);
+				for (const [id, record] of Object.entries(next.waits)) if (record.threadId === existingWait.threadId && JSON.stringify(record.tag) === tagJson) next = removeWait(next, id);
+			}
+			const threadId = existingWait?.threadId ?? event.threadId ?? event.executionId;
+			if (!threadId) return next;
+			const existing = next.threads[threadId];
+			if (existing && existing.status === "waiting" && threadWaits(next, threadId).length === 0) next = putThread(next, {
+				...existing,
+				status: "running"
+			});
+			return next;
+		}
+		case "runtime.snapshot.taken":
+		case "runtime.timer.set":
+		case "runtime.timer.fired":
+		case "runtime.effect.failed":
+		case "runtime.signal.received": return state;
+		default: return state;
+	}
+}
+function appendEffects(state, threadId, event, effects) {
+	if (effects.length === 0) return state;
+	const added = effects.map((effect, index) => ({
+		effectId: createEffectId(threadId, event.seq, index),
+		threadId,
+		executionId: threadId,
+		causingSeq: event.seq,
+		causingEventId: event.id,
+		effect
+	}));
+	return {
+		...state,
+		outstandingEffects: [...state.outstandingEffects, ...added]
+	};
+}
+function deliver(state, event, registry) {
+	const threadId = event.threadId ?? event.executionId;
+	if (!threadId) return state;
+	const record = state.threads[threadId];
+	if (!record) return state;
+	const definition = registry.threads.get(record.kind) ?? registry.executions?.get(record.kind);
+	if (!definition) return state;
+	const ctx = {
+		runId: state.runId,
+		threadId,
+		executionId: threadId,
+		parentThreadId: record.parentThreadId,
+		parentExecutionId: record.parentThreadId
+	};
+	const result = definition.reduce(record.state, event, ctx);
+	return appendEffects(putThread(state, {
+		...record,
+		state: result.state
+	}), threadId, event, result.effects ?? []);
+}
+function foldEvent(state, event, registry) {
+	if (event.ephemeral) return state;
+	let next = cloneState(state);
+	if (event.runId && next.runId !== event.runId) next = {
+		...next,
+		runId: event.runId
+	};
+	if (event.effectId) next = completeEffect(next, event.effectId);
+	next = applyProtocol(next, event, registry);
+	if (event.type === "runtime.snapshot.taken") return next;
+	return deliver(next, event, registry);
+}
+function foldRun(events, registry, options) {
+	let state = options?.from ?? emptyRunState(options?.runId ?? events[0]?.runId ?? "unknown");
+	for (const event of events) state = foldEvent(state, event, registry);
+	return state;
+}
+function defineProjection(def) {
+	return def;
+}
+function project(definition, events, from) {
+	let state = from ?? definition.initialState;
+	for (const event of events) {
+		if (event.ephemeral) continue;
+		state = definition.reduce(state, event);
+	}
+	return state;
+}
+var ModuleCompositionError = class extends Error {
+	_tag = "ModuleCompositionError";
+	constructor(text) {
+		super(text);
+		this.name = "ModuleCompositionError";
+	}
+};
+function composeModules(modules) {
+	const namespaces = /* @__PURE__ */ new Set();
+	const threads = /* @__PURE__ */ new Map();
+	const effects = /* @__PURE__ */ new Map();
+	const handlers = /* @__PURE__ */ new Map();
+	const projections = /* @__PURE__ */ new Map();
+	const catalogs = [protocolCatalog];
+	for (const module of modules) {
+		if (namespaces.has(module.namespace)) throw new ModuleCompositionError(`Duplicate module namespace: ${module.namespace}`);
+		namespaces.add(module.namespace);
+		if (module.dependencies) {
+			for (const dep of module.dependencies) if (!namespaces.has(dep.namespace) && dep.namespace !== "runtime") {
+				if (!modules.some((item) => item.namespace === dep.namespace)) throw new ModuleCompositionError(`Module ${module.namespace} depends on missing module ${dep.namespace}`);
+			}
+		}
+		if (module.events) catalogs.push(module.events);
+		const moduleThreads = module.threads ?? module.executions;
+		if (moduleThreads) for (const [kind, definition] of Object.entries(moduleThreads)) {
+			if (threads.has(kind)) throw new ModuleCompositionError(`Duplicate thread kind: ${kind}`);
+			threads.set(kind, definition);
+		}
+		if (module.effects) for (const definition of Object.values(module.effects)) {
+			if (effects.has(definition.type)) throw new ModuleCompositionError(`Duplicate effect type: ${definition.type}`);
+			effects.set(definition.type, definition);
+			handlers.set(definition.type, definition);
+		}
+		if (module.handlers) for (const [type, definition] of Object.entries(module.handlers)) handlers.set(type, definition);
+		if (module.projections) for (const definition of Object.values(module.projections)) {
+			if (projections.has(definition.name)) throw new ModuleCompositionError(`Duplicate projection: ${definition.name}`);
+			projections.set(definition.name, definition);
+		}
+	}
+	return {
+		modules,
+		threads,
+		executions: threads,
+		effects,
+		handlers,
+		projections,
+		catalogs
+	};
+}
+var EventStoreError = class extends Error {
+	_tag = "EventStoreError";
+	conflict;
+	cause;
+	constructor(text, cause, options) {
+		super(text);
+		this.name = "EventStoreError";
+		this.cause = cause;
+		this.conflict = options?.conflict;
+	}
+};
+var EventStoreConflictError = class extends EventStoreError {
+	_tag = "EventStoreConflictError";
+	conflict = true;
+	expectedTail;
+	actualTail;
+	constructor(runId, expectedTail, actualTail) {
+		super(`Conflict appending to ${runId}: expected tail ${expectedTail}, got ${actualTail}`, void 0, { conflict: true });
+		this.name = "EventStoreConflictError";
+		this.expectedTail = expectedTail;
+		this.actualTail = actualTail;
+	}
+};
+var EventStoreTag = class extends Service()("looms/EventStore") {};
+var makeMemoryEventStore = gen(function* () {
+	const logs = yield* make$1(/* @__PURE__ */ new Map());
+	const getOrCreate = (map, runId) => {
+		const existing = map.get(runId);
+		if (existing) return existing;
+		const created = {
+			events: [],
+			waiters: []
+		};
+		map.set(runId, created);
+		return created;
+	};
+	const service = {
+		append: (runId, events, options) => gen(function* () {
+			const sequences = [];
+			yield* update(logs, (map) => {
+				const next = new Map(map);
+				const log = getOrCreate(next, runId);
+				if (options?.expectedTail !== void 0 && log.events.length !== options.expectedTail) throw new EventStoreConflictError(runId, options.expectedTail, log.events.length);
+				const appended = [];
+				for (const partial of events) {
+					const seq = log.events.length + appended.length + 1;
+					const event = withAssignedSeq(partial, runId, seq);
+					appended.push(event);
+					sequences.push(seq);
+				}
+				const updated = {
+					events: [...log.events, ...appended],
+					waiters: log.waiters
+				};
+				next.set(runId, updated);
+				for (const event of appended) for (const waiter of log.waiters) waiter(event);
+				return next;
+			}).pipe(catchDefect((cause) => fail$1(cause instanceof EventStoreError ? cause : new EventStoreError("append failed", cause))));
+			return {
+				sequences,
+				tail: yield* service.tail(runId)
+			};
+		}),
+		read: (runId, options) => gen(function* () {
+			const log = (yield* get(logs)).get(runId);
+			if (!log) return [];
+			const fromSeq = options?.fromSeq ?? 1;
+			const sliced = log.events.filter((e) => e.seq >= fromSeq);
+			return options?.limit !== void 0 ? sliced.slice(0, options.limit) : sliced;
+		}),
+		tail: (runId) => gen(function* () {
+			return (yield* get(logs)).get(runId)?.events.length ?? 0;
+		}),
+		subscribe: (runId, options) => callback((queue) => gen(function* () {
+			const fromSeq = options?.fromSeq ?? 1;
+			const map = yield* get(logs);
+			const log = getOrCreate(map, runId);
+			yield* update(logs, (m) => {
+				const n = new Map(m);
+				if (!n.has(runId)) n.set(runId, log);
+				return n;
+			});
+			for (const event of log.events) if (event.seq >= fromSeq) offerUnsafe(queue, event);
+			const waiter = (event) => {
+				if (event.seq >= fromSeq) offerUnsafe(queue, event);
+			};
+			log.waiters.push(waiter);
+			yield* addFinalizer(() => sync(() => {
+				const idx = log.waiters.indexOf(waiter);
+				if (idx >= 0) log.waiters.splice(idx, 1);
+			}));
+		})),
+		listRuns: () => gen(function* () {
+			return [...(yield* get(logs)).keys()];
+		})
+	};
+	return service;
+});
+effect(EventStoreTag, makeMemoryEventStore);
+var fromNumH = (n) => n / 2 ** 32 | 0;
+var fromNumL = (n) => n >>> 0;
+function setU64FromNum(view, byteOffset, n, isLE) {
+	const h = fromNumH(n);
+	const l = fromNumL(n);
+	view.setUint32(byteOffset, isLE ? l : h, isLE);
+	view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
+}
+/**
+* Checks if something is Uint8Array. Be careful: nodejs Buffer will return true.
+* @param a - value to test
+* @returns `true` when the value is a Uint8Array-compatible view.
+* @example
+* Check whether a value is a Uint8Array-compatible view.
+* ```ts
+* isBytes(new Uint8Array([1, 2, 3]));
+* ```
+*/
+function isBytes(a) {
+	return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
+}
+var atitle = (title) => title ? `"${title}" ` : "";
+/**
+* Asserts something is a non-negative integer.
+* @param n - number to validate
+* @param title - label included in thrown errors
+* @returns The validated number.
+* @throws On wrong argument types. {@link TypeError}
+* @throws On wrong argument ranges or values. {@link RangeError}
+* @example
+* Validate a non-negative integer option.
+* ```ts
+* anumber(32, 'length');
+* ```
+*/
+function anumber(n, title = "") {
+	if (typeof n !== "number") throw new TypeError(atitle(title) + "expected number, got " + typeof n);
+	if (!Number.isSafeInteger(n) || n < 0) throw new RangeError(atitle(title) + "expected integer >= 0, got " + n);
+	return n;
+}
+/**
+* Asserts something is Uint8Array.
+* @param value - value to validate
+* @param length - optional exact length constraint
+* @param title - label included in thrown errors
+* @returns The validated byte array.
+* @throws On wrong argument types. {@link TypeError}
+* @throws On wrong argument ranges or values. {@link RangeError}
+* @example
+* Validate that a value is a byte array.
+* ```ts
+* abytes(new Uint8Array([1, 2, 3]));
+* ```
+*/
+function abytes(value, length, title = "") {
+	if (isBytes(value) && (length === void 0 || value.length === length)) return value;
+	if (length !== void 0) anumber(length, "length");
+	const bytes = isBytes(value);
+	const ofLen = length !== void 0 ? ` of length ${length}` : "";
+	const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
+	const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
+	if (!bytes) throw new TypeError(message);
+	throw new RangeError(message);
+}
+var aobject = (value, label) => {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError((label === "object" ? "" : `"${label}" `) + "expected object, got type=" + typeof value);
+};
+var aopts = (value, label) => {
+	aobject(value, label);
+	const proto = Object.getPrototypeOf(value);
+	if (proto !== Object.prototype && proto !== null) throw new TypeError(`"${label}" expected plain object`);
+	if (Object.hasOwn(value, "__proto__")) throw new TypeError(`"${label}.__proto__" is not allowed`);
+};
+/**
+* Asserts a hash instance has not been destroyed or finished.
+* @param instance - hash instance to validate
+* @param checkFinished - whether to reject finalized instances
+* @throws If the hash instance has already been destroyed or finalized. {@link Error}
+* @example
+* Validate that a hash instance is still usable.
+* ```ts
+* import { aexists } from '@noble/hashes/utils.js';
+* import { sha256 } from '@noble/hashes/sha2.js';
+* const hash = sha256.create();
+* aexists(hash);
+* ```
+*/
+function aexists(instance, checkFinished = true) {
+	if (instance.destroyed) throw new Error("hash was destroyed");
+	if (checkFinished && instance.finished) throw new Error("digest() was already called");
+}
+/**
+* Asserts output is a sufficiently-sized byte array.
+* @param out - destination buffer
+* @param instance - hash instance providing output length
+* Oversized buffers are allowed; downstream code only promises to fill the first `outputLen` bytes.
+* @throws On wrong argument types. {@link TypeError}
+* @throws On wrong argument ranges or values. {@link RangeError}
+* @example
+* Validate a caller-provided digest buffer.
+* ```ts
+* import { aoutput } from '@noble/hashes/utils.js';
+* import { sha256 } from '@noble/hashes/sha2.js';
+* const hash = sha256.create();
+* aoutput(new Uint8Array(hash.outputLen), hash);
+* ```
+*/
+function aoutput(out, instance) {
+	abytes(out, void 0, "output");
+	const min = instance.outputLen;
+	if (!(out.length >= min)) throw new RangeError("\"output\" expected length >= " + min);
+}
+/**
+* Zeroizes typed arrays in place. Warning: JS provides no guarantees.
+* @param arrays - arrays to overwrite with zeros
+* @example
+* Zeroize sensitive buffers in place.
+* ```ts
+* clean(new Uint8Array([1, 2, 3]));
+* ```
+*/
+function clean(...arrays) {
+	for (let i = 0; i < arrays.length; i++) arrays[i].fill(0);
+}
+/**
+* Creates a DataView for byte-level manipulation.
+* @param arr - source typed array
+* @returns DataView over the same buffer region.
+* @example
+* Create a DataView over an existing buffer.
+* ```ts
+* createView(new Uint8Array(4));
+* ```
+*/
+function createView(arr) {
+	return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+/**
+* Rotate-right operation for uint32 values.
+* @param word - source word
+* @param shift - shift amount in bits
+* @returns Rotated word.
+* @example
+* Rotate a 32-bit word to the right.
+* ```ts
+* rotr(0x12345678, 8);
+* ```
+*/
+function rotr(word, shift) {
+	return word << 32 - shift | word >>> shift;
+}
+var hasHexBuiltin = /* @__PURE__ */ (() => typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function")();
+var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
+/**
+* Convert byte array to hex string.
+* Uses the built-in function when available and assumes it matches the tested
+* fallback semantics.
+* @param bytes - bytes to encode
+* @returns Lowercase hexadecimal string.
+* @throws On wrong argument types. {@link TypeError}
+* @example
+* Convert bytes to lowercase hexadecimal.
+* ```ts
+* bytesToHex(Uint8Array.from([0xca, 0xfe, 0x01, 0x23])); // 'cafe0123'
+* ```
+*/
+function bytesToHex(bytes) {
+	abytes(bytes);
+	if (hasHexBuiltin) return bytes.toHex();
+	let hex = "";
+	for (let i = 0; i < bytes.length; i++) hex += hexes[bytes[i]];
+	return hex;
+}
+/**
+* Merges default options and passed options.
+* @param defaults - base option object
+* @param opts - user overrides
+* @param title - label included in thrown override errors
+* @returns Fresh merged option object with a null prototype.
+* @throws On wrong argument types. {@link TypeError}
+* @example
+* Merge user overrides onto default options.
+* ```ts
+* checkOpts({ dkLen: 32 }, { asyncTick: 10 });
+* ```
+*/
+function checkOpts(defaults, opts, title = "opts") {
+	aopts(defaults, "defaults");
+	if (opts !== void 0) aopts(opts, title);
+	return Object.assign(Object.create(null), defaults, opts);
+}
+/**
+* Creates a callable hash function from a stateful class constructor.
+* @param hashCons - hash constructor or factory
+* @param info - optional metadata such as DER OID
+* @returns Frozen callable hash wrapper with `.create()`.
+*   Wrapper construction eagerly calls `hashCons(undefined)` once to read
+*   `outputLen` / `blockLen`, so constructor side effects happen at module
+*   init time.
+* @throws On wrong argument types. {@link TypeError}
+* @example
+* Wrap a stateful hash constructor into a callable helper.
+* ```ts
+* import { createHasher } from '@noble/hashes/utils.js';
+* import { sha256 } from '@noble/hashes/sha2.js';
+* const wrapped = createHasher(sha256.create, { oid: sha256.oid });
+* wrapped(new Uint8Array([1]));
+* ```
+*/
+function createHasher(hashCons, info = {}) {
+	if (typeof hashCons !== "function") throw new TypeError("\"hashCons\" expected function, got type=" + typeof hashCons);
+	info = checkOpts({}, info, "info");
+	const hashC = (msg, opts) => hashCons(opts).update(msg).digest();
+	const tmp = hashCons(void 0);
+	hashC.outputLen = tmp.outputLen;
+	hashC.blockLen = tmp.blockLen;
+	hashC.canXOF = tmp.canXOF;
+	hashC.create = (opts) => hashCons(opts);
+	Object.assign(hashC, info);
+	return Object.freeze(hashC);
+}
+/**
+* Creates OID metadata for NIST hashes with prefix `06 09 60 86 48 01 65 03 04 02`.
+* @param suffix - final OID byte for the selected hash.
+*   The helper accepts any byte even though only the documented NIST hash
+*   suffixes are meaningful downstream.
+* @returns Object containing the DER-encoded OID.
+* @example
+* Build OID metadata for a NIST hash.
+* ```ts
+* oidNist(0x01);
+* ```
+*/
+var oidNist = (suffix) => ({ oid: Uint8Array.from([
+	6,
+	9,
+	96,
+	134,
+	72,
+	1,
+	101,
+	3,
+	4,
+	2,
+	suffix
+]) });
+/**
+* Internal Merkle-Damgard hash utils.
+* @module
+*/
+/**
+* Shared 32-bit conditional boolean primitive reused by SHA-256, SHA-1, and MD5 `F`.
+* Returns bits from `b` when `a` is set, otherwise from `c`.
+* The XOR form is equivalent to MD5's `F(X,Y,Z) = XY v not(X)Z` because the masked terms never
+* set the same bit.
+* @param a - selector word
+* @param b - word chosen when selector bit is set
+* @param c - word chosen when selector bit is clear
+* @returns Mixed 32-bit word.
+* @example
+* Combine three words with the shared 32-bit choice primitive.
+* ```ts
+* Chi(0xffffffff, 0x12345678, 0x87654321);
+* ```
+*/
+function Chi(a, b, c) {
+	return a & b ^ ~a & c;
+}
+/**
+* Shared 32-bit majority primitive reused by SHA-256 and SHA-1.
+* Returns bits shared by at least two inputs.
+* @param a - first input word
+* @param b - second input word
+* @param c - third input word
+* @returns Mixed 32-bit word.
+* @example
+* Combine three words with the shared 32-bit majority primitive.
+* ```ts
+* Maj(0xffffffff, 0x12345678, 0x87654321);
+* ```
+*/
+function Maj(a, b, c) {
+	return a & b ^ a & c ^ b & c;
+}
+/**
+* Merkle-Damgard hash construction base class.
+* Could be used to create MD5, RIPEMD, SHA1, SHA2.
+* Accepts only byte-aligned `Uint8Array` input, even when the underlying spec describes bit
+* strings with partial-byte tails.
+* @param blockLen - internal block size in bytes
+* @param outputLen - digest size in bytes
+* @param padOffset - trailing length field size in bytes
+* @param isLE - whether length and state words are encoded in little-endian
+* @example
+* Use a concrete subclass to get the shared Merkle-Damgard update/digest flow.
+* ```ts
+* import { _SHA1 } from '@noble/hashes/legacy.js';
+* const hash = new _SHA1();
+* hash.update(new Uint8Array([97, 98, 99]));
+* hash.digest();
+* ```
+*/
+var HashMD = class {
+	blockLen;
+	outputLen;
+	canXOF = false;
+	padOffset;
+	isLE;
+	buffer;
+	view;
+	finished = false;
+	length = 0;
+	pos = 0;
+	destroyed = false;
+	constructor(blockLen, outputLen, padOffset, isLE) {
+		this.blockLen = blockLen;
+		this.outputLen = outputLen;
+		this.padOffset = padOffset;
+		this.isLE = isLE;
+		this.buffer = new Uint8Array(blockLen);
+		this.view = createView(this.buffer);
+	}
+	update(data) {
+		aexists(this);
+		abytes(data);
+		const { view, buffer, blockLen } = this;
+		const len = data.length;
+		let processed = false;
+		for (let pos = 0; pos < len;) {
+			const take = Math.min(blockLen - this.pos, len - pos);
+			if (take === blockLen) {
+				const dataView = createView(data);
+				for (; blockLen <= len - pos; pos += blockLen) this.process(dataView, pos);
+				processed = true;
+				continue;
+			}
+			buffer.set(pos === 0 && take === len ? data : data.subarray(pos, pos + take), this.pos);
+			this.pos += take;
+			pos += take;
+			if (this.pos === blockLen) {
+				this.process(view, 0);
+				this.pos = 0;
+				processed = true;
+			}
+		}
+		this.length += data.length;
+		if (processed) this.roundClean();
+		return this;
+	}
+	digestInto(out) {
+		aexists(this);
+		aoutput(out, this);
+		this.finished = true;
+		const { buffer, view, blockLen, isLE } = this;
+		let { pos } = this;
+		buffer[pos++] = 128;
+		buffer.fill(0, pos);
+		if (this.padOffset > blockLen - pos) {
+			this.process(view, 0);
+			buffer.fill(0);
+		}
+		setU64FromNum(view, blockLen - 8, this.length * 8, isLE);
+		this.process(view, 0);
+		this.roundClean();
+		const oview = out === buffer ? view : createView(out);
+		const len = this.outputLen;
+		const outLen = len / 4;
+		const state = this.get();
+		if (len % 4 || outLen > state.length) throw new Error("invalid outputLen");
+		for (let i = 0; i < outLen; i++) oview.setUint32(4 * i, state[i], isLE);
+	}
+	digest() {
+		const { buffer, outputLen } = this;
+		this.digestInto(buffer);
+		const res = buffer.slice(0, outputLen);
+		this.destroy();
+		return res;
+	}
+	_cloneIntoMeta(to) {
+		const { buffer, length, finished, destroyed, pos } = this;
+		to.destroyed = destroyed;
+		to.finished = finished;
+		to.length = length;
+		to.pos = pos;
+		if (pos) to.buffer.set(buffer);
+		return to;
+	}
+	clone() {
+		return this._cloneInto();
+	}
+};
+/**
+* Initial SHA-2 state: fractional parts of square roots of first 16 primes 2..53.
+* Check out `test/misc/sha2-gen-iv.js` for recomputation guide.
+*/
+/** Initial SHA256 state from RFC 6234 §6.1: the first 32 bits of the fractional parts of the
+* square roots of the first eight prime numbers. Exported as a shared table; callers must treat
+* it as read-only because constructors copy words from it by index. */
+var SHA256_IV = /* @__PURE__ */ Uint32Array.from([
+	1779033703,
+	3144134277,
+	1013904242,
+	2773480762,
+	1359893119,
+	2600822924,
+	528734635,
+	1541459225
+]);
+/**
+* SHA2 hash function. A.k.a. sha256, sha384, sha512, sha512_224, sha512_256.
+* SHA256 is the fastest hash implementable in JS, even faster than Blake3.
+* Check out {@link https://www.rfc-editor.org/rfc/rfc4634 | RFC 4634} and
+* {@link https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf | FIPS 180-4}.
+* @module
+*/
+/**
+* SHA-224 / SHA-256 round constants from RFC 6234 §5.1: the first 32 bits
+* of the cube roots of the first 64 primes (2..311).
+*/
+var SHA256_K = /* @__PURE__ */ Uint32Array.from([
+	1116352408,
+	1899447441,
+	3049323471,
+	3921009573,
+	961987163,
+	1508970993,
+	2453635748,
+	2870763221,
+	3624381080,
+	310598401,
+	607225278,
+	1426881987,
+	1925078388,
+	2162078206,
+	2614888103,
+	3248222580,
+	3835390401,
+	4022224774,
+	264347078,
+	604807628,
+	770255983,
+	1249150122,
+	1555081692,
+	1996064986,
+	2554220882,
+	2821834349,
+	2952996808,
+	3210313671,
+	3336571891,
+	3584528711,
+	113926993,
+	338241895,
+	666307205,
+	773529912,
+	1294757372,
+	1396182291,
+	1695183700,
+	1986661051,
+	2177026350,
+	2456956037,
+	2730485921,
+	2820302411,
+	3259730800,
+	3345764771,
+	3516065817,
+	3600352804,
+	4094571909,
+	275423344,
+	430227734,
+	506948616,
+	659060556,
+	883997877,
+	958139571,
+	1322822218,
+	1537002063,
+	1747873779,
+	1955562222,
+	2024104815,
+	2227730452,
+	2361852424,
+	2428436474,
+	2756734187,
+	3204031479,
+	3329325298
+]);
+/** Reusable SHA-224 / SHA-256 message schedule buffer `W_t` from RFC 6234 §6.2 step 1. */
+var SHA256_W = /* @__PURE__ */ new Uint32Array(64);
+/** Internal SHA-224 / SHA-256 compression engine from RFC 6234 §6.2. */
+var SHA2_32B = class extends HashMD {
+	A = 0;
+	B = 0;
+	C = 0;
+	D = 0;
+	E = 0;
+	F = 0;
+	G = 0;
+	H = 0;
+	constructor(outputLen, IV) {
+		super(64, outputLen, 8, false);
+		this.A = IV[0] | 0;
+		this.B = IV[1] | 0;
+		this.C = IV[2] | 0;
+		this.D = IV[3] | 0;
+		this.E = IV[4] | 0;
+		this.F = IV[5] | 0;
+		this.G = IV[6] | 0;
+		this.H = IV[7] | 0;
+	}
+	get() {
+		const { A, B, C, D, E, F, G, H } = this;
+		return [
+			A,
+			B,
+			C,
+			D,
+			E,
+			F,
+			G,
+			H
+		];
+	}
+	set(A, B, C, D, E, F, G, H) {
+		this.A = A | 0;
+		this.B = B | 0;
+		this.C = C | 0;
+		this.D = D | 0;
+		this.E = E | 0;
+		this.F = F | 0;
+		this.G = G | 0;
+		this.H = H | 0;
+	}
+	_cloneInto(to) {
+		(to ||= new this.constructor()).set(...this.get());
+		return this._cloneIntoMeta(to);
+	}
+	process(view, offset) {
+		for (let i = 0; i < 16; i++, offset += 4) SHA256_W[i] = view.getUint32(offset, false);
+		for (let i = 16; i < 64; i++) {
+			const W15 = SHA256_W[i - 15];
+			const W2 = SHA256_W[i - 2];
+			const s0 = rotr(W15, 7) ^ rotr(W15, 18) ^ W15 >>> 3;
+			const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
+			SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
+		}
+		let { A, B, C, D, E, F, G, H } = this;
+		for (let i = 0; i < 64; i++) {
+			const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
+			const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
+			const T2 = (rotr(A, 2) ^ rotr(A, 13) ^ rotr(A, 22)) + Maj(A, B, C) | 0;
+			H = G;
+			G = F;
+			F = E;
+			E = D + T1 | 0;
+			D = C;
+			C = B;
+			B = A;
+			A = T1 + T2 | 0;
+		}
+		A = A + this.A | 0;
+		B = B + this.B | 0;
+		C = C + this.C | 0;
+		D = D + this.D | 0;
+		E = E + this.E | 0;
+		F = F + this.F | 0;
+		G = G + this.G | 0;
+		H = H + this.H | 0;
+		this.set(A, B, C, D, E, F, G, H);
+	}
+	roundClean() {
+		clean(SHA256_W);
+	}
+	destroy() {
+		this.destroyed = true;
+		this.set(0, 0, 0, 0, 0, 0, 0, 0);
+		clean(this.buffer);
+	}
+};
+/** Internal SHA-256 hash class grounded in RFC 6234 §6.2. */
+var _SHA256 = class extends SHA2_32B {
+	constructor() {
+		super(32, SHA256_IV);
+	}
+};
+/**
+* SHA2-256 hash function from RFC 4634. In JS it's the fastest: even faster than Blake3. Some info:
+*
+* - Trying 2^128 hashes would get 50% chance of collision, using birthday attack.
+* - BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
+* - Each sha256 hash is executing 2^18 bit operations.
+* - Good 2024 ASICs can do 200Th/sec with 3500 watts of power, corresponding to 2^36 hashes/joule.
+* @param msg - message bytes to hash
+* @param opts - Reserved hash options.
+* @returns Digest bytes.
+* @example
+* Hash a message with SHA2-256.
+* ```ts
+* sha256(new Uint8Array([97, 98, 99]));
+* ```
+*/
+var sha256 = /* @__PURE__ */ createHasher(() => new _SHA256(), /* @__PURE__ */ oidNist(1));
+var SnapshotTakenPayloadSchema = Struct({
+	seq: Number$1,
+	stateHash: String$1,
+	state: optional(JsonValueSchema)
+});
+function hashRunState(state) {
+	const json = JSON.stringify(state);
+	return bytesToHex(sha256(new TextEncoder().encode(json))).slice(0, 16);
+}
+function runStateToJson(state) {
+	const raw = JSON.parse(JSON.stringify(state));
+	return decodeUnknownSync(JsonValueSchema)(raw);
+}
+function shouldTakeSnapshot(events, every = 200) {
+	const durable = events.filter((e) => !e.ephemeral && e.type !== "runtime.snapshot.taken");
+	if (durable.length === 0) return false;
+	let lastSnap;
+	for (let i = events.length - 1; i >= 0; i--) {
+		const candidate = events[i];
+		if (candidate?.type === "runtime.snapshot.taken") {
+			lastSnap = candidate;
+			break;
+		}
+	}
+	return (lastSnap ? durable.filter((e) => e.seq > lastSnap.seq).length : durable.length) >= every;
+}
+function buildSnapshotEvent(runId, events, registry, options) {
+	const state = foldRun(events, registry, { runId });
+	const last = events[events.length - 1];
+	return createEvent(runId, {
+		type: "runtime.snapshot.taken",
+		payload: options?.includeState ? asJson({
+			seq: last?.seq ?? 0,
+			stateHash: hashRunState(state),
+			state: runStateToJson(state)
+		}) : asJson({
+			seq: last?.seq ?? 0,
+			stateHash: hashRunState(state)
+		}),
+		threadId: null,
+		executionId: null,
+		origin: { type: "system" }
+	});
+}
+function foldFromSnapshots(events, registry, options) {
+	const runId = options?.runId ?? events[0]?.runId ?? "unknown";
+	let latestSnapIdx = -1;
+	for (let i = events.length - 1; i >= 0; i--) if (events[i]?.type === "runtime.snapshot.taken") {
+		latestSnapIdx = i;
+		break;
+	}
+	if (latestSnapIdx < 0) return foldRun(events, registry, { runId });
+	const snap = events[latestSnapIdx];
+	const decoded = decodeUnknownSync(SnapshotTakenPayloadSchema)(snap.payload);
+	if (decoded.state !== void 0) {
+		if (events.filter((e) => e.seq > decoded.seq).length === 0) return fromJsonStruct(decoded.state);
+	}
+	return foldRun(events, registry, { runId });
+}
+function encodeLoomsEvent(event) {
+	const threadId = event.threadId ?? event.executionId ?? null;
+	const parentThreadId = event.parentThreadId ?? event.parentExecutionId ?? null;
+	return {
+		name: event.type,
+		args: {
+			id: event.id,
+			ts: event.ts,
+			payload: payloadAsJson(event.payload),
+			threadId,
+			parentThreadId,
+			executionId: threadId,
+			parentExecutionId: parentThreadId,
+			causationId: event.causationId ?? null,
+			correlationId: event.correlationId ?? null,
+			effectId: event.effectId ?? null,
+			ephemeral: event.ephemeral ?? false,
+			origin: event.origin
+		},
+		seqNum: event.seq,
+		parentSeqNum: Math.max(0, event.seq - 1),
+		clientId: "looms-host",
+		sessionId: "looms-host"
+	};
+}
+function readOrigin(raw) {
+	if ("type" in raw && (raw.type === "thread" || raw.type === "execution")) return {
+		type: "thread",
+		threadId: "threadId" in raw && isString(raw.threadId) ? raw.threadId : "executionId" in raw && isString(raw.executionId) ? raw.executionId : ""
+	};
+	if ("type" in raw && raw.type === "external") {
+		const actorId = "actorId" in raw && isString(raw.actorId) ? raw.actorId : void 0;
+		return actorId ? {
+			type: "external",
+			actorId
+		} : { type: "external" };
+	}
+	return { type: "system" };
+}
+function decodeLoomsEvent(raw, runId) {
+	if (!isReadonlyObject(raw)) throw new Error("Invalid event payload: expected object");
+	if ("name" in raw && isString(raw.name)) {
+		const args = "args" in raw && isReadonlyObject(raw.args) ? raw.args : {};
+		const payload = "payload" in args ? args.payload : {};
+		const id = "id" in args && isString(args.id) ? args.id : createEventId();
+		const ts = "ts" in args && isNumber(args.ts) ? args.ts : Date.now();
+		const ephemeral = "ephemeral" in args && isBoolean(args.ephemeral) ? args.ephemeral : false;
+		const threadId = "threadId" in args && isString(args.threadId) ? args.threadId : "executionId" in args && isString(args.executionId) ? args.executionId : null;
+		const parentThreadId = "parentThreadId" in args && isString(args.parentThreadId) ? args.parentThreadId : "parentExecutionId" in args && isString(args.parentExecutionId) ? args.parentExecutionId : null;
+		const causationId = "causationId" in args && isString(args.causationId) ? args.causationId : null;
+		const correlationId = "correlationId" in args && isString(args.correlationId) ? args.correlationId : null;
+		const effectId = "effectId" in args && isString(args.effectId) ? args.effectId : null;
+		const seq = "seqNum" in raw && isNumber(raw.seqNum) ? raw.seqNum : 0;
+		const origin = "origin" in args && isReadonlyObject(args.origin) ? readOrigin(args.origin) : { type: "system" };
+		return createEvent(runId, {
+			id,
+			ts,
+			type: raw.name,
+			payload,
+			threadId,
+			parentThreadId,
+			executionId: threadId,
+			parentExecutionId: parentThreadId,
+			causationId,
+			correlationId,
+			effectId,
+			ephemeral,
+			origin
+		}, { seq });
+	}
+	if ("type" in raw && isString(raw.type)) {
+		const payload = "payload" in raw ? raw.payload : {};
+		const id = "id" in raw && isString(raw.id) ? raw.id : createEventId();
+		const ts = "ts" in raw && isNumber(raw.ts) ? raw.ts : Date.now();
+		const seq = "seq" in raw && isNumber(raw.seq) ? raw.seq : 0;
+		const ephemeral = "ephemeral" in raw && isBoolean(raw.ephemeral) ? raw.ephemeral : false;
+		const itemRunId = "runId" in raw && isString(raw.runId) ? raw.runId : runId;
+		const threadId = "threadId" in raw && isString(raw.threadId) ? raw.threadId : "executionId" in raw && isString(raw.executionId) ? raw.executionId : null;
+		const parentThreadId = "parentThreadId" in raw && isString(raw.parentThreadId) ? raw.parentThreadId : "parentExecutionId" in raw && isString(raw.parentExecutionId) ? raw.parentExecutionId : null;
+		const origin = "origin" in raw && isReadonlyObject(raw.origin) ? readOrigin(raw.origin) : { type: "system" };
+		return createEvent(itemRunId, {
+			id,
+			ts,
+			type: raw.type,
+			payload,
+			threadId,
+			parentThreadId,
+			executionId: threadId,
+			parentExecutionId: parentThreadId,
+			causationId: "causationId" in raw && isString(raw.causationId) ? raw.causationId : null,
+			correlationId: "correlationId" in raw && isString(raw.correlationId) ? raw.correlationId : null,
+			effectId: "effectId" in raw && isString(raw.effectId) ? raw.effectId : null,
+			ephemeral,
+			origin
+		}, { seq });
+	}
+	throw new Error("Unrecognized event format: must have \"name\" (LiveStore) or \"type\" (Looms)");
+}
+function decodeAppendableEvent(raw, runId) {
+	try {
+		const { seq: _, ...rest } = decodeLoomsEvent(raw, runId);
+		return rest;
+	} catch {
+		return;
+	}
+}
+//#endregion
 //#region node_modules/.nitro/vite/services/ssr/index.js
-var ssr_exports = /* @__PURE__ */ __exportAll({
+var ssr_exports = /* @__PURE__ */ __exportAll$1({
 	AppendAck: () => AppendAck,
 	DEFAULT_USER_AGENT: () => DEFAULT_USER_AGENT,
 	RangeNotSatisfiableError: () => RangeNotSatisfiableError,
@@ -21,25 +1456,62 @@ var ssr_exports = /* @__PURE__ */ __exportAll({
 	RetryReadSession: () => RetryReadSession,
 	S2Error: () => S2Error,
 	S2_ENCRYPTION_KEY_HEADER: () => S2_ENCRYPTION_KEY_HEADER,
-	TwistEventSchema: () => TwistEventSchema,
+	__exportAll: () => __exportAll,
+	__toESM: () => __toESM,
+	assistant: () => assistant,
 	bigintToSafeNumber: () => bigintToSafeNumber,
+	checkout: () => checkout,
 	convertProtoRecord: () => convertProtoRecord,
 	createMiddleware: () => createMiddleware,
 	default: () => server_default,
+	echo: () => echo,
 	encodeProtoAppendInput: () => encodeProtoAppendInput,
 	err: () => err,
 	errClose: () => errClose,
-	fromWireEvent: () => fromWireEvent,
+	greeter: () => greeter,
 	makeAppendPreconditionError: () => makeAppendPreconditionError,
 	makeServerError: () => makeServerError,
 	ok: () => ok,
 	okClose: () => okClose,
+	orchestrator: () => orchestrator,
+	pipeline: () => pipeline,
 	require_src: () => require_src,
 	s2Error: () => s2Error,
 	value: () => value
 });
 require_react();
 var import_jsx_runtime = require_jsx_runtime();
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
+var __exportAll = (all, no_symbols) => {
+	let target = {};
+	for (var name in all) __defProp(target, name, {
+		get: all[name],
+		enumerable: true
+	});
+	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+	return target;
+};
+var __copyProps = (to, from, except, desc) => {
+	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+		key = keys[i];
+		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+			get: ((k) => from[k]).bind(null, key),
+			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+		});
+	}
+	return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", {
+	value: mod,
+	enumerable: true
+}) : target, mod));
+var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 function StartServer(props) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RouterProvider, { router: props.router });
 }
@@ -3987,7 +5459,7 @@ var defaultSerovalPlugins = [
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-DMMSdzUi.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-C_H1vUOt.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -5735,7 +7207,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-CaiYRCFU.mjs").then((n) => n.router_exports),
+		import("./router-B1jQBEKH.mjs").then((n) => n.router_exports),
 		import("./start-COvwumqL.mjs"),
 		import("./empty-plugin-adapters-MYqV26gF.mjs")
 	]);
@@ -6180,711 +7652,167 @@ function createServerEntry(entry) {
 	} };
 }
 var server_default$1 = createServerEntry({ fetch: fetch$1 });
-function llmFromAdapter(adapter) {
-	return { complete: (args) => tryPromise({
-		try: () => adapter.complete(args),
-		catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
-	}) };
-}
-var LlmTag = class extends Service()("twist/Llm") {};
-/**
-* Deterministic LLM stub for tests: echoes the last user message,
-* or emits tool calls from a simple policy.
-*/
-var makeStubLlm = (policy = {}) => ({ complete: (args) => sync(() => {
-	const ctx = {
-		actorId: "stub",
-		turn: 0,
-		messages: args.messages,
-		input: null,
-		tools: args.tools,
-		instructions: args.instructions
-	};
-	const toolCalls = policy.toolCallsFor?.(ctx);
-	if (toolCalls && toolCalls.length > 0) return {
-		message: {
-			role: "assistant",
-			content: "",
-			toolCalls
-		},
-		toolCalls
-	};
-	const lastUser = [...args.messages].reverse().find((m) => m.role === "user");
-	const lastContent = args.messages.at(-1)?.content;
-	const content = lastUser?.content ?? (isString(lastContent) ? lastContent : JSON.stringify(lastContent ?? null));
-	const done = policy.doneAfterText !== false;
-	return {
-		message: {
-			role: "assistant",
-			content
-		},
-		done,
-		output: { text: content }
-	};
-}) });
-var StubLlmLive = (policy) => succeed(LlmTag, makeStubLlm(policy));
-/** JSON-compatible wire schema (Effect 4 mutable JSON). */
-var JsonValueSchema = MutableJson;
-var EventTypeSchema = Literals([
-	"actor.started",
-	"actor.completed",
-	"actor.failed",
-	"actor.cancelled",
-	"agent.message.received",
-	"agent.turn.started",
-	"agent.turn.text_delta",
-	"agent.turn.steered",
-	"agent.message",
-	"agent.tool_call.requested",
-	"tool.result",
-	"child.spawned",
-	"child.completed",
-	"workflow.node.started",
-	"workflow.node.finished",
-	"workflow.node.skipped",
-	"review.requested",
-	"review.decided",
-	"review.timed_out",
-	"timer.set",
-	"timer.fired",
-	"snapshot.taken"
-]);
-var EventOriginSchema = Struct({
-	clientId: String$1,
-	sessionId: String$1
-});
-var TwistEventSchema = Struct({
-	id: String$1,
-	actorId: String$1,
-	type: EventTypeSchema,
-	seq: Number$1,
-	ts: Number$1,
-	ephemeral: optional(Boolean$1),
-	parentActorId: optional(NullOr(String$1)),
-	origin: optional(EventOriginSchema),
-	payload: JsonValueSchema
-});
-/**
-* Promote a wire-decoded event (JsonValue payload) into the typed event union.
-*/
-function fromWireEvent(wire) {
-	return wire;
-}
-/** Assign actorId + seq to an appendable event, restoring a full TwistEvent. */
-function withAssignedSeq(partial, actorId, seq) {
-	return {
-		...partial,
-		actorId,
-		seq
-	};
-}
-/** Serialize a typed domain payload for JsonValue storage (EventRow, HTTP, etc.). */
-function payloadAsJson(payload) {
-	return JSON.parse(JSON.stringify(payload));
-}
-/** Build a TwistEvent from a typed signal (HTTP / client commit). */
-function eventFromSignal(signal, actorId, options) {
-	return {
-		id: signal.id ?? createEventId(),
-		actorId,
-		type: signal.type,
-		seq: options?.seq ?? 0,
-		ts: signal.ts ?? Date.now(),
-		ephemeral: signal.ephemeral,
-		parentActorId: signal.parentActorId,
-		origin: signal.origin,
-		payload: signal.payload
-	};
-}
-Struct({
-	seq: Number$1,
-	stateHash: String$1,
-	state: optional(JsonValueSchema)
-});
-var eventCounter = 0;
-function createEventId() {
-	eventCounter += 1;
-	return `evt_${Date.now().toString(36)}_${eventCounter.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-function event(type, actorId, payload, options) {
-	return {
-		id: options?.id ?? createEventId(),
-		actorId,
-		type,
-		seq: options?.seq ?? 0,
-		ts: options?.ts ?? Date.now(),
-		ephemeral: options?.ephemeral,
-		parentActorId: options?.parentActorId,
-		origin: options?.origin,
-		payload
-	};
-}
-function initialAgent(actorId, definitionName, input, parentActorId, maxTurns = 20) {
-	return {
-		actorId,
-		kind: "agent",
-		status: "pending",
-		definitionName,
-		input,
-		output: null,
-		error: null,
-		parentActorId,
-		children: {},
-		reviews: {},
-		owed: [],
-		messages: [],
-		pendingToolCalls: [],
-		turn: 0,
-		maxTurns,
-		pendingSteer: null
-	};
-}
-function initialWorkflow(actorId, definitionName, input, parentActorId, nodeIds, concurrency = 8) {
-	return {
-		actorId,
-		kind: "workflow",
-		status: "pending",
-		definitionName,
-		input,
-		output: null,
-		error: null,
-		parentActorId,
-		children: {},
-		reviews: {},
-		owed: [],
-		concurrency,
-		nodes: Object.fromEntries(nodeIds.map((nodeId) => [nodeId, {
-			status: "pending",
-			result: null,
-			error: null
-		}]))
-	};
-}
-function setOwed(state, owed) {
-	return {
-		...state,
-		owed
-	};
-}
-function appendOwed(state, work) {
-	return setOwed(state, [...state.owed, work]);
-}
-function removeOwed(state, predicate) {
-	return setOwed(state, state.owed.filter((work) => !predicate(work)));
-}
-function payloadOf(event) {
-	return event.payload;
-}
-function applyAgentEvent(state, event) {
-	switch (event.type) {
-		case "actor.started": {
-			const payload = payloadOf(event);
-			return appendOwed({
-				...state,
-				status: "running",
-				definitionName: payload.definitionName,
-				input: payload.input,
-				parentActorId: payload.parentActorId,
-				maxTurns: payload.maxTurns ?? state.maxTurns
-			}, {
-				type: "agent.turn",
-				turn: 1
+function toModelMessages(messages) {
+	const converted = [];
+	for (const message of messages) switch (message.role) {
+		case "system": break;
+		case "user":
+			converted.push({
+				role: "user",
+				content: message.content
 			});
-		}
-		case "agent.message.received": {
-			const payload = payloadOf(event);
-			const next = {
-				...state,
-				messages: [...state.messages, payload.message],
-				status: state.status === "completed" || state.status === "failed" ? state.status : "running"
-			};
-			if (state.pendingToolCalls.length === 0 && !state.owed.some((w) => w.type === "agent.turn")) return appendOwed(next, {
-				type: "agent.turn",
-				turn: state.turn + 1
-			});
-			return next;
-		}
-		case "agent.turn.started": {
-			const payload = payloadOf(event);
-			return removeOwed({
-				...state,
-				turn: payload.turn,
-				status: "running",
-				pendingSteer: null
-			}, (w) => w.type === "agent.turn" && w.turn === payload.turn);
-		}
-		case "agent.message": {
-			const payload = payloadOf(event);
-			return {
-				...state,
-				messages: [...state.messages, payload.message]
-			};
-		}
-		case "agent.tool_call.requested": {
-			const payload = payloadOf(event);
-			return appendOwed({
-				...state,
-				pendingToolCalls: [...state.pendingToolCalls, payload.toolCall]
-			}, {
-				type: "tool.execute",
-				turn: payload.turn,
-				toolCall: payload.toolCall
-			});
-		}
-		case "tool.result": {
-			const payload = payloadOf(event);
-			const pendingToolCalls = state.pendingToolCalls.filter((t) => t.id !== payload.toolCallId);
-			let next = removeOwed({
-				...state,
-				pendingToolCalls,
-				messages: [...state.messages, {
-					role: "tool",
-					content: payload.error ?? JSON.stringify(payload.result ?? null),
-					toolCallId: payload.toolCallId,
-					name: payload.name
-				}]
-			}, (w) => w.type === "tool.execute" && w.toolCall.id === payload.toolCallId);
-			if (pendingToolCalls.length === 0 && next.status === "running") next = appendOwed(next, {
-				type: "agent.turn",
-				turn: state.turn + 1
-			});
-			return next;
-		}
-		case "child.spawned": {
-			const payload = payloadOf(event);
-			let next = {
-				...state,
-				status: "waiting_child",
-				children: {
-					...state.children,
-					[payload.childActorId]: {
-						kind: payload.childKind,
-						definitionName: payload.childDefinitionName,
-						status: "running"
-					}
-				}
-			};
-			if (payload.toolCallId) next = removeOwed({
-				...next,
-				pendingToolCalls: next.pendingToolCalls.filter((t) => t.id !== payload.toolCallId)
-			}, (w) => w.type === "tool.execute" && w.toolCall.id === payload.toolCallId);
-			return appendOwed(next, {
-				type: "child.wait",
-				childActorId: payload.childActorId
-			});
-		}
-		case "child.completed": {
-			const payload = payloadOf(event);
-			const child = state.children[payload.childActorId];
-			let next = removeOwed({
-				...state,
-				children: {
-					...state.children,
-					[payload.childActorId]: {
-						kind: child?.kind ?? "agent",
-						definitionName: child?.definitionName ?? "unknown",
-						status: payload.error ? "failed" : "completed",
-						output: payload.result,
-						error: payload.error
-					}
-				}
-			}, (w) => w.type === "child.wait" && w.childActorId === payload.childActorId);
-			if (!Object.values(next.children).some((c) => c.status === "running") && next.status === "waiting_child") next = appendOwed({
-				...next,
-				status: "running"
-			}, {
-				type: "agent.turn",
-				turn: next.turn + 1
-			});
-			return next;
-		}
-		case "review.requested": {
-			const payload = payloadOf(event);
-			return appendOwed({
-				...state,
-				status: "waiting_review",
-				reviews: {
-					...state.reviews,
-					[payload.reviewId]: {
-						reviewId: payload.reviewId,
-						title: payload.title,
-						description: payload.description,
-						schema: payload.schema,
-						actions: payload.actions,
-						nodeId: payload.nodeId,
-						status: "pending"
-					}
-				}
-			}, {
-				type: "review.wait",
-				reviewId: payload.reviewId
-			});
-		}
-		case "review.decided": {
-			const payload = payloadOf(event);
-			const existing = state.reviews[payload.reviewId];
-			let next = removeOwed({
-				...state,
-				reviews: {
-					...state.reviews,
-					[payload.reviewId]: {
-						reviewId: payload.reviewId,
-						title: existing?.title ?? "Review",
-						description: existing?.description,
-						schema: existing?.schema,
-						actions: existing?.actions ?? [],
-						nodeId: existing?.nodeId,
-						status: payload.outcome === "approve" ? "approved" : "rejected",
-						decision: payload.payload ?? { actionId: payload.actionId }
-					}
-				}
-			}, (w) => w.type === "review.wait" && w.reviewId === payload.reviewId);
-			if (payload.outcome === "reject") return appendOwed({
-				...next,
-				status: "failed",
-				error: `Review ${payload.reviewId} rejected`
-			}, { type: "finalize" });
-			return appendOwed({
-				...next,
-				status: "running"
-			}, {
-				type: "agent.turn",
-				turn: next.turn + 1
-			});
-		}
-		case "actor.completed": {
-			const payload = payloadOf(event);
-			return setOwed({
-				...state,
-				status: "completed",
-				output: payload.output,
-				owed: []
-			}, []);
-		}
-		case "actor.failed": {
-			const payload = payloadOf(event);
-			return setOwed({
-				...state,
-				status: "failed",
-				error: payload.error,
-				owed: []
-			}, []);
-		}
-		case "actor.cancelled": return setOwed({
-			...state,
-			status: "cancelled",
-			owed: []
-		}, []);
-		case "agent.turn.steered": {
-			const payload = payloadOf(event);
-			let next = {
-				...state,
-				messages: [...state.messages, payload.message],
-				pendingSteer: payload.message,
-				status: "running"
-			};
-			if (payload.interrupt) {
-				next = {
-					...next,
-					pendingToolCalls: [],
-					owed: next.owed.filter((w) => w.type !== "tool.execute")
-				};
-				next = appendOwed(next, {
-					type: "agent.turn",
-					turn: Math.max(state.turn, payload.turn) + 1
+			break;
+		case "assistant": {
+			const toolCalls = message.toolCalls ?? [];
+			if (toolCalls.length === 0) {
+				converted.push({
+					role: "assistant",
+					content: message.content
 				});
+				break;
 			}
-			return next;
+			const content = [];
+			if (message.content) content.push({
+				type: "text",
+				text: message.content
+			});
+			for (const toolCall of toolCalls) content.push({
+				type: "tool-call",
+				toolCallId: toolCall.id,
+				toolName: toolCall.name,
+				input: toolCall.arguments
+			});
+			converted.push({
+				role: "assistant",
+				content
+			});
+			break;
 		}
-		case "agent.turn.text_delta":
-		case "snapshot.taken":
-		case "workflow.node.started":
-		case "workflow.node.finished":
-		case "workflow.node.skipped":
-		case "timer.set":
-		case "timer.fired":
-		case "review.timed_out": return state;
-		default: return state;
+		case "tool":
+			converted.push({
+				role: "tool",
+				content: [{
+					type: "tool-result",
+					toolCallId: message.toolCallId ?? message.name ?? "unknown",
+					toolName: message.name ?? "unknown",
+					output: parseToolOutput(message.content)
+				}]
+			});
+			break;
+		default: return message.role;
+	}
+	return converted;
+}
+function parseToolOutput(content) {
+	try {
+		return {
+			type: "json",
+			value: JSON.parse(content)
+		};
+	} catch {
+		return {
+			type: "text",
+			value: content
+		};
 	}
 }
-function applyWorkflowEvent(state, event) {
-	switch (event.type) {
-		case "actor.started": {
-			const payload = payloadOf(event);
-			const nodeIds = payload.nodeIds ?? Object.keys(state.nodes);
-			return appendOwed({
-				...state,
-				status: "running",
-				definitionName: payload.definitionName,
-				input: payload.input,
-				parentActorId: payload.parentActorId,
-				concurrency: payload.concurrency ?? state.concurrency,
-				nodes: Object.fromEntries(nodeIds.map((nodeId) => [nodeId, state.nodes[nodeId] ?? {
-					status: "pending",
-					result: null,
-					error: null
-				}]))
-			}, { type: "workflow.schedule" });
-		}
-		case "workflow.node.started": {
-			const payload = payloadOf(event);
-			return removeOwed(removeOwed({
-				...state,
-				nodes: {
-					...state.nodes,
-					[payload.nodeId]: {
-						status: "running",
-						result: null,
-						error: null,
-						reviewId: state.nodes[payload.nodeId]?.reviewId
-					}
-				}
-			}, (w) => w.type === "workflow.run_node" && w.nodeId === payload.nodeId), (w) => w.type === "workflow.schedule");
-		}
-		case "workflow.node.finished": {
-			const payload = payloadOf(event);
-			const next = {
-				...state,
-				nodes: {
-					...state.nodes,
-					[payload.nodeId]: {
-						status: payload.error ? "failed" : "completed",
-						result: payload.result,
-						error: payload.error
-					}
-				}
-			};
-			if (payload.error) return appendOwed({
-				...next,
-				status: "failed",
-				error: payload.error
-			}, { type: "finalize" });
-			return appendOwed(removeOwed(next, (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
-		}
-		case "workflow.node.skipped": {
-			const payload = payloadOf(event);
-			return appendOwed(removeOwed({
-				...state,
-				nodes: {
-					...state.nodes,
-					[payload.nodeId]: {
-						status: "skipped",
-						result: null,
-						error: null
-					}
-				}
-			}, (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
-		}
-		case "review.requested": {
-			const payload = payloadOf(event);
-			const nodeId = payload.nodeId;
-			return appendOwed({
-				...state,
-				status: "waiting_review",
-				reviews: {
-					...state.reviews,
-					[payload.reviewId]: {
-						reviewId: payload.reviewId,
-						title: payload.title,
-						description: payload.description,
-						schema: payload.schema,
-						actions: payload.actions,
-						nodeId,
-						status: "pending"
-					}
-				},
-				nodes: nodeId ? {
-					...state.nodes,
-					[nodeId]: {
-						status: "waiting_review",
-						result: null,
-						error: null,
-						reviewId: payload.reviewId
-					}
-				} : state.nodes
-			}, {
-				type: "review.wait",
-				reviewId: payload.reviewId
+function toLoomsToolCalls(calls) {
+	return calls.map((call) => ({
+		id: call.toolCallId,
+		name: call.toolName,
+		arguments: call.input
+	}));
+}
+function toAiTools(specs) {
+	return Object.fromEntries(specs.map((spec) => [spec.name, tool({
+		description: spec.description,
+		inputSchema: jsonSchema(spec.inputJsonSchema)
+	})]));
+}
+function toolCallInput(call) {
+	return ("input" in call ? call.input : {}) ?? {};
+}
+function vercelLlm(options) {
+	const streamEnabled = options.stream !== false;
+	return { async complete(args) {
+		const messages = toModelMessages(args.messages);
+		const tools = args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : void 0;
+		if (streamEnabled && args.onTextDelta !== void 0) {
+			const result = tools ? streamText({
+				model: options.model,
+				instructions: args.instructions,
+				messages,
+				abortSignal: args.signal,
+				tools
+			}) : streamText({
+				model: options.model,
+				instructions: args.instructions,
+				messages,
+				abortSignal: args.signal
 			});
-		}
-		case "review.decided": {
-			const payload = payloadOf(event);
-			const existing = state.reviews[payload.reviewId];
-			const nodeId = existing?.nodeId;
-			let next = removeOwed({
-				...state,
-				reviews: {
-					...state.reviews,
-					[payload.reviewId]: {
-						reviewId: payload.reviewId,
-						title: existing?.title ?? "Review",
-						description: existing?.description,
-						schema: existing?.schema,
-						actions: existing?.actions ?? [],
-						nodeId,
-						status: payload.outcome === "approve" ? "approved" : "rejected",
-						decision: payload.payload ?? { actionId: payload.actionId }
-					}
-				}
-			}, (w) => w.type === "review.wait" && w.reviewId === payload.reviewId);
-			if (payload.outcome === "reject") return appendOwed({
-				...next,
-				status: "failed",
-				error: `Review ${payload.reviewId} rejected`,
-				nodes: nodeId ? {
-					...next.nodes,
-					[nodeId]: {
-						status: "failed",
-						result: null,
-						error: "rejected",
-						reviewId: payload.reviewId
-					}
-				} : next.nodes
-			}, { type: "finalize" });
-			if (nodeId) {
-				next = {
-					...next,
-					status: "running",
-					nodes: {
-						...next.nodes,
-						[nodeId]: {
-							status: "completed",
-							result: payload.payload ?? { approved: true },
-							error: null,
-							reviewId: payload.reviewId
-						}
+			for await (const part of result.fullStream) if (part.type === "text-delta") {
+				const delta = "text" in part ? part.text : "";
+				if (delta) await args.onTextDelta?.(delta);
+			}
+			try {
+				const [text, rawToolCalls] = await Promise.all([result.text, result.toolCalls]);
+				const toolCalls = toLoomsToolCalls(rawToolCalls.map((call) => ({
+					toolCallId: call.toolCallId,
+					toolName: call.toolName,
+					input: toolCallInput(call)
+				})));
+				return {
+					message: {
+						role: "assistant",
+						content: text,
+						toolCalls
+					},
+					toolCalls,
+					usage: {
+						input: 0,
+						output: text.length
 					}
 				};
-				return appendOwed(removeOwed(next, (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
+			} catch (err) {
+				if (!(err instanceof Error) || !err.message.includes("No output generated")) throw err;
 			}
-			return appendOwed(removeOwed({
-				...next,
-				status: "running"
-			}, (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
 		}
-		case "child.spawned": {
-			const payload = payloadOf(event);
-			return appendOwed({
-				...state,
-				status: "waiting_child",
-				children: {
-					...state.children,
-					[payload.childActorId]: {
-						kind: payload.childKind,
-						definitionName: payload.childDefinitionName,
-						status: "running"
-					}
-				}
-			}, {
-				type: "child.wait",
-				childActorId: payload.childActorId
-			});
-		}
-		case "child.completed": {
-			const payload = payloadOf(event);
-			const child = state.children[payload.childActorId];
-			let next = removeOwed({
-				...state,
-				children: {
-					...state.children,
-					[payload.childActorId]: {
-						kind: child?.kind ?? "workflow",
-						definitionName: child?.definitionName ?? "unknown",
-						status: payload.error ? "failed" : "completed",
-						output: payload.result,
-						error: payload.error
-					}
-				}
-			}, (w) => w.type === "child.wait" && w.childActorId === payload.childActorId);
-			if (!Object.values(next.children).some((c) => c.status === "running")) {
-				next = {
-					...next,
-					status: "running"
-				};
-				return appendOwed(removeOwed(next, (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
+		const result = tools ? await generateText({
+			model: options.model,
+			instructions: args.instructions,
+			messages,
+			abortSignal: args.signal,
+			tools
+		}) : await generateText({
+			model: options.model,
+			instructions: args.instructions,
+			messages,
+			abortSignal: args.signal
+		});
+		const toolCalls = toLoomsToolCalls(result.toolCalls.map((call) => ({
+			toolCallId: call.toolCallId,
+			toolName: call.toolName,
+			input: toolCallInput(call)
+		})));
+		return {
+			message: {
+				role: "assistant",
+				content: result.text,
+				toolCalls
+			},
+			toolCalls,
+			usage: {
+				input: result.usage?.inputTokens ?? 0,
+				output: result.usage?.outputTokens ?? result.text.length
 			}
-			return next;
-		}
-		case "timer.set": {
-			const payload = payloadOf(event);
-			return appendOwed(removeOwed({
-				...state,
-				status: "waiting_timer"
-			}, (w) => w.type === "workflow.schedule"), {
-				type: "timer.wait",
-				timerId: payload.timerId,
-				wakeAt: payload.wakeAt
-			});
-		}
-		case "timer.fired": {
-			const payload = payloadOf(event);
-			return appendOwed(removeOwed(removeOwed({
-				...state,
-				status: "running"
-			}, (w) => w.type === "timer.wait" && w.timerId === payload.timerId), (w) => w.type === "workflow.schedule"), { type: "workflow.schedule" });
-		}
-		case "actor.completed": {
-			const payload = payloadOf(event);
-			return setOwed({
-				...state,
-				status: "completed",
-				output: payload.output,
-				owed: []
-			}, []);
-		}
-		case "actor.failed": {
-			const payload = payloadOf(event);
-			return setOwed({
-				...state,
-				status: "failed",
-				error: payload.error,
-				owed: []
-			}, []);
-		}
-		case "actor.cancelled": return setOwed({
-			...state,
-			status: "cancelled",
-			owed: []
-		}, []);
-		case "snapshot.taken":
-		case "agent.message.received":
-		case "agent.turn.started":
-		case "agent.turn.text_delta":
-		case "agent.turn.steered":
-		case "agent.message":
-		case "agent.tool_call.requested":
-		case "tool.result":
-		case "review.timed_out": return state;
-		default: return state;
-	}
-}
-function reduceActor(events, options) {
-	const first = events.find((e) => e.type === "actor.started");
-	const started = first ? payloadOf(first) : void 0;
-	const kind = options?.kind ?? started?.kind ?? "agent";
-	const actorId = options?.actorId ?? events[0]?.actorId ?? "unknown";
-	const definitionName = options?.definitionName ?? started?.definitionName ?? "unknown";
-	const input = options?.input ?? started?.input ?? null;
-	const parentActorId = started?.parentActorId ?? null;
-	let state = kind === "workflow" ? initialWorkflow(actorId, definitionName, input, parentActorId, options?.nodeIds ?? started?.nodeIds ?? [], started?.concurrency) : initialAgent(actorId, definitionName, input, parentActorId, started?.maxTurns);
-	for (const event of events) {
-		if (event.ephemeral) continue;
-		if (state.kind === "agent") state = applyAgentEvent(state, event);
-		else state = applyWorkflowEvent(state, event);
-	}
-	return state;
-}
-function isTerminal(state) {
-	return state.status === "completed" || state.status === "failed" || state.status === "cancelled";
-}
-function isParked(state) {
-	return state.status === "waiting_review" || state.status === "waiting_child" || state.status === "waiting_timer" || state.owed.every((w) => w.type === "review.wait" || w.type === "child.wait" || w.type === "timer.wait");
+		};
+	} };
 }
 var InvalidInputError = class extends Error {
 	_tag = "InvalidInputError";
 	issues;
-	constructor(message, issues = []) {
-		super(message);
+	constructor(text, issues = []) {
+		super(text);
 		this.name = "InvalidInputError";
 		this.issues = issues;
 	}
@@ -6915,9 +7843,516 @@ async function validateInput(schemaOrDef, raw) {
 	if (result.issues !== void 0) throw new InvalidInputError(`Invalid input: ${result.issues.map(formatIssue).join(", ")}`, result.issues);
 	return result.value;
 }
-async function validateDefinitionInput(def, raw) {
-	if (!def || !("input" in def) || !def.input) return raw;
-	return await validateInput(def.input, raw);
+function isPrimitiveEffect(effect) {
+	switch (effect.type) {
+		case "runtime.spawn":
+		case "runtime.wait":
+		case "runtime.emit":
+		case "runtime.complete":
+		case "runtime.fail":
+		case "runtime.cancel": return true;
+		default: return false;
+	}
+}
+function isWaitOnTimer(on) {
+	return "timerAt" in on;
+}
+function isWaitOnEvent(on) {
+	return "type" in on;
+}
+function liftHandlerResult(result) {
+	if (isEffect(result)) return result;
+	if (result instanceof Promise) return tryPromise({
+		try: () => result,
+		catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+	});
+	return succeed(result);
+}
+/**
+* Handlers may `yield*` host services. `createRuntime` provides each module's
+* `services` Layer before the effect is run, so those requirements are closed here.
+*/
+function closeHandlerRequirements(effect) {
+	return effect;
+}
+function defineEffect(def) {
+	return {
+		type: def.type,
+		input: def.input,
+		execute: (raw, ctx) => closeHandlerRequirements(gen(function* () {
+			const input = def.input ? yield* tryPromise(() => validateInput(def.input, raw)) : raw;
+			return yield* liftHandlerResult(def.execute(input, ctx));
+		}))
+	};
+}
+function spawn(args) {
+	const childThreadId = args.childThreadId ?? args.childExecutionId ?? "";
+	return {
+		type: "runtime.spawn",
+		childThreadId,
+		childExecutionId: childThreadId,
+		kind: args.kind,
+		definitionName: args.definitionName,
+		input: args.input
+	};
+}
+function wait(args) {
+	const effect = {
+		type: "runtime.wait",
+		waitId: args.waitId,
+		on: args.on
+	};
+	if (args.tag !== void 0) effect.tag = args.tag;
+	return effect;
+}
+function emit(event) {
+	return {
+		type: "runtime.emit",
+		event
+	};
+}
+function fail(error) {
+	return {
+		type: "runtime.fail",
+		error
+	};
+}
+function invoke(type, input) {
+	return {
+		type,
+		input
+	};
+}
+function isSubset(match, payload) {
+	if (match === payload) return true;
+	if (Array.isArray(match)) {
+		if (!Array.isArray(payload)) return false;
+		if (match.length !== payload.length) return false;
+		return match.every((item, index) => isSubset(item, payload[index] ?? null));
+	}
+	if (isReadonlyObject(match)) {
+		if (!isObject(payload)) return false;
+		for (const key of Object.keys(match)) {
+			const expected = match[key];
+			if (expected === void 0) continue;
+			if (!(key in payload)) return false;
+			const actual = payload[key];
+			if (actual === void 0) return false;
+			if (!isSubset(expected, actual)) return false;
+		}
+		return true;
+	}
+	return false;
+}
+function matchesWait(event, on) {
+	if (isWaitOnTimer(on)) return event.type === "runtime.timer.fired";
+	if (!isWaitOnEvent(on)) return false;
+	if (event.type !== on.type) return false;
+	if (on.match === void 0) return true;
+	return isSubset(on.match, event.payload);
+}
+function matchingWaits(event, waits) {
+	return waits.filter((record) => matchesWait(event, record.on));
+}
+function replayTo(events, registry, seq) {
+	const target = events.find((event) => event.seq === seq && !event.ephemeral);
+	if (!target) return null;
+	const before = foldRun(events.filter((event) => event.seq < seq), registry, { runId: target.runId });
+	const after = foldEvent(before, target, registry);
+	const beforeIds = new Set(before.outstandingEffects.map((item) => item.effectId));
+	return {
+		seq,
+		event: target,
+		before,
+		after,
+		effects: after.outstandingEffects.filter((item) => !beforeIds.has(item.effectId)).map((item) => item.effect)
+	};
+}
+function defineRuntimeModule(module) {
+	return module;
+}
+function stripSeq(events) {
+	return events.map(({ seq: _seq, ...rest }) => rest);
+}
+function bindThreads(modules, state) {
+	for (const record of Object.values(state.threads)) for (const module of modules) if (module.bindThread) module.bindThread(record);
+	else if (module.bindExecution) module.bindExecution(record);
+}
+function moduleServices(modules, definitions) {
+	let merged = empty;
+	for (const module of modules) if (module.services) merged = merge(merged, module.services({ definitions }));
+	return merged;
+}
+function waitSatisfiedEvents(state, events) {
+	const produced = [];
+	const remaining = { ...state.waits };
+	for (const event of events) {
+		if (event.ephemeral || event.type === "runtime.wait.satisfied") continue;
+		const matches = matchingWaits(event, Object.values(remaining));
+		for (const record of matches) {
+			produced.push({
+				type: "runtime.wait.satisfied",
+				payload: asJson({
+					waitId: record.waitId,
+					tag: record.tag ?? null,
+					event: {
+						id: event.id,
+						type: event.type,
+						payload: event.payload
+					}
+				}),
+				threadId: record.threadId,
+				executionId: record.threadId,
+				causationId: event.id
+			});
+			delete remaining[record.waitId];
+		}
+	}
+	return produced;
+}
+function createRuntime(options) {
+	const registry = composeModules(options.modules);
+	const registeredDefinitions = options.definitions ?? [];
+	const definitions = new Map(registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def]));
+	const services = moduleServices(options.modules, registeredDefinitions);
+	const waking = /* @__PURE__ */ new Set();
+	const snapshotEvery = options.snapshotEvery;
+	const runtime = {
+		modules: options.modules,
+		registry,
+		listRuns: () => gen(function* () {
+			return yield* (yield* EventStoreTag).listRuns();
+		}),
+		getEvents: (runId, options) => gen(function* () {
+			return yield* (yield* EventStoreTag).read(runId, options);
+		}),
+		getRun: (runId) => gen(function* () {
+			return foldFromSnapshots(yield* (yield* EventStoreTag).read(runId), registry, { runId });
+		}),
+		project: (runId, definition) => gen(function* () {
+			return project(definition, yield* runtime.getEvents(runId));
+		}),
+		replayTo: (runId, seq) => gen(function* () {
+			return replayTo(yield* runtime.getEvents(runId), registry, seq);
+		}),
+		startRun: (args) => gen(function* () {
+			const def = definitions.get(`${args.kind}:${args.definitionName}`);
+			if (!def) return yield* fail$1(/* @__PURE__ */ new Error(`Unknown definition ${args.kind}:${args.definitionName}`));
+			const rawInput = args.input ?? null;
+			const validated = def.input ? yield* tryPromise({
+				try: () => {
+					return validateInput(def.input, rawInput);
+				},
+				catch: (err) => err instanceof Error ? err : new Error(String(err))
+			}) : rawInput;
+			const runId = args.runId ?? createRunId();
+			const threadId = args.threadId ?? args.executionId ?? createThreadId();
+			const store = yield* EventStoreTag;
+			const batch = [createEvent(runId, {
+				type: "runtime.run.started",
+				payload: {
+					rootThreadId: threadId,
+					rootExecutionId: threadId,
+					kind: args.kind,
+					definitionName: args.definitionName,
+					input: validated
+				},
+				threadId: null,
+				executionId: null,
+				origin: { type: "system" }
+			}), createEvent(runId, {
+				type: "runtime.thread.started",
+				payload: {
+					threadId,
+					executionId: threadId,
+					kind: args.kind,
+					definitionName: args.definitionName,
+					input: validated,
+					parentThreadId: null,
+					parentExecutionId: null
+				},
+				threadId,
+				executionId: threadId,
+				origin: { type: "system" }
+			})];
+			yield* store.append(runId, stripSeq(batch));
+			return {
+				runId,
+				threadId,
+				executionId: threadId,
+				state: yield* runtime.wake(runId)
+			};
+		}),
+		signal: (runId, events) => gen(function* () {
+			const store = yield* EventStoreTag;
+			const batch = events.map((input) => createEvent(runId, {
+				...input,
+				origin: input.origin ?? { type: "external" }
+			}));
+			yield* store.append(runId, stripSeq(batch));
+			const satisfied = waitSatisfiedEvents(foldFromSnapshots(yield* store.read(runId), registry, { runId }), batch);
+			if (satisfied.length > 0) yield* store.append(runId, satisfied.map((input) => createEvent(runId, input)));
+			return yield* runtime.wake(runId);
+		}),
+		cancel: (runId, threadId) => runtime.signal(runId, [{
+			type: "runtime.thread.cancelled",
+			payload: {
+				threadId: threadId ?? "",
+				executionId: threadId ?? "",
+				reason: "cancelled"
+			},
+			threadId: threadId ?? null,
+			executionId: threadId ?? null,
+			origin: { type: "external" }
+		}]),
+		wake: (runId) => gen(function* () {
+			if (waking.has(runId)) return yield* runtime.getRun(runId);
+			waking.add(runId);
+			try {
+				const store = yield* EventStoreTag;
+				let events = yield* store.read(runId);
+				let state = foldFromSnapshots(events, registry, { runId });
+				let guard = 0;
+				while (!isRunTerminal(state) && !isRunParked(state) && guard < 100) {
+					guard += 1;
+					bindThreads(options.modules, state);
+					const now = Date.now();
+					const due = Object.values(state.waits).filter((record) => isWaitOnTimer(record.on) && record.on.timerAt <= now);
+					if (due.length > 0) {
+						const batch = [];
+						for (const record of due) {
+							if (!isWaitOnTimer(record.on)) continue;
+							batch.push(createEvent(runId, {
+								type: "runtime.timer.fired",
+								payload: {
+									timerId: record.waitId,
+									waitId: record.waitId
+								},
+								threadId: record.threadId,
+								executionId: record.threadId,
+								origin: { type: "system" }
+							}));
+						}
+						yield* store.append(runId, stripSeq(batch));
+						const fired = (yield* store.read(runId)).slice(-batch.length);
+						const satisfied = waitSatisfiedEvents(state, fired);
+						if (satisfied.length > 0) yield* store.append(runId, satisfied.map((input) => createEvent(runId, input)));
+						events = yield* store.read(runId);
+						state = foldFromSnapshots(events, registry, { runId });
+						continue;
+					}
+					const outstanding = state.outstandingEffects;
+					if (outstanding.length === 0) break;
+					const produced = [];
+					for (const item of outstanding) {
+						const outcomes = yield* dispatchEffect(registry, services, item.effect, {
+							effectId: item.effectId,
+							runId,
+							threadId: item.threadId,
+							executionId: item.threadId,
+							causingEventId: item.causingEventId,
+							emit: (input) => {
+								const targetThreadId = input.threadId ?? input.executionId ?? item.threadId;
+								const ephemeral = createEvent(runId, {
+									...input,
+									effectId: item.effectId,
+									causationId: item.causingEventId,
+									threadId: targetThreadId,
+									executionId: targetThreadId,
+									ephemeral: true,
+									origin: input.origin ?? {
+										type: "thread",
+										threadId: item.threadId
+									}
+								});
+								runPromise(store.append(runId, stripSeq([ephemeral])));
+							}
+						});
+						if (outcomes.length === 0) produced.push(createEvent(runId, {
+							type: "runtime.effect.failed",
+							payload: {
+								effectId: item.effectId,
+								error: "empty-outcome"
+							},
+							threadId: item.threadId,
+							executionId: item.threadId,
+							effectId: item.effectId,
+							causationId: item.causingEventId,
+							origin: { type: "system" }
+						}));
+						for (const input of outcomes) {
+							const targetThreadId = input.threadId ?? input.executionId ?? item.threadId;
+							produced.push(createEvent(runId, {
+								...input,
+								effectId: input.effectId ?? item.effectId,
+								causationId: input.causationId ?? item.causingEventId,
+								threadId: targetThreadId,
+								executionId: targetThreadId,
+								origin: input.origin ?? {
+									type: "thread",
+									threadId: item.threadId
+								},
+								id: input.id,
+								ts: input.ts
+							}));
+						}
+					}
+					if (produced.length === 0) break;
+					yield* store.append(runId, stripSeq(produced));
+					events = yield* store.read(runId);
+					state = foldFromSnapshots(events, registry, { runId });
+					const written = events.slice(-produced.length);
+					const satisfied = waitSatisfiedEvents(state, written);
+					if (satisfied.length > 0) {
+						yield* store.append(runId, satisfied.map((input) => createEvent(runId, input)));
+						events = yield* store.read(runId);
+						state = foldFromSnapshots(events, registry, { runId });
+					}
+				}
+				const root = state.rootThreadId ? state.threads[state.rootThreadId] : void 0;
+				if (root && (root.status === "completed" || root.status === "failed" || root.status === "cancelled") && !isRunTerminal(state)) {
+					yield* store.append(runId, [createEvent(runId, {
+						type: "runtime.run.completed",
+						payload: {
+							output: root.output,
+							error: root.error
+						},
+						threadId: null,
+						executionId: null,
+						origin: { type: "system" }
+					})]);
+					events = yield* store.read(runId);
+					state = foldFromSnapshots(events, registry, { runId });
+				}
+				if (shouldTakeSnapshot(events, snapshotEvery)) {
+					const snap = buildSnapshotEvent(runId, events, registry, { includeState: true });
+					yield* store.append(runId, stripSeq([snap]));
+					events = yield* store.read(runId);
+					state = foldFromSnapshots(events, registry, { runId });
+				}
+				return state;
+			} finally {
+				waking.delete(runId);
+			}
+		})
+	};
+	return runtime;
+}
+function dispatchEffect(registry, services, effect, ctx) {
+	const currentThreadId = ctx.threadId ?? ctx.executionId;
+	if (isPrimitiveEffect(effect)) switch (effect.type) {
+		case "runtime.spawn": {
+			const childThreadId = effect.childThreadId ?? effect.childExecutionId ?? "";
+			return succeed([{
+				type: "runtime.thread.started",
+				payload: {
+					threadId: childThreadId,
+					executionId: childThreadId,
+					kind: effect.kind,
+					definitionName: effect.definitionName,
+					input: effect.input,
+					parentThreadId: currentThreadId,
+					parentExecutionId: currentThreadId
+				},
+				threadId: childThreadId,
+				parentThreadId: currentThreadId,
+				executionId: childThreadId,
+				parentExecutionId: currentThreadId
+			}]);
+		}
+		case "runtime.wait": {
+			const events = [{
+				type: "runtime.wait.registered",
+				payload: asJson({
+					waitId: effect.waitId,
+					threadId: currentThreadId,
+					executionId: currentThreadId,
+					on: effect.on,
+					tag: effect.tag ?? null
+				}),
+				threadId: currentThreadId,
+				executionId: currentThreadId
+			}];
+			if (isWaitOnTimer(effect.on)) events.push({
+				type: "runtime.timer.set",
+				payload: {
+					timerId: effect.waitId,
+					waitId: effect.waitId,
+					wakeAt: effect.on.timerAt
+				},
+				threadId: currentThreadId,
+				executionId: currentThreadId
+			});
+			return succeed(events);
+		}
+		case "runtime.emit": return succeed([effect.event]);
+		case "runtime.complete": return succeed([{
+			type: "runtime.thread.completed",
+			payload: {
+				threadId: currentThreadId,
+				executionId: currentThreadId,
+				output: effect.output
+			},
+			threadId: currentThreadId,
+			executionId: currentThreadId
+		}]);
+		case "runtime.fail": return succeed([{
+			type: "runtime.thread.failed",
+			payload: {
+				threadId: currentThreadId,
+				executionId: currentThreadId,
+				error: effect.error
+			},
+			threadId: currentThreadId,
+			executionId: currentThreadId
+		}]);
+		case "runtime.cancel": {
+			const targetThreadId = effect.threadId ?? effect.executionId ?? "";
+			return succeed([{
+				type: "runtime.thread.cancelled",
+				payload: {
+					threadId: targetThreadId,
+					executionId: targetThreadId,
+					reason: "cancelled"
+				},
+				threadId: targetThreadId,
+				executionId: targetThreadId
+			}]);
+		}
+		default: return effect;
+	}
+	const handler = registry.handlers.get(effect.type);
+	if (!handler) return succeed([{
+		type: "runtime.effect.failed",
+		payload: {
+			effectId: ctx.effectId,
+			error: `No handler for ${effect.type}`
+		},
+		threadId: currentThreadId,
+		executionId: currentThreadId
+	}]);
+	const input = "input" in effect ? effect.input : {};
+	return handler.execute(input, ctx).pipe(provide(services), catch_((err) => succeed([{
+		type: "runtime.effect.failed",
+		payload: {
+			effectId: ctx.effectId,
+			error: err instanceof Error ? err.message : String(err)
+		},
+		threadId: currentThreadId,
+		executionId: currentThreadId
+	}])));
+}
+function normalizeTools(tools = []) {
+	return tools.map((entry) => {
+		if (entry.kind === "function" || entry.kind === "thread" || entry.kind === "execution" || entry.kind === "effects") return entry;
+		return asThreadTool({
+			child: {
+				kind: entry.kind,
+				name: entry.name
+			},
+			description: "instructions" in entry && entry.instructions ? entry.instructions : "description" in entry && entry.description ? entry.description : entry.name
+		});
+	});
 }
 function defineTool(def) {
 	return {
@@ -6928,8 +8363,897 @@ function defineTool(def) {
 function defineAgent(def) {
 	return {
 		kind: "agent",
-		...def
+		...def,
+		tools: def.tools ? normalizeTools(def.tools) : void 0
 	};
+}
+function asThreadTool(def) {
+	return {
+		kind: "thread",
+		name: def.name ?? def.child.name,
+		description: def.description ?? def.child.name,
+		inputSchema: def.inputSchema,
+		childKind: def.child.kind,
+		childName: def.child.name,
+		child: def.child,
+		mapInput: def.mapInput
+	};
+}
+function asAgentTool(def) {
+	return asThreadTool({
+		name: def.name,
+		description: def.description ?? def.agent.instructions,
+		inputSchema: def.inputSchema,
+		child: {
+			kind: "agent",
+			name: def.agent.name
+		},
+		mapInput: def.mapInput
+	});
+}
+function asEffectsTool(def) {
+	return {
+		kind: "effects",
+		name: def.name,
+		description: def.description,
+		inputSchema: def.inputSchema,
+		effects: def.effects,
+		waitOn: def.waitOn
+	};
+}
+var AgentDefinitionsTag = class extends Service()("looms/AgentDefinitions") {};
+function makeAgentDefinitionStore(definitions) {
+	const map = new Map(definitions.map((def) => [def.name, def]));
+	return { get: (name) => map.get(name) };
+}
+var AgentDefinitionsLive = (definitions) => succeed$1(AgentDefinitionsTag, makeAgentDefinitionStore(definitions));
+var agentCatalog = defineEventCatalog("agent", {
+	"message.received": payload(),
+	"turn.started": payload(),
+	"turn.text_delta": payload(),
+	message: payload(),
+	"tool_call.requested": payload(),
+	"tool.result": payload(),
+	steered: payload(),
+	"spawn.requested": payload(),
+	"effects.requested": payload()
+});
+function asObject$1(payload) {
+	if (!isObject(payload)) return {};
+	return payload;
+}
+function readString$1(obj, key) {
+	const value = obj[key];
+	return isString(value) ? value : void 0;
+}
+function readNumber(obj, key) {
+	const value = obj[key];
+	return isNumber(value) ? value : void 0;
+}
+function inputToLine(input) {
+	if (input === null) return null;
+	if (isString(input)) return {
+		role: "user",
+		content: input
+	};
+	if (isObject(input) && isString(input.text)) return {
+		role: "user",
+		content: input.text
+	};
+	return {
+		role: "user",
+		content: JSON.stringify(input)
+	};
+}
+function readToolCalls(raw) {
+	const calls = raw.toolCalls;
+	if (!Array.isArray(calls)) return void 0;
+	const listed = [];
+	for (const item of calls) {
+		if (!isObject(item)) continue;
+		const id = readString$1(item, "id");
+		const name = readString$1(item, "name");
+		if (!id || !name) continue;
+		listed.push({
+			id,
+			name,
+			arguments: item.arguments ?? null
+		});
+	}
+	return listed.length > 0 ? listed : void 0;
+}
+function readMessage(obj) {
+	const raw = obj.message;
+	if (!isObject(raw)) return {
+		role: "user",
+		content: ""
+	};
+	const role = readString$1(raw, "role");
+	const message = {
+		role: role === "system" || role === "assistant" || role === "tool" ? role : "user",
+		content: readString$1(raw, "content") ?? ""
+	};
+	const toolCallId = readString$1(raw, "toolCallId");
+	const name = readString$1(raw, "name");
+	const toolCalls = readToolCalls(raw);
+	if (toolCallId) message.toolCallId = toolCallId;
+	if (name) message.name = name;
+	if (toolCalls) message.toolCalls = toolCalls;
+	return message;
+}
+function attachToolCall(lines, toolCall) {
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const line = lines[index];
+		if (line?.role !== "assistant") continue;
+		const existing = line.toolCalls ?? [];
+		if (existing.some((item) => item.id === toolCall.id)) return lines;
+		const next = [...lines];
+		next[index] = {
+			...line,
+			toolCalls: [...existing, toolCall]
+		};
+		return next;
+	}
+	return lines;
+}
+function readToolCall(obj) {
+	const raw = obj.toolCall;
+	if (!isObject(raw)) return {
+		id: "",
+		name: "",
+		arguments: null
+	};
+	return {
+		id: readString$1(raw, "id") ?? "",
+		name: readString$1(raw, "name") ?? "",
+		arguments: raw.arguments ?? null
+	};
+}
+var agentThread = defineThread({
+	kind: "agent",
+	initialState: (ctx) => ({
+		lines: [],
+		pendingToolCalls: [],
+		turn: 0,
+		maxTurns: 20,
+		pendingSteer: null,
+		input: ctx.input,
+		output: null
+	}),
+	reduce(state, event, ctx) {
+		switch (event.type) {
+			case "runtime.thread.started":
+			case "runtime.execution.started": {
+				const line = inputToLine(state.input);
+				const lines = line ? [line] : state.lines;
+				return {
+					state: {
+						...state,
+						lines
+					},
+					effects: [invoke("agent.callLLM", { turn: 1 })]
+				};
+			}
+			case "agent.message.received": {
+				const message = readMessage(asObject$1(event.payload));
+				const lines = [...state.lines, message];
+				if (state.pendingToolCalls.length > 0) return { state: {
+					...state,
+					lines
+				} };
+				return {
+					state: {
+						...state,
+						lines
+					},
+					effects: [invoke("agent.callLLM", { turn: state.turn + 1 })]
+				};
+			}
+			case "agent.turn.started": {
+				const payload = asObject$1(event.payload);
+				return { state: {
+					...state,
+					turn: readNumber(payload, "turn") ?? state.turn + 1,
+					pendingSteer: null
+				} };
+			}
+			case "agent.message": {
+				const payload = asObject$1(event.payload);
+				return { state: {
+					...state,
+					lines: [...state.lines, readMessage(payload)]
+				} };
+			}
+			case "agent.tool_call.requested": {
+				const payload = asObject$1(event.payload);
+				const toolCall = readToolCall(payload);
+				return {
+					state: {
+						...state,
+						lines: attachToolCall(state.lines, toolCall),
+						pendingToolCalls: [...state.pendingToolCalls, toolCall]
+					},
+					effects: [invoke("agent.executeTool", asJson({
+						turn: readNumber(payload, "turn") ?? state.turn,
+						toolCall
+					}))]
+				};
+			}
+			case "agent.tool.result": {
+				const payload = asObject$1(event.payload);
+				const toolCallId = readString$1(payload, "toolCallId") ?? "";
+				const pendingToolCalls = state.pendingToolCalls.filter((item) => item.id !== toolCallId);
+				const error = payload.error;
+				const content = isString(error) && error.length > 0 ? error : JSON.stringify(payload.result ?? null);
+				const next = {
+					...state,
+					pendingToolCalls,
+					lines: [...state.lines, {
+						role: "tool",
+						content,
+						toolCallId,
+						name: readString$1(payload, "name")
+					}]
+				};
+				if (pendingToolCalls.length === 0) return {
+					state: next,
+					effects: [invoke("agent.callLLM", { turn: state.turn + 1 })]
+				};
+				return { state: next };
+			}
+			case "agent.steered": {
+				const payload = asObject$1(event.payload);
+				const message = readMessage(payload);
+				let next = {
+					...state,
+					lines: [...state.lines, message],
+					pendingSteer: message
+				};
+				if (payload.interrupt === true) {
+					next = {
+						...next,
+						pendingToolCalls: []
+					};
+					return {
+						state: next,
+						effects: [invoke("agent.callLLM", { turn: state.turn + 1 })]
+					};
+				}
+				return { state: next };
+			}
+			case "agent.spawn.requested": {
+				const payload = asObject$1(event.payload);
+				const childThreadId = readString$1(payload, "childThreadId") ?? readString$1(payload, "childExecutionId");
+				const kind = readString$1(payload, "kind");
+				const definitionName = readString$1(payload, "definitionName");
+				const toolCallId = readString$1(payload, "toolCallId");
+				if (!childThreadId || !kind || !definitionName || !toolCallId) return { state };
+				const waitId = createWaitId();
+				return {
+					state,
+					effects: [
+						spawn({
+							childThreadId,
+							kind,
+							definitionName,
+							input: payload.input ?? null
+						}),
+						wait({
+							waitId,
+							on: {
+								type: "runtime.thread.completed",
+								match: { threadId: childThreadId }
+							},
+							tag: {
+								toolCallId,
+								name: definitionName
+							}
+						}),
+						wait({
+							waitId: `${waitId}_fail`,
+							on: {
+								type: "runtime.thread.failed",
+								match: { threadId: childThreadId }
+							},
+							tag: {
+								toolCallId,
+								name: definitionName
+							}
+						})
+					]
+				};
+			}
+			case "agent.effects.requested": {
+				const payload = asObject$1(event.payload);
+				const toolCallId = readString$1(payload, "toolCallId") ?? "";
+				const rawEffects = payload.effects;
+				const effects = Array.isArray(rawEffects) ? rawEffects : [];
+				const waitOn = payload.waitOn;
+				if (isObject(waitOn) && isString(waitOn.type)) effects.push(wait({
+					waitId: createWaitId(),
+					on: {
+						type: waitOn.type,
+						match: waitOn.match
+					},
+					tag: { toolCallId }
+				}));
+				return {
+					state,
+					effects
+				};
+			}
+			case "runtime.wait.satisfied": {
+				const payload = asObject$1(event.payload);
+				const tag = payload.tag;
+				if (!isObject(tag)) return { state };
+				const toolCallId = readString$1(tag, "toolCallId");
+				if (!toolCallId) return { state };
+				const embedded = payload.event;
+				const embeddedObj = isObject(embedded) && isObject(embedded.payload) ? embedded.payload : {};
+				const threadId = ctx.threadId ?? ctx.executionId;
+				return {
+					state,
+					effects: [emit({
+						type: "agent.tool.result",
+						payload: {
+							turn: state.turn,
+							toolCallId,
+							name: readString$1(tag, "name") ?? "child",
+							result: embeddedObj.output ?? (isObject(embedded) ? embedded.payload : null) ?? null,
+							error: readString$1(embeddedObj, "error") ?? null
+						},
+						threadId,
+						executionId: threadId
+					})]
+				};
+			}
+			default: return { state };
+		}
+	}
+});
+function llmFromAdapter(adapter) {
+	return { complete: (args) => tryPromise({
+		try: () => adapter.complete(args),
+		catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+	}) };
+}
+var LlmTag = class extends Service()("looms/Llm") {};
+var makeStubLlm = (policy = {}) => ({ complete: (args) => sync(() => {
+	const ctx = {
+		threadId: "stub",
+		executionId: "stub",
+		turn: 0,
+		messages: args.messages,
+		input: null,
+		tools: args.tools,
+		instructions: args.instructions
+	};
+	const toolCalls = policy.toolCallsFor?.(ctx);
+	if (toolCalls && toolCalls.length > 0) return {
+		message: {
+			role: "assistant",
+			content: "",
+			toolCalls
+		},
+		toolCalls
+	};
+	const lastUser = [...args.messages].reverse().find((m) => m.role === "user");
+	const lastContent = args.messages.at(-1)?.content;
+	const content = lastUser?.content ?? (isString(lastContent) ? lastContent : JSON.stringify(lastContent ?? null));
+	return {
+		message: {
+			role: "assistant",
+			content
+		},
+		done: policy.doneAfterText !== false,
+		output: { text: content },
+		usage: {
+			input: 0,
+			output: content.length
+		}
+	};
+}) });
+var StubLlmLive = (policy) => succeed$1(LlmTag, makeStubLlm(policy));
+var EMPTY_OBJECT_SCHEMA = { type: "object" };
+function isStandardJsonSchemaHolder(value) {
+	return "~standard" in value;
+}
+function fromStandardJsonSchema(schema) {
+	if (!isStandardJsonSchemaHolder(schema)) return void 0;
+	const input = schema["~standard"].jsonSchema?.input;
+	if (!input) return void 0;
+	try {
+		return input({ target: "draft-2020-12" });
+	} catch {
+		return;
+	}
+}
+function fromEffectSchema(schema) {
+	if (!isSchema(schema)) return void 0;
+	try {
+		return fromStandardJsonSchema(toStandardJSONSchemaV1(schema));
+	} catch {
+		return;
+	}
+}
+function fromInputCandidate(input) {
+	if (!input) return void 0;
+	return fromStandardJsonSchema(input) ?? fromEffectSchema(input);
+}
+function toolInputCandidate(tool) {
+	switch (tool.kind) {
+		case "function": return tool.input;
+		case "thread":
+		case "execution":
+		case "effects": return;
+		default: return tool;
+	}
+}
+function toolJsonSchema(tool) {
+	return tool.inputSchema ?? fromInputCandidate(toolInputCandidate(tool)) ?? EMPTY_OBJECT_SCHEMA;
+}
+function toolSpecs(tools = []) {
+	return normalizeTools(tools).map((tool) => ({
+		name: tool.name,
+		description: tool.description,
+		inputJsonSchema: toolJsonSchema(tool)
+	}));
+}
+var CallLlmInput = Struct({ turn: Number$1 });
+var ToolCallSchema = Struct({
+	id: String$1,
+	name: String$1,
+	arguments: MutableJson
+});
+var ExecuteToolInput = Struct({
+	turn: Number$1,
+	toolCall: ToolCallSchema
+});
+function findTool(tools, name) {
+	return tools.find((tool) => tool.name === name);
+}
+var callLlmEffect = defineEffect({
+	type: "agent.callLLM",
+	input: CallLlmInput,
+	execute: (input, ctx) => runCallLlm(input.turn, ctx.runId, ctx.threadId ?? ctx.executionId, (event) => ctx.emit(event))
+});
+function runCallLlm(turn, _runId, threadId, emit) {
+	return gen(function* () {
+		const agents = yield* AgentDefinitionsTag;
+		const llm = yield* LlmTag;
+		const definition = agents.get(currentDefinitionName(threadId));
+		if (!definition) return [{
+			type: "runtime.thread.failed",
+			payload: {
+				threadId,
+				error: `Unknown agent definition for ${threadId}`
+			},
+			threadId,
+			executionId: threadId
+		}];
+		if (turn > (definition.maxTurns ?? 20)) return [{
+			type: "runtime.thread.failed",
+			payload: {
+				threadId,
+				error: `Max turns exceeded (${definition.maxTurns ?? 20})`
+			},
+			threadId,
+			executionId: threadId
+		}];
+		const tools = normalizeTools(definition.tools);
+		const events = [{
+			type: "agent.turn.started",
+			payload: { turn },
+			threadId,
+			executionId: threadId
+		}];
+		const turnCtx = {
+			threadId,
+			executionId: threadId,
+			turn,
+			messages: currentLines(threadId),
+			input: currentInput(threadId),
+			tools,
+			instructions: definition.instructions
+		};
+		const result = definition.runTurn ? yield* tryPromise({
+			try: () => Promise.resolve(definition.runTurn(turnCtx)),
+			catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+		}) : yield* llm.complete({
+			model: definition.model,
+			instructions: definition.instructions,
+			messages: [{
+				role: "system",
+				content: definition.instructions
+			}, ...turnCtx.messages],
+			tools,
+			toolSpecs: toolSpecs(tools),
+			onTextDelta: (delta) => {
+				emit({
+					type: "agent.turn.text_delta",
+					payload: {
+						turn,
+						delta
+					},
+					threadId,
+					executionId: threadId,
+					ephemeral: true
+				});
+			}
+		});
+		const toolCalls = result.toolCalls ?? result.message.toolCalls ?? [];
+		const shouldStop = definition.stopWhen?.({
+			turn,
+			maxTurns: definition.maxTurns ?? 20,
+			messages: turnCtx.messages,
+			toolCalls,
+			result
+		});
+		events.push({
+			type: "agent.message",
+			payload: asJson({
+				turn,
+				message: result.message,
+				usage: result.usage ?? null
+			}),
+			threadId,
+			executionId: threadId
+		});
+		if (shouldStop) {
+			if (!definition.conversational) events.push({
+				type: "runtime.thread.completed",
+				payload: {
+					threadId,
+					output: result.output ?? { text: result.message.content }
+				},
+				threadId,
+				executionId: threadId
+			});
+			return events;
+		}
+		for (const toolCall of toolCalls) events.push({
+			type: "agent.tool_call.requested",
+			payload: asJson({
+				turn,
+				toolCall
+			}),
+			threadId,
+			executionId: threadId
+		});
+		if (toolCalls.length === 0 && !definition.conversational) events.push({
+			type: "runtime.thread.completed",
+			payload: {
+				threadId,
+				output: result.output ?? { text: result.message.content }
+			},
+			threadId,
+			executionId: threadId
+		});
+		return events;
+	});
+}
+var executeToolEffect = defineEffect({
+	type: "agent.executeTool",
+	input: ExecuteToolInput,
+	execute: (input, ctx) => gen(function* () {
+		const threadId = ctx.threadId ?? ctx.executionId;
+		const definition = (yield* AgentDefinitionsTag).get(currentDefinitionName(threadId));
+		if (!definition) return [{
+			type: "agent.tool.result",
+			payload: {
+				turn: input.turn,
+				toolCallId: input.toolCall.id,
+				name: input.toolCall.name,
+				result: null,
+				error: "Unknown agent definition"
+			},
+			threadId,
+			executionId: threadId
+		}];
+		const tool = findTool(normalizeTools(definition.tools), input.toolCall.name);
+		if (!tool) return [{
+			type: "agent.tool.result",
+			payload: {
+				turn: input.turn,
+				toolCallId: input.toolCall.id,
+				name: input.toolCall.name,
+				result: null,
+				error: `Unknown tool: ${input.toolCall.name}`
+			},
+			threadId,
+			executionId: threadId
+		}];
+		switch (tool.kind) {
+			case "function": {
+				const validated = yield* tryPromise({
+					try: () => validateInput(tool.input, input.toolCall.arguments),
+					catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+				}).pipe(map((value) => ({
+					ok: true,
+					value
+				})), catch_((err) => succeed({
+					ok: false,
+					error: err.message
+				})));
+				if (!validated.ok) return [{
+					type: "agent.tool.result",
+					payload: {
+						turn: input.turn,
+						toolCallId: input.toolCall.id,
+						name: input.toolCall.name,
+						result: null,
+						error: validated.error
+					},
+					threadId,
+					executionId: threadId
+				}];
+				const result = yield* tryPromise({
+					try: () => Promise.resolve(tool.handler(validated.value, {
+						threadId,
+						executionId: threadId,
+						turn: input.turn
+					})),
+					catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+				}).pipe(map((value) => ({
+					ok: true,
+					value
+				})), catch_((err) => succeed({
+					ok: false,
+					error: err.message
+				})));
+				return [{
+					type: "agent.tool.result",
+					payload: {
+						turn: input.turn,
+						toolCallId: input.toolCall.id,
+						name: input.toolCall.name,
+						result: result.ok ? result.value : null,
+						error: result.ok ? null : result.error
+					},
+					threadId,
+					executionId: threadId
+				}];
+			}
+			case "thread":
+			case "execution": {
+				const mapped = tool.mapInput ? tool.mapInput(input.toolCall.arguments) : input.toolCall.arguments;
+				const childThreadId = createThreadId();
+				return [{
+					type: "agent.spawn.requested",
+					payload: {
+						childThreadId,
+						childExecutionId: childThreadId,
+						kind: tool.childKind,
+						definitionName: tool.childName,
+						input: mapped,
+						toolCallId: input.toolCall.id
+					},
+					threadId,
+					executionId: threadId
+				}];
+			}
+			case "effects": {
+				const effects = tool.effects(input.toolCall.arguments);
+				return [{
+					type: "agent.effects.requested",
+					payload: asJson({
+						toolCallId: input.toolCall.id,
+						effects,
+						waitOn: tool.waitOn ?? null
+					}),
+					threadId,
+					executionId: threadId
+				}];
+			}
+			default: return tool;
+		}
+	})
+});
+/** Filled by the runtime before dispatching agent effects. */
+var threadBindings$1 = /* @__PURE__ */ new Map();
+function bindAgentThread(threadId, binding) {
+	threadBindings$1.set(threadId, binding);
+}
+function currentDefinitionName(threadId) {
+	return threadBindings$1.get(threadId)?.definitionName ?? "";
+}
+function currentLines(threadId) {
+	return threadBindings$1.get(threadId)?.lines ?? [];
+}
+function currentInput(threadId) {
+	return threadBindings$1.get(threadId)?.input ?? null;
+}
+function payloadObject$3(event) {
+	if (!isObject(event.payload)) return {};
+	return event.payload;
+}
+var conversation = defineProjection({
+	name: "conversation",
+	initialState: { lines: [] },
+	reduce(state, event) {
+		switch (event.type) {
+			case "agent.message.received":
+			case "agent.message":
+			case "agent.steered": {
+				const raw = payloadObject$3(event).message;
+				if (!isObject(raw)) return state;
+				const role = isString(raw.role) ? raw.role : "user";
+				const line = {
+					role: role === "system" || role === "assistant" || role === "tool" ? role : "user",
+					content: isString(raw.content) ? raw.content : ""
+				};
+				if (isString(raw.toolCallId)) line.toolCallId = raw.toolCallId;
+				if (isString(raw.name)) line.name = raw.name;
+				const calls = raw.toolCalls;
+				if (Array.isArray(calls)) {
+					const toolCalls = [];
+					for (const item of calls) {
+						if (!isObject(item) || !isString(item.id) || !isString(item.name)) continue;
+						toolCalls.push({
+							id: item.id,
+							name: item.name,
+							arguments: item.arguments ?? null
+						});
+					}
+					if (toolCalls.length > 0) line.toolCalls = toolCalls;
+				}
+				return { lines: [...state.lines, line] };
+			}
+			case "agent.tool.result": {
+				const payload = payloadObject$3(event);
+				const error = payload.error;
+				const content = isString(error) && error.length > 0 ? error : JSON.stringify(payload.result ?? null);
+				return { lines: [...state.lines, {
+					role: "tool",
+					content,
+					toolCallId: isString(payload.toolCallId) ? payload.toolCallId : void 0,
+					name: isString(payload.name) ? payload.name : void 0
+				}] };
+			}
+			default: return state;
+		}
+	}
+});
+var tokenUsage = defineProjection({
+	name: "tokenUsage",
+	initialState: {
+		input: 0,
+		output: 0
+	},
+	reduce(state, event) {
+		if (event.type !== "agent.message") return state;
+		const usage = payloadObject$3(event).usage;
+		if (!isObject(usage)) return state;
+		return {
+			input: state.input + (isNumber(usage.input) ? usage.input : 0),
+			output: state.output + (isNumber(usage.output) ? usage.output : 0)
+		};
+	}
+});
+function agentDefinitions(ctx) {
+	const found = [];
+	for (const registered of ctx.definitions) {
+		if (registered.value.kind !== "agent") continue;
+		found.push(registered.value);
+	}
+	return found;
+}
+function agent(options = {}) {
+	const llmLayer = options.llm ? succeed$1(LlmTag, llmFromAdapter(options.llm)) : StubLlmLive(options.llmPolicy);
+	return defineRuntimeModule({
+		namespace: "agent",
+		protocolVersion: "1.0.0",
+		events: agentCatalog,
+		threads: { agent: agentThread },
+		executions: { agent: agentThread },
+		effects: {
+			callLLM: callLlmEffect,
+			executeTool: executeToolEffect
+		},
+		projections: {
+			conversation,
+			tokenUsage
+		},
+		services: (ctx) => merge(llmLayer, AgentDefinitionsLive(agentDefinitions(ctx))),
+		bindThread: (record) => {
+			if (record.kind !== "agent") return;
+			const state = fromJsonStruct(record.state);
+			bindAgentThread(record.threadId, {
+				definitionName: record.definitionName,
+				lines: state.lines ?? [],
+				input: record.input
+			});
+		}
+	});
+}
+var approvalCatalog = defineEventCatalog("approval", {
+	requested: payload(),
+	decided: payload(),
+	timed_out: payload()
+});
+var requestApprovalEffect = defineEffect({
+	type: "approval.request",
+	execute: (input, ctx) => {
+		const threadId = ctx.threadId ?? ctx.executionId;
+		return [{
+			type: "approval.requested",
+			payload: input,
+			threadId,
+			executionId: threadId
+		}];
+	}
+});
+function gate(args) {
+	const approvalId = args.approvalId ?? createWaitId();
+	const actions = args.actions ?? [{
+		id: "approve",
+		label: "Approve",
+		outcome: "approve"
+	}, {
+		id: "reject",
+		label: "Reject",
+		outcome: "reject"
+	}];
+	return [invoke("approval.request", asJson({
+		approvalId,
+		title: args.title,
+		description: args.description,
+		actions,
+		schema: args.schema
+	})), wait({
+		waitId: createWaitId(),
+		on: {
+			type: "approval.decided",
+			match: { approvalId }
+		},
+		tag: { approvalId }
+	})];
+}
+function payloadObject$2(event) {
+	return isJsonObject$1(event.payload) ? event.payload : {};
+}
+var pendingApprovals = defineProjection({
+	name: "pendingApprovals",
+	initialState: { items: [] },
+	reduce(state, event) {
+		const payload = payloadObject$2(event);
+		const approvalId = isJsonString(payload.approvalId) ? payload.approvalId : void 0;
+		if (!approvalId) return state;
+		switch (event.type) {
+			case "approval.requested": {
+				const threadId = event.threadId ?? event.executionId ?? null;
+				return { items: [...state.items.filter((item) => item.approvalId !== approvalId), {
+					approvalId,
+					title: isJsonString(payload.title) ? payload.title : "Approval",
+					description: isJsonString(payload.description) ? payload.description : void 0,
+					status: "pending",
+					threadId,
+					executionId: threadId
+				}] };
+			}
+			case "approval.decided": {
+				const outcome = payload.outcome === "reject" ? "rejected" : "approved";
+				return { items: state.items.map((item) => item.approvalId === approvalId ? {
+					...item,
+					status: outcome
+				} : item) };
+			}
+			case "approval.timed_out": return { items: state.items.map((item) => item.approvalId === approvalId ? {
+				...item,
+				status: "timed_out"
+			} : item) };
+			default: return state;
+		}
+	}
+});
+function approval() {
+	return defineRuntimeModule({
+		namespace: "approval",
+		protocolVersion: "1.0.0",
+		events: approvalCatalog,
+		effects: { request: requestApprovalEffect },
+		projections: { pendingApprovals }
+	});
 }
 function defineWorkflow(def) {
 	return {
@@ -6937,1613 +9261,74 @@ function defineWorkflow(def) {
 		...def
 	};
 }
-function asAgentTool(def) {
-	return {
-		kind: "agent-tool",
-		...def
-	};
-}
 function readyNodes(workflow, nodeStates) {
 	return workflow.nodes.filter((node) => {
 		const state = nodeStates[node.id];
-		if (!state || state.status !== "pending") return false;
+		if (state && state.status !== "pending") return false;
 		return (node.deps ?? []).every((depId) => {
 			const dep = nodeStates[depId];
 			return dep?.status === "completed" || dep?.status === "skipped";
 		});
 	}).map((node) => node.id);
 }
-var EventStoreError = class extends Error {
-	_tag = "EventStoreError";
-	conflict;
-	cause;
-	constructor(message, cause, options) {
-		super(message);
-		this.name = "EventStoreError";
-		this.cause = cause;
-		this.conflict = options?.conflict;
-	}
-};
-var EventStoreConflictError = class extends EventStoreError {
-	_tag = "EventStoreConflictError";
-	conflict = true;
-	expectedTail;
-	actualTail;
-	constructor(actorId, expectedTail, actualTail) {
-		super(`Conflict appending to ${actorId}: expected tail ${expectedTail}, got ${actualTail}`, void 0, { conflict: true });
-		this.name = "EventStoreConflictError";
-		this.expectedTail = expectedTail;
-		this.actualTail = actualTail;
-	}
-};
-var EventStoreTag = class extends Service()("twist/EventStore") {};
-var makeMemoryEventStore = gen(function* () {
-	const logs = yield* make$1(/* @__PURE__ */ new Map());
-	const getOrCreate = (map, actorId) => {
-		const existing = map.get(actorId);
-		if (existing) return existing;
-		const created = {
-			events: [],
-			waiters: []
-		};
-		map.set(actorId, created);
-		return created;
-	};
-	const service = {
-		append: (actorId, events, options) => gen(function* () {
-			const sequences = [];
-			yield* update(logs, (map) => {
-				const next = new Map(map);
-				const log = getOrCreate(next, actorId);
-				if (options?.expectedTail !== void 0 && log.events.length !== options.expectedTail) throw new EventStoreConflictError(actorId, options.expectedTail, log.events.length);
-				const appended = [];
-				for (const partial of events) {
-					const seq = log.events.length + appended.length + 1;
-					const event = withAssignedSeq(partial, actorId, seq);
-					appended.push(event);
-					sequences.push(seq);
-				}
-				const updated = {
-					events: [...log.events, ...appended],
-					waiters: log.waiters
-				};
-				next.set(actorId, updated);
-				for (const event of appended) for (const waiter of log.waiters) waiter(event);
-				return next;
-			}).pipe(catchDefect((cause) => fail(cause instanceof EventStoreError ? cause : new EventStoreError("append failed", cause))));
-			return {
-				sequences,
-				tail: yield* service.tail(actorId)
-			};
-		}),
-		read: (actorId, options) => gen(function* () {
-			const log = (yield* get(logs)).get(actorId);
-			if (!log) return [];
-			const fromSeq = options?.fromSeq ?? 1;
-			const sliced = log.events.filter((e) => e.seq >= fromSeq);
-			return options?.limit !== void 0 ? sliced.slice(0, options.limit) : sliced;
-		}),
-		tail: (actorId) => gen(function* () {
-			return (yield* get(logs)).get(actorId)?.events.length ?? 0;
-		}),
-		subscribe: (actorId, options) => callback$1((queue) => gen(function* () {
-			const fromSeq = options?.fromSeq ?? 1;
-			const map = yield* get(logs);
-			const log = getOrCreate(map, actorId);
-			yield* update(logs, (m) => {
-				const n = new Map(m);
-				if (!n.has(actorId)) n.set(actorId, log);
-				return n;
-			});
-			for (const event of log.events) if (event.seq >= fromSeq) offerUnsafe(queue, event);
-			const waiter = (event) => {
-				if (event.seq >= fromSeq) offerUnsafe(queue, event);
-			};
-			log.waiters.push(waiter);
-			yield* addFinalizer(() => sync(() => {
-				const idx = log.waiters.indexOf(waiter);
-				if (idx >= 0) log.waiters.splice(idx, 1);
-			}));
-		})),
-		listActors: () => gen(function* () {
-			return [...(yield* get(logs)).keys()];
-		})
-	};
-	return service;
+var WorkflowDefinitionsTag = class extends Service()("looms/WorkflowDefinitions") {};
+function makeWorkflowDefinitionStore(definitions) {
+	const map = new Map(definitions.map((def) => [def.name, def]));
+	return { get: (name) => map.get(name) };
+}
+var WorkflowDefinitionsLive = (definitions) => succeed$1(WorkflowDefinitionsTag, makeWorkflowDefinitionStore(definitions));
+var workflowCatalog = defineEventCatalog("workflow", {
+	"node.started": payload(),
+	"node.finished": payload(),
+	"node.skipped": payload(),
+	"spawn.requested": payload(),
+	"sleep.requested": payload(),
+	"effects.requested": payload()
 });
-effect(EventStoreTag, makeMemoryEventStore);
-var fromNumH = (n) => n / 2 ** 32 | 0;
-var fromNumL = (n) => n >>> 0;
-function setU64FromNum(view, byteOffset, n, isLE) {
-	const h = fromNumH(n);
-	const l = fromNumL(n);
-	view.setUint32(byteOffset, isLE ? l : h, isLE);
-	view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
+function asObject(payload) {
+	if (!isObject(payload)) return {};
+	return payload;
 }
-/**
-* Checks if something is Uint8Array. Be careful: nodejs Buffer will return true.
-* @param a - value to test
-* @returns `true` when the value is a Uint8Array-compatible view.
-* @example
-* Check whether a value is a Uint8Array-compatible view.
-* ```ts
-* isBytes(new Uint8Array([1, 2, 3]));
-* ```
-*/
-function isBytes(a) {
-	return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
+function readString(obj, key) {
+	const value = obj[key];
+	return isString(value) ? value : void 0;
 }
-var atitle = (title) => title ? `"${title}" ` : "";
-/**
-* Asserts something is a non-negative integer.
-* @param n - number to validate
-* @param title - label included in thrown errors
-* @returns The validated number.
-* @throws On wrong argument types. {@link TypeError}
-* @throws On wrong argument ranges or values. {@link RangeError}
-* @example
-* Validate a non-negative integer option.
-* ```ts
-* anumber(32, 'length');
-* ```
-*/
-function anumber(n, title = "") {
-	if (typeof n !== "number") throw new TypeError(atitle(title) + "expected number, got " + typeof n);
-	if (!Number.isSafeInteger(n) || n < 0) throw new RangeError(atitle(title) + "expected integer >= 0, got " + n);
-	return n;
-}
-/**
-* Asserts something is Uint8Array.
-* @param value - value to validate
-* @param length - optional exact length constraint
-* @param title - label included in thrown errors
-* @returns The validated byte array.
-* @throws On wrong argument types. {@link TypeError}
-* @throws On wrong argument ranges or values. {@link RangeError}
-* @example
-* Validate that a value is a byte array.
-* ```ts
-* abytes(new Uint8Array([1, 2, 3]));
-* ```
-*/
-function abytes(value, length, title = "") {
-	if (isBytes(value) && (length === void 0 || value.length === length)) return value;
-	if (length !== void 0) anumber(length, "length");
-	const bytes = isBytes(value);
-	const ofLen = length !== void 0 ? ` of length ${length}` : "";
-	const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
-	const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
-	if (!bytes) throw new TypeError(message);
-	throw new RangeError(message);
-}
-var aobject = (value, label) => {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError((label === "object" ? "" : `"${label}" `) + "expected object, got type=" + typeof value);
-};
-var aopts = (value, label) => {
-	aobject(value, label);
-	const proto = Object.getPrototypeOf(value);
-	if (proto !== Object.prototype && proto !== null) throw new TypeError(`"${label}" expected plain object`);
-	if (Object.hasOwn(value, "__proto__")) throw new TypeError(`"${label}.__proto__" is not allowed`);
-};
-/**
-* Asserts a hash instance has not been destroyed or finished.
-* @param instance - hash instance to validate
-* @param checkFinished - whether to reject finalized instances
-* @throws If the hash instance has already been destroyed or finalized. {@link Error}
-* @example
-* Validate that a hash instance is still usable.
-* ```ts
-* import { aexists } from '@noble/hashes/utils.js';
-* import { sha256 } from '@noble/hashes/sha2.js';
-* const hash = sha256.create();
-* aexists(hash);
-* ```
-*/
-function aexists(instance, checkFinished = true) {
-	if (instance.destroyed) throw new Error("hash was destroyed");
-	if (checkFinished && instance.finished) throw new Error("digest() was already called");
-}
-/**
-* Asserts output is a sufficiently-sized byte array.
-* @param out - destination buffer
-* @param instance - hash instance providing output length
-* Oversized buffers are allowed; downstream code only promises to fill the first `outputLen` bytes.
-* @throws On wrong argument types. {@link TypeError}
-* @throws On wrong argument ranges or values. {@link RangeError}
-* @example
-* Validate a caller-provided digest buffer.
-* ```ts
-* import { aoutput } from '@noble/hashes/utils.js';
-* import { sha256 } from '@noble/hashes/sha2.js';
-* const hash = sha256.create();
-* aoutput(new Uint8Array(hash.outputLen), hash);
-* ```
-*/
-function aoutput(out, instance) {
-	abytes(out, void 0, "output");
-	const min = instance.outputLen;
-	if (!(out.length >= min)) throw new RangeError("\"output\" expected length >= " + min);
-}
-/**
-* Zeroizes typed arrays in place. Warning: JS provides no guarantees.
-* @param arrays - arrays to overwrite with zeros
-* @example
-* Zeroize sensitive buffers in place.
-* ```ts
-* clean(new Uint8Array([1, 2, 3]));
-* ```
-*/
-function clean(...arrays) {
-	for (let i = 0; i < arrays.length; i++) arrays[i].fill(0);
-}
-/**
-* Creates a DataView for byte-level manipulation.
-* @param arr - source typed array
-* @returns DataView over the same buffer region.
-* @example
-* Create a DataView over an existing buffer.
-* ```ts
-* createView(new Uint8Array(4));
-* ```
-*/
-function createView(arr) {
-	return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
-}
-/**
-* Rotate-right operation for uint32 values.
-* @param word - source word
-* @param shift - shift amount in bits
-* @returns Rotated word.
-* @example
-* Rotate a 32-bit word to the right.
-* ```ts
-* rotr(0x12345678, 8);
-* ```
-*/
-function rotr(word, shift) {
-	return word << 32 - shift | word >>> shift;
-}
-var hasHexBuiltin = /* @__PURE__ */ (() => typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function")();
-var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
-/**
-* Convert byte array to hex string.
-* Uses the built-in function when available and assumes it matches the tested
-* fallback semantics.
-* @param bytes - bytes to encode
-* @returns Lowercase hexadecimal string.
-* @throws On wrong argument types. {@link TypeError}
-* @example
-* Convert bytes to lowercase hexadecimal.
-* ```ts
-* bytesToHex(Uint8Array.from([0xca, 0xfe, 0x01, 0x23])); // 'cafe0123'
-* ```
-*/
-function bytesToHex(bytes) {
-	abytes(bytes);
-	if (hasHexBuiltin) return bytes.toHex();
-	let hex = "";
-	for (let i = 0; i < bytes.length; i++) hex += hexes[bytes[i]];
-	return hex;
-}
-/**
-* Merges default options and passed options.
-* @param defaults - base option object
-* @param opts - user overrides
-* @param title - label included in thrown override errors
-* @returns Fresh merged option object with a null prototype.
-* @throws On wrong argument types. {@link TypeError}
-* @example
-* Merge user overrides onto default options.
-* ```ts
-* checkOpts({ dkLen: 32 }, { asyncTick: 10 });
-* ```
-*/
-function checkOpts(defaults, opts, title = "opts") {
-	aopts(defaults, "defaults");
-	if (opts !== void 0) aopts(opts, title);
-	return Object.assign(Object.create(null), defaults, opts);
-}
-/**
-* Creates a callable hash function from a stateful class constructor.
-* @param hashCons - hash constructor or factory
-* @param info - optional metadata such as DER OID
-* @returns Frozen callable hash wrapper with `.create()`.
-*   Wrapper construction eagerly calls `hashCons(undefined)` once to read
-*   `outputLen` / `blockLen`, so constructor side effects happen at module
-*   init time.
-* @throws On wrong argument types. {@link TypeError}
-* @example
-* Wrap a stateful hash constructor into a callable helper.
-* ```ts
-* import { createHasher } from '@noble/hashes/utils.js';
-* import { sha256 } from '@noble/hashes/sha2.js';
-* const wrapped = createHasher(sha256.create, { oid: sha256.oid });
-* wrapped(new Uint8Array([1]));
-* ```
-*/
-function createHasher(hashCons, info = {}) {
-	if (typeof hashCons !== "function") throw new TypeError("\"hashCons\" expected function, got type=" + typeof hashCons);
-	info = checkOpts({}, info, "info");
-	const hashC = (msg, opts) => hashCons(opts).update(msg).digest();
-	const tmp = hashCons(void 0);
-	hashC.outputLen = tmp.outputLen;
-	hashC.blockLen = tmp.blockLen;
-	hashC.canXOF = tmp.canXOF;
-	hashC.create = (opts) => hashCons(opts);
-	Object.assign(hashC, info);
-	return Object.freeze(hashC);
-}
-/**
-* Creates OID metadata for NIST hashes with prefix `06 09 60 86 48 01 65 03 04 02`.
-* @param suffix - final OID byte for the selected hash.
-*   The helper accepts any byte even though only the documented NIST hash
-*   suffixes are meaningful downstream.
-* @returns Object containing the DER-encoded OID.
-* @example
-* Build OID metadata for a NIST hash.
-* ```ts
-* oidNist(0x01);
-* ```
-*/
-var oidNist = (suffix) => ({ oid: Uint8Array.from([
-	6,
-	9,
-	96,
-	134,
-	72,
-	1,
-	101,
-	3,
-	4,
-	2,
-	suffix
-]) });
-/**
-* Internal Merkle-Damgard hash utils.
-* @module
-*/
-/**
-* Shared 32-bit conditional boolean primitive reused by SHA-256, SHA-1, and MD5 `F`.
-* Returns bits from `b` when `a` is set, otherwise from `c`.
-* The XOR form is equivalent to MD5's `F(X,Y,Z) = XY v not(X)Z` because the masked terms never
-* set the same bit.
-* @param a - selector word
-* @param b - word chosen when selector bit is set
-* @param c - word chosen when selector bit is clear
-* @returns Mixed 32-bit word.
-* @example
-* Combine three words with the shared 32-bit choice primitive.
-* ```ts
-* Chi(0xffffffff, 0x12345678, 0x87654321);
-* ```
-*/
-function Chi(a, b, c) {
-	return a & b ^ ~a & c;
-}
-/**
-* Shared 32-bit majority primitive reused by SHA-256 and SHA-1.
-* Returns bits shared by at least two inputs.
-* @param a - first input word
-* @param b - second input word
-* @param c - third input word
-* @returns Mixed 32-bit word.
-* @example
-* Combine three words with the shared 32-bit majority primitive.
-* ```ts
-* Maj(0xffffffff, 0x12345678, 0x87654321);
-* ```
-*/
-function Maj(a, b, c) {
-	return a & b ^ a & c ^ b & c;
-}
-/**
-* Merkle-Damgard hash construction base class.
-* Could be used to create MD5, RIPEMD, SHA1, SHA2.
-* Accepts only byte-aligned `Uint8Array` input, even when the underlying spec describes bit
-* strings with partial-byte tails.
-* @param blockLen - internal block size in bytes
-* @param outputLen - digest size in bytes
-* @param padOffset - trailing length field size in bytes
-* @param isLE - whether length and state words are encoded in little-endian
-* @example
-* Use a concrete subclass to get the shared Merkle-Damgard update/digest flow.
-* ```ts
-* import { _SHA1 } from '@noble/hashes/legacy.js';
-* const hash = new _SHA1();
-* hash.update(new Uint8Array([97, 98, 99]));
-* hash.digest();
-* ```
-*/
-var HashMD = class {
-	blockLen;
-	outputLen;
-	canXOF = false;
-	padOffset;
-	isLE;
-	buffer;
-	view;
-	finished = false;
-	length = 0;
-	pos = 0;
-	destroyed = false;
-	constructor(blockLen, outputLen, padOffset, isLE) {
-		this.blockLen = blockLen;
-		this.outputLen = outputLen;
-		this.padOffset = padOffset;
-		this.isLE = isLE;
-		this.buffer = new Uint8Array(blockLen);
-		this.view = createView(this.buffer);
-	}
-	update(data) {
-		aexists(this);
-		abytes(data);
-		const { view, buffer, blockLen } = this;
-		const len = data.length;
-		let processed = false;
-		for (let pos = 0; pos < len;) {
-			const take = Math.min(blockLen - this.pos, len - pos);
-			if (take === blockLen) {
-				const dataView = createView(data);
-				for (; blockLen <= len - pos; pos += blockLen) this.process(dataView, pos);
-				processed = true;
-				continue;
-			}
-			buffer.set(pos === 0 && take === len ? data : data.subarray(pos, pos + take), this.pos);
-			this.pos += take;
-			pos += take;
-			if (this.pos === blockLen) {
-				this.process(view, 0);
-				this.pos = 0;
-				processed = true;
-			}
-		}
-		this.length += data.length;
-		if (processed) this.roundClean();
-		return this;
-	}
-	digestInto(out) {
-		aexists(this);
-		aoutput(out, this);
-		this.finished = true;
-		const { buffer, view, blockLen, isLE } = this;
-		let { pos } = this;
-		buffer[pos++] = 128;
-		buffer.fill(0, pos);
-		if (this.padOffset > blockLen - pos) {
-			this.process(view, 0);
-			buffer.fill(0);
-		}
-		setU64FromNum(view, blockLen - 8, this.length * 8, isLE);
-		this.process(view, 0);
-		this.roundClean();
-		const oview = out === buffer ? view : createView(out);
-		const len = this.outputLen;
-		const outLen = len / 4;
-		const state = this.get();
-		if (len % 4 || outLen > state.length) throw new Error("invalid outputLen");
-		for (let i = 0; i < outLen; i++) oview.setUint32(4 * i, state[i], isLE);
-	}
-	digest() {
-		const { buffer, outputLen } = this;
-		this.digestInto(buffer);
-		const res = buffer.slice(0, outputLen);
-		this.destroy();
-		return res;
-	}
-	_cloneIntoMeta(to) {
-		const { buffer, length, finished, destroyed, pos } = this;
-		to.destroyed = destroyed;
-		to.finished = finished;
-		to.length = length;
-		to.pos = pos;
-		if (pos) to.buffer.set(buffer);
-		return to;
-	}
-	clone() {
-		return this._cloneInto();
-	}
-};
-/**
-* Initial SHA-2 state: fractional parts of square roots of first 16 primes 2..53.
-* Check out `test/misc/sha2-gen-iv.js` for recomputation guide.
-*/
-/** Initial SHA256 state from RFC 6234 §6.1: the first 32 bits of the fractional parts of the
-* square roots of the first eight prime numbers. Exported as a shared table; callers must treat
-* it as read-only because constructors copy words from it by index. */
-var SHA256_IV = /* @__PURE__ */ Uint32Array.from([
-	1779033703,
-	3144134277,
-	1013904242,
-	2773480762,
-	1359893119,
-	2600822924,
-	528734635,
-	1541459225
-]);
-/**
-* SHA2 hash function. A.k.a. sha256, sha384, sha512, sha512_224, sha512_256.
-* SHA256 is the fastest hash implementable in JS, even faster than Blake3.
-* Check out {@link https://www.rfc-editor.org/rfc/rfc4634 | RFC 4634} and
-* {@link https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf | FIPS 180-4}.
-* @module
-*/
-/**
-* SHA-224 / SHA-256 round constants from RFC 6234 §5.1: the first 32 bits
-* of the cube roots of the first 64 primes (2..311).
-*/
-var SHA256_K = /* @__PURE__ */ Uint32Array.from([
-	1116352408,
-	1899447441,
-	3049323471,
-	3921009573,
-	961987163,
-	1508970993,
-	2453635748,
-	2870763221,
-	3624381080,
-	310598401,
-	607225278,
-	1426881987,
-	1925078388,
-	2162078206,
-	2614888103,
-	3248222580,
-	3835390401,
-	4022224774,
-	264347078,
-	604807628,
-	770255983,
-	1249150122,
-	1555081692,
-	1996064986,
-	2554220882,
-	2821834349,
-	2952996808,
-	3210313671,
-	3336571891,
-	3584528711,
-	113926993,
-	338241895,
-	666307205,
-	773529912,
-	1294757372,
-	1396182291,
-	1695183700,
-	1986661051,
-	2177026350,
-	2456956037,
-	2730485921,
-	2820302411,
-	3259730800,
-	3345764771,
-	3516065817,
-	3600352804,
-	4094571909,
-	275423344,
-	430227734,
-	506948616,
-	659060556,
-	883997877,
-	958139571,
-	1322822218,
-	1537002063,
-	1747873779,
-	1955562222,
-	2024104815,
-	2227730452,
-	2361852424,
-	2428436474,
-	2756734187,
-	3204031479,
-	3329325298
-]);
-/** Reusable SHA-224 / SHA-256 message schedule buffer `W_t` from RFC 6234 §6.2 step 1. */
-var SHA256_W = /* @__PURE__ */ new Uint32Array(64);
-/** Internal SHA-224 / SHA-256 compression engine from RFC 6234 §6.2. */
-var SHA2_32B = class extends HashMD {
-	A = 0;
-	B = 0;
-	C = 0;
-	D = 0;
-	E = 0;
-	F = 0;
-	G = 0;
-	H = 0;
-	constructor(outputLen, IV) {
-		super(64, outputLen, 8, false);
-		this.A = IV[0] | 0;
-		this.B = IV[1] | 0;
-		this.C = IV[2] | 0;
-		this.D = IV[3] | 0;
-		this.E = IV[4] | 0;
-		this.F = IV[5] | 0;
-		this.G = IV[6] | 0;
-		this.H = IV[7] | 0;
-	}
-	get() {
-		const { A, B, C, D, E, F, G, H } = this;
-		return [
-			A,
-			B,
-			C,
-			D,
-			E,
-			F,
-			G,
-			H
-		];
-	}
-	set(A, B, C, D, E, F, G, H) {
-		this.A = A | 0;
-		this.B = B | 0;
-		this.C = C | 0;
-		this.D = D | 0;
-		this.E = E | 0;
-		this.F = F | 0;
-		this.G = G | 0;
-		this.H = H | 0;
-	}
-	_cloneInto(to) {
-		(to ||= new this.constructor()).set(...this.get());
-		return this._cloneIntoMeta(to);
-	}
-	process(view, offset) {
-		for (let i = 0; i < 16; i++, offset += 4) SHA256_W[i] = view.getUint32(offset, false);
-		for (let i = 16; i < 64; i++) {
-			const W15 = SHA256_W[i - 15];
-			const W2 = SHA256_W[i - 2];
-			const s0 = rotr(W15, 7) ^ rotr(W15, 18) ^ W15 >>> 3;
-			const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
-			SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
-		}
-		let { A, B, C, D, E, F, G, H } = this;
-		for (let i = 0; i < 64; i++) {
-			const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
-			const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
-			const T2 = (rotr(A, 2) ^ rotr(A, 13) ^ rotr(A, 22)) + Maj(A, B, C) | 0;
-			H = G;
-			G = F;
-			F = E;
-			E = D + T1 | 0;
-			D = C;
-			C = B;
-			B = A;
-			A = T1 + T2 | 0;
-		}
-		A = A + this.A | 0;
-		B = B + this.B | 0;
-		C = C + this.C | 0;
-		D = D + this.D | 0;
-		E = E + this.E | 0;
-		F = F + this.F | 0;
-		G = G + this.G | 0;
-		H = H + this.H | 0;
-		this.set(A, B, C, D, E, F, G, H);
-	}
-	roundClean() {
-		clean(SHA256_W);
-	}
-	destroy() {
-		this.destroyed = true;
-		this.set(0, 0, 0, 0, 0, 0, 0, 0);
-		clean(this.buffer);
-	}
-};
-/** Internal SHA-256 hash class grounded in RFC 6234 §6.2. */
-var _SHA256 = class extends SHA2_32B {
-	constructor() {
-		super(32, SHA256_IV);
-	}
-};
-/**
-* SHA2-256 hash function from RFC 4634. In JS it's the fastest: even faster than Blake3. Some info:
-*
-* - Trying 2^128 hashes would get 50% chance of collision, using birthday attack.
-* - BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
-* - Each sha256 hash is executing 2^18 bit operations.
-* - Good 2024 ASICs can do 200Th/sec with 3500 watts of power, corresponding to 2^36 hashes/joule.
-* @param msg - message bytes to hash
-* @param opts - Reserved hash options.
-* @returns Digest bytes.
-* @example
-* Hash a message with SHA2-256.
-* ```ts
-* sha256(new Uint8Array([97, 98, 99]));
-* ```
-*/
-var sha256 = /* @__PURE__ */ createHasher(() => new _SHA256(), /* @__PURE__ */ oidNist(1));
-var ActorKindSchema = Literals(["agent", "workflow"]);
-var ActorStatusSchema = Literals([
-	"pending",
-	"running",
-	"waiting_review",
-	"waiting_child",
-	"waiting_timer",
-	"completed",
-	"failed",
-	"cancelled"
-]);
-var NodeStatusSchema = Literals([
-	"pending",
-	"running",
-	"completed",
-	"failed",
-	"skipped",
-	"waiting_review"
-]);
-var ToolCallSchema = Struct({
-	id: String$1,
-	name: String$1,
-	arguments: JsonValueSchema
-});
-var MessageSchema$1 = Struct({
-	role: Literals([
-		"system",
-		"user",
-		"assistant",
-		"tool"
-	]),
-	content: String$1,
-	toolCallId: optional(String$1),
-	name: optional(String$1),
-	toolCalls: optional(mutable(ArraySchema(ToolCallSchema)))
-});
-var ChildRefSchema = Struct({
-	kind: ActorKindSchema,
-	definitionName: String$1,
-	status: ActorStatusSchema,
-	output: optional(NullOr(JsonValueSchema)),
-	error: optional(NullOr(String$1))
-});
-var ReviewRequestSchema = Struct({
-	reviewId: String$1,
-	title: String$1,
-	description: optional(String$1),
-	schema: optional(JsonValueSchema),
-	actions: mutable(ArraySchema(Struct({
-		id: String$1,
-		label: String$1,
-		outcome: Literals(["approve", "reject"])
-	}))),
-	nodeId: optional(String$1),
-	status: Literals([
-		"pending",
-		"approved",
-		"rejected",
-		"timed_out"
-	]),
-	decision: optional(JsonValueSchema)
-});
-var NodeStateSchema = Struct({
-	status: NodeStatusSchema,
-	result: NullOr(JsonValueSchema),
-	error: NullOr(String$1),
-	reviewId: optional(String$1)
-});
-var OwedWorkSchema = Union([
-	Struct({
-		type: Literal("agent.turn"),
-		turn: Number$1
+var workflowThread = defineThread({
+	kind: "workflow",
+	initialState: (ctx) => ({
+		nodes: {},
+		concurrency: 8,
+		input: ctx.input,
+		nodeIds: []
 	}),
-	Struct({
-		type: Literal("tool.execute"),
-		turn: Number$1,
-		toolCall: ToolCallSchema
-	}),
-	Struct({ type: Literal("workflow.schedule") }),
-	Struct({
-		type: Literal("workflow.run_node"),
-		nodeId: String$1
-	}),
-	Struct({
-		type: Literal("review.wait"),
-		reviewId: String$1
-	}),
-	Struct({
-		type: Literal("child.wait"),
-		childActorId: String$1
-	}),
-	Struct({
-		type: Literal("timer.wait"),
-		timerId: String$1,
-		wakeAt: Number$1
-	}),
-	Struct({ type: Literal("finalize") })
-]);
-var ActorBaseFields = {
-	actorId: String$1,
-	status: ActorStatusSchema,
-	definitionName: String$1,
-	input: JsonValueSchema,
-	output: NullOr(JsonValueSchema),
-	error: NullOr(String$1),
-	parentActorId: NullOr(String$1),
-	children: Record(String$1, ChildRefSchema),
-	reviews: Record(String$1, ReviewRequestSchema),
-	owed: mutable(ArraySchema(OwedWorkSchema))
-};
-var AgentStateSchema = Struct({
-	...ActorBaseFields,
-	kind: Literal("agent"),
-	messages: mutable(ArraySchema(MessageSchema$1)),
-	pendingToolCalls: mutable(ArraySchema(ToolCallSchema)),
-	turn: Number$1,
-	maxTurns: Number$1,
-	pendingSteer: NullOr(MessageSchema$1)
-});
-var WorkflowStateSchema = Struct({
-	...ActorBaseFields,
-	kind: Literal("workflow"),
-	nodes: Record(String$1, NodeStateSchema),
-	concurrency: Number$1
-});
-Union([AgentStateSchema, WorkflowStateSchema]);
-function hashActorState(state) {
-	const json = JSON.stringify(state);
-	return bytesToHex(sha256(new TextEncoder().encode(json))).slice(0, 16);
-}
-function actorStateToJsonValue(state) {
-	const raw = JSON.parse(JSON.stringify(state));
-	return decodeUnknownSync(JsonValueSchema)(raw);
-}
-function shouldTakeSnapshot(events, every = 200) {
-	const durable = events.filter((e) => !e.ephemeral && e.type !== "snapshot.taken");
-	if (durable.length === 0) return false;
-	let lastSnap;
-	for (let i = events.length - 1; i >= 0; i--) {
-		const candidate = events[i];
-		if (candidate?.type === "snapshot.taken") {
-			lastSnap = candidate;
-			break;
-		}
-	}
-	return (lastSnap ? durable.filter((e) => e.seq > lastSnap.seq).length : durable.length) >= every;
-}
-/**
-* Build a `snapshot.taken` event for the current reduced state.
-* Clients / hosts can truncate history before this seq on cold start.
-*/
-function buildSnapshotEvent(actorId, events, options) {
-	const state = reduceActor(events, { actorId });
-	const payload = {
-		seq: events[events.length - 1]?.seq ?? 0,
-		stateHash: hashActorState(state)
-	};
-	if (options?.includeState) payload.state = actorStateToJsonValue(state);
-	return event("snapshot.taken", actorId, payload);
-}
-function encodeTwistEvent(event) {
-	return {
-		name: event.type,
-		args: {
-			id: event.id,
-			ts: event.ts,
-			payload: payloadAsJson(event.payload),
-			parentActorId: event.parentActorId ?? null,
-			ephemeral: event.ephemeral ?? false
-		},
-		seqNum: event.seq,
-		parentSeqNum: Math.max(0, event.seq - 1),
-		clientId: event.origin?.clientId ?? "twist-host",
-		sessionId: event.origin?.sessionId ?? "twist-host"
-	};
-}
-function decodeTwistEvent(raw, actorId) {
-	if (!isReadonlyObject(raw)) throw new Error("Invalid event payload: expected object");
-	if ("name" in raw && isString(raw.name)) {
-		const args = "args" in raw && isReadonlyObject(raw.args) ? raw.args : {};
-		const payload = "payload" in args ? args.payload : {};
-		const id = "id" in args && isString(args.id) ? args.id : createEventId();
-		const ts = "ts" in args && isNumber(args.ts) ? args.ts : Date.now();
-		const ephemeral = "ephemeral" in args && isBoolean(args.ephemeral) ? args.ephemeral : false;
-		const parentActorId = "parentActorId" in args && isString(args.parentActorId) ? args.parentActorId : void 0;
-		const seq = "seqNum" in raw && isNumber(raw.seqNum) ? raw.seqNum : 0;
-		let origin;
-		if ("clientId" in raw && isString(raw.clientId) && "sessionId" in raw && isString(raw.sessionId)) origin = {
-			clientId: raw.clientId,
-			sessionId: raw.sessionId
-		};
-		return fromWireEvent({
-			id,
-			actorId,
-			type: raw.name,
-			seq,
-			ts,
-			ephemeral,
-			parentActorId,
-			origin,
-			payload
-		});
-	}
-	if ("type" in raw && isString(raw.type)) {
-		const payload = "payload" in raw ? raw.payload : {};
-		const id = "id" in raw && isString(raw.id) ? raw.id : createEventId();
-		const ts = "ts" in raw && isNumber(raw.ts) ? raw.ts : Date.now();
-		const seq = "seq" in raw && isNumber(raw.seq) ? raw.seq : 0;
-		const ephemeral = "ephemeral" in raw && isBoolean(raw.ephemeral) ? raw.ephemeral : false;
-		const parentActorId = "parentActorId" in raw && isString(raw.parentActorId) ? raw.parentActorId : void 0;
-		const itemActorId = "actorId" in raw && isString(raw.actorId) ? raw.actorId : actorId;
-		let origin;
-		if ("origin" in raw && isReadonlyObject(raw.origin) && "clientId" in raw.origin && isString(raw.origin.clientId) && "sessionId" in raw.origin && isString(raw.origin.sessionId)) origin = {
-			clientId: raw.origin.clientId,
-			sessionId: raw.origin.sessionId
-		};
-		return fromWireEvent({
-			id,
-			actorId: itemActorId,
-			type: raw.type,
-			seq,
-			ts,
-			ephemeral,
-			parentActorId,
-			origin,
-			payload
-		});
-	}
-	throw new Error("Unrecognized event format: must have \"name\" (LiveStore) or \"type\" (Twist)");
-}
-function decodeAppendableTwistEvent(raw, actorId) {
-	try {
-		const { seq: _, ...rest } = decodeTwistEvent(raw, actorId);
-		return rest;
-	} catch {
-		return;
-	}
-}
-function createChildId$1(parentId, name) {
-	return `${parentId}__${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-}
-function findTool(tools, name) {
-	return tools.find((t) => t.name === name);
-}
-/**
-* Produce events for a single agent turn (agent.turn owed work).
-*/
-var executeAgentTurn = (definition, state) => gen(function* () {
-	const turn = state.turn + 1;
-	if (turn > state.maxTurns) return {
-		events: [event("actor.failed", state.actorId, { error: `Max turns exceeded (${state.maxTurns})` })],
-		spawns: []
-	};
-	const tools = definition.tools ?? [];
-	const turnCtx = {
-		actorId: state.actorId,
-		turn,
-		messages: state.messages,
-		input: state.input,
-		tools,
-		instructions: definition.instructions
-	};
-	let result;
-	if (definition.runTurn) result = yield* tryPromise({
-		try: () => Promise.resolve(definition.runTurn(turnCtx)),
-		catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
-	});
-	else result = yield* (yield* LlmTag).complete({
-		model: definition.model,
-		instructions: definition.instructions,
-		messages: [{
-			role: "system",
-			content: definition.instructions
-		}, ...state.messages],
-		tools
-	});
-	const events = [event("agent.turn.started", state.actorId, { turn }), event("agent.message", state.actorId, {
-		turn,
-		message: result.message
-	})];
-	const toolCalls = result.toolCalls ?? result.message.toolCalls ?? [];
-	for (const toolCall of toolCalls) events.push(event("agent.tool_call.requested", state.actorId, {
-		turn,
-		toolCall
-	}));
-	if (toolCalls.length === 0 && result.done) {
-		const output = result.output ?? { text: result.message.content };
-		events.push(event("actor.completed", state.actorId, { output }));
-	}
-	return {
-		events,
-		spawns: []
-	};
-});
-/**
-* Execute a pending tool call. Function tools run inline; agent/workflow tools emit child.spawned.
-*/
-var executeToolCall = (definition, state, turn, toolCall) => gen(function* () {
-	const tool = findTool(definition.tools ?? [], toolCall.name);
-	if (!tool) return {
-		events: [event("tool.result", state.actorId, {
-			turn,
-			toolCallId: toolCall.id,
-			name: toolCall.name,
-			result: null,
-			error: `Unknown tool: ${toolCall.name}`
-		})],
-		spawns: []
-	};
-	switch (tool.kind) {
-		case "function": {
-			const validatedArgs = yield* tryPromise({
-				try: () => validateInput(tool.input, toolCall.arguments),
-				catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
-			}).pipe(map((value) => ({
-				ok: true,
-				value
-			})), catch_((err) => succeed$1({
-				ok: false,
-				error: err.message
-			})));
-			if (!validatedArgs.ok) return {
-				events: [event("tool.result", state.actorId, {
-					turn,
-					toolCallId: toolCall.id,
-					name: toolCall.name,
+	reduce(state, event, ctx) {
+		switch (event.type) {
+			case "runtime.thread.started":
+			case "runtime.execution.started": {
+				const payload = asObject(event.payload);
+				const inputObj = isObject(payload.input) ? payload.input : {};
+				const nodeIds = Array.isArray(inputObj.nodeIds) ? inputObj.nodeIds.filter(isString) : state.nodeIds;
+				const nodes = {};
+				for (const nodeId of nodeIds) nodes[nodeId] = {
+					status: "pending",
 					result: null,
-					error: validatedArgs.error
-				})],
-				spawns: []
-			};
-			const result = yield* tryPromise({
-				try: () => Promise.resolve(tool.handler(validatedArgs.value, {
-					actorId: state.actorId,
-					turn
-				})),
-				catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
-			}).pipe(map((value) => ({
-				ok: true,
-				value
-			})), catch_((err) => succeed$1({
-				ok: false,
-				error: err.message
-			})));
-			if (!result.ok) return {
-				events: [event("tool.result", state.actorId, {
-					turn,
-					toolCallId: toolCall.id,
-					name: toolCall.name,
-					result: null,
-					error: result.error
-				})],
-				spawns: []
-			};
-			return {
-				events: [event("tool.result", state.actorId, {
-					turn,
-					toolCallId: toolCall.id,
-					name: toolCall.name,
-					result: result.value,
 					error: null
-				})],
-				spawns: []
-			};
-		}
-		case "agent-tool": {
-			const input = tool.mapInput ? tool.mapInput(toolCall.arguments) : toolCall.arguments;
-			const childActorId = createChildId$1(state.actorId, tool.agent.name);
-			return {
-				events: [event("child.spawned", state.actorId, {
-					childActorId,
-					childKind: "agent",
-					childDefinitionName: tool.agent.name,
-					toolCallId: toolCall.id,
-					nodeId: null,
-					input
-				})],
-				spawns: [{
-					childActorId,
-					kind: "agent",
-					definitionName: tool.agent.name,
-					definition: tool.agent,
-					input,
-					toolCallId: toolCall.id
-				}]
-			};
-		}
-		case "workflow-tool": {
-			const input = tool.mapInput ? tool.mapInput(toolCall.arguments) : toolCall.arguments;
-			const childActorId = createChildId$1(state.actorId, tool.workflow.name);
-			return {
-				events: [event("child.spawned", state.actorId, {
-					childActorId,
-					childKind: "workflow",
-					childDefinitionName: tool.workflow.name,
-					toolCallId: toolCall.id,
-					nodeId: null,
-					input
-				})],
-				spawns: [{
-					childActorId,
-					kind: "workflow",
-					definitionName: tool.workflow.name,
-					definition: tool.workflow,
-					input,
-					toolCallId: toolCall.id
-				}]
-			};
-		}
-		default: return tool;
-	}
-});
-function createRegistry(definitions = []) {
-	const agents = /* @__PURE__ */ new Map();
-	const workflows = /* @__PURE__ */ new Map();
-	for (const def of definitions) if (def.kind === "agent") agents.set(def.name, def);
-	else workflows.set(def.name, def);
-	return {
-		agents,
-		workflows
-	};
-}
-/**
-* From owed `workflow.schedule`, emit `workflow.run_node` starters for ready nodes
-* up to remaining concurrency. If the DAG is finished, emit `actor.completed`.
-*/
-function scheduleWorkflow(definition, state) {
-	const running = Object.values(state.nodes).filter((n) => n.status === "running").length;
-	const waitingReview = Object.values(state.nodes).filter((n) => n.status === "waiting_review").length;
-	const slots = Math.max(0, state.concurrency - running);
-	const ready = readyNodes(definition, state.nodes).slice(0, slots);
-	if (ready.length > 0) return ready.map((nodeId) => event("workflow.node.started", state.actorId, { nodeId }));
-	if (Object.values(state.nodes).some((n) => n.status === "pending" || n.status === "running" || n.status === "waiting_review") || waitingReview > 0 || running > 0) return [];
-	const failed = Object.entries(state.nodes).find(([, n]) => n.status === "failed");
-	if (failed) return [event("actor.failed", state.actorId, { error: failed[1].error ?? `Node ${failed[0]} failed` })];
-	const results = {};
-	for (const [id, node] of Object.entries(state.nodes)) results[id] = node.result;
-	const output = definition.output ? definition.output({
-		input: state.input,
-		results
-	}) : results;
-	return [event("actor.completed", state.actorId, { output })];
-}
-function createChildId(parentId, name) {
-	return `${parentId}__${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-}
-function createReviewId() {
-	return `rev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-function createTimerId() {
-	return `tmr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-var NodeResultTypeSchema = Literals([
-	"value",
-	"review",
-	"wait",
-	"spawn_agent",
-	"spawn_workflow"
-]);
-function isNodeResult(raw) {
-	if (!isReadonlyObject(raw) || !("type" in raw)) return false;
-	return is(NodeResultTypeSchema)(raw.type);
-}
-function normalizeResult(raw) {
-	if (isNodeResult(raw)) return raw;
-	return {
-		type: "value",
-		value: raw
-	};
-}
-/**
-* Execute a workflow node that is owed as `workflow.run_node`.
-* Caller should already have appended `workflow.node.started` (via schedule) or we emit it here if missing.
-*/
-var executeWorkflowNode = (definition, state, nodeId) => gen(function* () {
-	const nodeDef = definition.nodes.find((n) => n.id === nodeId);
-	if (!nodeDef) return {
-		events: [event("workflow.node.finished", state.actorId, {
-			nodeId,
-			result: null,
-			error: `Unknown node: ${nodeId}`
-		})],
-		spawns: []
-	};
-	const results = {};
-	for (const [id, node] of Object.entries(state.nodes)) results[id] = node.result;
-	const ctx = {
-		actorId: state.actorId,
-		nodeId,
-		input: state.input,
-		results,
-		requestReview: (request) => ({
-			type: "review",
-			review: request
-		}),
-		spawnAgent: (agent, input) => ({
-			type: "spawn_agent",
-			agent,
-			input
-		}),
-		spawnWorkflow: (workflow, input) => ({
-			type: "spawn_workflow",
-			workflow,
-			input
-		})
-	};
-	const raw = yield* tryPromise({
-		try: () => Promise.resolve(nodeDef.run(ctx)),
-		catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
-	}).pipe(map((value) => ({
-		ok: true,
-		value
-	})), catch_((err) => succeed$1({
-		ok: false,
-		error: err.message
-	})));
-	if (!raw.ok) return {
-		events: [event("workflow.node.finished", state.actorId, {
-			nodeId,
-			result: null,
-			error: raw.error
-		})],
-		spawns: []
-	};
-	const result = normalizeResult(raw.value);
-	switch (result.type) {
-		case "value": return {
-			events: [event("workflow.node.finished", state.actorId, {
-				nodeId,
-				result: result.value,
-				error: null
-			})],
-			spawns: []
-		};
-		case "review": {
-			const reviewId = createReviewId();
-			const actions = result.review.actions ?? [{
-				id: "approve",
-				label: "Approve",
-				outcome: "approve"
-			}, {
-				id: "reject",
-				label: "Reject",
-				outcome: "reject"
-			}];
-			return {
-				events: [event("review.requested", state.actorId, {
-					reviewId,
-					title: result.review.title,
-					description: result.review.description,
-					schema: result.review.schema,
-					actions,
-					nodeId
-				})],
-				spawns: []
-			};
-		}
-		case "wait": {
-			const timerId = createTimerId();
-			const wakeAt = Date.now() + result.ms;
-			return {
-				events: [event("timer.set", state.actorId, {
-					timerId,
-					wakeAt,
-					nodeId
-				})],
-				spawns: []
-			};
-		}
-		case "spawn_agent": {
-			const childActorId = createChildId(state.actorId, result.agent.name);
-			return {
-				events: [event("child.spawned", state.actorId, {
-					childActorId,
-					childKind: "agent",
-					childDefinitionName: result.agent.name,
-					toolCallId: null,
-					nodeId,
-					input: result.input
-				})],
-				spawns: [{
-					childActorId,
-					kind: "agent",
-					definitionName: result.agent.name,
-					definition: result.agent,
-					input: result.input,
-					nodeId
-				}]
-			};
-		}
-		case "spawn_workflow": {
-			const childActorId = createChildId(state.actorId, result.workflow.name);
-			return {
-				events: [event("child.spawned", state.actorId, {
-					childActorId,
-					childKind: "workflow",
-					childDefinitionName: result.workflow.name,
-					toolCallId: null,
-					nodeId,
-					input: result.input
-				})],
-				spawns: [{
-					childActorId,
-					kind: "workflow",
-					definitionName: result.workflow.name,
-					definition: result.workflow,
-					input: result.input,
-					nodeId
-				}]
-			};
-		}
-		default: return result;
-	}
-});
-var OptionalStringField = Struct({
-	timerId: optional(String$1),
-	nodeId: optional(String$1),
-	parentActorId: optional(NullOr(String$1)),
-	childActorId: optional(String$1),
-	toolCallId: optional(NullOr(String$1)),
-	childDefinitionName: optional(String$1)
-});
-function readPayloadFields(payload) {
-	const decoded = decodeUnknownExit(OptionalStringField)(payload);
-	if (decoded._tag === "Success") return decoded.value;
-	return {};
-}
-function createActorId(kind) {
-	return `${kind === "agent" ? "agt" : "wf"}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-function stripSeq(events) {
-	return events.map(({ seq: _seq, ...rest }) => rest);
-}
-function createTwistRuntime(registry) {
-	const waking = /* @__PURE__ */ new Set();
-	const spawnMeta = /* @__PURE__ */ new Map();
-	const runtime = {
-		registry,
-		getState: (actorId) => gen(function* () {
-			return reduceActor(yield* (yield* EventStoreTag).read(actorId), { actorId });
-		}),
-		getEvents: (actorId, options) => gen(function* () {
-			return yield* (yield* EventStoreTag).read(actorId, options);
-		}),
-		startAgent: (definitionName, input = null, options) => gen(function* () {
-			const def = registry.agents.get(definitionName);
-			if (!def) return yield* fail(/* @__PURE__ */ new Error(`Unknown agent: ${definitionName}`));
-			const validatedInput = yield* tryPromise({
-				try: () => validateDefinitionInput(def, input),
-				catch: (err) => err instanceof Error ? err : new Error(String(err))
-			});
-			const actorId = options?.actorId ?? createActorId("agent");
-			const store = yield* EventStoreTag;
-			const batch = [event("actor.started", actorId, {
-				kind: "agent",
-				definitionName,
-				input: validatedInput,
-				parentActorId: options?.parentActorId ?? null,
-				maxTurns: def.maxTurns ?? 20
-			})];
-			if (validatedInput !== null && validatedInput !== void 0) {
-				const content = isString(validatedInput) ? validatedInput : JSON.stringify(validatedInput);
-				batch.push(event("agent.message.received", actorId, { message: {
-					role: "user",
-					content
-				} }));
-			}
-			yield* store.append(actorId, stripSeq(batch));
-			return {
-				actorId,
-				state: yield* runtime.wake(actorId)
-			};
-		}),
-		startWorkflow: (definitionName, input = null, options) => gen(function* () {
-			const def = registry.workflows.get(definitionName);
-			if (!def) return yield* fail(/* @__PURE__ */ new Error(`Unknown workflow: ${definitionName}`));
-			const validatedInput = yield* tryPromise({
-				try: () => validateDefinitionInput(def, input),
-				catch: (err) => err instanceof Error ? err : new Error(String(err))
-			});
-			const actorId = options?.actorId ?? createActorId("workflow");
-			yield* (yield* EventStoreTag).append(actorId, stripSeq([event("actor.started", actorId, {
-				kind: "workflow",
-				definitionName,
-				input: validatedInput,
-				parentActorId: options?.parentActorId ?? null,
-				concurrency: def.concurrency ?? 8,
-				nodeIds: def.nodes.map((n) => n.id)
-			})]));
-			return {
-				actorId,
-				state: yield* runtime.wake(actorId)
-			};
-		}),
-		signal: (actorId, events) => gen(function* () {
-			const store = yield* EventStoreTag;
-			const batch = events.map((e) => eventFromSignal(e, actorId));
-			yield* store.append(actorId, stripSeq(batch));
-			return yield* runtime.wake(actorId);
-		}),
-		decideReview: (actorId, reviewId, decision) => {
-			const payload = {
-				reviewId,
-				actionId: decision.actionId,
-				outcome: decision.outcome
-			};
-			const withOptional = decision.payload === void 0 ? payload : {
-				...payload,
-				payload: decision.payload
-			};
-			return runtime.signal(actorId, [{
-				type: "review.decided",
-				payload: withOptional
-			}]);
-		},
-		steer: (actorId, message, options) => gen(function* () {
-			const state = yield* runtime.getState(actorId);
-			const msg = isString(message) ? {
-				role: "user",
-				content: message
-			} : message;
-			return yield* runtime.signal(actorId, [{
-				type: "agent.turn.steered",
-				payload: {
-					turn: options?.turn ?? (state.kind === "agent" ? state.turn : 0),
-					message: msg,
-					interrupt: options?.interrupt ?? true
-				}
-			}]);
-		}),
-		wake: (actorId) => gen(function* () {
-			if (waking.has(actorId)) return yield* runtime.getState(actorId);
-			waking.add(actorId);
-			try {
-				const store = yield* EventStoreTag;
-				let events = yield* store.read(actorId);
-				let state = reduceActor(events, { actorId });
-				let guard = 0;
-				while (!isTerminal(state) && !isParked(state) && guard < 100) {
-					guard += 1;
-					const dueTimer = state.owed.find((w) => w.type === "timer.wait" && w.wakeAt <= Date.now());
-					if (dueTimer) {
-						const timerEvt = events.find((e) => {
-							if (e.type !== "timer.set") return false;
-							return readPayloadFields(e.payload).timerId === dueTimer.timerId;
-						});
-						const nodeId = timerEvt ? readPayloadFields(timerEvt.payload).nodeId : void 0;
-						const batch = [event("timer.fired", actorId, { timerId: dueTimer.timerId })];
-						if (nodeId && state.kind === "workflow") {
-							const node = state.nodes[nodeId];
-							if (node?.status === "running" || node?.status === "waiting_review") batch.push(event("workflow.node.finished", actorId, {
-								nodeId,
-								result: { waited: true },
-								error: null
-							}));
-						}
-						yield* store.append(actorId, stripSeq(batch));
-						events = yield* store.read(actorId);
-						state = reduceActor(events, { actorId });
-						continue;
-					}
-					const definition = state.kind === "agent" ? registry.agents.get(state.definitionName) : registry.workflows.get(state.definitionName);
-					if (!definition) {
-						yield* store.append(actorId, stripSeq([event("actor.failed", actorId, { error: `Unknown definition: ${state.definitionName}` })]));
-						events = yield* store.read(actorId);
-						state = reduceActor(events, { actorId });
-						break;
-					}
-					const actionable = state.owed.find((w) => w.type !== "review.wait" && w.type !== "child.wait" && w.type !== "timer.wait");
-					if (!actionable) break;
-					const { events: produced, spawns } = yield* runOwed(registry, definition, state, actionable);
-					if (produced.length === 0) break;
-					yield* store.append(actorId, produced);
-					for (const spawn of spawns) {
-						spawnMeta.set(spawn.childActorId, {
-							parentActorId: spawn.parentActorId,
-							toolCallId: spawn.toolCallId,
-							nodeId: spawn.nodeId
-						});
-						if (spawn.definition?.kind === "agent") registry.agents.set(spawn.definition.name, spawn.definition);
-						else if (spawn.definition?.kind === "workflow") registry.workflows.set(spawn.definition.name, spawn.definition);
-						if (spawn.kind === "agent") yield* runtime.startAgent(spawn.definitionName, spawn.input, {
-							actorId: spawn.childActorId,
-							parentActorId: spawn.parentActorId
-						});
-						else yield* runtime.startWorkflow(spawn.definitionName, spawn.input, {
-							actorId: spawn.childActorId,
-							parentActorId: spawn.parentActorId
-						});
-					}
-					events = yield* store.read(actorId);
-					state = reduceActor(events, { actorId });
-				}
-				if (isTerminal(state) && state.parentActorId) yield* notifyParent(runtime, spawnMeta, actorId, state.output, state.error);
-				events = yield* store.read(actorId);
-				if (shouldTakeSnapshot(events, 200)) {
-					const snap = buildSnapshotEvent(actorId, events, { includeState: true });
-					yield* store.append(actorId, stripSeq([snap]));
-					events = yield* store.read(actorId);
-					state = reduceActor(events, { actorId });
-				}
-				return state;
-			} finally {
-				waking.delete(actorId);
-			}
-		})
-	};
-	return runtime;
-}
-function notifyParent(runtime, spawnMeta, childActorId, result, error) {
-	return gen(function* () {
-		const meta = spawnMeta.get(childActorId);
-		const store = yield* EventStoreTag;
-		const started = (yield* store.read(childActorId)).find((e) => e.type === "actor.started");
-		const parentActorId = meta?.parentActorId ?? (started ? readPayloadFields(started.payload).parentActorId : void 0) ?? null;
-		if (!parentActorId) return;
-		const spawnEvt = (yield* store.read(parentActorId)).find((e) => {
-			if (e.type !== "child.spawned") return false;
-			return readPayloadFields(e.payload).childActorId === childActorId;
-		});
-		const spawnPayload = spawnEvt ? readPayloadFields(spawnEvt.payload) : void 0;
-		const nodeId = meta?.nodeId ?? spawnPayload?.nodeId ?? null;
-		const toolCallId = meta?.toolCallId ?? spawnPayload?.toolCallId ?? null;
-		const batch = [];
-		if (toolCallId) batch.push(event("tool.result", parentActorId, {
-			turn: null,
-			toolCallId,
-			name: spawnPayload?.childDefinitionName ?? "child",
-			result,
-			error
-		}));
-		batch.push(event("child.completed", parentActorId, {
-			childActorId,
-			result,
-			error
-		}));
-		if (nodeId) batch.push(event("workflow.node.finished", parentActorId, {
-			nodeId,
-			result,
-			error
-		}));
-		yield* store.append(parentActorId, stripSeq(batch));
-		spawnMeta.delete(childActorId);
-		yield* runtime.wake(parentActorId);
-	});
-}
-function runOwed(registry, definition, state, work) {
-	return gen(function* () {
-		switch (work.type) {
-			case "agent.turn": {
-				if (state.kind !== "agent" || definition.kind !== "agent") return {
-					events: [],
-					spawns: []
 				};
-				const result = yield* executeAgentTurn(definition, state);
 				return {
-					events: stripSeq(result.events),
-					spawns: result.spawns.map((s) => ({
-						...s,
-						parentActorId: state.actorId,
-						nodeId: null
-					}))
+					state: {
+						...state,
+						nodes,
+						nodeIds,
+						input: payload.input ?? state.input
+					},
+					effects: [invoke("workflow.schedule", {})]
 				};
 			}
-			case "tool.execute": {
-				if (state.kind !== "agent" || definition.kind !== "agent") return {
-					events: [],
-					spawns: []
-				};
-				const result = yield* executeToolCall(definition, state, work.turn, work.toolCall);
+			case "workflow.node.started": {
+				const nodeId = readString(asObject(event.payload), "nodeId");
+				if (!nodeId) return { state };
 				return {
-					events: stripSeq(result.events),
-					spawns: result.spawns.map((s) => ({
-						...s,
-						parentActorId: state.actorId,
-						nodeId: null
-					}))
-				};
-			}
-			case "workflow.schedule": {
-				if (state.kind !== "workflow" || definition.kind !== "workflow") return {
-					events: [],
-					spawns: []
-				};
-				const scheduled = scheduleWorkflow(definition, state);
-				const nodeStarts = scheduled.filter((e) => e.type === "workflow.node.started");
-				const events = [...scheduled];
-				const spawns = [];
-				for (const start of nodeStarts) {
-					const nodeId = start.payload.nodeId;
-					if (!nodeId) continue;
-					const executed = yield* executeWorkflowNode(definition, {
+					state: {
 						...state,
 						nodes: {
 							...state.nodes,
@@ -8553,253 +9338,506 @@ function runOwed(registry, definition, state, work) {
 								error: null
 							}
 						}
-					}, nodeId);
-					events.push(...executed.events);
-					for (const s of executed.spawns) {
-						spawns.push({
-							childActorId: s.childActorId,
-							kind: s.kind,
-							definitionName: s.definitionName,
-							definition: s.definition,
-							input: s.input,
-							parentActorId: state.actorId,
-							toolCallId: null,
-							nodeId: s.nodeId
-						});
-						if (s.definition?.kind === "agent") registry.agents.set(s.definition.name, s.definition);
-						else if (s.definition?.kind === "workflow") registry.workflows.set(s.definition.name, s.definition);
-					}
-				}
-				return {
-					events: stripSeq(events),
-					spawns
+					},
+					effects: [invoke("workflow.runNode", { nodeId })]
 				};
 			}
-			case "workflow.run_node": {
-				if (state.kind !== "workflow" || definition.kind !== "workflow") return {
-					events: [],
-					spawns: []
-				};
-				const started = event("workflow.node.started", state.actorId, { nodeId: work.nodeId });
-				const executed = yield* executeWorkflowNode(definition, {
+			case "workflow.node.finished": {
+				const payload = asObject(event.payload);
+				const nodeId = readString(payload, "nodeId");
+				if (!nodeId) return { state };
+				const error = payload.error;
+				const failed = isString(error) && error.length > 0;
+				const next = {
 					...state,
 					nodes: {
 						...state.nodes,
-						[work.nodeId]: {
-							status: "running",
-							result: null,
-							error: null
+						[nodeId]: {
+							status: failed ? "failed" : "completed",
+							result: payload.result ?? null,
+							error: failed ? error : null
 						}
 					}
-				}, work.nodeId);
+				};
+				if (failed) return {
+					state: next,
+					effects: [fail(error)]
+				};
 				return {
-					events: stripSeq([started, ...executed.events]),
-					spawns: executed.spawns.map((s) => ({
-						childActorId: s.childActorId,
-						kind: s.kind,
-						definitionName: s.definitionName,
-						definition: s.definition,
-						input: s.input,
-						parentActorId: state.actorId,
-						toolCallId: null,
-						nodeId: s.nodeId
-					}))
+					state: next,
+					effects: [invoke("workflow.schedule", {})]
 				};
 			}
-			case "finalize":
-				if (state.status === "failed" || state.error) return {
-					events: stripSeq([event("actor.failed", state.actorId, { error: state.error ?? "Actor failed" })]),
-					spawns: []
+			case "workflow.spawn.requested": {
+				const payload = asObject(event.payload);
+				const childThreadId = readString(payload, "childThreadId") ?? readString(payload, "childExecutionId");
+				const kind = readString(payload, "kind");
+				const definitionName = readString(payload, "definitionName");
+				const nodeId = readString(payload, "nodeId");
+				if (!childThreadId || !kind || !definitionName || !nodeId) return { state };
+				const waitId = createWaitId();
+				return {
+					state,
+					effects: [
+						spawn({
+							childThreadId,
+							kind,
+							definitionName,
+							input: payload.input ?? null
+						}),
+						wait({
+							waitId,
+							on: {
+								type: "runtime.thread.completed",
+								match: { threadId: childThreadId }
+							},
+							tag: { nodeId }
+						}),
+						wait({
+							waitId: `${waitId}_fail`,
+							on: {
+								type: "runtime.thread.failed",
+								match: { threadId: childThreadId }
+							},
+							tag: { nodeId }
+						})
+					]
+				};
+			}
+			case "workflow.sleep.requested": {
+				const payload = asObject(event.payload);
+				const waitId = readString(payload, "waitId");
+				const wakeAt = payload.wakeAt;
+				const nodeId = readString(payload, "nodeId");
+				if (!waitId || !isNumber(wakeAt) || !nodeId) return { state };
+				return {
+					state,
+					effects: [wait({
+						waitId,
+						on: { timerAt: wakeAt },
+						tag: { nodeId }
+					})]
+				};
+			}
+			case "workflow.effects.requested": {
+				const payload = asObject(event.payload);
+				const nodeId = readString(payload, "nodeId");
+				const raw = payload.effects;
+				const effects = Array.isArray(raw) ? raw : [];
+				if (!nodeId) return {
+					state,
+					effects
 				};
 				return {
-					events: stripSeq([event("actor.completed", state.actorId, { output: state.output ?? null })]),
-					spawns: []
+					state,
+					effects: effects.map((effect) => {
+						if (effect.type !== "runtime.wait" || !("on" in effect)) return effect;
+						const tag = isObject(effect.tag) ? {
+							...effect.tag,
+							nodeId
+						} : { nodeId };
+						return {
+							...effect,
+							tag
+						};
+					})
 				};
-			case "review.wait":
-			case "child.wait":
-			case "timer.wait": return {
-				events: [],
-				spawns: []
-			};
-			default: return work;
+			}
+			case "runtime.wait.satisfied": {
+				const payload = asObject(event.payload);
+				const tag = payload.tag;
+				if (!isObject(tag)) return { state };
+				const nodeId = readString(tag, "nodeId");
+				if (!nodeId) return { state };
+				const embedded = payload.event;
+				const embeddedObj = isObject(embedded) && isObject(embedded.payload) ? embedded.payload : {};
+				const error = readString(embeddedObj, "error") ?? null;
+				const threadId = ctx.threadId ?? ctx.executionId;
+				return {
+					state,
+					effects: [{
+						type: "runtime.emit",
+						event: {
+							type: "workflow.node.finished",
+							payload: asJson({
+								nodeId,
+								result: embeddedObj.output ?? (isObject(embedded) ? embedded.payload : { waited: true }),
+								error
+							}),
+							threadId,
+							executionId: threadId
+						}
+					}]
+				};
+			}
+			default: return { state };
+		}
+	}
+});
+var ScheduleInput = Struct({});
+var RunNodeInput = Struct({ nodeId: String$1 });
+var threadBindings = /* @__PURE__ */ new Map();
+function bindWorkflowThread(threadId, binding) {
+	threadBindings.set(threadId, binding);
+}
+function isNodeResult(raw) {
+	if (!isObject(raw) || !("type" in raw)) return false;
+	return raw.type === "value" || raw.type === "spawn" || raw.type === "sleep" || raw.type === "effects";
+}
+var scheduleEffect = defineEffect({
+	type: "workflow.schedule",
+	input: ScheduleInput,
+	execute: (_input, ctx) => gen(function* () {
+		const workflows = yield* WorkflowDefinitionsTag;
+		const threadId = ctx.threadId ?? ctx.executionId;
+		const binding = threadBindings.get(threadId);
+		const definition = binding ? workflows.get(binding.definitionName) : void 0;
+		if (!definition || !binding) return [];
+		const nodes = { ...binding.nodes };
+		for (const node of definition.nodes) if (!nodes[node.id]) nodes[node.id] = {
+			status: "pending",
+			result: null
+		};
+		return scheduleEvents(definition, {
+			...binding,
+			nodes
+		}, threadId);
+	})
+});
+function scheduleEvents(definition, binding, threadId) {
+	const running = Object.values(binding.nodes).filter((n) => n.status === "running").length;
+	const slots = Math.max(0, (definition.concurrency ?? 8) - running);
+	const ready = readyNodes(definition, binding.nodes).slice(0, slots);
+	const events = [];
+	for (const nodeId of ready) events.push({
+		type: "workflow.node.started",
+		payload: { nodeId },
+		threadId,
+		executionId: threadId
+	});
+	if (ready.length > 0) return events;
+	if (Object.values(binding.nodes).some((n) => n.status === "pending" || n.status === "running")) return [];
+	const failed = Object.entries(binding.nodes).find(([, n]) => n.status === "failed");
+	if (failed) return [{
+		type: "runtime.thread.failed",
+		payload: {
+			threadId,
+			error: `Node ${failed[0]} failed`
+		},
+		threadId,
+		executionId: threadId
+	}];
+	const results = {};
+	for (const [id, node] of Object.entries(binding.nodes)) results[id] = node.result;
+	return [{
+		type: "runtime.thread.completed",
+		payload: {
+			threadId,
+			output: definition.output ? definition.output({
+				input: binding.input,
+				results
+			}) : results
+		},
+		threadId,
+		executionId: threadId
+	}];
+}
+var runNodeEffect = defineEffect({
+	type: "workflow.runNode",
+	input: RunNodeInput,
+	execute: (input, ctx) => gen(function* () {
+		const workflows = yield* WorkflowDefinitionsTag;
+		const threadId = ctx.threadId ?? ctx.executionId;
+		const binding = threadBindings.get(threadId);
+		const definition = binding ? workflows.get(binding.definitionName) : void 0;
+		if (!definition || !binding) return [{
+			type: "workflow.node.finished",
+			payload: {
+				nodeId: input.nodeId,
+				result: null,
+				error: "Unknown workflow definition"
+			},
+			threadId,
+			executionId: threadId
+		}];
+		return yield* runNode(definition, binding, input.nodeId, threadId);
+	})
+});
+function runNode(definition, binding, nodeId, threadId) {
+	return gen(function* () {
+		const nodeDef = definition.nodes.find((node) => node.id === nodeId);
+		if (!nodeDef) return [{
+			type: "workflow.node.finished",
+			payload: {
+				nodeId,
+				result: null,
+				error: `Unknown node: ${nodeId}`
+			},
+			threadId,
+			executionId: threadId
+		}];
+		const results = {};
+		for (const [id, node] of Object.entries(binding.nodes)) results[id] = node.result;
+		const raw = yield* tryPromise({
+			try: () => Promise.resolve(nodeDef.run({
+				threadId,
+				executionId: threadId,
+				nodeId,
+				input: binding.input,
+				results,
+				spawn: (child, input) => ({
+					type: "spawn",
+					kind: child.kind,
+					name: child.name,
+					input
+				}),
+				sleep: (ms) => ({
+					type: "sleep",
+					ms
+				}),
+				effects: (effects) => ({
+					type: "effects",
+					effects
+				})
+			})),
+			catch: (cause) => cause instanceof Error ? cause : new Error(String(cause))
+		}).pipe(map((value) => ({
+			ok: true,
+			value
+		})), catch_((err) => succeed({
+			ok: false,
+			error: err.message
+		})));
+		if (!raw.ok) return [{
+			type: "workflow.node.finished",
+			payload: {
+				nodeId,
+				result: null,
+				error: raw.error
+			},
+			threadId,
+			executionId: threadId
+		}];
+		const result = isNodeResult(raw.value) ? raw.value : {
+			type: "value",
+			value: raw.value
+		};
+		switch (result.type) {
+			case "value": return [{
+				type: "workflow.node.finished",
+				payload: {
+					nodeId,
+					result: result.value,
+					error: null
+				},
+				threadId,
+				executionId: threadId
+			}];
+			case "spawn": {
+				const childThreadId = createThreadId();
+				return [{
+					type: "workflow.spawn.requested",
+					payload: {
+						nodeId,
+						childThreadId,
+						childExecutionId: childThreadId,
+						kind: result.kind,
+						definitionName: result.name,
+						input: result.input
+					},
+					threadId,
+					executionId: threadId
+				}];
+			}
+			case "sleep": return [{
+				type: "workflow.sleep.requested",
+				payload: {
+					nodeId,
+					waitId: createWaitId(),
+					wakeAt: Date.now() + result.ms
+				},
+				threadId,
+				executionId: threadId
+			}];
+			case "effects": return [{
+				type: "workflow.effects.requested",
+				payload: {
+					nodeId,
+					effects: result.effects
+				},
+				threadId,
+				executionId: threadId
+			}];
+			default: return result;
 		}
 	});
 }
-/**
-* LiveStore sync proxy over the Twist EventStore.
-*
-* Exposes the standard LiveStore protocol contract:
-* - HEAD  — reachability ping (200)
-* - GET   — pull events for `storeId` from `cursor` (JSON batch or live SSE)
-* - POST  — push batch with `parentSeqNum` conflict detection (409 ServerAheadError) + actor wake
-*/
-async function handleLivestoreProxy(req, runtime, store, options) {
+function payloadObject$1(event) {
+	if (!isObject(event.payload)) return {};
+	return event.payload;
+}
+var nodes = defineProjection({
+	name: "nodes",
+	initialState: { nodes: {} },
+	reduce(state, event) {
+		const payload = payloadObject$1(event);
+		const nodeId = isString(payload.nodeId) ? payload.nodeId : void 0;
+		if (!nodeId) return state;
+		switch (event.type) {
+			case "workflow.node.started": return { nodes: {
+				...state.nodes,
+				[nodeId]: {
+					status: "running",
+					result: null,
+					error: null
+				}
+			} };
+			case "workflow.node.finished": {
+				const error = payload.error;
+				const failed = isString(error) && error.length > 0;
+				return { nodes: {
+					...state.nodes,
+					[nodeId]: {
+						status: failed ? "failed" : "completed",
+						result: payload.result ?? null,
+						error: failed ? error : null
+					}
+				} };
+			}
+			case "workflow.node.skipped": return { nodes: {
+				...state.nodes,
+				[nodeId]: {
+					status: "skipped",
+					result: null,
+					error: null
+				}
+			} };
+			default: return state;
+		}
+	}
+});
+function workflowDefinitions(ctx) {
+	const found = [];
+	for (const registered of ctx.definitions) {
+		if (registered.value.kind !== "workflow") continue;
+		found.push(registered.value);
+	}
+	return found;
+}
+function workflow() {
+	return defineRuntimeModule({
+		namespace: "workflow",
+		protocolVersion: "1.0.0",
+		events: workflowCatalog,
+		threads: { workflow: workflowThread },
+		executions: { workflow: workflowThread },
+		effects: {
+			schedule: scheduleEffect,
+			runNode: runNodeEffect
+		},
+		projections: { nodes },
+		services: (ctx) => WorkflowDefinitionsLive(workflowDefinitions(ctx)),
+		bindThread: (record) => {
+			if (record.kind !== "workflow") return;
+			const state = fromJsonStruct(record.state);
+			const nodeStates = {};
+			for (const [id, node] of Object.entries(state.nodes ?? {})) nodeStates[id] = {
+				status: node.status,
+				result: node.result
+			};
+			bindWorkflowThread(record.threadId, {
+				definitionName: record.definitionName,
+				nodes: nodeStates,
+				input: record.input
+			});
+		}
+	});
+}
+async function handleLivestoreProxy(req, runtime, store) {
 	const url = new URL(req.url);
 	if (req.method === "HEAD") return new Response(null, { status: 200 });
 	if (req.method === "GET") {
-		const storeId = url.searchParams.get("storeId") ?? url.searchParams.get("actorId");
+		const storeId = url.searchParams.get("storeId") ?? url.searchParams.get("runId");
 		if (!storeId) return Response.json({ error: "storeId required" }, { status: 400 });
 		const cursor = Number(url.searchParams.get("cursor") ?? "0");
 		const acceptHeader = req.headers.get("accept") ?? "";
 		if (!(url.searchParams.get("live") === "true" || url.searchParams.get("live") === "1" || acceptHeader.includes("text/event-stream"))) {
 			const events = await runPromise(store.read(storeId, { fromSeq: cursor + 1 }));
 			const head = await runPromise(store.tail(storeId));
-			const batch = events.map(encodeTwistEvent);
 			return Response.json({
-				batch,
+				batch: events.map(encodeLoomsEvent),
 				head
 			});
 		}
-		const encoder = new TextEncoder();
-		let cleanup = () => {};
-		const stream = new ReadableStream({
-			async start(controller) {
-				let active = true;
-				cleanup = () => {
-					active = false;
-				};
-				req.signal.addEventListener("abort", () => {
-					active = false;
-					try {
-						controller.close();
-					} catch {}
-				});
-				try {
-					const backlog = await runPromise(store.read(storeId, { fromSeq: cursor + 1 }));
-					const currentHead = await runPromise(store.tail(storeId));
-					if (backlog.length > 0 && active) {
-						const data = JSON.stringify({
-							batch: backlog.map(encodeTwistEvent),
-							head: currentHead
-						});
-						controller.enqueue(encoder.encode(`event: batch\ndata: ${data}\n\n`));
-					}
-				} catch {}
-				const subFiber = runFork(store.subscribe(storeId, { fromSeq: cursor + 1 }).pipe(runForEach((event) => sync(() => {
-					if (!active) return;
-					const data = JSON.stringify({
-						batch: [encodeTwistEvent(event)],
-						head: event.seq
-					});
-					controller.enqueue(encoder.encode(`event: batch\ndata: ${data}\n\n`));
-				}))));
-				cleanup = () => {
-					active = false;
-					runPromise(interrupt(subFiber));
-				};
-			},
-			cancel() {
-				cleanup();
-			}
-		});
+		const stream = new ReadableStream({ start(controller) {
+			const encoder = new TextEncoder();
+			const write = (data) => {
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+			};
+			const fiber = runFork(store.subscribe(storeId, { fromSeq: cursor + 1 }).pipe(tap((event) => sync(() => {
+				write({ batch: [encodeLoomsEvent(event)] });
+			})), runDrain));
+			req.signal.addEventListener("abort", () => {
+				runFork(interrupt(fiber));
+				controller.close();
+			});
+		} });
 		return new Response(stream, { headers: {
 			"content-type": "text/event-stream",
-			"cache-control": "no-cache",
-			connection: "keep-alive"
+			"cache-control": "no-cache"
 		} });
 	}
-	if (req.method === "POST") try {
-		const rawBody = await req.json();
-		if (!isReadonlyObject(rawBody)) return Response.json({ error: "invalid payload" }, { status: 400 });
-		const rawStoreId = "storeId" in rawBody ? rawBody.storeId : "actorId" in rawBody ? rawBody.actorId : void 0;
-		if (!isString(rawStoreId)) return Response.json({ error: "storeId required" }, { status: 400 });
-		const storeId = rawStoreId;
-		const rawBatch = "batch" in rawBody && Array.isArray(rawBody.batch) ? rawBody.batch : [];
-		if (rawBatch.length === 0) {
-			const head = await runPromise(store.tail(storeId));
-			return Response.json({
-				ok: true,
-				head
-			});
+	if (req.method === "POST") {
+		const body = await req.json();
+		const storeId = url.searchParams.get("storeId") ?? (isReadonlyObject(body) && isString(body.storeId) ? body.storeId : null);
+		if (!storeId) return Response.json({ error: "storeId required" }, { status: 400 });
+		const batch = isReadonlyObject(body) && Array.isArray(body.batch) ? body.batch : [];
+		const parentSeqNum = isReadonlyObject(body) && isNumber(body.parentSeqNum) ? body.parentSeqNum : 0;
+		const tail = await runPromise(store.tail(storeId));
+		if (parentSeqNum !== tail) return Response.json({
+			_tag: "ServerAheadError",
+			expected: parentSeqNum,
+			actual: tail
+		}, { status: 409 });
+		const appendable = batch.map((item) => {
+			return decodeAppendableEvent(item, storeId);
+		}).filter((item) => item !== void 0);
+		try {
+			await runPromise(store.append(storeId, appendable, { expectedTail: parentSeqNum }));
+		} catch (err) {
+			if (err instanceof EventStoreConflictError) return Response.json({
+				_tag: "ServerAheadError",
+				expected: err.expectedTail,
+				actual: err.actualTail
+			}, { status: 409 });
+			throw err;
 		}
-		const firstItem = rawBatch[0];
-		const expectedTail = isReadonlyObject(firstItem) && "parentSeqNum" in firstItem && isNumber(firstItem.parentSeqNum) ? firstItem.parentSeqNum : void 0;
-		const events = [];
-		for (const item of rawBatch) {
-			const decoded = decodeAppendableTwistEvent(item, storeId);
-			if (decoded) events.push(decoded);
-		}
-		if (events.length === 0) {
-			const head = await runPromise(store.tail(storeId));
-			return Response.json({
-				ok: true,
-				head
-			});
-		}
-		const appendEffect = store.append(storeId, events, { expectedTail });
-		const appendResult = await runPromise(appendEffect.pipe(map((res) => ({
-			ok: true,
-			res
-		})), catch_((err) => succeed$1({
-			ok: false,
-			err
-		}))));
-		if (!appendResult.ok) {
-			const err = appendResult.err;
-			if (err instanceof EventStoreConflictError || isReadonlyObject(err) && "_tag" in err && err._tag === "EventStoreConflictError") {
-				const actualTail = "actualTail" in err && isNumber(err.actualTail) ? err.actualTail : await runPromise(store.tail(storeId));
-				return Response.json({
-					error: "ServerAheadError",
-					head: actualTail,
-					minimumExpectedNum: actualTail + 1
-				}, { status: 409 });
-			}
-			return Response.json({ error: err.message }, { status: 500 });
-		}
-		const wakeEffect = runtime.wake(storeId).pipe(provideService(EventStoreTag, store));
-		await runPromise(options.provide(wakeEffect).pipe(catch_(() => void_)));
-		return Response.json({
-			ok: true,
-			head: appendResult.res.tail
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		return Response.json({ error: message }, { status: 500 });
+		await runPromise(provideService(runtime.wake(storeId), EventStoreTag, store));
+		return Response.json({ ok: true });
 	}
 	return new Response("Method Not Allowed", { status: 405 });
 }
-var MessageSchema = Struct({
-	role: Literals([
-		"system",
-		"user",
-		"assistant",
-		"tool"
-	]),
-	content: String$1,
-	toolCallId: optional(String$1),
-	name: optional(String$1)
-});
-var StartActorBodySchema = Struct({
+var StartRunBodySchema = Struct({
+	kind: optional(String$1),
 	definitionName: optional(String$1),
 	name: optional(String$1),
 	input: optional(JsonValueSchema),
-	actorId: optional(String$1)
-});
-var SignalEventSchema = Struct({
-	type: EventTypeSchema,
-	payload: JsonValueSchema,
-	id: optional(String$1),
-	ts: optional(Number$1),
-	ephemeral: optional(Boolean$1),
-	parentActorId: optional(NullOr(String$1))
+	runId: optional(String$1)
 });
 var SignalBodySchema = Struct({
-	events: optional(ArraySchema(SignalEventSchema)),
-	message: optional(Union([String$1, MessageSchema]))
+	events: optional(ArraySchema(Struct({
+		type: String$1,
+		payload: JsonValueSchema,
+		threadId: optional(NullOr(String$1)),
+		executionId: optional(NullOr(String$1))
+	}))),
+	type: optional(String$1),
+	payload: optional(JsonValueSchema),
+	threadId: optional(NullOr(String$1)),
+	executionId: optional(NullOr(String$1))
 });
-var ReviewDecideBodySchema = Struct({
-	actionId: optional(String$1),
-	outcome: optional(Literals(["approve", "reject"])),
-	payload: optional(JsonValueSchema)
-});
-var SteerBodySchema = Struct({
-	message: optional(Union([String$1, MessageSchema])),
-	interrupt: optional(Boolean$1),
-	turn: optional(Number$1)
-});
-function run(effect, store, provide) {
-	const withStore = provideService(effect, EventStoreTag, store);
-	return runPromise(provide(withStore));
+function run(effect, store) {
+	return runPromise(provideService(effect, EventStoreTag, store));
 }
 async function readJson(req) {
 	try {
@@ -8809,38 +9847,36 @@ async function readJson(req) {
 		return {};
 	}
 }
-function parseMessage$1(value) {
-	if (isString(value)) return {
-		role: "user",
-		content: value
-	};
-	return value;
+function isLoomsApiPath(path) {
+	return path === "/health" || path.startsWith("/api/livestore") || path.startsWith("/runs");
 }
-/** True for Twist HTTP routes that hosts should claim before UI fallthrough. */
-function isTwistApiPath(path) {
-	return path === "/health" || path.startsWith("/api/livestore") || path.startsWith("/actors/");
-}
-/**
-* Build a Fetch handler for Twist HTTP routes.
-* Returns `null` when the path is not a Twist API route so a
-* parent server (e.g. TanStack Start, Nitro) can fall through.
-*/
 function createFetchHandler(options) {
-	const { runtime, store, provide } = options;
+	const { runtime, store } = options;
 	return async (req) => {
 		const url = new URL(req.url);
 		const path = url.pathname;
-		if (!isTwistApiPath(path)) return null;
+		if (!isLoomsApiPath(path)) return null;
+		const accept = req.headers.get("accept") ?? "";
+		if (req.method === "GET" && accept.includes("text/html") && !path.startsWith("/api/")) return null;
 		if (path === "/health") return Response.json({ ok: true });
-		if (path.startsWith("/api/livestore")) return handleLivestoreProxy(req, runtime, store, { provide });
+		if (path.startsWith("/api/livestore")) return handleLivestoreProxy(req, runtime, store);
 		try {
-			if (req.method === "POST" && path === "/actors/agent") {
-				const body = decodeUnknownSync(StartActorBodySchema)(await readJson(req));
+			if (req.method === "GET" && path === "/runs") {
+				const runIds = await run(runtime.listRuns(), store);
+				return Response.json({ runIds });
+			}
+			if (req.method === "POST" && path === "/runs") {
+				const body = decodeUnknownSync(StartRunBodySchema)(await readJson(req));
 				const definitionName = body.definitionName ?? body.name;
-				if (!definitionName) return Response.json({ error: "definitionName required" }, { status: 400 });
-				if (!runtime.registry.agents.has(definitionName)) return Response.json({ error: `Unknown agent: ${definitionName}` }, { status: 404 });
+				const kind = body.kind;
+				if (!definitionName || !kind) return Response.json({ error: "kind and definitionName required" }, { status: 400 });
 				try {
-					const result = await run(runtime.startAgent(definitionName, body.input ?? null, { actorId: body.actorId }), store, provide);
+					const result = await run(runtime.startRun({
+						kind,
+						definitionName,
+						input: body.input ?? null,
+						runId: body.runId
+					}), store);
 					return Response.json(result);
 				} catch (err) {
 					if (err instanceof InvalidInputError) return Response.json({
@@ -8850,122 +9886,83 @@ function createFetchHandler(options) {
 					throw err;
 				}
 			}
-			if (req.method === "POST" && path === "/actors/workflow") {
-				const body = decodeUnknownSync(StartActorBodySchema)(await readJson(req));
-				const definitionName = body.definitionName ?? body.name;
-				if (!definitionName) return Response.json({ error: "definitionName required" }, { status: 400 });
-				if (!runtime.registry.workflows.has(definitionName)) return Response.json({ error: `Unknown workflow: ${definitionName}` }, { status: 404 });
-				try {
-					const result = await run(runtime.startWorkflow(definitionName, body.input ?? null, { actorId: body.actorId }), store, provide);
-					return Response.json(result);
-				} catch (err) {
-					if (err instanceof InvalidInputError) return Response.json({
-						error: err.message,
-						issues: err.issues
-					}, { status: 400 });
-					throw err;
-				}
+			const replayMatch = path.match(/^\/runs\/([^/]+)\/replay$/);
+			if (req.method === "GET" && replayMatch) {
+				const runId = decodeURIComponent(replayMatch[1]);
+				const seq = Number(url.searchParams.get("seq") ?? "0");
+				const step = await run(runtime.replayTo(runId, seq), store);
+				return Response.json({
+					runId,
+					step
+				});
 			}
-			const signalMatch = path.match(/^\/actors\/([^/]+)\/signal$/);
-			if (req.method === "POST" && signalMatch) {
-				const actorId = decodeURIComponent(signalMatch[1]);
+			const projectionMatch = path.match(/^\/runs\/([^/]+)\/projections\/([^/]+)$/);
+			if (req.method === "GET" && projectionMatch) {
+				const runId = decodeURIComponent(projectionMatch[1]);
+				const name = decodeURIComponent(projectionMatch[2]);
+				const definition = runtime.registry.projections.get(name);
+				if (!definition) return Response.json({ error: `Unknown projection: ${name}` }, { status: 404 });
+				const value = await run(runtime.project(runId, definition), store);
+				return Response.json({
+					runId,
+					name,
+					value
+				});
+			}
+			const eventsMatch = path.match(/^\/runs\/([^/]+)\/events$/);
+			if (req.method === "POST" && eventsMatch) {
+				const runId = decodeURIComponent(eventsMatch[1]);
 				const body = decodeUnknownSync(SignalBodySchema)(await readJson(req));
-				if (body.message !== void 0) {
-					const message = parseMessage$1(body.message);
-					const state = await run(runtime.signal(actorId, [{
-						type: "agent.message.received",
-						payload: { message }
-					}]), store, provide);
-					return Response.json({
-						actorId,
-						state
-					});
-				}
-				const signals = (body.events ?? []).map((e) => {
-					const typed = fromWireEvent({
-						id: e.id ?? `sig_${Date.now().toString(36)}`,
-						actorId,
-						type: e.type,
-						seq: 0,
-						ts: e.ts ?? Date.now(),
-						payload: e.payload,
-						ephemeral: e.ephemeral,
-						parentActorId: e.parentActorId
-					});
-					return {
-						type: typed.type,
-						payload: typed.payload,
-						id: typed.id,
-						ts: typed.ts,
-						ephemeral: typed.ephemeral,
-						parentActorId: typed.parentActorId
-					};
-				});
-				const state = await run(runtime.signal(actorId, signals), store, provide);
+				const events = body.events ?? (body.type ? [{
+					type: body.type,
+					payload: body.payload ?? null,
+					threadId: body.threadId ?? body.executionId,
+					executionId: body.threadId ?? body.executionId
+				}] : []);
+				const state = await run(runtime.signal(runId, events), store);
 				return Response.json({
-					actorId,
+					runId,
 					state
 				});
 			}
-			const reviewMatch = path.match(/^\/actors\/([^/]+)\/reviews\/([^/]+)\/decide$/);
-			if (req.method === "POST" && reviewMatch) {
-				const actorId = decodeURIComponent(reviewMatch[1]);
-				const reviewId = decodeURIComponent(reviewMatch[2]);
-				const body = decodeUnknownSync(ReviewDecideBodySchema)(await readJson(req));
-				if (!body.actionId || !body.outcome) return Response.json({ error: "actionId and outcome required" }, { status: 400 });
-				const state = await run(runtime.decideReview(actorId, reviewId, {
-					actionId: body.actionId,
-					outcome: body.outcome,
-					payload: body.payload
-				}), store, provide);
-				return Response.json({
-					actorId,
-					state
-				});
-			}
-			const eventsMatch = path.match(/^\/actors\/([^/]+)\/events$/);
 			if (req.method === "GET" && eventsMatch) {
-				const actorId = decodeURIComponent(eventsMatch[1]);
+				const runId = decodeURIComponent(eventsMatch[1]);
 				const fromSeq = url.searchParams.get("fromSeq") ? Number(url.searchParams.get("fromSeq")) : void 0;
 				const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : void 0;
-				const events = await run(runtime.getEvents(actorId, {
+				const events = await run(runtime.getEvents(runId, {
 					fromSeq,
 					limit
-				}), store, provide);
+				}), store);
 				return Response.json({
-					actorId,
+					runId,
 					events
 				});
 			}
-			const stateMatch = path.match(/^\/actors\/([^/]+)\/state$/);
-			if (req.method === "GET" && stateMatch) {
-				const actorId = decodeURIComponent(stateMatch[1]);
-				const state = await run(runtime.getState(actorId), store, provide);
+			const threadsMatch = path.match(/^\/runs\/([^/]+)\/(threads|executions)$/);
+			if (req.method === "GET" && threadsMatch) {
+				const runId = decodeURIComponent(threadsMatch[1]);
+				const state = await run(runtime.getRun(runId), store);
 				return Response.json({
-					actorId,
-					state
+					runId,
+					threads: state.threads,
+					executions: state.threads
 				});
 			}
-			const wakeMatch = path.match(/^\/actors\/([^/]+)\/wake$/);
+			const wakeMatch = path.match(/^\/runs\/([^/]+)\/wake$/);
 			if (req.method === "POST" && wakeMatch) {
-				const actorId = decodeURIComponent(wakeMatch[1]);
-				const state = await run(runtime.wake(actorId), store, provide);
+				const runId = decodeURIComponent(wakeMatch[1]);
+				const state = await run(runtime.wake(runId), store);
 				return Response.json({
-					actorId,
+					runId,
 					state
 				});
 			}
-			const steerMatch = path.match(/^\/actors\/([^/]+)\/steer$/);
-			if (req.method === "POST" && steerMatch) {
-				const actorId = decodeURIComponent(steerMatch[1]);
-				const body = decodeUnknownSync(SteerBodySchema)(await readJson(req));
-				if (body.message === void 0) return Response.json({ error: "message required" }, { status: 400 });
-				const state = await run(runtime.steer(actorId, body.message, {
-					interrupt: body.interrupt,
-					turn: body.turn
-				}), store, provide);
+			const runMatch = path.match(/^\/runs\/([^/]+)$/);
+			if (req.method === "GET" && runMatch) {
+				const runId = decodeURIComponent(runMatch[1]);
+				const state = await run(runtime.getRun(runId), store);
 				return Response.json({
-					actorId,
+					runId,
 					state
 				});
 			}
@@ -8977,7 +9974,7 @@ function createFetchHandler(options) {
 	};
 }
 function serveHttp(fetchHandler, options) {
-	const port = options?.port ?? Number(process.env.PORT ?? 8787);
+	const port = options?.port ?? 8787;
 	const hostname = options?.hostname ?? "0.0.0.0";
 	const server = Bun.serve({
 		port,
@@ -8993,8 +9990,21 @@ function serveHttp(fetchHandler, options) {
 		stop: () => server.stop(true)
 	};
 }
-function createTwist(options = {}) {
+function toRegistered(definitions) {
+	return definitions.map((def) => ({
+		kind: def.kind,
+		name: def.name,
+		input: def.input,
+		value: def
+	}));
+}
+function createLooms(options = {}) {
 	const definitions = options.definitions ? [...options.definitions] : [];
+	const modules = options.modules ?? [
+		agent(),
+		workflow(),
+		approval()
+	];
 	let initPromise;
 	let runningServer;
 	const getInit = () => {
@@ -9003,23 +10013,18 @@ function createTwist(options = {}) {
 			if (!options.store) store = await runPromise(makeMemoryEventStore);
 			else if (isFunction(options.store)) store = await options.store();
 			else store = await options.store;
-			let llmLayer;
-			if (options.llmService) llmLayer = succeed(LlmTag, options.llmService);
-			else if (options.llm) {
-				if (isReadonlyObject(options.llm) && "_tag" in options.llm) llmLayer = succeed(LlmTag, options.llm);
-				else llmLayer = succeed(LlmTag, llmFromAdapter(options.llm));
-			} else llmLayer = StubLlmLive(options.llmPolicy);
-			const runtime = createTwistRuntime(createRegistry(definitions));
-			const provide$1 = (effect) => provide(effect, llmLayer);
+			const runtime = createRuntime({
+				modules,
+				store,
+				definitions: toRegistered(definitions)
+			});
 			const fetchHandler = createFetchHandler({
 				runtime,
-				store,
-				provide: provide$1
+				store
 			});
 			return {
 				runtime,
 				store,
-				provide: provide$1,
 				fetchHandler
 			};
 		})();
@@ -9027,11 +10032,15 @@ function createTwist(options = {}) {
 	};
 	const runEffect = async (fn) => {
 		const init = await getInit();
-		const withStore = provideService(fn(init), EventStoreTag, init.store);
-		return runPromise(init.provide(withStore));
+		return runPromise(provideService(fn(init), EventStoreTag, init.store));
 	};
-	const twist = {
-		definitions,
+	const looms = {
+		get runtime() {
+			return getInit().then((i) => i.runtime);
+		},
+		get store() {
+			return getInit().then((i) => i.store);
+		},
 		ready: async () => {
 			const init = await getInit();
 			return {
@@ -9039,58 +10048,26 @@ function createTwist(options = {}) {
 				runtime: init.runtime
 			};
 		},
-		get runtime() {
-			return getInit().then((i) => i.runtime);
-		},
-		get store() {
-			return getInit().then((i) => i.store);
-		},
-		startAgent: async (defOrName, input, opts) => {
-			const init = await getInit();
-			const defName = isString(defOrName) ? defOrName : defOrName.name;
-			if (!init.runtime.registry.agents.has(defName)) throw new Error(`Unknown agent: "${defName}". Registered agents: ${[...init.runtime.registry.agents.keys()].join(", ")}`);
-			const result = await runEffect((i) => i.runtime.startAgent(defName, input ?? null, opts));
-			return {
-				actorId: result.actorId,
-				state: result.state,
-				output: result.state.output
-			};
-		},
-		startWorkflow: async (defOrName, input, opts) => {
-			const init = await getInit();
-			const defName = isString(defOrName) ? defOrName : defOrName.name;
-			if (!init.runtime.registry.workflows.has(defName)) throw new Error(`Unknown workflow: "${defName}". Registered workflows: ${[...init.runtime.registry.workflows.keys()].join(", ")}`);
-			const result = await runEffect((i) => i.runtime.startWorkflow(defName, input ?? null, opts));
-			return {
-				actorId: result.actorId,
-				state: result.state,
-				output: result.state.output
-			};
-		},
-		getState: (actorId) => runEffect((i) => i.runtime.getState(actorId)),
-		getEvents: (actorId, opts) => runEffect((i) => i.runtime.getEvents(actorId, opts)),
-		sendMessage: (actorId, message) => {
-			const msg = isString(message) ? {
-				role: "user",
-				content: message
-			} : message;
-			return runEffect((i) => i.runtime.signal(actorId, [{
-				type: "agent.message.received",
-				payload: { message: msg }
-			}]));
-		},
-		decideReview: (actorId, reviewId, decision) => runEffect((i) => i.runtime.decideReview(actorId, reviewId, decision)),
-		steer: (actorId, message, opts) => runEffect((i) => i.runtime.steer(actorId, message, opts)),
-		signal: (actorId, events) => runEffect((i) => i.runtime.signal(actorId, events)),
-		wake: (actorId) => runEffect((i) => i.runtime.wake(actorId)),
+		startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
+		start: (definition, input) => runEffect((i) => i.runtime.startRun({
+			kind: definition.kind,
+			definitionName: definition.name,
+			input
+		})),
+		getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),
+		getEvents: (runId, opts) => runEffect((i) => i.runtime.getEvents(runId, opts)),
+		signal: (runId, events) => runEffect((i) => i.runtime.signal(runId, events)),
+		wake: (runId) => runEffect((i) => i.runtime.wake(runId)),
+		project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
+		replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
 		fetch: async (req) => {
-			if (!isTwistApiPath(new URL(req.url).pathname)) return null;
+			if (!isLoomsApiPath(new URL(req.url).pathname)) return null;
 			const { fetchHandler } = await getInit();
 			return fetchHandler(req);
 		},
 		serve: (serveOpts) => {
 			if (runningServer) return runningServer;
-			runningServer = serveHttp((req) => twist.fetch(req), serveOpts);
+			runningServer = serveHttp((req) => looms.fetch(req), serveOpts);
 			return runningServer;
 		},
 		stop: async () => {
@@ -9100,11 +10077,8 @@ function createTwist(options = {}) {
 			}
 		}
 	};
-	if (options.serve) {
-		const serveOpts = options.serve === true ? {} : options.serve;
-		twist.serve(serveOpts);
-	}
-	return twist;
+	if (options.serve) looms.serve(options.serve === true ? {} : options.serve);
+	return looms;
 }
 /**
 * Configuration for the S2-backed EventStore.
@@ -9120,13 +10094,13 @@ var S2ConfigSchema = Struct({
 		basin: optional(String$1)
 	})]))
 });
-function streamNameForActor(actorId) {
-	return `actors/${actorId}`;
+function streamNameForRun(runId) {
+	return `runs/${runId}`;
 }
-function s2ConfigFromEnv(env = process.env) {
-	const basin = env.TWIST_S2_BASIN ?? env.S2_BASIN ?? "twist-demo";
-	const accessToken = env.TWIST_S2_ACCESS_TOKEN ?? env.TWIST_S2_AUTH_TOKEN ?? env.S2_ACCESS_TOKEN ?? env.S2_AUTH_TOKEN ?? "s2_local";
-	const endpoint = env.TWIST_S2_ENDPOINT ?? env.S2_ENDPOINT ?? (env.TWIST_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT ? `http://127.0.0.1:${env.TWIST_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT}` : void 0);
+function s2ConfigFromEnv(env) {
+	const basin = env.LOOMS_S2_BASIN ?? env.S2_BASIN ?? "looms-demo";
+	const accessToken = env.LOOMS_S2_ACCESS_TOKEN ?? env.LOOMS_S2_AUTH_TOKEN ?? env.S2_ACCESS_TOKEN ?? env.S2_AUTH_TOKEN ?? "s2_local";
+	const endpoint = env.LOOMS_S2_ENDPOINT ?? env.S2_ENDPOINT ?? (env.LOOMS_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT ? `http://127.0.0.1:${env.LOOMS_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT}` : void 0);
 	const config = {
 		basin,
 		accessToken
@@ -16173,11 +17147,11 @@ var FetchTransport = class {
 async function createSessionTransport(config) {
 	if (config?.forceTransport === "fetch") return new FetchTransport(config);
 	else if (config?.forceTransport === "s2s") {
-		const { S2STransport } = await import("./s2s-DjCcBHec.mjs");
+		const { S2STransport } = await import("./s2s-Bf450tU5.mjs");
 		return new S2STransport(config);
 	}
 	if (supportsHttp2()) {
-		const { S2STransport } = await import("./s2s-DjCcBHec.mjs");
+		const { S2STransport } = await import("./s2s-Bf450tU5.mjs");
 		return new S2STransport(config);
 	}
 	return new FetchTransport(config);
@@ -17245,10 +18219,16 @@ function toStoreError(cause, message) {
 	if (cause instanceof EventStoreError) return cause;
 	return new EventStoreError(`${message}: ${cause instanceof Error ? cause.message : String(cause)}`, cause);
 }
+function isUnsatisfiableRead(err) {
+	const cause = err.cause;
+	if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) return true;
+	const text = `${err.message} ${cause instanceof Error ? cause.message : ""}`;
+	return text.includes("out of range") || text.includes("Range not satisfiable");
+}
 function parseEvent(body, seqNum) {
 	const raw = JSON.parse(body);
 	return fromWireEvent({
-		...decodeUnknownSync(TwistEventSchema)(raw),
+		...decodeUnknownSync(EventEnvelopeSchema)(raw),
 		seq: seqNum + 1
 	});
 }
@@ -17290,11 +18270,11 @@ function s2(config) {
 		},
 		catch: (cause) => toStoreError(cause, `Failed to ensure basin ${parsed.basin}`)
 	});
-	const ensureStream = (actorId) => gen(function* () {
+	const ensureStream = (runId) => gen(function* () {
 		yield* ensureBasin;
 		return yield* tryPromise({
 			try: async () => {
-				const name = streamNameForActor(actorId);
+				const name = streamNameForRun(runId);
 				if (ensured.has(name)) return basin.stream(name);
 				try {
 					await basin.streams.create({ stream: name });
@@ -17306,20 +18286,20 @@ function s2(config) {
 				ensured.add(name);
 				return basin.stream(name);
 			},
-			catch: (cause) => toStoreError(cause, `Failed to open stream for ${actorId}`)
+			catch: (cause) => toStoreError(cause, `Failed to open stream for ${runId}`)
 		});
 	});
 	const service = {
-		append: (actorId, events, options) => gen(function* () {
+		append: (runId, events, options) => gen(function* () {
 			if (events.length === 0) return {
 				sequences: [],
-				tail: yield* service.tail(actorId)
+				tail: yield* service.tail(runId)
 			};
-			const stream = yield* ensureStream(actorId);
+			const stream = yield* ensureStream(runId);
 			const records = events.map((partial) => {
 				const body = JSON.stringify({
 					...partial,
-					actorId,
+					runId,
 					seq: partial.seq ?? 0
 				});
 				return AppendRecord$1.string({
@@ -17339,9 +18319,9 @@ function s2(config) {
 				const cause = appendResult.err;
 				if (cause instanceof S2Error && (cause.status === 409 || cause.status === 412 || cause.message.toLowerCase().includes("conflict") || cause.message.toLowerCase().includes("match"))) {
 					const actualTail = (yield* promise(() => stream.checkTail().catch(() => null)))?.tail?.seqNum ?? 0;
-					return yield* fail(new EventStoreConflictError(actorId, options?.expectedTail ?? 0, actualTail));
+					return yield* fail$1(new EventStoreConflictError(runId, options?.expectedTail ?? 0, actualTail));
 				}
-				return yield* fail(toStoreError(cause, `Append failed for ${actorId}`));
+				return yield* fail$1(toStoreError(cause, `Append failed for ${runId}`));
 			}
 			const ack = appendResult.ack;
 			const sequences = [];
@@ -17351,8 +18331,8 @@ function s2(config) {
 				tail: ack.tail.seqNum
 			};
 		}),
-		read: (actorId, options) => gen(function* () {
-			const stream = yield* ensureStream(actorId);
+		read: (runId, options) => gen(function* () {
+			const stream = yield* ensureStream(runId);
 			const fromSeq = options?.fromSeq ?? 1;
 			const s2From = Math.max(0, fromSeq - 1);
 			const limit = options?.limit ?? 1e3;
@@ -17364,28 +18344,28 @@ function s2(config) {
 					},
 					stop: { limits: { count: limit } }
 				}),
-				catch: (cause) => toStoreError(cause, `Read failed for ${actorId}`)
-			}).pipe(catch_((err) => err.cause instanceof S2Error && err.cause.status === 404 ? succeed$1(null) : fail(err)));
+				catch: (cause) => toStoreError(cause, `Read failed for ${runId}`)
+			}).pipe(catch_((err) => isUnsatisfiableRead(err) ? succeed(null) : fail$1(err)));
 			if (!batch) return [];
 			return batch.records.filter((r) => r.seqNum >= s2From).map((r) => parseEvent(r.body, r.seqNum));
 		}),
-		tail: (actorId) => gen(function* () {
-			const stream = yield* ensureStream(actorId);
+		tail: (runId) => gen(function* () {
+			const stream = yield* ensureStream(runId);
 			return (yield* tryPromise({
 				try: () => stream.checkTail(),
-				catch: (cause) => toStoreError(cause, `Tail failed for ${actorId}`)
-			}).pipe(catch_((err) => err.cause instanceof S2Error && err.cause.status === 404 ? succeed$1({ tail: {
+				catch: (cause) => toStoreError(cause, `Tail failed for ${runId}`)
+			}).pipe(catch_((err) => err.cause instanceof S2Error && err.cause.status === 404 ? succeed({ tail: {
 				seqNum: 0,
 				timestamp: /* @__PURE__ */ new Date(0)
-			} }) : fail(err)))).tail.seqNum;
+			} }) : fail$1(err)))).tail.seqNum;
 		}),
-		subscribe: (actorId, options) => callback$1((queue) => callback((resume) => {
+		subscribe: (runId, options) => callback((queue) => callback$1((resume) => {
 			const fromSeq = options?.fromSeq ?? 1;
 			const s2From = Math.max(0, fromSeq - 1);
 			let stopped = false;
 			const run = async () => {
 				try {
-					const session = await (await runPromise(ensureStream(actorId))).readSession({ start: {
+					const session = await (await runPromise(ensureStream(runId))).readSession({ start: {
 						from: { seqNum: s2From },
 						clamp: true
 					} });
@@ -17397,7 +18377,7 @@ function s2(config) {
 					endUnsafe(queue);
 					resume(void_);
 				} catch (cause) {
-					await runPromise(fail$1(queue, toStoreError(cause, `Subscribe failed for ${actorId}`)));
+					await runPromise(fail$2(queue, toStoreError(cause, `Subscribe failed for ${runId}`)));
 					resume(void_);
 				}
 			};
@@ -17406,17 +18386,17 @@ function s2(config) {
 				stopped = true;
 			});
 		})),
-		listActors: () => tryPromise({
+		listRuns: () => tryPromise({
 			try: async () => {
-				return (await basin.streams.list({ prefix: "actors/" })).streams.map((s) => s.name).filter((name) => name.startsWith("actors/")).map((name) => name.slice(7));
+				return (await basin.streams.list({ prefix: "runs/" })).streams.map((s) => s.name).filter((name) => name.startsWith("runs/")).map((name) => name.slice(5));
 			},
-			catch: (cause) => toStoreError(cause, "listActors failed")
+			catch: (cause) => toStoreError(cause, "listRuns failed")
 		})
 	};
 	return service;
 }
-function findS2Binary() {
-	const pathDirs = (process.env.PATH ?? "").split(path.delimiter);
+function findS2Binary(env) {
+	const pathDirs = (env.PATH ?? "").split(path.delimiter);
 	for (const dir of pathDirs) {
 		if (!dir) continue;
 		const candidate = path.join(dir, "s2");
@@ -17424,12 +18404,12 @@ function findS2Binary() {
 			if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
 		} catch {}
 	}
-	if (process.env.FLOX_ENV_CACHE) {
-		const floxCandidate = path.join(process.env.FLOX_ENV_CACHE, "s2", "bin", "s2");
+	if (env.FLOX_ENV_CACHE) {
+		const floxCandidate = path.join(env.FLOX_ENV_CACHE, "s2", "bin", "s2");
 		if (fs.existsSync(floxCandidate)) return floxCandidate;
 	}
-	if (process.env.S2_INSTALL_PREFIX) {
-		const prefixCandidate = path.join(process.env.S2_INSTALL_PREFIX, "bin", "s2");
+	if (env.S2_INSTALL_PREFIX) {
+		const prefixCandidate = path.join(env.S2_INSTALL_PREFIX, "bin", "s2");
 		if (fs.existsSync(prefixCandidate)) return prefixCandidate;
 	}
 	const homeCandidate = path.join(os.homedir(), ".s2", "bin", "s2");
@@ -17465,7 +18445,7 @@ async function startS2Lite(options = {}) {
 		endpoint,
 		stop: () => {}
 	};
-	const binaryPath = findS2Binary();
+	const binaryPath = options.binaryPath ?? findS2Binary(options.env ?? {});
 	if (!binaryPath) throw new Error(`s2 CLI binary not found on PATH or in standard locations.
 To install s2-lite for local development:
   flox activate          # installs into $FLOX_ENV_CACHE/s2 (preferred)
@@ -17511,24 +18491,29 @@ To install s2-lite for local development:
 	throw new Error(`Timed out waiting for s2 lite to start on port ${port}: ${stderrOutput}`);
 }
 /**
-* Returns a factory function for createTwist that automatically starts local s2-lite
+* Returns a factory function for createLooms that automatically starts local s2-lite
 * and connects an S2 EventStore to it.
 */
 function s2Lite(options = {}) {
 	return async () => {
 		const started = await startS2Lite(options);
 		return s2({
-			basin: options.basin ?? "twist-demo",
+			basin: options.basin ?? "looms-demo",
 			accessToken: options.accessToken ?? "s2_local",
 			endpoint: started.endpoint
 		});
 	};
 }
-/** Deterministic echo agent. */
+function findLastToolMessage(messages) {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg?.role === "tool") return msg;
+	}
+}
 var echo = defineAgent({
 	name: "echo",
 	instructions: "Echo the user message.",
-	input: objectType({ text: stringType() }),
+	input: object({ text: string() }),
 	runTurn: ({ input }) => ({
 		message: {
 			role: "assistant",
@@ -17538,11 +18523,10 @@ var echo = defineAgent({
 		output: { text: input.text }
 	})
 });
-/** Child agent used via agent-tool. */
 var specialist = defineAgent({
 	name: "specialist",
 	instructions: "Specialize on a short task.",
-	input: objectType({ task: stringType() }),
+	input: object({ task: string() }),
 	runTurn: ({ input }) => ({
 		message: {
 			role: "assistant",
@@ -17552,18 +18536,11 @@ var specialist = defineAgent({
 		output: { result: `done:${input.task}` }
 	})
 });
-function findLastToolMessage(messages) {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg?.role === "tool") return msg;
-	}
-}
-var SpecialistInputSchema = objectType({ task: stringType().optional() });
-/** Parent agent that spawns a child via agent-tool. */
+var SpecialistInputSchema = object({ task: string().optional() });
 var orchestrator = defineAgent({
 	name: "orchestrator",
 	instructions: "Delegate work to the specialist tool.",
-	input: objectType({ task: stringType().optional().default("default") }),
+	input: object({ task: string().optional().default("default") }),
 	tools: [asAgentTool({
 		name: "specialist",
 		description: "Run the specialist child agent",
@@ -17600,7 +18577,7 @@ var orchestrator = defineAgent({
 		} catch {
 			output = toolMsg.content;
 		}
-		const strParsed = stringType().safeParse(output);
+		const strParsed = string().safeParse(output);
 		return {
 			message: {
 				role: "assistant",
@@ -17611,113 +18588,295 @@ var orchestrator = defineAgent({
 		};
 	}
 });
-var twist = createTwist({
-	definitions: [
-		echo,
-		defineAgent({
-			name: "greeter",
-			instructions: "Greet using the greet tool.",
-			input: objectType({ name: stringType().optional().default("world") }),
-			tools: [defineTool({
-				name: "greet",
-				description: "Return a greeting",
-				input: objectType({ name: stringType().optional().default("world") }),
-				handler: ({ name }) => ({ greeting: `Hello, ${name}!` })
-			})],
-			runTurn: ({ turn, messages, input }) => {
-				if (turn === 1) {
-					const name = input.name ?? "world";
-					return {
-						message: {
-							role: "assistant",
-							content: "",
-							toolCalls: [{
-								id: "tc_greet",
-								name: "greet",
-								arguments: { name }
-							}]
-						},
-						toolCalls: [{
-							id: "tc_greet",
-							name: "greet",
-							arguments: { name }
-						}]
-					};
-				}
-				const toolMsg = findLastToolMessage(messages);
-				let output = null;
-				if (toolMsg) try {
-					output = JSON.parse(toolMsg.content);
-				} catch {
-					output = toolMsg.content;
-				}
-				return {
-					message: {
-						role: "assistant",
-						content: toolMsg?.content ?? "done"
-					},
-					done: true,
-					output
-				};
-			}
-		}),
-		specialist,
-		orchestrator,
-		defineWorkflow({
-			name: "hitl",
-			description: "Human-in-the-loop approval gate",
-			input: objectType({ doc: stringType().optional().default("draft") }),
-			nodes: [
-				{
-					id: "prepare",
-					run: (ctx) => ({ draft: ctx.input.doc })
+var greeter = defineAgent({
+	name: "greeter",
+	instructions: "Greet using the greet tool.",
+	input: object({ name: string().optional().default("world") }),
+	tools: [defineTool({
+		name: "greet",
+		description: "Return a greeting",
+		input: object({ name: string().optional().default("world") }),
+		handler: (args) => {
+			return { greeting: `Hello, ${isJsonObject$1(args) && isJsonString(args.name) ? args.name : "world"}!` };
+		}
+	})],
+	runTurn: ({ turn, messages, input }) => {
+		if (turn === 1) {
+			const name = isJsonObject$1(input) && isJsonString(input.name) ? input.name : "world";
+			return {
+				message: {
+					role: "assistant",
+					content: "",
+					toolCalls: [{
+						id: "tc_greet",
+						name: "greet",
+						arguments: { name }
+					}]
 				},
-				{
-					id: "review",
-					deps: ["prepare"],
-					run: (ctx) => ctx.requestReview({
-						title: "Approve draft?",
-						description: JSON.stringify(ctx.results.prepare ?? null)
-					})
-				},
-				{
-					id: "finalize",
-					deps: ["review"],
-					run: (ctx) => ({
-						approved: true,
-						review: ctx.results.review ?? null
-					})
-				}
-			],
-			output: ({ results }) => results
-		}),
-		defineWorkflow({
-			name: "pipeline",
-			input: objectType({ n: numberType().default(21) }),
-			nodes: [
-				{
-					id: "double",
-					run: (ctx) => ctx.input.n * 2
-				},
-				{
-					id: "spawn",
-					deps: ["double"],
-					run: (ctx) => ctx.spawnAgent(echo, { text: `n=${JSON.stringify(ctx.results.double ?? null)}` })
-				},
-				{
-					id: "format",
-					deps: ["spawn"],
-					run: (ctx) => ({
-						doubled: ctx.results.double ?? null,
-						child: ctx.results.spawn ?? null
-					})
-				}
-			],
-			output: ({ results }) => results
-		})
-	],
-	store: process.env.TWIST_S2_ENDPOINT ? s2(s2ConfigFromEnv()) : s2Lite()
+				toolCalls: [{
+					id: "tc_greet",
+					name: "greet",
+					arguments: { name }
+				}]
+			};
+		}
+		const toolMsg = findLastToolMessage(messages);
+		let output = null;
+		if (toolMsg) try {
+			output = JSON.parse(toolMsg.content);
+		} catch {
+			output = toolMsg.content;
+		}
+		return {
+			message: {
+				role: "assistant",
+				content: toolMsg?.content ?? "done"
+			},
+			done: true,
+			output
+		};
+	}
 });
-var server_default = createServerEntry({ fetch: async (req) => await twist.fetch(req) ?? server_default$1.fetch(req) });
+function isRejected(result) {
+	return isJsonObject$1(result) && result.outcome === "reject";
+}
+var checkout = defineWorkflow({
+	name: "checkout",
+	description: "Approval gate above threshold, then a payments charge",
+	input: object({
+		amount: number().default(150),
+		currency: string().default("USD")
+	}),
+	nodes: [
+		{
+			id: "gate",
+			run: (ctx) => {
+				if (ctx.input.amount < 100) return {
+					skipped: true,
+					reason: "below-threshold"
+				};
+				return ctx.effects(gate({ title: `Approve charge of ${ctx.input.amount} ${ctx.input.currency}?` }));
+			}
+		},
+		{
+			id: "charge",
+			deps: ["gate"],
+			run: (ctx) => {
+				if (isRejected(ctx.results.gate ?? null)) return {
+					charged: false,
+					reason: "rejected"
+				};
+				return ctx.effects([
+					invoke("payments.charge", {
+						amount: ctx.input.amount,
+						currency: ctx.input.currency
+					}),
+					wait({
+						waitId: createWaitId(),
+						on: { type: "payments.charge.authorized" }
+					}),
+					wait({
+						waitId: createWaitId(),
+						on: { type: "payments.charge.declined" }
+					})
+				]);
+			}
+		},
+		{
+			id: "notify",
+			deps: ["charge"],
+			run: (ctx) => ({
+				notified: true,
+				gate: ctx.results.gate ?? null,
+				charge: ctx.results.charge ?? null
+			})
+		}
+	],
+	output: ({ results }) => results
+});
+var pipeline = defineWorkflow({
+	name: "pipeline",
+	input: object({ n: number().default(21) }),
+	nodes: [
+		{
+			id: "double",
+			run: (ctx) => ctx.input.n * 2
+		},
+		{
+			id: "spawn",
+			deps: ["double"],
+			run: (ctx) => ctx.spawn(echo, { text: `n=${JSON.stringify(ctx.results.double ?? null)}` })
+		},
+		{
+			id: "format",
+			deps: ["spawn"],
+			run: (ctx) => ({
+				doubled: ctx.results.double ?? null,
+				child: ctx.results.spawn ?? null
+			})
+		}
+	],
+	output: ({ results }) => results
+});
+var greet = defineTool({
+	name: "greet",
+	description: "Return a greeting for a person by name",
+	input: object({ name: string() }),
+	handler: (args) => {
+		return { greeting: `Hello, ${isJsonObject$1(args) && isJsonString(args.name) ? args.name : "person"}!` };
+	}
+});
+var askApproval = asEffectsTool({
+	name: "ask_approval",
+	description: "Ask a human to approve or reject a request",
+	effects: (input) => {
+		return gate({ title: isJsonObject$1(input) && isJsonString(input.title) ? input.title : "Approve this request?" });
+	},
+	waitOn: { type: "approval.decided" }
+});
+var assistant = defineAgent({
+	name: "assistant",
+	conversational: true,
+	input: string(),
+	instructions: [
+		"You are the Looms demo assistant.",
+		"You can greet people, delegate a short task to the specialist agent,",
+		"run checkout (approval + payments), or ask for a standalone approval.",
+		"Use tools when they help; otherwise answer directly."
+	].join(" "),
+	tools: [
+		greet,
+		specialist,
+		checkout,
+		askApproval
+	]
+});
+var definitions = [
+	echo,
+	greeter,
+	specialist,
+	orchestrator,
+	checkout,
+	pipeline,
+	assistant
+];
+var ChargeRequested = object({
+	chargeId: string(),
+	amount: number(),
+	currency: string()
+});
+var paymentsCatalog = defineEventCatalog("payments", {
+	"charge.requested": ChargeRequested,
+	"charge.authorized": ChargeRequested,
+	"charge.declined": ChargeRequested.extend({ reason: string() })
+});
+var ChargeInput = object({
+	chargeId: string().optional(),
+	amount: number(),
+	currency: string().optional(),
+	force: _enum(["authorize", "decline"]).optional()
+});
+var outcomes = /* @__PURE__ */ new Map();
+function decideOutcome(effectId, input) {
+	const cached = outcomes.get(effectId);
+	if (cached) return cached;
+	const next = input.force === "decline" || input.amount === 13 ? "declined" : "authorized";
+	outcomes.set(effectId, next);
+	return next;
+}
+var chargeEffect = defineEffect({
+	type: "payments.charge",
+	input: ChargeInput,
+	execute: (input, ctx) => {
+		const chargeId = input.chargeId ?? ctx.effectId;
+		const currency = input.currency ?? "USD";
+		const outcome = decideOutcome(ctx.effectId, input);
+		const threadId = ctx.threadId ?? ctx.executionId;
+		return [{
+			type: "payments.charge.requested",
+			payload: asJson({
+				chargeId,
+				amount: input.amount,
+				currency
+			}),
+			threadId,
+			executionId: threadId
+		}, outcome === "authorized" ? {
+			type: "payments.charge.authorized",
+			payload: asJson({
+				chargeId,
+				amount: input.amount,
+				currency
+			}),
+			threadId,
+			executionId: threadId
+		} : {
+			type: "payments.charge.declined",
+			payload: asJson({
+				chargeId,
+				amount: input.amount,
+				currency,
+				reason: "card_declined"
+			}),
+			threadId,
+			executionId: threadId
+		}];
+	}
+});
+function payloadObject(event) {
+	return isJsonObject$1(event.payload) ? event.payload : {};
+}
+var ledger = defineProjection({
+	name: "ledger",
+	initialState: { entries: [] },
+	reduce(state, event) {
+		const payload = payloadObject(event);
+		const chargeId = isJsonString(payload.chargeId) ? payload.chargeId : void 0;
+		if (!chargeId) return state;
+		const amount = isJsonNumber(payload.amount) ? payload.amount : 0;
+		const currency = isJsonString(payload.currency) ? payload.currency : "USD";
+		const upsert = (status) => ({ entries: [...state.entries.filter((entry) => entry.chargeId !== chargeId), {
+			chargeId,
+			amount,
+			currency,
+			status
+		}] });
+		switch (event.type) {
+			case "payments.charge.requested": return upsert("requested");
+			case "payments.charge.authorized": return upsert("authorized");
+			case "payments.charge.declined": return upsert("declined");
+			default: return state;
+		}
+	}
+});
+function payments() {
+	return defineRuntimeModule({
+		namespace: "payments",
+		protocolVersion: "1.0.0",
+		events: paymentsCatalog,
+		effects: { charge: chargeEffect },
+		projections: { ledger }
+	});
+}
+/** The demo's module set. Without an `llm`, agents run on the deterministic stub. */
+function demoModules(options = {}) {
+	return [
+		agent({ llm: options.llm }),
+		workflow(),
+		approval(),
+		payments()
+	];
+}
+var openRouterKey = process.env.OPENROUTER_API_KEY;
+var modelId = process.env.LOOMS_MODEL ?? "openai/gpt-4o-mini";
+var looms = createLooms({
+	definitions,
+	modules: demoModules({ llm: openRouterKey ? vercelLlm({
+		model: createOpenRouter({ apiKey: openRouterKey }).chat(modelId),
+		stream: true
+	}) : void 0 }),
+	store: process.env.LOOMS_S2_ENDPOINT ? s2(s2ConfigFromEnv(process.env)) : s2Lite({ env: process.env })
+});
+var server_default = createServerEntry({ fetch: async (req) => await looms.fetch(req) ?? server_default$1.fetch(req) });
 //#endregion
-export { AppendAck, DEFAULT_USER_AGENT, RangeNotSatisfiableError, ReadBatch, RetryAppendSession, RetryReadSession, S2Error, S2_ENCRYPTION_KEY_HEADER, TwistEventSchema, bigintToSafeNumber, convertProtoRecord, createMiddleware, server_default as default, encodeProtoAppendInput, err, errClose, fromWireEvent, makeAppendPreconditionError, makeServerError, ok, okClose, require_src, s2Error, ssr_exports, value };
+export { AppendAck, DEFAULT_USER_AGENT, RangeNotSatisfiableError, ReadBatch, RetryAppendSession, RetryReadSession, S2Error, S2_ENCRYPTION_KEY_HEADER, __exportAll, __toESM, assistant, bigintToSafeNumber, checkout, convertProtoRecord, createMiddleware, server_default as default, echo, encodeProtoAppendInput, err, errClose, greeter, makeAppendPreconditionError, makeServerError, ok, okClose, orchestrator, pipeline, require_src, s2Error, ssr_exports, value };

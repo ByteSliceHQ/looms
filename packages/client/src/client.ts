@@ -1,251 +1,86 @@
-import {
-  fromWireEvent,
-  LoomsEventSchema,
-  type ActorState,
-  type AgentDefinition,
-  type AnyAgentDefinition,
-  type AnyDefinition,
-  type AnyWorkflowDefinition,
-  type JsonValue,
-  type Message,
-  type LoomsEvent,
-  type WorkflowDefinition,
-} from '@looms/core'
-import { Predicate, Schema } from 'effect'
+import type { DefinitionInput, DefinitionRef, EventEnvelope, EventInput, JsonValue, RunState } from '@looms/core'
 
 export interface LoomsClientOptions {
-  /**
-   * Looms host origin, e.g. `http://127.0.0.1:8787`.
-   * Omit or pass `''` for same-origin relative paths (`/actors/...`) — typical in browser apps
-   * that proxy the Looms host.
-   */
   baseUrl?: string
   fetch?: typeof fetch
 }
 
 export interface StartResult {
-  actorId: string
-  state: ActorState
+  runId: string
+  threadId: string
+  state: RunState
 }
 
-export type FindAgent<
-  TDefs extends readonly AnyDefinition[],
-  TName extends string,
-> = Extract<TDefs[number], { kind?: 'agent'; name: TName }>
-
-export type FindWorkflow<
-  TDefs extends readonly AnyDefinition[],
-  TName extends string,
-> = Extract<TDefs[number], { kind?: 'workflow'; name: TName }>
-
-export type AgentNames<TDefs extends readonly AnyDefinition[]> =
-  Extract<TDefs[number], AnyAgentDefinition>['name']
-
-export type WorkflowNames<TDefs extends readonly AnyDefinition[]> =
-  Extract<TDefs[number], AnyWorkflowDefinition>['name']
-
-export type AgentInput<
-  TDefs extends readonly AnyDefinition[],
-  TName extends string,
-> = FindAgent<TDefs, TName> extends AgentDefinition<any, infer TInput, any>
-  ? TInput
-  : JsonValue
-
-export type WorkflowInput<
-  TDefs extends readonly AnyDefinition[],
-  TName extends string,
-> = FindWorkflow<TDefs, TName> extends WorkflowDefinition<any, infer TInput, any>
-  ? TInput
-  : JsonValue
-
-export interface LoomsClient<TDefs extends readonly AnyDefinition[] = readonly AnyDefinition[]> {
-  startAgent<TDef extends AnyAgentDefinition>(
-    definition: TDef,
-    input: TDef extends AgentDefinition<any, infer TInput, any> ? TInput : JsonValue,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-  startAgent<TName extends AgentNames<TDefs>>(
-    definitionName: TName,
-    input: AgentInput<TDefs, TName>,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-  startAgent(
-    definitionOrName: AnyAgentDefinition | string,
-    input?: JsonValue,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-
-  startWorkflow<TDef extends AnyWorkflowDefinition>(
-    definition: TDef,
-    input: TDef extends WorkflowDefinition<any, infer TInput, any> ? TInput : JsonValue,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-  startWorkflow<TName extends WorkflowNames<TDefs>>(
-    definitionName: TName,
-    input: WorkflowInput<TDefs, TName>,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-  startWorkflow(
-    definitionOrName: AnyWorkflowDefinition | string,
-    input?: JsonValue,
-    options?: { actorId?: string },
-  ): Promise<StartResult>
-
-  getState: (actorId: string) => Promise<ActorState>
-  getEvents: (actorId: string, options?: { fromSeq?: number; limit?: number }) => Promise<LoomsEvent[]>
-  sendMessage: (actorId: string, message: string | Message) => Promise<ActorState>
-  decideReview: (
-    actorId: string,
-    reviewId: string,
-    decision: { actionId?: string; outcome: 'approve' | 'reject'; payload?: JsonValue },
-  ) => Promise<ActorState>
-  steer: (
-    actorId: string,
-    message: string | Message,
-    options?: { interrupt?: boolean; turn?: number },
-  ) => Promise<ActorState>
-  /**
-   * Subscribe to actor events via SSE when available, otherwise poll GET /actors/:id/events.
-   * Returns an unsubscribe function.
-   */
-  subscribeEvents: (
-    actorId: string,
-    onEvent: (event: LoomsEvent) => void,
-    options?: { fromSeq?: number; pollIntervalMs?: number },
-  ) => () => void
-}
-
-async function parseJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`HTTP ${res.status}: ${body}`)
-  }
-  // SAFETY: caller specifies T for the known HTTP JSON response shape at each call site
-  return (await res.json()) as T
-}
-
-export function createLoomsClient<
-  TDefs extends readonly AnyDefinition[] = readonly AnyDefinition[],
->(options: LoomsClientOptions = {}): LoomsClient<TDefs> {
+export function createLoomsClient(options: LoomsClientOptions = {}) {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
-  const fetchFn = options.fetch ?? fetch
+  const fetchImpl = options.fetch ?? fetch
 
-  const client: LoomsClient<TDefs> = {
-    startAgent: async (definitionOrName: AnyAgentDefinition | string, input?: any, opts?: { actorId?: string }) => {
-      const definitionName = Predicate.isString(definitionOrName)
-        ? definitionOrName
-        : definitionOrName.name
-      const res = await fetchFn(`${baseUrl}/actors/agent`, {
+  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
+    const res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers })
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(body || `HTTP ${res.status}`)
+    }
+    // SAFETY: host JSON responses match the generic requested by each route helper.
+    return (await res.json()) as T
+  }
+
+  return {
+    /** Start a run by `{ kind, definitionName }` when you only have names. */
+    startRun: (args: { kind: string; definitionName: string; input?: JsonValue; runId?: string }) =>
+      request<StartResult>('/runs', { method: 'POST', body: JSON.stringify(args) }),
+    /** Start a run from a definition object (agent, workflow, or your own kind). */
+    start: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>) =>
+      request<StartResult>('/runs', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ definitionName, input, actorId: opts?.actorId }),
-      })
-      return parseJson<StartResult>(res)
-    },
-
-    startWorkflow: async (definitionOrName: AnyWorkflowDefinition | string, input?: any, opts?: { actorId?: string }) => {
-      const definitionName = Predicate.isString(definitionOrName)
-        ? definitionOrName
-        : definitionOrName.name
-      const res = await fetchFn(`${baseUrl}/actors/workflow`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ definitionName, input, actorId: opts?.actorId }),
-      })
-      return parseJson<StartResult>(res)
-    },
-
-    getState: async (actorId) => {
-      const res = await fetchFn(`${baseUrl}/actors/${encodeURIComponent(actorId)}/state`)
-      const body = await parseJson<{ state: ActorState }>(res)
-      return body.state
-    },
-
-    getEvents: async (actorId, opts) => {
+        body: JSON.stringify({ kind: definition.kind, definitionName: definition.name, input }),
+      }),
+    getRun: (runId: string) => request<{ runId: string; state: RunState }>(`/runs/${runId}`),
+    getState: (runId: string) => request<{ runId: string; state: RunState }>(`/runs/${runId}`),
+    getEvents: (runId: string, opts?: { fromSeq?: number; limit?: number }) => {
       const params = new URLSearchParams()
       if (opts?.fromSeq !== undefined) params.set('fromSeq', String(opts.fromSeq))
       if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
-      const qs = params.toString()
-      const res = await fetchFn(
-        `${baseUrl}/actors/${encodeURIComponent(actorId)}/events${qs ? `?${qs}` : ''}`,
-      )
-      const body = await parseJson<{ events: unknown[] }>(res)
-      return body.events.map((raw) =>
-        fromWireEvent(Schema.decodeUnknownSync(LoomsEventSchema)(raw)),
-      )
+      const q = params.toString()
+      return request<{ runId: string; events: EventEnvelope[] }>(`/runs/${runId}/events${q ? `?${q}` : ''}`)
     },
-
-    sendMessage: async (actorId, message) => {
-      const res = await fetchFn(`${baseUrl}/actors/${encodeURIComponent(actorId)}/signal`, {
+    signal: (runId: string, events: ReadonlyArray<EventInput>) =>
+      request<{ runId: string; state: RunState }>(`/runs/${runId}/events`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message }),
-      })
-      const body = await parseJson<{ state: ActorState }>(res)
-      return body.state
-    },
-
-    decideReview: async (actorId, reviewId, decision) => {
-      const res = await fetchFn(
-        `${baseUrl}/actors/${encodeURIComponent(actorId)}/reviews/${encodeURIComponent(reviewId)}/decide`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            actionId: decision.actionId ?? decision.outcome,
-            outcome: decision.outcome,
-            payload: decision.payload,
-          }),
-        },
-      )
-      const body = await parseJson<{ state: ActorState }>(res)
-      return body.state
-    },
-
-    steer: async (actorId, message, opts) => {
-      const res = await fetchFn(`${baseUrl}/actors/${encodeURIComponent(actorId)}/steer`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          interrupt: opts?.interrupt,
-          turn: opts?.turn,
-        }),
-      })
-      const body = await parseJson<{ state: ActorState }>(res)
-      return body.state
-    },
-
-    subscribeEvents: (actorId, onEvent, opts) => {
-      let cancelled = false
-      let cursor = (opts?.fromSeq ?? 1) - 1
-      const pollIntervalMs = opts?.pollIntervalMs ?? 500
-
-      let timer: ReturnType<typeof setInterval> | undefined
-      const startPolling = () => {
-        const tick = async () => {
-          if (cancelled) return
-          try {
-            const events = await client.getEvents(actorId, { fromSeq: cursor + 1 })
-            for (const event of events) {
-              cursor = event.seq
-              onEvent(event)
-            }
-          } catch {
-            // transient
+        body: JSON.stringify({ events }),
+      }),
+    wake: (runId: string) =>
+      request<{ runId: string; state: RunState }>(`/runs/${runId}/wake`, { method: 'POST' }),
+    replayTo: (runId: string, seq: number) =>
+      request<{ runId: string; step: unknown }>(`/runs/${runId}/replay?seq=${seq}`),
+    project: (runId: string, name: string) =>
+      request<{ runId: string; name: string; value: unknown }>(`/runs/${runId}/projections/${name}`),
+    subscribeEvents: (runId: string, onEvent: (event: EventEnvelope) => void, intervalMs = 400) => {
+      let fromSeq = 1
+      let stopped = false
+      const tick = async () => {
+        if (stopped) return
+        try {
+          const { events } = await request<{ runId: string; events: EventEnvelope[] }>(
+            `/runs/${runId}/events?fromSeq=${fromSeq}`,
+          )
+          for (const event of events) {
+            onEvent(event)
+            fromSeq = Math.max(fromSeq, event.seq + 1)
           }
+        } catch {
+          // next tick retries
         }
-        void tick()
-        timer = setInterval(() => void tick(), pollIntervalMs)
+        if (!stopped) setTimeout(() => void tick(), intervalMs)
       }
-      startPolling()
-
+      void tick()
       return () => {
-        cancelled = true
-        if (timer) clearInterval(timer)
+        stopped = true
       }
     },
   }
-
-  return client
 }
+
+export type LoomsClient = ReturnType<typeof createLoomsClient>

@@ -1,91 +1,48 @@
-# Architecture
+# Concepts
 
-## Actors
+Looms models application work as a **run**: one durable event log that you can crash-recover, replay, and subscribe to from a UI. You plug in **modules** for agents, workflows, approvals, or your own domain.
 
-An **actor** is identified by `actorId` and is either:
+## Why this shape
 
-- `agent` — message turns, tool calls, optional child agents/workflows via tools
-- `workflow` — DAG of nodes with deps, reviews, timers, and nested spawns
+- **Durable by default.** Progress is the log. Restart the host and the run continues from the last event.
+- **Composable.** A checkout workflow can wait on an approval, then invoke your payments module. An agent can spawn that workflow as a tool.
+- **One stream, many views.** The same events power a chat transcript, a debugger timeline, a ledger, and pending-approval badges.
+- **Human in the loop.** A run parks until someone decides. The UI posts `approval.decided`; the run resumes.
 
-All durable facts are `LoomsEvent` records in an `EventStore` log. `reduceActor(events)` derives `ActorState` and **owed work** (what the host must do next).
+## Run and thread
 
-## Wake loop
+A `Run` is the unit you start, list, and open in a debugger (`runId`). Inside it, `Thread`s form a tree: a root agent or workflow, plus any children it spawned.
 
-`LoomsRuntime.wake(actorId)`:
+Status is `running`, `waiting` (parked on a timer, approval, or child), or terminal (`completed`, `failed`, `cancelled`).
 
-1. Read the log and reduce
-2. While not terminal and not parked, pick actionable owed work
-3. Execute (agent turn, tool, workflow schedule/node, finalize)
-4. Append produced events (and start child actors)
-5. Repeat
+## Events, effects, and waits
 
-Parking:
+Facts go on the log as typed events. When a thread needs the host to do something — call an LLM, charge a card, wait for a human — it requests an **effect**. When it needs to pause, it registers a **wait** (on an event type, a payload match, or a timer).
 
-- `waiting_review` — until `review.decided` / timeout
-- `waiting_child` — until `child.completed` (+ `tool.result` for agent-tools)
-- `waiting_timer` — until `timer.fired`
+The host processes outstanding effects, then parks until a matching event arrives. You resume a run by signaling (approval, user message) or by waiting for a timer.
 
-## Definitions
+## Projections
 
-```ts
-defineAgent({ name, instructions, input?, tools?, runTurn? })
-defineWorkflow({ name, input?, nodes: [{ id, deps?, run }], output? })
-asAgentTool({ name, agent, mapInput? })
-asWorkflowTool({ name, workflow, mapInput? })
-```
+A projection is a read model folded from the log: `conversation`, `pendingApprovals`, a payments `ledger`. The same reducer runs on the server and in the browser via `useProjection`, so the UI stays consistent with the host.
 
-Inputs are validated with Standard Schema (Zod, Valibot, ArkType, Effect Schema). `runTurn` enables deterministic offline / test agents without an LLM.
+## Replay
 
-## Runtime Facade (`createLooms`)
+Because state is derived from events, you can inspect any point in a run. `replayTo(runId, seq)` gives state before and after that event — useful for a debugger and for tests that assert determinism.
 
-The `createLooms()` facade provides a synchronous constructor with a Promise-based API and a universal `fetch(req)` handler:
-
-```ts
-const looms = createLooms({
-  definitions,
-  store: s2Lite(), // or memory, or s2(config)
-})
-
-// Unified HTTP handler returning Response | null
-const res = await looms.fetch(req)
-```
-
-## HTTP surface
-
-`createLooms().serve()` / `createLooms().fetch()`:
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Liveness |
-| POST | `/actors/agent` | Start agent |
-| POST | `/actors/workflow` | Start workflow |
-| GET | `/actors/:id/state` | Reduced state |
-| GET | `/actors/:id/events` | Event log |
-| POST | `/actors/:id/signal` | Append + wake |
-| POST | `/actors/:id/reviews/:reviewId/decide` | HITL |
-| * | `/api/livestore` | Pull/push proxy for clients |
-
-## Stores
-
-- **Memory** (`makeMemoryEventStore`) — default for demos/tests
-- **S2** (`@looms/s2`) — durable streams
-
-## Projectors
-
-Projectors are optional secondary indexes. They never become the source of truth. Implement `Projector` or use a first-party helper:
+## Hosting
 
 ```ts
 import { createLooms } from '@looms/runtime'
-import { sqlite } from '@looms/projectors/sqlite'
 
 const looms = createLooms({
-  definitions,
-  projectors: [sqlite({ path: './looms.db' })],
+  definitions: [echo, checkout, assistant],
+  modules: [agent(), workflow(), approval(), payments()],
 })
+
+await looms.start(assistant, 'Charge $40 after approval')
+await looms.start(checkout, { amount: 150, currency: 'USD' })
 ```
 
-`postgres({ url })` and `memory()` satisfy the same interface. `createLooms` calls `init` before the first append and `dispose` on `stop()`.
+The host has one verb for starting work. An agent and a workflow are just different thread kinds, so `start` takes the definition and infers the input type from its schema.
 
-## Client materialization
-
-`@looms/livestore/react` ships the opinionated LiveStore schema (SQLite tables + materializers), web adapter, and React hooks. Light clients can use `createLoomsStore` from `@looms/livestore` to poll and materialize in memory without React.
+See [modules.md](./modules.md) to compose capabilities, and [protocol.md](./protocol.md) for event types and HTTP.

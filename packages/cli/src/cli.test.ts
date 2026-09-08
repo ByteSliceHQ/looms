@@ -20,8 +20,8 @@ describe('@looms/cli', () => {
     const { exit, out } = await run(['--help'])
     expect(exit._tag).toBe('Success')
     expect(out).toContain('serve')
-    expect(out).toContain('call')
-    expect(out).toContain('review')
+    expect(out).toContain('start')
+    expect(out).toContain('approve')
     expect(out).toContain('--url')
   })
 

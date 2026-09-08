@@ -24,12 +24,15 @@
       "name": "@looms/demo",
       "version": "0.1.0",
       "dependencies": {
+        "@looms/agent": "workspace:*",
         "@looms/ai-vercel": "workspace:*",
+        "@looms/approval": "workspace:*",
         "@looms/client": "workspace:*",
         "@looms/core": "workspace:*",
         "@looms/livestore": "workspace:*",
         "@looms/runtime": "workspace:*",
         "@looms/s2": "workspace:*",
+        "@looms/workflow": "workspace:*",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -72,6 +75,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@looms/core": "workspace:*",
+        "@standard-schema/spec": "^1.1.0",
         "effect": "4.0.0-rc.112",
       },
       "devDependencies": {
@@ -95,6 +99,17 @@
         "ai": "^7.0.0",
       },
     },
+    "packages/approval": {
+      "name": "@looms/approval",
+      "version": "0.1.0",
+      "dependencies": {
+        "@looms/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.9",
+        "typescript": "7.0.2",
+      },
+    },
     "packages/cli": {
       "name": "@looms/cli",
       "version": "0.1.0",
@@ -103,6 +118,8 @@
       },
       "dependencies": {
         "@effect/platform-bun": "4.0.0-rc.112",
+        "@looms/agent": "workspace:*",
+        "@looms/approval": "workspace:*",
         "@looms/client": "workspace:*",
         "@looms/core": "workspace:*",
         "@looms/runtime": "workspace:*",
@@ -193,8 +210,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@looms/agent": "workspace:*",
+        "@looms/approval": "workspace:*",
         "@looms/core": "workspace:*",
-        "@looms/projectors": "workspace:*",
         "@looms/workflow": "workspace:*",
         "effect": "4.0.0-rc.112",
       },
@@ -217,11 +234,25 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/testing": {
+      "name": "@looms/testing",
+      "version": "0.1.0",
+      "dependencies": {
+        "@looms/core": "workspace:*",
+        "@looms/runtime": "workspace:*",
+        "effect": "4.0.0-rc.112",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.9",
+        "typescript": "7.0.2",
+      },
+    },
     "packages/workflow": {
       "name": "@looms/workflow",
       "version": "0.1.0",
       "dependencies": {
         "@looms/core": "workspace:*",
+        "@standard-schema/spec": "^1.1.0",
         "effect": "4.0.0-rc.112",
       },
       "devDependencies": {
@@ -373,6 +404,8 @@
 
     "@looms/ai-vercel": ["@looms/ai-vercel@workspace:packages/ai-vercel"],
 
+    "@looms/approval": ["@looms/approval@workspace:packages/approval"],
+
     "@looms/cli": ["@looms/cli@workspace:packages/cli"],
 
     "@looms/client": ["@looms/client@workspace:packages/client"],
@@ -390,6 +423,8 @@
     "@looms/runtime": ["@looms/runtime@workspace:packages/runtime"],
 
     "@looms/s2": ["@looms/s2@workspace:packages/s2"],
+
+    "@looms/testing": ["@looms/testing@workspace:packages/testing"],
 
     "@looms/workflow": ["@looms/workflow@workspace:packages/workflow"],
 

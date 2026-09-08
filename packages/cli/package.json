@@ -28,6 +28,8 @@
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.0-rc.112",
+    "@looms/agent": "workspace:*",
+    "@looms/approval": "workspace:*",
     "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/runtime": "workspace:*",

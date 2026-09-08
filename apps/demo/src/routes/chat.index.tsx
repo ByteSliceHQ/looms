@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createLoomsClient } from '@looms/client'
-import type { definitions } from '../definitions'
+import { assistant } from '../definitions'
 
-const loomsClient = createLoomsClient<typeof definitions>()
+const loomsClient = createLoomsClient()
 
 export const Route = createFileRoute('/chat/')({
   component: ChatStartPage,
@@ -21,8 +21,8 @@ function ChatStartPage() {
     setError(null)
     setPending(true)
     try {
-      const result = await loomsClient.startAgent('assistant', text)
-      await navigate({ to: '/chat/$actorId', params: { actorId: result.actorId } })
+      const result = await loomsClient.start(assistant, text)
+      await navigate({ to: '/chat/$runId', params: { runId: result.runId } })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -35,13 +35,13 @@ function ChatStartPage() {
       <h2>Chat</h2>
       <p className="muted">
         Starts the conversational <code>assistant</code> agent. Tools include greet, specialist,
-        hitl, and pipeline — watch the event log as the model chooses them.
+        checkout, and a standalone approval gate.
       </p>
       <div className="row">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask the assistant to greet someone, or run hitl…"
+          placeholder="Ask the assistant to greet someone, or run checkout…"
           onKeyDown={(e) => {
             if (e.key === 'Enter') void onStart()
           }}

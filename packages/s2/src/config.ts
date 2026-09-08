@@ -22,8 +22,8 @@ export const S2ConfigSchema = Schema.Struct({
 
 export type S2Config = Schema.Schema.Type<typeof S2ConfigSchema>
 
-export function streamNameForActor(actorId: string): string {
-  return `actors/${actorId}`
+export function streamNameForRun(runId: string): string {
+  return `runs/${runId}`
 }
 
 export function s2ConfigFromEnv(env: Record<string, string | undefined>): S2Config {

@@ -1,7 +1,7 @@
 {
   "name": "@looms/runtime",
   "version": "0.1.0",
-  "description": "Looms durable actor runtime and HTTP host",
+  "description": "Looms thread runtime, processing loop, and HTTP host",
   "type": "module",
   "license": "Apache-2.0",
   "exports": {
@@ -24,8 +24,8 @@
   },
   "dependencies": {
     "@looms/agent": "workspace:*",
+    "@looms/approval": "workspace:*",
     "@looms/core": "workspace:*",
-    "@looms/projectors": "workspace:*",
     "@looms/workflow": "workspace:*",
     "effect": "4.0.0-rc.112"
   },

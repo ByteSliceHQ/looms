@@ -1,593 +1,512 @@
-import { executeAgentTurn, executeToolCall, LlmTag } from '@looms/agent'
 import {
-  event,
-  eventFromSignal,
-  EventStoreTag,
-  isParked,
-  isTerminal,
-  reduceActor,
-  shouldTakeSnapshot,
+  asJson,
   buildSnapshotEvent,
-  DEFAULT_SNAPSHOT_EVERY,
-  validateDefinitionInput,
-  type ActorState,
-  type AgentDefinition,
-  type AppendableLoomsEvent,
+  composeModules,
+  createEvent,
+  createThreadId,
+  createRunId,
+  EventStoreTag,
+  foldFromSnapshots,
+  isPrimitiveEffect,
+  isRunParked,
+  isRunTerminal,
+  isWaitOnTimer,
+  matchingWaits,
+  project,
+  replayTo,
+  shouldTakeSnapshot,
+  validateInput,
+  type AnyRuntimeModule,
+  type AppendableEvent,
+  type ComposedRegistry,
+  type EffectContext,
+  type EventEnvelope,
+  type EventInput,
   type EventStore,
   type EventStoreError,
   type JsonValue,
-  type Message,
-  type OwedWork,
-  type ReviewDecidedPayload,
-  type LoomsEvent,
-  type LoomsEventSignal,
-  type WorkflowDefinition,
+  type ProjectionDefinition,
+  type RegisteredDefinition,
+  type ReplayStep,
+  type RunState,
+  type RuntimeEffect,
 } from '@looms/core'
-import { executeWorkflowNode, scheduleWorkflow } from '@looms/workflow'
-import { Effect, Predicate, Schema } from 'effect'
-import type { DefinitionRegistry } from './registry'
+import { Effect, Layer } from 'effect'
 
-export interface SpawnRequest {
-  childActorId: string
-  kind: 'agent' | 'workflow'
+export type { RegisteredDefinition } from '@looms/core'
+
+export interface CreateRuntimeOptions<TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[]> {
+  readonly modules: TModules
+  readonly store?: EventStore
+  readonly definitions?: ReadonlyArray<RegisteredDefinition>
+  readonly snapshotEvery?: number
+}
+
+export interface StartRunArgs {
+  kind: string
   definitionName: string
-  definition?: AgentDefinition | WorkflowDefinition
-  input: JsonValue
-  parentActorId: string
-  toolCallId: string | null
-  nodeId: string | null
+  input?: JsonValue
+  runId?: string
+  threadId?: string
 }
 
-export type RuntimeEnv = EventStoreTag | LlmTag
+export interface StartResult {
+  runId: string
+  threadId: string
+  state: RunState
+}
 
-export interface LoomsRuntime {
-  readonly registry: DefinitionRegistry
-  readonly startAgent: (
-    definitionName: string,
-    input?: JsonValue,
-    options?: { actorId?: string; parentActorId?: string | null },
-  ) => Effect.Effect<{ actorId: string; state: ActorState }, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly startWorkflow: (
-    definitionName: string,
-    input?: JsonValue,
-    options?: { actorId?: string; parentActorId?: string | null },
-  ) => Effect.Effect<{ actorId: string; state: ActorState }, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly signal: (
-    actorId: string,
-    events: ReadonlyArray<LoomsEventSignal>,
-  ) => Effect.Effect<ActorState, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly wake: (
-    actorId: string,
-  ) => Effect.Effect<ActorState, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly decideReview: (
-    actorId: string,
-    reviewId: string,
-    decision: { actionId: string; outcome: 'approve' | 'reject'; payload?: JsonValue },
-  ) => Effect.Effect<ActorState, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly steer: (
-    actorId: string,
-    message: string | Message,
-    options?: { interrupt?: boolean; turn?: number },
-  ) => Effect.Effect<ActorState, Error | EventStoreError, EventStoreTag | LlmTag>
-  readonly getState: (
-    actorId: string,
-  ) => Effect.Effect<ActorState, EventStoreError, EventStoreTag>
-  readonly getEvents: (
-    actorId: string,
+export interface LoomsRuntime<TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[]> {
+  readonly modules: TModules
+  readonly registry: ComposedRegistry
+  startRun(
+    args: StartRunArgs,
+  ): Effect.Effect<StartResult, Error | EventStoreError, EventStoreTag>
+  signal(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+  ): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
+  wake(runId: string): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
+  getRun(runId: string): Effect.Effect<RunState, EventStoreError, EventStoreTag>
+  getEvents(
+    runId: string,
     options?: { fromSeq?: number; limit?: number },
-  ) => Effect.Effect<LoomsEvent[], EventStoreError, EventStoreTag>
+  ): Effect.Effect<EventEnvelope[], EventStoreError, EventStoreTag>
+  project<S>(runId: string, definition: ProjectionDefinition<S>): Effect.Effect<S, EventStoreError, EventStoreTag>
+  replayTo(runId: string, seq: number): Effect.Effect<ReplayStep | null, EventStoreError, EventStoreTag>
+  cancel(
+    runId: string,
+    threadId?: string,
+  ): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
+  listRuns(): Effect.Effect<string[], EventStoreError, EventStoreTag>
 }
 
-const OptionalStringField = Schema.Struct({
-  timerId: Schema.optional(Schema.String),
-  nodeId: Schema.optional(Schema.String),
-  parentActorId: Schema.optional(Schema.NullOr(Schema.String)),
-  childActorId: Schema.optional(Schema.String),
-  toolCallId: Schema.optional(Schema.NullOr(Schema.String)),
-  childDefinitionName: Schema.optional(Schema.String),
-})
-
-function readPayloadFields(
-  payload: LoomsEvent['payload'],
-): Schema.Schema.Type<typeof OptionalStringField> {
-  const decoded = Schema.decodeUnknownExit(OptionalStringField)(payload)
-  if (decoded._tag === 'Success') return decoded.value
-  return {}
+function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[] {
+  return events.map(({ seq: _seq, ...rest }) => rest)
 }
 
-function createActorId(kind: 'agent' | 'workflow'): string {
-  const prefix = kind === 'agent' ? 'agt' : 'wf'
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+function bindThreads(modules: readonly AnyRuntimeModule[], state: RunState): void {
+  for (const record of Object.values(state.threads)) {
+    for (const module of modules) {
+      if (module.bindThread) {
+        module.bindThread(record)
+      }
+    }
+  }
 }
 
-function stripSeq(events: ReadonlyArray<LoomsEvent>): AppendableLoomsEvent[] {
-  // SAFETY: omitting seq from LoomsEvent yields AppendableLoomsEvent member-wise; TS collapse loses the correlation.
-  return events.map(({ seq: _seq, ...rest }) => rest as AppendableLoomsEvent)
+function moduleServices(
+  modules: readonly AnyRuntimeModule[],
+  definitions: ReadonlyArray<RegisteredDefinition>,
+): Layer.Layer<never, never, never> {
+  let merged: Layer.Layer<never, never, never> = Layer.empty
+  for (const module of modules) {
+    if (module.services) merged = Layer.merge(merged, module.services({ definitions }))
+  }
+  return merged
 }
 
-export function createLoomsRuntime(registry: DefinitionRegistry): LoomsRuntime {
+function waitSatisfiedEvents(state: RunState, events: readonly EventEnvelope[]): EventInput[] {
+  const produced: EventInput[] = []
+  const remaining = { ...state.waits }
+  for (const event of events) {
+    if (event.ephemeral || event.type === 'runtime.wait.satisfied') continue
+    const matches = matchingWaits(event, Object.values(remaining))
+    for (const record of matches) {
+      produced.push({
+        type: 'runtime.wait.satisfied',
+        payload: asJson({
+          waitId: record.waitId,
+          tag: record.tag ?? null,
+          event: { id: event.id, type: event.type, payload: event.payload },
+        }),
+        threadId: record.threadId,
+        causationId: event.id,
+      })
+      delete remaining[record.waitId]
+    }
+  }
+  return produced
+}
+
+export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
+  options: CreateRuntimeOptions<TModules>,
+): LoomsRuntime<TModules> {
+  const registry = composeModules(options.modules)
+  const registeredDefinitions = options.definitions ?? []
+  const definitions = new Map(registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const))
+  const services = moduleServices(options.modules, registeredDefinitions)
   const waking = new Set<string>()
-  const spawnMeta = new Map<
-    string,
-    { parentActorId: string; toolCallId: string | null; nodeId: string | null }
-  >()
+  const snapshotEvery = options.snapshotEvery
 
-  const runtime: LoomsRuntime = {
+  const runtime: LoomsRuntime<TModules> = {
+    modules: options.modules,
     registry,
-    getState: (actorId) =>
+
+    listRuns: () =>
       Effect.gen(function* () {
         const store = yield* EventStoreTag
-        const events = yield* store.read(actorId)
-        return reduceActor(events, { actorId })
+        return yield* store.listRuns()
       }),
 
-    getEvents: (actorId, options) =>
+    getEvents: (runId, options) =>
       Effect.gen(function* () {
         const store = yield* EventStoreTag
-        return yield* store.read(actorId, options)
+        return yield* store.read(runId, options)
       }),
 
-    startAgent: (definitionName, input = null, options) =>
+    getRun: (runId) =>
       Effect.gen(function* () {
-        const def = registry.agents.get(definitionName)
-        if (!def) return yield* Effect.fail(new Error(`Unknown agent: ${definitionName}`))
-        const validatedInput = yield* Effect.tryPromise({
-          try: () => validateDefinitionInput(def, input),
-          catch: (err) => (err instanceof Error ? err : new Error(String(err))),
-        })
-        const actorId = options?.actorId ?? createActorId('agent')
         const store = yield* EventStoreTag
-        const batch: LoomsEvent[] = [
-          event('actor.started', actorId, {
-            kind: 'agent' as const,
-            definitionName,
-            input: validatedInput,
-            parentActorId: options?.parentActorId ?? null,
-            maxTurns: def.maxTurns ?? 20,
+        const events = yield* store.read(runId)
+        return foldFromSnapshots(events, registry, { runId })
+      }),
+
+    project: (runId, definition) =>
+      Effect.gen(function* () {
+        const events = yield* runtime.getEvents(runId)
+        return project(definition, events)
+      }),
+
+    replayTo: (runId, seq) =>
+      Effect.gen(function* () {
+        const events = yield* runtime.getEvents(runId)
+        return replayTo(events, registry, seq)
+      }),
+
+    startRun: (args) =>
+      Effect.gen(function* () {
+        const def = definitions.get(`${args.kind}:${args.definitionName}`)
+        if (!def) {
+          return yield* Effect.fail(new Error(`Unknown definition ${args.kind}:${args.definitionName}`))
+        }
+        const rawInput = args.input ?? null
+        const validated = def.input
+          ? yield* Effect.tryPromise({
+              try: () => {
+                // SAFETY: RegisteredDefinition.input is a Standard Schema when present.
+                return validateInput(def.input as never, rawInput)
+              },
+              catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+            })
+          : rawInput
+        const runId = args.runId ?? createRunId()
+        const threadId = args.threadId ?? createThreadId()
+        const store = yield* EventStoreTag
+        const batch = [
+          createEvent(runId, {
+            type: 'runtime.run.started',
+            payload: {
+              rootThreadId: threadId,
+              kind: args.kind,
+              definitionName: args.definitionName,
+              input: validated,
+            },
+            threadId: null,
+            origin: { type: 'system' },
+          }),
+          createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: args.kind,
+              definitionName: args.definitionName,
+              input: validated,
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
           }),
         ]
-        if (validatedInput !== null && validatedInput !== undefined) {
-          const content = Predicate.isString(validatedInput)
-            ? validatedInput
-            : JSON.stringify(validatedInput)
-          batch.push(
-            event('agent.message.received', actorId, {
-              message: { role: 'user', content } satisfies Message,
-            }),
+        yield* store.append(runId, stripSeq(batch))
+        const state = yield* runtime.wake(runId)
+        return { runId, threadId, state }
+      }),
+
+    signal: (runId, events) =>
+      Effect.gen(function* () {
+        const store = yield* EventStoreTag
+        const batch = events.map((input) =>
+          createEvent(runId, {
+            ...input,
+            origin: input.origin ?? { type: 'external' },
+          }),
+        )
+        yield* store.append(runId, stripSeq(batch))
+        const folded = foldFromSnapshots(yield* store.read(runId), registry, { runId })
+        const satisfied = waitSatisfiedEvents(folded, batch)
+        if (satisfied.length > 0) {
+          yield* store.append(
+            runId,
+            satisfied.map((input) => createEvent(runId, input)),
           )
         }
-        yield* store.append(actorId, stripSeq(batch))
-        const state = yield* runtime.wake(actorId)
-        return { actorId, state }
+        return yield* runtime.wake(runId)
       }),
 
-    startWorkflow: (definitionName, input = null, options) =>
-      Effect.gen(function* () {
-        const def = registry.workflows.get(definitionName)
-        if (!def) return yield* Effect.fail(new Error(`Unknown workflow: ${definitionName}`))
-        const validatedInput = yield* Effect.tryPromise({
-          try: () => validateDefinitionInput(def, input),
-          catch: (err) => (err instanceof Error ? err : new Error(String(err))),
-        })
-        const actorId = options?.actorId ?? createActorId('workflow')
-        const store = yield* EventStoreTag
-        yield* store.append(
-          actorId,
-          stripSeq([
-            event('actor.started', actorId, {
-              kind: 'workflow',
-              definitionName,
-              input: validatedInput,
-              parentActorId: options?.parentActorId ?? null,
-              concurrency: def.concurrency ?? 8,
-              nodeIds: def.nodes.map((n) => n.id),
-            }),
-          ]),
-        )
-        const state = yield* runtime.wake(actorId)
-        return { actorId, state }
-      }),
-
-    signal: (actorId, events) =>
-      Effect.gen(function* () {
-        const store = yield* EventStoreTag
-        const batch = events.map((e) => eventFromSignal(e, actorId))
-        yield* store.append(actorId, stripSeq(batch))
-        return yield* runtime.wake(actorId)
-      }),
-
-    decideReview: (actorId, reviewId, decision) => {
-      const payload = {
-        reviewId,
-        actionId: decision.actionId,
-        outcome: decision.outcome,
-      } satisfies ReviewDecidedPayload
-      const withOptional: ReviewDecidedPayload =
-        decision.payload === undefined
-          ? payload
-          : { ...payload, payload: decision.payload }
-      return runtime.signal(actorId, [
+    cancel: (runId, threadId) =>
+      runtime.signal(runId, [
         {
-          type: 'review.decided',
-          payload: withOptional,
+          type: 'runtime.thread.cancelled',
+          payload: { threadId: threadId ?? '', reason: 'cancelled' },
+          threadId: threadId ?? null,
+          origin: { type: 'external' },
         },
-      ])
-    },
+      ]),
 
-    steer: (actorId, message, options) =>
+    wake: (runId) =>
       Effect.gen(function* () {
-        const state = yield* runtime.getState(actorId)
-        const msg: Message = Predicate.isString(message)
-          ? { role: 'user', content: message }
-          : message
-        return yield* runtime.signal(actorId, [
-          {
-            type: 'agent.turn.steered',
-            payload: {
-              turn: options?.turn ?? (state.kind === 'agent' ? state.turn : 0),
-              message: msg,
-              interrupt: options?.interrupt ?? true,
-            },
-          },
-        ])
-      }),
-
-    wake: (actorId) =>
-      Effect.gen(function* () {
-        if (waking.has(actorId)) {
-          return yield* runtime.getState(actorId)
+        if (waking.has(runId)) {
+          return yield* runtime.getRun(runId)
         }
-        waking.add(actorId)
+        waking.add(runId)
         try {
           const store = yield* EventStoreTag
-          let events = yield* store.read(actorId)
-          let state = reduceActor(events, { actorId })
+          let events = yield* store.read(runId)
+          let state = foldFromSnapshots(events, registry, { runId })
           let guard = 0
-          let shouldRewake = false
 
-          while (!isTerminal(state) && !isParked(state) && guard < 100) {
+          while (!isRunTerminal(state) && !isRunParked(state) && guard < 100) {
             guard += 1
+            bindThreads(options.modules, state)
 
-            const dueTimer = state.owed.find(
-              (w): w is Extract<OwedWork, { type: 'timer.wait' }> =>
-                w.type === 'timer.wait' && w.wakeAt <= Date.now(),
+            const now = Date.now()
+            const due = Object.values(state.waits).filter(
+              (record) => isWaitOnTimer(record.on) && record.on.timerAt <= now,
             )
-            if (dueTimer) {
-              const timerEvt = events.find((e) => {
-                if (e.type !== 'timer.set') return false
-                return readPayloadFields(e.payload).timerId === dueTimer.timerId
-              })
-              const nodeId = timerEvt ? readPayloadFields(timerEvt.payload).nodeId : undefined
-              const batch: LoomsEvent[] = [
-                event('timer.fired', actorId, { timerId: dueTimer.timerId }),
-              ]
-              if (nodeId && state.kind === 'workflow') {
-                const node = state.nodes[nodeId]
-                if (node?.status === 'running' || node?.status === 'waiting_review') {
-                  batch.push(
-                    event('workflow.node.finished', actorId, {
-                      nodeId,
-                      result: { waited: true },
-                      error: null,
-                    }),
-                  )
-                }
+            if (due.length > 0) {
+              const batch: EventEnvelope[] = []
+              for (const record of due) {
+                if (!isWaitOnTimer(record.on)) continue
+                batch.push(
+                  createEvent(runId, {
+                    type: 'runtime.timer.fired',
+                    payload: { timerId: record.waitId, waitId: record.waitId },
+                    threadId: record.threadId,
+                    origin: { type: 'system' },
+                  }),
+                )
               }
-              yield* store.append(actorId, stripSeq(batch))
-              events = yield* store.read(actorId)
-              state = reduceActor(events, { actorId })
+              yield* store.append(runId, stripSeq(batch))
+              const fired = (yield* store.read(runId)).slice(-batch.length)
+              const satisfied = waitSatisfiedEvents(state, fired)
+              if (satisfied.length > 0) {
+                yield* store.append(
+                  runId,
+                  satisfied.map((input) => createEvent(runId, input)),
+                )
+              }
+              events = yield* store.read(runId)
+              state = foldFromSnapshots(events, registry, { runId })
               continue
             }
 
-            const definition =
-              state.kind === 'agent'
-                ? registry.agents.get(state.definitionName)
-                : registry.workflows.get(state.definitionName)
-            if (!definition) {
-              yield* store.append(
-                actorId,
-                stripSeq([
-                  event('actor.failed', actorId, {
-                    error: `Unknown definition: ${state.definitionName}`,
-                  }),
-                ]),
-              )
-              events = yield* store.read(actorId)
-              state = reduceActor(events, { actorId })
-              break
-            }
+            const outstanding = state.outstandingEffects
+            if (outstanding.length === 0) break
 
-            const actionable = state.owed.find(
-              (w) =>
-                w.type !== 'review.wait' &&
-                w.type !== 'child.wait' &&
-                w.type !== 'timer.wait',
-            )
-            if (!actionable) break
-
-            const { events: produced, spawns } = yield* runOwed(
-              registry,
-              definition,
-              state,
-              actionable,
-              store,
-            )
-            if (produced.length === 0) break
-
-            yield* store.append(actorId, produced)
-            for (const spawn of spawns) {
-              spawnMeta.set(spawn.childActorId, {
-                parentActorId: spawn.parentActorId,
-                toolCallId: spawn.toolCallId,
-                nodeId: spawn.nodeId,
+            const produced: EventEnvelope[] = []
+            for (const item of outstanding) {
+              const outcomes = yield* dispatchEffect(registry, services, item.effect, {
+                effectId: item.effectId,
+                runId,
+                threadId: item.threadId,
+                causingEventId: item.causingEventId,
+                emit: (input) => {
+                  const targetThreadId = input.threadId ?? item.threadId
+                  const ephemeral = createEvent(runId, {
+                    ...input,
+                    effectId: item.effectId,
+                    causationId: item.causingEventId,
+                    threadId: targetThreadId,
+                    ephemeral: true,
+                    origin: input.origin ?? { type: 'thread', threadId: item.threadId },
+                  })
+                  void Effect.runPromise(store.append(runId, stripSeq([ephemeral])))
+                },
               })
-              if (spawn.definition?.kind === 'agent') {
-                registry.agents.set(spawn.definition.name, spawn.definition)
-              } else if (spawn.definition?.kind === 'workflow') {
-                registry.workflows.set(spawn.definition.name, spawn.definition)
+              if (outcomes.length === 0) {
+                produced.push(
+                  createEvent(runId, {
+                    type: 'runtime.effect.failed',
+                    payload: { effectId: item.effectId, error: 'empty-outcome' },
+                    threadId: item.threadId,
+                    effectId: item.effectId,
+                    causationId: item.causingEventId,
+                    origin: { type: 'system' },
+                  }),
+                )
               }
-              if (spawn.kind === 'agent') {
-                yield* runtime.startAgent(spawn.definitionName, spawn.input, {
-                  actorId: spawn.childActorId,
-                  parentActorId: spawn.parentActorId,
-                })
-              } else {
-                yield* runtime.startWorkflow(spawn.definitionName, spawn.input, {
-                  actorId: spawn.childActorId,
-                  parentActorId: spawn.parentActorId,
-                })
+              for (const input of outcomes) {
+                const targetThreadId = input.threadId ?? item.threadId
+                produced.push(
+                  createEvent(runId, {
+                    ...input,
+                    effectId: input.effectId ?? item.effectId,
+                    causationId: input.causationId ?? item.causingEventId,
+                    threadId: targetThreadId,
+                    origin: input.origin ?? { type: 'thread', threadId: item.threadId },
+                    id: input.id,
+                    ts: input.ts,
+                  }),
+                )
               }
             }
 
-            events = yield* store.read(actorId)
-            state = reduceActor(events, { actorId })
+            if (produced.length === 0) break
+            yield* store.append(runId, stripSeq(produced))
+            events = yield* store.read(runId)
+            state = foldFromSnapshots(events, registry, { runId })
+            const written = events.slice(-produced.length)
+            const satisfied = waitSatisfiedEvents(state, written)
+            if (satisfied.length > 0) {
+              yield* store.append(
+                runId,
+                satisfied.map((input) => createEvent(runId, input)),
+              )
+              events = yield* store.read(runId)
+              state = foldFromSnapshots(events, registry, { runId })
+            }
           }
 
-          if (isTerminal(state) && state.parentActorId) {
-            yield* notifyParent(runtime, spawnMeta, actorId, state.output, state.error)
+          const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
+          if (root && (root.status === 'completed' || root.status === 'failed' || root.status === 'cancelled') && !isRunTerminal(state)) {
+            yield* store.append(runId, [
+              createEvent(runId, {
+                type: 'runtime.run.completed',
+                payload: {
+                  output: root.output,
+                  error: root.error,
+                },
+                threadId: null,
+                origin: { type: 'system' },
+              }),
+            ])
+            events = yield* store.read(runId)
+            state = foldFromSnapshots(events, registry, { runId })
           }
 
-          events = yield* store.read(actorId)
-          if (shouldTakeSnapshot(events, DEFAULT_SNAPSHOT_EVERY)) {
-            const snap = buildSnapshotEvent(actorId, events, { includeState: true })
-            yield* store.append(actorId, stripSeq([snap]))
-            events = yield* store.read(actorId)
-            state = reduceActor(events, { actorId })
+          if (shouldTakeSnapshot(events, snapshotEvery)) {
+            const snap = buildSnapshotEvent(runId, events, registry, { includeState: true })
+            yield* store.append(runId, stripSeq([snap]))
+            events = yield* store.read(runId)
+            state = foldFromSnapshots(events, registry, { runId })
           }
 
-          shouldRewake =
-            guard >= 100 &&
-            !isTerminal(state) &&
-            !isParked(state) &&
-            state.owed.some(
-              (w) =>
-                w.type !== 'review.wait' &&
-                w.type !== 'child.wait' &&
-                w.type !== 'timer.wait',
-            )
-
-          if (!shouldRewake) return state
+          return state
         } finally {
-          waking.delete(actorId)
+          waking.delete(runId)
         }
-        return yield* runtime.wake(actorId)
       }),
   }
 
   return runtime
 }
 
-function notifyParent(
-  runtime: LoomsRuntime,
-  spawnMeta: Map<string, { parentActorId: string; toolCallId: string | null; nodeId: string | null }>,
-  childActorId: string,
-  result: JsonValue | null,
-  error: string | null,
-): Effect.Effect<void, Error | EventStoreError, EventStoreTag | LlmTag> {
-  return Effect.gen(function* () {
-    const meta = spawnMeta.get(childActorId)
-    const store = yield* EventStoreTag
-    const childEvents = yield* store.read(childActorId)
-    const started = childEvents.find((e) => e.type === 'actor.started')
-    const parentActorId =
-      meta?.parentActorId ??
-      (started ? readPayloadFields(started.payload).parentActorId : undefined) ??
-      null
-    if (!parentActorId) return
-
-    const parentEvents = yield* store.read(parentActorId)
-    const spawnEvt = parentEvents.find((e) => {
-      if (e.type !== 'child.spawned') return false
-      return readPayloadFields(e.payload).childActorId === childActorId
-    })
-    const spawnPayload = spawnEvt ? readPayloadFields(spawnEvt.payload) : undefined
-    const nodeId = meta?.nodeId ?? spawnPayload?.nodeId ?? null
-    const toolCallId = meta?.toolCallId ?? spawnPayload?.toolCallId ?? null
-
-    const batch: LoomsEvent[] = []
-    // Agent/workflow-tool: emit tool.result while still waiting_child so we don't
-    // double-schedule agent.turn (tool.result only resumes when status is running).
-    if (toolCallId) {
-      batch.push(
-        event('tool.result', parentActorId, {
-          turn: null,
-          toolCallId,
-          name: spawnPayload?.childDefinitionName ?? 'child',
-          result,
-          error,
-        }),
-      )
-    }
-    batch.push(
-      event('child.completed', parentActorId, {
-        childActorId,
-        result,
-        error,
-      }),
-    )
-    // Workflow node spawns also need the node marked finished.
-    if (nodeId) {
-      batch.push(
-        event('workflow.node.finished', parentActorId, {
-          nodeId,
-          result,
-          error,
-        }),
-      )
-    }
-    yield* store.append(parentActorId, stripSeq(batch))
-    spawnMeta.delete(childActorId)
-    yield* runtime.wake(parentActorId)
-  })
-}
-
-function runOwed(
-  registry: DefinitionRegistry,
-  definition: AgentDefinition | WorkflowDefinition,
-  state: ActorState,
-  work: OwedWork,
-  store: EventStore,
-): Effect.Effect<
-  {
-    events: AppendableLoomsEvent[]
-    spawns: SpawnRequest[]
-  },
-  Error,
-  LlmTag
-> {
-  return Effect.gen(function* () {
-    switch (work.type) {
-      case 'agent.turn': {
-        if (state.kind !== 'agent' || definition.kind !== 'agent') {
-          return { events: [], spawns: [] }
-        }
-        const result = yield* executeAgentTurn(definition, state, {
-          emit: async (evt) => {
-            await Effect.runPromise(store.append(state.actorId, stripSeq([evt])))
-          },
-        })
-        return {
-          events: stripSeq(result.events),
-          spawns: result.spawns.map((s) => ({
-            ...s,
-            parentActorId: state.actorId,
-            nodeId: null,
-          })),
-        }
-      }
-      case 'tool.execute': {
-        if (state.kind !== 'agent' || definition.kind !== 'agent') {
-          return { events: [], spawns: [] }
-        }
-        const result = yield* executeToolCall(definition, state, work.turn, work.toolCall)
-        return {
-          events: stripSeq(result.events),
-          spawns: result.spawns.map((s) => ({
-            ...s,
-            parentActorId: state.actorId,
-            nodeId: null,
-          })),
-        }
-      }
-      case 'workflow.schedule': {
-        if (state.kind !== 'workflow' || definition.kind !== 'workflow') {
-          return { events: [], spawns: [] }
-        }
-        const scheduled = scheduleWorkflow(definition, state)
-        const nodeStarts = scheduled.filter((e) => e.type === 'workflow.node.started')
-        const events: LoomsEvent[] = [...scheduled]
-        const spawns: SpawnRequest[] = []
-        for (const start of nodeStarts) {
-          const nodeId = start.payload.nodeId
-          if (!nodeId) continue
-          const runningState = {
-            ...state,
-            nodes: {
-              ...state.nodes,
-              [nodeId]: {
-                status: 'running' as const,
-                result: null,
-                error: null,
-              },
+function dispatchEffect(
+  registry: ComposedRegistry,
+  services: Layer.Layer<never, never, never>,
+  effect: RuntimeEffect,
+  ctx: EffectContext,
+): Effect.Effect<ReadonlyArray<EventInput>, Error> {
+  const currentThreadId = ctx.threadId
+  
+  if (isPrimitiveEffect(effect)) {
+    switch (effect.type) {
+      case 'runtime.spawn': {
+        const childThreadId = effect.childThreadId ?? ''
+        return Effect.succeed([
+          {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId: childThreadId,
+              kind: effect.kind,
+              definitionName: effect.definitionName,
+              input: effect.input,
+              parentThreadId: currentThreadId,
             },
-          }
-          const executed = yield* executeWorkflowNode(definition, runningState, nodeId)
-          events.push(...executed.events)
-          for (const s of executed.spawns) {
-            spawns.push({
-              childActorId: s.childActorId,
-              kind: s.kind,
-              definitionName: s.definitionName,
-              definition: s.definition,
-              input: s.input,
-              parentActorId: state.actorId,
-              toolCallId: null,
-              nodeId: s.nodeId,
-            })
-            if (s.definition?.kind === 'agent') {
-              registry.agents.set(s.definition.name, s.definition)
-            } else if (s.definition?.kind === 'workflow') {
-              registry.workflows.set(s.definition.name, s.definition)
-            }
-          }
-        }
-        return { events: stripSeq(events), spawns }
-      }
-      case 'workflow.run_node': {
-        if (state.kind !== 'workflow' || definition.kind !== 'workflow') {
-          return { events: [], spawns: [] }
-        }
-        const started = event('workflow.node.started', state.actorId, { nodeId: work.nodeId })
-        const runningState = {
-          ...state,
-          nodes: {
-            ...state.nodes,
-            [work.nodeId]: { status: 'running' as const, result: null, error: null },
+            threadId: childThreadId,
+            parentThreadId: currentThreadId,
           },
-        }
-        const executed = yield* executeWorkflowNode(definition, runningState, work.nodeId)
-        return {
-          events: stripSeq([started, ...executed.events]),
-          spawns: executed.spawns.map((s) => ({
-            childActorId: s.childActorId,
-            kind: s.kind,
-            definitionName: s.definitionName,
-            definition: s.definition,
-            input: s.input,
-            parentActorId: state.actorId,
-            toolCallId: null,
-            nodeId: s.nodeId,
-          })),
-        }
+        ])
       }
-      case 'finalize': {
-        if (state.status === 'failed' || state.error) {
-          return {
-            events: stripSeq([
-              event('actor.failed', state.actorId, {
-                error: state.error ?? 'Actor failed',
-              }),
-            ]),
-            spawns: [],
-          }
-        }
-        return {
-          events: stripSeq([
-            event('actor.completed', state.actorId, {
-              output: state.output ?? null,
+      case 'runtime.wait': {
+        const events: EventInput[] = [
+          {
+            type: 'runtime.wait.registered',
+            payload: asJson({
+              waitId: effect.waitId,
+              threadId: currentThreadId,
+              on: effect.on,
+              tag: effect.tag ?? null,
             }),
-          ]),
-          spawns: [],
+            threadId: currentThreadId,
+          },
+        ]
+        if (isWaitOnTimer(effect.on)) {
+          events.push({
+            type: 'runtime.timer.set',
+            payload: { timerId: effect.waitId, waitId: effect.waitId, wakeAt: effect.on.timerAt },
+            threadId: currentThreadId,
+          })
         }
+        return Effect.succeed(events)
       }
-      case 'review.wait':
-      case 'child.wait':
-      case 'timer.wait':
-        return { events: [], spawns: [] }
+      case 'runtime.emit':
+        return Effect.succeed([effect.event])
+      case 'runtime.complete':
+        return Effect.succeed([
+          {
+            type: 'runtime.thread.completed',
+            payload: { threadId: currentThreadId, output: effect.output },
+            threadId: currentThreadId,
+          },
+        ])
+      case 'runtime.fail':
+        return Effect.succeed([
+          {
+            type: 'runtime.thread.failed',
+            payload: { threadId: currentThreadId, error: effect.error },
+            threadId: currentThreadId,
+          },
+        ])
+      case 'runtime.cancel': {
+        const targetThreadId = effect.threadId ?? ''
+        return Effect.succeed([
+          {
+            type: 'runtime.thread.cancelled',
+            payload: { threadId: targetThreadId, reason: 'cancelled' },
+            threadId: targetThreadId,
+          },
+        ])
+      }
       default: {
-        const _exhaustive: never = work
+        const _exhaustive: never = effect
         return _exhaustive
       }
     }
-  })
+  }
+
+  const handler = registry.handlers.get(effect.type)
+  if (!handler) {
+    return Effect.succeed([
+      {
+        type: 'runtime.effect.failed',
+        payload: { effectId: ctx.effectId, error: `No handler for ${effect.type}` },
+        threadId: currentThreadId,
+      },
+    ])
+  }
+  const input = 'input' in effect ? effect.input : {}
+  return handler.execute(input, ctx).pipe(
+    Effect.provide(services),
+    Effect.catch((err) =>
+      Effect.succeed([
+        {
+          type: 'runtime.effect.failed',
+          payload: { effectId: ctx.effectId, error: err instanceof Error ? err.message : String(err) },
+          threadId: currentThreadId,
+        },
+      ]),
+    ),
+  )
 }

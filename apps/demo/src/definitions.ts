@@ -1,7 +1,17 @@
-import { asAgentTool, defineAgent, defineTool, defineWorkflow, type JsonValue } from '@looms/core'
+import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
+import { gate } from '@looms/approval'
+import { createWaitId, invoke, isJsonObject, isJsonString, wait, type JsonValue } from '@looms/core'
+import { defineWorkflow } from '@looms/workflow'
 import { z } from 'zod'
 
-/** Deterministic echo agent. */
+function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg?.role === 'tool') return msg
+  }
+  return undefined
+}
+
 export const echo = defineAgent({
   name: 'echo',
   instructions: 'Echo the user message.',
@@ -13,7 +23,6 @@ export const echo = defineAgent({
   }),
 })
 
-/** Child agent used via agent-tool. */
 export const specialist = defineAgent({
   name: 'specialist',
   instructions: 'Specialize on a short task.',
@@ -25,17 +34,8 @@ export const specialist = defineAgent({
   }),
 })
 
-function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg?.role === 'tool') return msg
-  }
-  return undefined
-}
-
 const SpecialistInputSchema = z.object({ task: z.string().optional() })
 
-/** Parent agent that spawns a child via agent-tool. */
 export const orchestrator = defineAgent({
   name: 'orchestrator',
   instructions: 'Delegate work to the specialist tool.',
@@ -92,12 +92,15 @@ export const greeter = defineAgent({
       name: 'greet',
       description: 'Return a greeting',
       input: z.object({ name: z.string().optional().default('world') }),
-      handler: ({ name }) => ({ greeting: `Hello, ${name}!` }),
+      handler: (args) => {
+        const name = isJsonObject(args) && isJsonString(args.name) ? args.name : 'world'
+        return { greeting: `Hello, ${name}!` }
+      },
     }),
   ],
   runTurn: ({ turn, messages, input }) => {
     if (turn === 1) {
-      const name = input.name ?? 'world'
+      const name = isJsonObject(input) && isJsonString(input.name) ? input.name : 'world'
       return {
         message: {
           role: 'assistant',
@@ -125,35 +128,59 @@ export const greeter = defineAgent({
   },
 })
 
-/** HITL workflow that parks on review then completes. */
-export const hitl = defineWorkflow({
-  name: 'hitl',
-  description: 'Human-in-the-loop approval gate',
-  input: z.object({ doc: z.string().optional().default('draft') }),
+function isRejected(result: JsonValue | null): boolean {
+  return isJsonObject(result) && result.outcome === 'reject'
+}
+
+export const checkout = defineWorkflow({
+  name: 'checkout',
+  description: 'Approval gate above threshold, then a payments charge',
+  input: z.object({
+    amount: z.number().default(150),
+    currency: z.string().default('USD'),
+  }),
   nodes: [
     {
-      id: 'prepare',
-      run: (ctx) => ({ draft: ctx.input.doc }),
+      id: 'gate',
+      run: (ctx) => {
+        if (ctx.input.amount < 100) return { skipped: true, reason: 'below-threshold' }
+        return ctx.effects(gate({ title: `Approve charge of ${ctx.input.amount} ${ctx.input.currency}?` }))
+      },
     },
     {
-      id: 'review',
-      deps: ['prepare'],
-      run: (ctx) =>
-        ctx.requestReview({
-          title: 'Approve draft?',
-          description: JSON.stringify(ctx.results.prepare ?? null),
-        }),
+      id: 'charge',
+      deps: ['gate'],
+      run: (ctx) => {
+        if (isRejected(ctx.results.gate ?? null)) return { charged: false, reason: 'rejected' }
+        return ctx.effects([
+          invoke('payments.charge', {
+            amount: ctx.input.amount,
+            currency: ctx.input.currency,
+          }),
+          wait({
+            waitId: createWaitId(),
+            on: { type: 'payments.charge.authorized' },
+          }),
+          wait({
+            waitId: createWaitId(),
+            on: { type: 'payments.charge.declined' },
+          }),
+        ])
+      },
     },
     {
-      id: 'finalize',
-      deps: ['review'],
-      run: (ctx) => ({ approved: true, review: ctx.results.review ?? null }),
+      id: 'notify',
+      deps: ['charge'],
+      run: (ctx) => ({
+        notified: true,
+        gate: ctx.results.gate ?? null,
+        charge: ctx.results.charge ?? null,
+      }),
     },
   ],
   output: ({ results }) => results,
 })
 
-/** Nested workflow-as-tool style pipeline. */
 export const pipeline = defineWorkflow({
   name: 'pipeline',
   input: z.object({ n: z.number().default(21) }),
@@ -166,7 +193,7 @@ export const pipeline = defineWorkflow({
       id: 'spawn',
       deps: ['double'],
       run: (ctx) =>
-        ctx.spawnAgent(echo, {
+        ctx.spawn(echo, {
           text: `n=${JSON.stringify(ctx.results.double ?? null)}`,
         }),
     },
@@ -186,10 +213,22 @@ const greet = defineTool({
   name: 'greet',
   description: 'Return a greeting for a person by name',
   input: z.object({ name: z.string() }),
-  handler: ({ name }) => ({ greeting: `Hello, ${name}!` }),
+  handler: (args) => {
+    const name = isJsonObject(args) && isJsonString(args.name) ? args.name : 'person'
+    return { greeting: `Hello, ${name}!` }
+  },
 })
 
-/** Conversational assistant that can call tools, agents, and workflows. */
+const askApproval = asEffectsTool({
+  name: 'ask_approval',
+  description: 'Ask a human to approve or reject a request',
+  effects: (input) => {
+    const title = isJsonObject(input) && isJsonString(input.title) ? input.title : 'Approve this request?'
+    return gate({ title })
+  },
+  waitOn: { type: 'approval.decided' },
+})
+
 export const assistant = defineAgent({
   name: 'assistant',
   conversational: true,
@@ -197,11 +236,10 @@ export const assistant = defineAgent({
   instructions: [
     'You are the Looms demo assistant.',
     'You can greet people, delegate a short task to the specialist agent,',
-    'run the hitl approval workflow, or run the numeric pipeline workflow.',
+    'run checkout (approval + payments), or ask for a standalone approval.',
     'Use tools when they help; otherwise answer directly.',
-    'When you use hitl, tell the user a review will appear on the right.',
   ].join(' '),
-  tools: [greet, specialist, hitl, pipeline],
+  tools: [greet, specialist, checkout, askApproval],
 })
 
-export const definitions = [echo, greeter, specialist, orchestrator, hitl, pipeline, assistant] as const
+export const definitions = [echo, greeter, specialist, orchestrator, checkout, pipeline, assistant] as const

@@ -9,47 +9,77 @@ function Concepts() {
     <>
       <h1>Concepts</h1>
       <p>
-        An actor is identified by <code>actorId</code>. Kind is either{' '}
-        <code>agent</code> (message turns, tools, optional child actors) or{' '}
-        <code>workflow</code> (a DAG of nodes with deps, reviews, timers, and nested
-        spawns).
+        Looms models application work as a <strong>run</strong>: one durable event
+        log that you can crash-recover, replay, and subscribe to from a UI. You
+        plug in <strong>modules</strong> for agents, workflows, approvals, or your
+        own domain (payments, tickets, search).
       </p>
-      <p>
-        Durable facts are <code>LoomsEvent</code> records in an{' '}
-        <code>EventStore</code> log (memory or an S2 stream per actor).{' '}
-        <code>reduceActor(events)</code> derives <code>ActorState</code> plus owed
-        work — what the host must do next.
-      </p>
-      <h2>Wake loop</h2>
-      <p>
-        <code>LoomsRuntime.wake(actorId)</code> reads the log, reduces, executes
-        actionable owed work, appends the produced events, and repeats until the
-        actor is terminal or parked.
-      </p>
+
+      <h2>Why this shape</h2>
       <ul>
         <li>
-          <code>waiting_review</code> — until <code>review.decided</code> or timeout
+          <strong>Durable by default.</strong> Progress is the log. Restart the
+          host and the run continues from the last event.
         </li>
         <li>
-          <code>waiting_child</code> — until <code>child.completed</code>
+          <strong>Composable.</strong> A checkout workflow can wait on an
+          approval, then invoke your payments module. An agent can spawn that
+          workflow as a tool.
         </li>
         <li>
-          <code>waiting_timer</code> — until <code>timer.fired</code>
+          <strong>One stream, many views.</strong> The same events power a chat
+          transcript, a debugger timeline, a ledger, and pending-approval badges.
+        </li>
+        <li>
+          <strong>Human in the loop.</strong> A run parks until someone decides.
+          The UI posts an <code>approval.decided</code> event; the run resumes.
         </li>
       </ul>
-      <h2>Projectors</h2>
+
+      <h2>Run and thread</h2>
       <p>
-        The log is a poor query surface. A projector writes a secondary index —
-        actors by status, pending reviews, a search store, a webhook — after each
-        successful append. It is never the source of truth. See{' '}
-        <Link to="/docs/projectors">Projectors</Link> for the interface and the
-        memory / SQLite / Postgres helpers.
+        A <code>Run</code> is the unit you start, list, and open in a debugger (
+        <code>runId</code>). Inside it, <code>Thread</code>s form a tree: a
+        root agent or workflow, plus any children it spawned (a specialist agent,
+        a checkout workflow, a tool that is itself a run).
       </p>
-      <h2>Client sync</h2>
       <p>
-        Clients materialize the same events with <code>@looms/livestore</code> /{' '}
-        <code>@looms/livestore/react</code>. The host proxies{' '}
-        <code>/api/livestore</code> — no custom WebSocket protocol.
+        Status is <code>running</code>, <code>waiting</code> (parked on a timer,
+        approval, or child), or terminal (<code>completed</code>,{' '}
+        <code>failed</code>, <code>cancelled</code>).
+      </p>
+
+      <h2>Events, effects, and waits</h2>
+      <p>
+        Facts go on the log as typed events. When a thread needs the host to
+        do something — call an LLM, charge a card, wait for a human — it requests
+        an <strong>effect</strong>. When it needs to pause, it registers a{' '}
+        <strong>wait</strong> (on an event type, a payload match, or a timer).
+      </p>
+      <p>
+        The host processes outstanding effects, then parks until a matching event
+        arrives. You resume a run by signaling (approval, user message) or by
+        waiting for a timer.
+      </p>
+
+      <h2>Projections</h2>
+      <p>
+        A projection is a read model folded from the log:{' '}
+        <code>conversation</code>, <code>pendingApprovals</code>, a payments{' '}
+        <code>ledger</code>. The same reducer runs on the server and in the
+        browser via <code>useProjection</code>, so the UI stays consistent with
+        the host.
+      </p>
+
+      <h2>Replay</h2>
+      <p>
+        Because state is derived from events, you can inspect any point in a run.{' '}
+        <code>replayTo(runId, seq)</code> gives state before and after that event
+        — useful for a debugger and for tests that assert determinism.
+      </p>
+      <p>
+        Next: compose modules in <Link to="/docs/modules">Modules</Link>, or{' '}
+        <Link to="/docs/quickstart">start a host</Link>.
       </p>
     </>
   )

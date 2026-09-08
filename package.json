@@ -2,7 +2,7 @@
   "name": "looms",
   "private": true,
   "version": "0.0.0",
-  "description": "Durable Effect + S2 + LiveStore runtime for agents and workflows",
+  "description": "Pluggable event-sourced thread runtime",
   "type": "module",
   "workspaces": [
     "apps/*",

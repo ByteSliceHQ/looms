@@ -9,12 +9,12 @@ import {
   s2ConfigFromEnv,
   S2ConfigSchema,
   startS2Lite,
-  streamNameForActor,
+  streamNameForRun,
 } from './index'
 
 describe('@looms/s2 config', () => {
-  test('streamNameForActor maps to actors/{id}', () => {
-    expect(streamNameForActor('agt_1')).toBe('actors/agt_1')
+  test('streamNameForRun maps to runs/{id}', () => {
+    expect(streamNameForRun('run_1')).toBe('runs/run_1')
   })
 
   test('S2ConfigSchema accepts basin + token', () => {
@@ -65,7 +65,7 @@ describe('@looms/s2 config', () => {
     expect(Predicate.isFunction(store.read)).toBe(true)
     expect(Predicate.isFunction(store.tail)).toBe(true)
     expect(Predicate.isFunction(store.subscribe)).toBe(true)
-    expect(Predicate.isFunction(store.listActors)).toBe(true)
+    expect(Predicate.isFunction(store.listRuns)).toBe(true)
   })
 
   test('isPortOpen returns false for closed port', async () => {

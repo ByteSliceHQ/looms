@@ -10,10 +10,11 @@ function DocsIndex() {
     <>
       <h1>Docs</h1>
       <p>
-        Looms is an Effect-based actor runtime. Every agent turn and workflow node
-        appends to an ordered event stream. Reduce the log to recover state, park on
-        HITL or child actors, and resume after crashes.
+        Looms is an SDK for long-running work: LLM agents, DAG workflows, human
+        approvals, and your own domain modules. You compose the pieces you need,
+        start a <strong>run</strong>, and every client sees the same event log.
       </p>
+      <p>Use these pages to wire Looms into an application:</p>
       <ul>
         {docsNav.map((item) => (
           <li key={item.to}>

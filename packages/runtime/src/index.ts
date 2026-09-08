@@ -1,11 +1,5 @@
-// Primary Looms host API
-export {
-  createLooms,
-  type Looms,
-  type CreateLoomsOptions,
-} from './looms'
-
-// Server and HTTP utilities
+export { createRuntime, type CreateRuntimeOptions, type LoomsRuntime, type RegisteredDefinition, type StartRunArgs } from './runtime'
+export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
 export {
   serveHttp,
   createFetchHandler,
@@ -14,15 +8,4 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
-
-// LiveStore protocol proxy
-export {
-  handleLivestoreProxy,
-  encodeLoomsEvent,
-  type LiveStoreGlobalEncoded,
-  type HandleLivestoreProxyOptions,
-} from './livestore-proxy'
-
-// Runtime engine and registry primitives
-export { createRegistry, registerAgent, registerWorkflow, type DefinitionRegistry } from './registry'
-export { createLoomsRuntime, type LoomsRuntime, type SpawnRequest } from './runtime'
+export { handleLivestoreProxy, encodeLoomsEvent, type LiveStoreGlobalEncoded } from './livestore-proxy'

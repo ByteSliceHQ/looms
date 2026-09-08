@@ -1,157 +1,105 @@
-import { useMemo, useState } from 'react'
-import { queries, sendMessage, type EventLogRow, type LoomsStore } from '@looms/livestore/react'
-import { Schema } from 'effect'
+import { conversation, tokenUsage, userMessage } from '@looms/agent'
+import { decision, pendingApprovals } from '@looms/approval'
+import { useProjection, useRunStore } from '@looms/livestore/react'
+import { useState } from 'react'
+import { ledger } from '../modules/payments'
 
-const TextDeltaPayload = Schema.Struct({
-  delta: Schema.String,
-})
-
-const TurnStartedPayload = Schema.Struct({
-  turn: Schema.Number,
-})
-
-const ActorStartedPayload = Schema.Struct({
-  maxTurns: Schema.optional(Schema.Number),
-})
-
-interface TurnBudget {
-  readonly turn: number
-  readonly maxTurns: number
-}
-
-function decodePayload<A>(schema: Schema.Codec<A, unknown>, json: string): A | undefined {
-  let raw: unknown
-  try {
-    raw = JSON.parse(json)
-  } catch {
-    return undefined
-  }
-  const decoded = Schema.decodeUnknownExit(schema)(raw)
-  return decoded._tag === 'Success' ? decoded.value : undefined
-}
-
-function streamingText(events: ReadonlyArray<EventLogRow>): string | null {
-  let lastStartedSeq = -1
-  for (const evt of events) {
-    if (evt.type === 'agent.turn.started') lastStartedSeq = evt.seq
-    if (evt.type === 'agent.message' && evt.seq > lastStartedSeq) lastStartedSeq = -1
-    if (
-      (evt.type === 'actor.completed' || evt.type === 'actor.failed') &&
-      evt.seq > lastStartedSeq
-    ) {
-      lastStartedSeq = -1
-    }
-  }
-  if (lastStartedSeq < 0) return null
-  return events
-    .filter((evt) => evt.type === 'agent.turn.text_delta' && evt.seq > lastStartedSeq)
-    .map((evt) => decodePayload(TextDeltaPayload, evt.payloadJson)?.delta ?? '')
-    .join('')
-}
-
-function isTurnInFlight(events: ReadonlyArray<EventLogRow>): boolean {
-  const last = events.at(-1)
-  if (!last) return false
-  switch (last.type) {
-    case 'agent.turn.started':
-    case 'agent.turn.text_delta':
-    case 'agent.tool_call.requested':
-    case 'tool.result':
-    case 'child.spawned':
-    case 'workflow.node.started':
-    case 'workflow.node.finished':
-    case 'agent.message.received':
-      return true
-    default:
-      return false
-  }
-}
-
-function turnBudget(events: ReadonlyArray<EventLogRow>): TurnBudget {
-  let turn = 0
-  let maxTurns = 20
-  for (const evt of events) {
-    if (evt.type === 'actor.started') {
-      const payload = decodePayload(ActorStartedPayload, evt.payloadJson)
-      if (payload?.maxTurns !== undefined) maxTurns = payload.maxTurns
-    }
-    if (evt.type === 'agent.turn.started') {
-      const payload = decodePayload(TurnStartedPayload, evt.payloadJson)
-      if (payload) turn = payload.turn
-    }
-  }
-  return { turn, maxTurns }
-}
-
-export function ChatPanel({ store }: { store: LoomsStore }) {
-  const messages = store.useQuery(queries.messages)
-  const events = store.useQuery(queries.events)
-  const actors = store.useQuery(queries.actors)
+export function ChatPanel({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const convo = useProjection(store, conversation)
+  const usage = useProjection(store, tokenUsage)
+  const approvals = useProjection(store, pendingApprovals)
+  const charges = useProjection(store, ledger)
   const [draft, setDraft] = useState('')
-  const actor = actors[0]
-  const status = actor?.status ?? null
-  const stream = useMemo(() => streamingText(events), [events])
-  const busy = isTurnInFlight(events)
-  const budget = useMemo(() => turnBudget(events), [events])
+  const [pending, setPending] = useState(false)
+  const tables = store.getState()
+  const rootThreadId =
+    [...tables.threads.values()].find((row) => row.parentThreadId === null)?.threadId ??
+    tables.runs.get(runId)?.rootThreadId ??
+    undefined
 
-  function onSend() {
-    const text = draft.trim()
-    if (!text || busy) return
-    sendMessage(store, text)
-    setDraft('')
+  async function send() {
+    const content = draft.trim()
+    if (!content || !rootThreadId) return
+    setPending(true)
+    try {
+      await store.commit(userMessage(content, { threadId: rootThreadId }))
+      setDraft('')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function decide(approvalId: string, outcome: 'approve' | 'reject') {
+    await store.commit(decision(approvalId, outcome))
   }
 
   return (
-    <section className="panel chat-panel">
-      <div className="row">
-        <h2>Chat</h2>
-        <span className={`status ${status ?? ''}`}>status: {status ?? '—'}</span>
-        <span className="muted">
-          turn {budget.turn} / {budget.maxTurns}
-        </span>
-      </div>
-      <div className="chat-log">
-        {messages.length === 0 && stream === null ? (
-          <p className="muted">Send a message to start the turn.</p>
-        ) : (
-          messages.map((message) => {
-            if (message.role === 'tool') {
-              return (
-                <div className="chip" key={message.id}>
-                  <strong>{message.name ?? 'tool'}</strong> {message.content}
+    <div className="chat-layout">
+      <section className="panel chat-panel">
+        <h2>Conversation</h2>
+        <div className="chat-log">
+          {convo.lines.map((line, index) => (
+            <div key={`${line.role}-${index}`} className={`bubble ${line.role}`}>
+              <div className="bubble-role">{line.role}</div>
+              {line.content ? <div className="bubble-body">{line.content}</div> : null}
+              {line.toolCalls && line.toolCalls.length > 0 ? (
+                <div className="muted">called {line.toolCalls.map((call) => call.name).join(', ')}</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        <div className="composer">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Send a follow-up…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void send()
+            }}
+          />
+          <button type="button" disabled={pending || draft.trim().length === 0} onClick={() => void send()}>
+            Send
+          </button>
+        </div>
+      </section>
+      <div className="stack">
+        <section className="panel">
+          <h2>Approvals</h2>
+          {approvals.items.length === 0 ? <p className="muted">None</p> : null}
+          {approvals.items.map((item) => (
+            <div key={item.approvalId}>
+              <div>{item.title}</div>
+              <span className={`status ${item.status}`}>{item.status}</span>
+              {item.status === 'pending' ? (
+                <div className="row tight">
+                  <button type="button" className="ok" onClick={() => void decide(item.approvalId, 'approve')}>
+                    Approve
+                  </button>
+                  <button type="button" className="bad" onClick={() => void decide(item.approvalId, 'reject')}>
+                    Reject
+                  </button>
                 </div>
-              )
-            }
-            if (message.role === 'system') return null
-            return (
-              <div className={`bubble ${message.role}`} key={message.id}>
-                <div className="bubble-role">{message.role}</div>
-                <div className="bubble-body">{message.content || '…'}</div>
-              </div>
-            )
-          })
-        )}
-        {stream !== null ? (
-          <div className="bubble assistant streaming">
-            <div className="bubble-role">assistant</div>
-            <div className="bubble-body">{stream || 'Thinking…'}</div>
-          </div>
-        ) : null}
+              ) : null}
+            </div>
+          ))}
+        </section>
+        <section className="panel">
+          <h2>Ledger</h2>
+          {charges.entries.length === 0 ? <p className="muted">No charges</p> : null}
+          {charges.entries.map((entry) => (
+            <div key={entry.chargeId}>
+              {entry.amount} {entry.currency} · <span className={`status ${entry.status}`}>{entry.status}</span>
+            </div>
+          ))}
+        </section>
+        <section className="panel">
+          <h2>Token usage</h2>
+          <code>
+            in {usage.input} / out {usage.output}
+          </code>
+        </section>
       </div>
-      <div className="composer">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={busy ? 'Waiting for the actor…' : 'Message the assistant'}
-          disabled={busy}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onSend()
-          }}
-        />
-        <button type="button" disabled={busy || draft.trim().length === 0} onClick={onSend}>
-          Send
-        </button>
-      </div>
-    </section>
+    </div>
   )
 }

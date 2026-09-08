@@ -1,12 +1,7 @@
 import { Predicate } from 'effect'
-import {
-  createEventId,
-  fromWireEvent,
-  payloadAsJson,
-  type AppendableLoomsEvent,
-  type EventOrigin,
-  type LoomsEvent,
-} from './events'
+import type { AppendableEvent, EventEnvelope, EventOrigin } from './envelope'
+import { createEvent, payloadAsJson } from './envelope'
+import { createEventId } from './ids'
 import type { JsonValue } from './types'
 
 export interface LiveStoreGlobalEncoded {
@@ -15,8 +10,13 @@ export interface LiveStoreGlobalEncoded {
     readonly id: string
     readonly ts: number
     readonly payload: JsonValue
-    readonly parentActorId: string | null
+    readonly threadId: string | null
+    readonly parentThreadId: string | null
+    readonly causationId: string | null
+    readonly correlationId: string | null
+    readonly effectId: string | null
     readonly ephemeral: boolean
+    readonly origin: EventOrigin
   }
   readonly seqNum: number
   readonly parentSeqNum: number
@@ -24,150 +24,155 @@ export interface LiveStoreGlobalEncoded {
   readonly sessionId: string
 }
 
-export function encodeLoomsEvent(event: LoomsEvent): LiveStoreGlobalEncoded {
+export function encodeLoomsEvent(event: EventEnvelope): LiveStoreGlobalEncoded {
   return {
     name: event.type,
     args: {
       id: event.id,
       ts: event.ts,
       payload: payloadAsJson(event.payload),
-      parentActorId: event.parentActorId ?? null,
+      threadId: event.threadId,
+      parentThreadId: event.parentThreadId ?? null,
+      causationId: event.causationId ?? null,
+      correlationId: event.correlationId ?? null,
+      effectId: event.effectId ?? null,
       ephemeral: event.ephemeral ?? false,
+      origin: event.origin,
     },
     seqNum: event.seq,
     parentSeqNum: Math.max(0, event.seq - 1),
-    clientId: event.origin?.clientId ?? 'looms-host',
-    sessionId: event.origin?.sessionId ?? 'looms-host',
+    clientId: 'looms-host',
+    sessionId: 'looms-host',
   }
 }
 
-export function encodeAppendableLoomsEvent(
-  event: AppendableLoomsEvent,
-  options?: { parentSeqNum?: number; origin?: EventOrigin },
+export function encodeAppendableEvent(
+  event: AppendableEvent,
+  options?: { parentSeqNum?: number },
 ): LiveStoreGlobalEncoded {
-  const origin = options?.origin ?? event.origin
   return {
     name: event.type,
     args: {
       id: event.id ?? createEventId(),
       ts: event.ts ?? Date.now(),
       payload: payloadAsJson(event.payload),
-      parentActorId: event.parentActorId ?? null,
+      threadId: event.threadId ?? null,
+      parentThreadId: event.parentThreadId ?? null,
+      causationId: event.causationId ?? null,
+      correlationId: event.correlationId ?? null,
+      effectId: event.effectId ?? null,
       ephemeral: event.ephemeral ?? false,
+      origin: event.origin,
     },
     seqNum: 0,
     parentSeqNum: options?.parentSeqNum ?? 0,
-    clientId: origin?.clientId ?? 'looms-client',
-    sessionId: origin?.sessionId ?? 'looms-client',
+    clientId: 'looms-client',
+    sessionId: 'looms-client',
   }
 }
 
-export function decodeLoomsEvent(
-  raw: JsonValue | LiveStoreGlobalEncoded,
-  actorId: string,
-): LoomsEvent {
+function readOrigin(raw: { [key: string]: JsonValue } | EventOrigin): EventOrigin {
+  if ('type' in raw && raw.type === 'thread') {
+    const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : ''
+    return { type: 'thread', threadId }
+  }
+  if ('type' in raw && raw.type === 'external') {
+    const actorId = 'actorId' in raw && Predicate.isString(raw.actorId) ? raw.actorId : undefined
+    return actorId ? { type: 'external', actorId } : { type: 'external' }
+  }
+  return { type: 'system' }
+}
+
+export function decodeLoomsEvent(raw: JsonValue | LiveStoreGlobalEncoded, runId: string): EventEnvelope {
   if (!Predicate.isReadonlyObject(raw)) {
     throw new Error('Invalid event payload: expected object')
   }
 
-  // LiveStore Global.Encoded format: has 'name' and 'args'
   if ('name' in raw && Predicate.isString(raw.name)) {
-    const args =
-      'args' in raw && Predicate.isReadonlyObject(raw.args)
-        ? raw.args
-        : {}
+    const args = 'args' in raw && Predicate.isReadonlyObject(raw.args) ? raw.args : {}
     const rawPayload = 'payload' in args ? args.payload : {}
-    // SAFETY: payload is verified to be JSON-compatible structure.
+    // SAFETY: payload is JSON-compatible.
     const payload = rawPayload as JsonValue
     const id = 'id' in args && Predicate.isString(args.id) ? args.id : createEventId()
     const ts = 'ts' in args && Predicate.isNumber(args.ts) ? args.ts : Date.now()
-    const ephemeral =
-      'ephemeral' in args && Predicate.isBoolean(args.ephemeral) ? args.ephemeral : false
-    const parentActorId =
-      'parentActorId' in args && Predicate.isString(args.parentActorId)
-        ? args.parentActorId
-        : undefined
+    const ephemeral = 'ephemeral' in args && Predicate.isBoolean(args.ephemeral) ? args.ephemeral : false
+    const threadId = 'threadId' in args && Predicate.isString(args.threadId) ? args.threadId : null
+    const parentThreadId =
+      'parentThreadId' in args && Predicate.isString(args.parentThreadId) ? args.parentThreadId : null
+    const causationId = 'causationId' in args && Predicate.isString(args.causationId) ? args.causationId : null
+    const correlationId =
+      'correlationId' in args && Predicate.isString(args.correlationId) ? args.correlationId : null
+    const effectId = 'effectId' in args && Predicate.isString(args.effectId) ? args.effectId : null
     const seq = 'seqNum' in raw && Predicate.isNumber(raw.seqNum) ? raw.seqNum : 0
+    const origin =
+      'origin' in args && Predicate.isReadonlyObject(args.origin)
+        ? readOrigin(args.origin)
+        : { type: 'system' as const }
 
-    let origin: EventOrigin | undefined
-    if (
-      'clientId' in raw &&
-      Predicate.isString(raw.clientId) &&
-      'sessionId' in raw &&
-      Predicate.isString(raw.sessionId)
-    ) {
-      origin = { clientId: raw.clientId, sessionId: raw.sessionId }
-    }
-
-    // SAFETY: fromWireEvent constructs typed LoomsEvent.
-    return fromWireEvent({
-      id,
-      actorId,
-      type: raw.name as never,
-      seq,
-      ts,
-      ephemeral,
-      parentActorId,
-      origin,
-      payload,
-    })
+    return createEvent(
+      runId,
+      {
+        id,
+        ts,
+        type: raw.name,
+        payload,
+        threadId,
+        parentThreadId,
+        causationId,
+        correlationId,
+        effectId,
+        ephemeral,
+        origin,
+      },
+      { seq },
+    )
   }
 
-  // Direct Looms wire event format: has 'type'
   if ('type' in raw && Predicate.isString(raw.type)) {
     const rawPayload = 'payload' in raw ? raw.payload : {}
-    // SAFETY: payload is verified to be JSON-compatible structure.
+    // SAFETY: payload is JSON-compatible.
     const payload = rawPayload as JsonValue
     const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : createEventId()
     const ts = 'ts' in raw && Predicate.isNumber(raw.ts) ? raw.ts : Date.now()
     const seq = 'seq' in raw && Predicate.isNumber(raw.seq) ? raw.seq : 0
-    const ephemeral =
-      'ephemeral' in raw && Predicate.isBoolean(raw.ephemeral) ? raw.ephemeral : false
-    const parentActorId =
-      'parentActorId' in raw && Predicate.isString(raw.parentActorId)
-        ? raw.parentActorId
-        : undefined
-    const itemActorId =
-      'actorId' in raw && Predicate.isString(raw.actorId) ? raw.actorId : actorId
+    const ephemeral = 'ephemeral' in raw && Predicate.isBoolean(raw.ephemeral) ? raw.ephemeral : false
+    const itemRunId = 'runId' in raw && Predicate.isString(raw.runId) ? raw.runId : runId
+    const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : null
+    const parentThreadId =
+      'parentThreadId' in raw && Predicate.isString(raw.parentThreadId) ? raw.parentThreadId : null
+    const origin =
+      'origin' in raw && Predicate.isReadonlyObject(raw.origin) ? readOrigin(raw.origin) : { type: 'system' as const }
 
-    let origin: EventOrigin | undefined
-    if (
-      'origin' in raw &&
-      Predicate.isReadonlyObject(raw.origin) &&
-      'clientId' in raw.origin &&
-      Predicate.isString(raw.origin.clientId) &&
-      'sessionId' in raw.origin &&
-      Predicate.isString(raw.origin.sessionId)
-    ) {
-      origin = { clientId: raw.origin.clientId, sessionId: raw.origin.sessionId }
-    }
-
-    // SAFETY: fromWireEvent constructs typed LoomsEvent.
-    return fromWireEvent({
-      id,
-      actorId: itemActorId,
-      type: raw.type as never,
-      seq,
-      ts,
-      ephemeral,
-      parentActorId,
-      origin,
-      payload,
-    })
+    return createEvent(
+      itemRunId,
+      {
+        id,
+        ts,
+        type: raw.type,
+        payload,
+        threadId,
+        parentThreadId,
+        causationId: 'causationId' in raw && Predicate.isString(raw.causationId) ? raw.causationId : null,
+        correlationId:
+          'correlationId' in raw && Predicate.isString(raw.correlationId) ? raw.correlationId : null,
+        effectId: 'effectId' in raw && Predicate.isString(raw.effectId) ? raw.effectId : null,
+        ephemeral,
+        origin,
+      },
+      { seq },
+    )
   }
 
-  throw new Error('Unrecognized event format: must have "name" (LiveStore) or "type" (Looms)')
+  throw new Error('Invalid event payload: missing name or type')
 }
 
-export function decodeAppendableLoomsEvent(
+export function decodeAppendableEvent(
   raw: JsonValue | LiveStoreGlobalEncoded,
-  actorId: string,
-): AppendableLoomsEvent | undefined {
+  runId: string,
+): AppendableEvent | undefined {
   try {
-    const event = decodeLoomsEvent(raw, actorId)
-    const { seq: _, ...rest } = event
-    // SAFETY: omitting seq yields AppendableLoomsEvent with valid actorId.
-    return rest as AppendableLoomsEvent
+    const { seq: _seq, ...rest } = decodeLoomsEvent(raw, runId)
+    return rest
   } catch {
     return undefined
   }

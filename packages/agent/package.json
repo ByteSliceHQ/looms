@@ -1,7 +1,7 @@
 {
   "name": "@looms/agent",
   "version": "0.1.0",
-  "description": "Agent turn execution for Looms",
+  "description": "Agent turn threads for Looms",
   "type": "module",
   "license": "Apache-2.0",
   "exports": {
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@looms/core": "workspace:*",
+    "@standard-schema/spec": "^1.1.0",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
