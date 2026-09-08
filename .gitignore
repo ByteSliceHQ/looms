@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+.flox/.cache/
+.flox/cache/
+coverage/
+!.changeset/config.json
+*.tsbuildinfo
+.s2-lite/
+.s2/
+dump.rdb

@@ -1,0 +1,40 @@
+{
+  "name": "@looms/demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Looms demo runtime with TanStack Start UI and LiveStore + s2-lite sync",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "bun .output/server/index.mjs",
+    "verify": "bun run src/verify.ts",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
+    "@looms/ai-vercel": "workspace:*",
+    "@looms/client": "workspace:*",
+    "@looms/core": "workspace:*",
+    "@looms/livestore": "workspace:*",
+    "@looms/runtime": "workspace:*",
+    "@looms/s2": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "ai": "^7.0.0",
+    "react": "19",
+    "react-dom": "19",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "nitro": "^3.0.260903-beta",
+    "typescript": "7.0.2",
+    "vite": "^8.2.2"
+  }
+}

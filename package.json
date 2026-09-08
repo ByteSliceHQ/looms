@@ -1,0 +1,54 @@
+{
+  "name": "looms",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Durable Effect + S2 + LiveStore runtime for agents and workflows",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "lint": "oxlint .",
+    "test": "turbo run test",
+    "verify": "turbo run build check-types test verify && bun run lint",
+    "dev": "turbo run dev --filter=@looms/demo",
+    "demo": "turbo run dev --filter=@looms/demo",
+    "docs": "turbo run dev --filter=@looms/docs",
+    "setup:s2": "bash scripts/install-s2-cli.sh",
+    "playbook": "bun run scripts/playbooks/all.ts",
+    "playbook:agents": "bun run scripts/playbooks/01-agents.ts",
+    "playbook:hitl": "bun run scripts/playbooks/02-hitl.ts",
+    "playbook:pipeline": "bun run scripts/playbooks/03-pipeline-and-chat.ts",
+    "dev:host": "bun run scripts/dev-host.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "prepare": "effect-tsgo patch --typescript --oxlint"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8",
+    "@effect/tsgo": "0.40.0",
+    "@livestore/livestore": "0.5.0-dev.0",
+    "@livestore/react": "0.5.0-dev.0",
+    "@looms/core": "workspace:*",
+    "@looms/runtime": "workspace:*",
+    "@oxlint/plugins": "1.81.0",
+    "@types/bun": "^1.3.9",
+    "effect": "4.0.0-rc.112",
+    "oxlint": "1.81.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "turbo": "^2.5.8",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "packageManager": "bun@1.3.14",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ByteSliceHQ/looms.git"
+  }
+}

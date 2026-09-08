@@ -1,0 +1,12 @@
+{
+  "name": "traced-node-modules",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@msgpackr-extract/msgpackr-extract-darwin-arm64": "3.0.4",
+    "detect-libc": "2.1.2",
+    "msgpackr-extract": "3.0.4",
+    "node-gyp-build-optional-packages": "5.2.2"
+  }
+}

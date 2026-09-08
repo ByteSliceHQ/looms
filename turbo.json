@@ -1,0 +1,40 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalPassThroughEnv": [
+    "PORT",
+    "LOOMS_S2_ACCESS_TOKEN",
+    "LOOMS_S2_BASIN",
+    "LOOMS_S2_ENDPOINT",
+    "LOOMS_URL",
+    "LOOMS_MODEL",
+    "OPENROUTER_API_KEY",
+    "S2_ACCESS_TOKEN",
+    "S2_BASIN",
+    "S2_ENDPOINT",
+    "S2_LITE_PORT",
+    "FLOX_ENV_CACHE",
+    "PATH"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "tsconfig.json", "package.json", "vite.config.ts"],
+      "outputs": ["dist/**", ".output/**"]
+    },
+    "check-types": {
+      "inputs": ["src/**", "tsconfig.json", "package.json"]
+    },
+    "test": {
+      "inputs": ["src/**", "tsconfig.json", "package.json"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "verify": {
+      "dependsOn": ["check-types"],
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [],
+  "linked": [
+    [
+      "@looms/core",
+      "@looms/s2",
+      "@looms/runtime",
+      "@looms/agent",
+      "@looms/workflow",
+      "@looms/client",
+      "@looms/livestore",
+      "@looms/cli",
+      "@looms/projectors"
+    ]
+  ],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@looms/demo"]
+}
