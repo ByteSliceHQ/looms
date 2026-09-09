@@ -698,6 +698,34 @@ describe('threadTree projection', () => {
     expect(projState.activeWaits?.[parentId]).toEqual(['wait_1'])
     expect(toThreadTree(projState).root?.status).toBe('waiting')
   })
+
+  test('defineThread with shape infers state type', () => {
+    const threadShape = Schema.Struct({ count: Schema.Number })
+    const thread = defineThread({
+      kind: 'shaped_counter',
+      shape: threadShape,
+      initialState: () => ({ count: 0 }),
+      reduce(state) {
+        return { state: { count: state.count + 1 } }
+      },
+    })
+    expect(thread.kind).toBe('shaped_counter')
+    expect(thread.shape).toBe(threadShape)
+    const initial = thread.initialState({
+      runId: 'r1',
+      threadId: 't1',
+      parentThreadId: null,
+      definitionName: 'test',
+      input: null,
+    })
+    expect(initial).toEqual({ count: 0 })
+    const reduced = thread.reduce(
+      initial,
+      createEvent('r1', { type: 'tick', payload: {} }),
+      { runId: 'r1', threadId: 't1', parentThreadId: null },
+    )
+    expect(reduced.state).toEqual({ count: 1 })
+  })
 })
 
 

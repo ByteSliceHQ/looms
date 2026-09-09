@@ -8,12 +8,7 @@ import {
 import { Effect, Predicate, Schema } from 'effect'
 import { readyNodes, type NodeResult, type WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
-
-const NodeStateSchema = Schema.Struct({
-  status: Schema.String,
-  result: Schema.optional(Schema.NullOr(Schema.MutableJson)),
-  error: Schema.optional(Schema.NullOr(Schema.String)),
-})
+import { NodeStateSchema } from './thread'
 
 const ScheduleInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),

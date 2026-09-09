@@ -41,8 +41,8 @@ export type AnyWorkflowDefinition = WorkflowDefinition<string, JsonValue, JsonVa
 
 export function defineWorkflow<
   TName extends string,
-  TSchema extends StandardSchemaV1<JsonValue, JsonValue> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<JsonValue, infer TOut> ? TOut : JsonValue,
+  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
+  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName
@@ -57,7 +57,7 @@ export function defineWorkflow<
   output?: (ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }) => TOutput
 }): WorkflowDefinition<TName, TInput, TOutput> {
   // SAFETY: factory fields match WorkflowDefinition.
-  return { kind: 'workflow', ...def } as WorkflowDefinition<TName, TInput, TOutput>
+  return { kind: 'workflow', ...def, input: def.input } as WorkflowDefinition<TName, TInput, TOutput>
 }
 
 export function readyNodes(

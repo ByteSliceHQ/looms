@@ -77,22 +77,28 @@ function Projectors() {
       <h3>Step 1: Define your domain projection</h3>
       <p>
         Define a pure read model with <code>defineProjection</code> from{' '}
-        <code>@looms/core</code>. Export it so both server and client can use it.
+        <code>@looms/core</code>. You can provide a Zod (or Standard Schema){' '}
+        <code>shape</code> to infer the state type automatically without an explicit generic.
+        Export it so both server and client can use it.
       </p>
       <CodeBlock lang="ts">{`import { defineProjection, type EventEnvelope } from '@looms/core'
+import { z } from 'zod'
 
-export interface OrderState {
-  orderId: string | null
-  items: string[]
-  total: number
-  status: 'draft' | 'awaiting_approval' | 'processing' | 'completed' | 'failed'
-  approvalId: string | null
-  paymentId: string | null
-  history: { step: string; timestamp: number }[]
-}
+export const OrderSchema = z.object({
+  orderId: z.string().nullable(),
+  items: z.array(z.string()),
+  total: z.number(),
+  status: z.enum(['draft', 'awaiting_approval', 'processing', 'completed', 'failed']),
+  approvalId: z.string().nullable(),
+  paymentId: z.string().nullable(),
+  history: z.array(z.object({ step: z.string(), timestamp: z.number() })),
+})
 
-export const orderTracker = defineProjection<OrderState>({
+export type OrderState = z.infer<typeof OrderSchema>
+
+export const orderTracker = defineProjection({
   name: 'orderTracker',
+  shape: OrderSchema,
   initialState: {
     orderId: null,
     items: [],
@@ -218,7 +224,7 @@ export function OrderControls({ runId }: { runId: string }) {
 
   return (
     <div className="actions">
-      <p>Human approval required for orders over \$100</p>
+      <p>Human approval required for orders over $100</p>
       <button onClick={handleApprove}>Approve Order</button>
       <button onClick={handleReject}>Reject Order</button>
     </div>

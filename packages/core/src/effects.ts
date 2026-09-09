@@ -109,7 +109,9 @@ export interface EffectContext {
 export type EffectInputSchema<TInput extends JsonValue> =
   | StandardSchemaV1<JsonValue, TInput>
   | StandardSchemaV1<unknown, TInput>
+  | StandardSchemaV1<any, TInput>
   | Schema.Schema<TInput>
+  | { _output: TInput }
 
 export type EffectHandlerResult<R = never> =
   | ReadonlyArray<EventInput>
@@ -156,19 +158,21 @@ export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(de
   input?: EffectInputSchema<TInput>
   execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R>
 }): EffectDefinition<TInput> {
+  const schema = def.input
   return {
     type: def.type,
-    input: def.input,
+    input: schema,
     execute: (raw, ctx) =>
       closeHandlerRequirements(
         Effect.gen(function* () {
-          const input = def.input
+          const input = schema
             ? yield* Effect.tryPromise({
-                try: () => validateInput(def.input, raw),
+                try: () => validateInput(schema, raw),
                 catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
               })
             : raw
-          return yield* liftHandlerResult(def.execute(input, ctx))
+          // SAFETY: input was validated by schema or raw JsonValue is accepted as TInput.
+          return yield* liftHandlerResult(def.execute(input as TInput, ctx))
         }),
       ),
   }

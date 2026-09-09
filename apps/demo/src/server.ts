@@ -26,8 +26,9 @@ function disableBunTimeout(req: Request, server: BunServerLike | undefined): voi
 }
 
 export default createServerEntry({
-  fetch: async (req, server?: BunServerLike) => {
-    disableBunTimeout(req, server)
+  fetch: async (req, opts) => {
+    // SAFETY: Bun runtime attaches optional server instance to request or opts.
+    disableBunTimeout(req, opts as BunServerLike | undefined)
     return (await looms.fetch(req)) ?? handler.fetch(req)
   },
 })

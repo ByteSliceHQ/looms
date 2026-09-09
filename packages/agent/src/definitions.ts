@@ -113,8 +113,8 @@ export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolL
 
 export function defineTool<
   TName extends string,
-  TSchema extends StandardSchemaV1<JsonValue, JsonValue> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<JsonValue, infer TOut> ? TOut : JsonValue,
+  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
+  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName
@@ -124,13 +124,13 @@ export function defineTool<
   handler: (input: TInput, ctx: ToolContext) => Promise<TOutput> | TOutput
 }): FunctionTool<TName, TInput, TOutput> {
   // SAFETY: factory fields match FunctionTool.
-  return { kind: 'function', ...def } as FunctionTool<TName, TInput, TOutput>
+  return { kind: 'function', ...def, input: def.input } as FunctionTool<TName, TInput, TOutput>
 }
 
 export function defineAgent<
   TName extends string,
-  TSchema extends StandardSchemaV1<JsonValue, JsonValue> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<JsonValue, infer TOut> ? TOut : JsonValue,
+  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
+  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName
@@ -147,6 +147,7 @@ export function defineAgent<
   return {
     kind: 'agent',
     ...def,
+    input: def.input,
     tools: def.tools ? normalizeTools(def.tools) : undefined,
   } as AgentDefinition<TName, TInput, TOutput>
 }

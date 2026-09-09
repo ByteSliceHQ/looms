@@ -12,15 +12,39 @@ export class InvalidInputError extends Error {
   }
 }
 
+export type SchemaInput =
+  | StandardSchemaV1<any, any>
+  | Schema.Schema<any>
+  | { _output: any }
+
+export type InferSchemaOutput<T> =
+  T extends StandardSchemaV1<any, infer Out>
+    ? Out
+    : T extends Schema.Schema<infer Out>
+      ? Out
+      : T extends { _output: infer Out }
+        ? Out
+        : never
+
 type SchemaCandidate<TInput> =
   | StandardSchemaV1<JsonValue, TInput>
   | StandardSchemaV1<unknown, TInput>
+  | StandardSchemaV1<any, TInput>
   | Schema.Schema<TInput>
+  | { _output: TInput }
   | {
       input?:
         | StandardSchemaV1<JsonValue, TInput>
         | StandardSchemaV1<unknown, TInput>
+        | StandardSchemaV1<any, TInput>
         | Schema.Schema<TInput>
+        | { _output: TInput }
+      schema?:
+        | StandardSchemaV1<JsonValue, TInput>
+        | StandardSchemaV1<unknown, TInput>
+        | StandardSchemaV1<any, TInput>
+        | Schema.Schema<TInput>
+        | { _output: TInput }
     }
   | null
   | undefined
@@ -40,15 +64,52 @@ function toStandard<TInput>(candidate: SchemaCandidate<TInput>): StandardSchemaV
     // SAFETY: verified '~standard' property exists on object.
     return candidate as StandardSchemaV1<JsonValue, TInput>
   }
+  if (Predicate.isObject(candidate) && 'safeParse' in candidate) {
+    // SAFETY: candidate has safeParse property verified by key check.
+    const safeParse = (candidate as { safeParse?: unknown }).safeParse
+    if (Predicate.isFunction(safeParse)) {
+      // SAFETY: verified safeParse is a function matching the Zod safeParse contract.
+      const zodSchema = candidate as {
+        safeParse: (raw: any) =>
+          | { success: true; data: TInput }
+          | { success: false; error: { issues: Array<{ message: string; path: (string | number)[] }> } }
+      }
+      return {
+        '~standard': {
+          version: 1,
+          vendor: 'zod-compat',
+          validate(raw) {
+            const res = zodSchema.safeParse(raw)
+            if (res.success) {
+              return { value: res.data }
+            }
+            return {
+              issues: res.error.issues.map((issue) => ({
+                message: issue.message,
+                path: issue.path,
+              })),
+            }
+          },
+        },
+      }
+    }
+  }
   return undefined
 }
 
 function extractSchema<TInput>(schemaOrDef: SchemaCandidate<TInput>): StandardSchemaV1<JsonValue, TInput> | undefined {
   const direct = toStandard<TInput>(schemaOrDef)
   if (direct) return direct
-  if (schemaOrDef && Predicate.isObject(schemaOrDef) && 'input' in schemaOrDef) {
-    // SAFETY: Verified schemaOrDef has 'input' property.
-    return toStandard<TInput>((schemaOrDef as { input?: SchemaCandidate<TInput> }).input)
+  if (schemaOrDef && Predicate.isObject(schemaOrDef)) {
+    if ('schema' in schemaOrDef) {
+      // SAFETY: verified schemaOrDef has schema property.
+      const fromSchema = toStandard<TInput>((schemaOrDef as { schema?: SchemaCandidate<TInput> }).schema)
+      if (fromSchema) return fromSchema
+    }
+    if ('input' in schemaOrDef) {
+      // SAFETY: Verified schemaOrDef has input property.
+      return toStandard<TInput>((schemaOrDef as { input?: SchemaCandidate<TInput> }).input)
+    }
   }
   return undefined
 }
@@ -73,12 +134,7 @@ function formatIssue(issue: StandardSchemaV1.Issue): string {
 }
 
 export async function validateInput<TInput = JsonValue>(
-  schemaOrDef:
-    | StandardSchemaV1<JsonValue, TInput>
-    | StandardSchemaV1<unknown, TInput>
-    | Schema.Schema<TInput>
-    | { input?: StandardSchemaV1<JsonValue, TInput> | StandardSchemaV1<unknown, TInput> | Schema.Schema<TInput> }
-    | undefined,
+  schemaOrDef: SchemaCandidate<TInput>,
   raw: JsonValue,
 ): Promise<TInput> {
   const schema = extractSchema(schemaOrDef)
@@ -102,12 +158,7 @@ export async function validateInput<TInput = JsonValue>(
 }
 
 export function validateInputSync<TInput = JsonValue>(
-  schemaOrDef:
-    | StandardSchemaV1<JsonValue, TInput>
-    | StandardSchemaV1<unknown, TInput>
-    | Schema.Schema<TInput>
-    | { input?: StandardSchemaV1<JsonValue, TInput> | StandardSchemaV1<unknown, TInput> | Schema.Schema<TInput> }
-    | undefined,
+  schemaOrDef: SchemaCandidate<TInput>,
   raw: JsonValue,
 ): TInput {
   const schema = extractSchema(schemaOrDef)

@@ -1,25 +1,40 @@
 import type { JsonValue } from '@looms/core'
+import { Schema } from 'effect'
 
-export interface Message {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  toolCallId?: string
-  name?: string
-  toolCalls?: ToolCall[]
-  readonly [key: string]: JsonValue | ToolCall[] | undefined
-}
+export const ToolCallSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  arguments: Schema.Json,
+})
+export type ToolCall = Schema.Schema.Type<typeof ToolCallSchema>
 
-export interface ToolCall {
-  id: string
-  name: string
-  arguments: JsonValue
-  readonly [key: string]: JsonValue | undefined
-}
+export const MessageRoleSchema = Schema.Union([
+  Schema.Literal('system'),
+  Schema.Literal('user'),
+  Schema.Literal('assistant'),
+  Schema.Literal('tool'),
+])
+export type MessageRole = Schema.Schema.Type<typeof MessageRoleSchema>
 
-export interface TokenUsage {
-  input: number
-  output: number
-}
+export const MessageSchema = Schema.Struct({
+  role: MessageRoleSchema,
+  content: Schema.String,
+  toolCallId: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  toolCalls: Schema.optional(Schema.mutable(Schema.Array(ToolCallSchema))),
+})
+export type Message = Schema.Schema.Type<typeof MessageSchema>
+
+export const ConversationSchema = Schema.Struct({
+  lines: Schema.mutable(Schema.Array(MessageSchema)),
+})
+export type ConversationState = Schema.Schema.Type<typeof ConversationSchema>
+
+export const TokenUsageSchema = Schema.Struct({
+  input: Schema.Number,
+  output: Schema.Number,
+})
+export type TokenUsage = Schema.Schema.Type<typeof TokenUsageSchema>
 
 export interface PendingEffectTool {
   toolCallId: string

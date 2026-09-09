@@ -60,17 +60,16 @@ function readMessage(obj: { [key: string]: JsonValue }): Message {
   const raw = obj.message
   if (!Predicate.isObject(raw)) return { role: 'user', content: '' }
   const role = readString(raw, 'role')
-  const message: Message = {
-    role: role === 'system' || role === 'assistant' || role === 'tool' ? role : 'user',
-    content: readString(raw, 'content') ?? '',
-  }
   const toolCallId = readString(raw, 'toolCallId')
   const name = readString(raw, 'name')
   const toolCalls = readToolCalls(raw)
-  if (toolCallId) message.toolCallId = toolCallId
-  if (name) message.name = name
-  if (toolCalls) message.toolCalls = toolCalls
-  return message
+  return {
+    role: role === 'system' || role === 'assistant' || role === 'tool' ? role : 'user',
+    content: readString(raw, 'content') ?? '',
+    toolCallId,
+    name,
+    toolCalls,
+  }
 }
 
 function attachToolCall(lines: Message[], toolCall: ToolCall): Message[] {

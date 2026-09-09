@@ -48,4 +48,18 @@ describe('defineEffect', () => {
     expect(message).toContain('amount')
     expect(message).not.toContain('An error occurred in Effect.tryPromise')
   })
+
+  test('infers input type from input schema', async () => {
+    const effect = defineEffect({
+      type: 'demo.charge',
+      input: Schema.Struct({ amount: Schema.Number }),
+      execute: (input) => [
+        { type: 'demo.charged', payload: { amount: input.amount } },
+      ],
+    })
+    expect(effect.input).toBeDefined()
+
+    const events = await Effect.runPromise(effect.execute({ amount: 99 }, ctx))
+    expect(events).toEqual([{ type: 'demo.charged', payload: { amount: 99 } }])
+  })
 })

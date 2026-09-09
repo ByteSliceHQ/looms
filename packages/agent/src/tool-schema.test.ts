@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
-import { asAgentTool, asEffectsTool, asWorkflowTool, normalizeTools } from './definitions'
+import { asAgentTool, asEffectsTool, asWorkflowTool, defineAgent, defineTool, normalizeTools } from './definitions'
 import { toolJsonSchema, toolSpecs } from './tool-schema'
 
 const CheckoutInput = Schema.toStandardSchemaV1(
@@ -109,5 +109,22 @@ describe('tool schema', () => {
   test('toolJsonSchema falls back to an object when no input is present', () => {
     const tools = normalizeTools([{ kind: 'workflow', name: 'bare' }])
     expect(toolJsonSchema(tools[0]!)).toEqual({ type: 'object' })
+  })
+
+  test('defineTool and defineAgent infer input types from input schema', () => {
+    const tool = defineTool({
+      name: 'echo',
+      description: 'Echo message',
+      input: TaskInput,
+      handler: (input) => ({ echo: input.task }),
+    })
+    expect(tool.input).toBe(TaskInput)
+
+    const agent = defineAgent({
+      name: 'echo_agent',
+      instructions: 'Echo',
+      input: TaskInput,
+    })
+    expect(agent.input).toBe(TaskInput)
   })
 })

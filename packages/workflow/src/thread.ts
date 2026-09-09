@@ -10,15 +10,23 @@ import {
   type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 
-export type NodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+export const NodeStatusSchema = Schema.Union([
+  Schema.Literal('pending'),
+  Schema.Literal('running'),
+  Schema.Literal('completed'),
+  Schema.Literal('failed'),
+  Schema.Literal('skipped'),
+])
+export type NodeStatus = Schema.Schema.Type<typeof NodeStatusSchema>
 
-export interface NodeState {
-  status: NodeStatus
-  result: JsonValue | null
-  error: string | null
-}
+export const NodeStateSchema = Schema.Struct({
+  status: NodeStatusSchema,
+  result: Schema.NullOr(Schema.Json),
+  error: Schema.NullOr(Schema.String),
+})
+export type NodeState = Schema.Schema.Type<typeof NodeStateSchema>
 
 export interface WorkflowState {
   definitionName?: string
@@ -39,9 +47,9 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
 }
 
 function scheduleInvocation(state: WorkflowState) {
-  const nodes: { [id: string]: { status: string; result: JsonValue | null } } = {}
+  const nodes: { [id: string]: { status: string; result: JsonValue | null; error: string | null } } = {}
   for (const [id, node] of Object.entries(state.nodes)) {
-    nodes[id] = { status: node.status, result: node.result }
+    nodes[id] = { status: node.status, result: node.result, error: node.error }
   }
   return invoke(
     'workflow.schedule',

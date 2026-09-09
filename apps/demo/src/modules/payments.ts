@@ -78,19 +78,26 @@ export const chargeEffect = defineEffect({
   },
 })
 
-export interface LedgerEntry {
-  chargeId: string
-  amount: number
-  currency: string
-  status: 'requested' | 'authorized' | 'declined'
-}
+const LedgerEntrySchema = z.object({
+  chargeId: z.string(),
+  amount: z.number(),
+  currency: z.string(),
+  status: z.enum(['requested', 'authorized', 'declined']),
+})
+
+const LedgerSchema = z.object({
+  entries: z.array(LedgerEntrySchema),
+})
+
+export type LedgerEntry = z.infer<typeof LedgerEntrySchema>
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   return isJsonObject(event.payload) ? event.payload : {}
 }
 
-export const ledger = defineProjection<{ entries: LedgerEntry[] }>({
+export const ledger = defineProjection({
   name: 'ledger',
+  shape: LedgerSchema,
   initialState: { entries: [] },
   reduce(state, event) {
     const payload = payloadObject(event)

@@ -90,7 +90,10 @@ const charge = defineEffect({
 
 export const ledger = defineProjection({
   name: 'ledger',
-  initialState: { entries: [] as { chargeId: string; amount: number }[] },
+  shape: z.object({
+    entries: z.array(z.object({ chargeId: z.string(), amount: z.number() })),
+  }),
+  initialState: { entries: [] },
   reduce(state, event) {
     if (event.type !== 'payments.charge.authorized') return state
     return { entries: [...state.entries, event.payload] }

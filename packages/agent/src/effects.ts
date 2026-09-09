@@ -11,19 +11,13 @@ import { normalizeTools, type ToolLike } from './definitions'
 import { LlmTag } from './llm'
 import { toolSpecs } from './tool-schema'
 import { validateInput } from '@looms/core'
-import type { ToolCall } from './types'
+import { MessageSchema, ToolCallSchema, type ToolCall } from './types'
 
 const CallLlmInput = Schema.Struct({
   turn: Schema.Number,
   definitionName: Schema.optional(Schema.String),
-  messages: Schema.optional(Schema.Array(Schema.MutableJson)),
-  input: Schema.optional(Schema.MutableJson),
-})
-
-const ToolCallSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  arguments: Schema.MutableJson,
+  messages: Schema.optional(Schema.Array(MessageSchema)),
+  input: Schema.optional(Schema.Json),
 })
 
 const ExecuteToolInput = Schema.Struct({

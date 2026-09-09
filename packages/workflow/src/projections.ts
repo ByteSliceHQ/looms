@@ -1,14 +1,20 @@
 import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
-import { Predicate } from 'effect'
-import type { NodeState } from './thread'
+import { Predicate, Schema } from 'effect'
+import { NodeStateSchema } from './thread'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) return {}
   return event.payload
 }
 
-export const nodes = defineProjection<{ nodes: { [nodeId: string]: NodeState } }>({
+export const NodesProjectionSchema = Schema.Struct({
+  nodes: Schema.Record(Schema.String, NodeStateSchema),
+})
+export type NodesProjectionState = Schema.Schema.Type<typeof NodesProjectionSchema>
+
+export const nodes = defineProjection({
   name: 'nodes',
+  shape: NodesProjectionSchema,
   initialState: { nodes: {} },
   reduce(state, event) {
     const payload = payloadObject(event)

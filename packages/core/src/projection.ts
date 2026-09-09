@@ -1,20 +1,37 @@
 import { Predicate } from 'effect'
 import type { EventEnvelope } from './envelope'
+import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus } from './types'
 
 export interface ProjectionDefinition<S = unknown> {
   readonly name: string
+  readonly shape?: unknown
   initialState: S
   reduce(state: S, event: EventEnvelope): S
 }
 
-export function defineProjection<S>(def: {
+export function defineProjection<
+  TShape extends SchemaInput,
+>(def: {
   readonly name: string
+  readonly shape: TShape
+  readonly initialState: InferSchemaOutput<TShape>
+  reduce(state: InferSchemaOutput<TShape>, event: EventEnvelope): InferSchemaOutput<TShape>
+}): ProjectionDefinition<InferSchemaOutput<TShape>>
+export function defineProjection<S = unknown, TShape extends SchemaInput = SchemaInput>(def: {
+  readonly name: string
+  readonly shape?: TShape
   readonly initialState: S
   reduce(state: S, event: EventEnvelope): S
-}): ProjectionDefinition<S> {
+}): ProjectionDefinition<S>
+export function defineProjection(def: {
+  readonly name: string
+  readonly shape?: unknown
+  readonly initialState: any
+  reduce(state: any, event: EventEnvelope): any
+}): ProjectionDefinition<any> {
   return def
 }
 

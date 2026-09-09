@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { composeModules, createEvent, foldRun } from '@looms/core'
+import { composeModules, createEvent, foldRun, type JsonValue } from '@looms/core'
 import { defineWorkflow } from './definitions'
 import { workflow } from './module'
 
@@ -35,6 +35,29 @@ describe('@looms/workflow module', () => {
       nodes: [{ id: 'a', run: () => 1 }],
     })
     expect(def.kind).toBe('workflow')
+  })
+
+  test('defineWorkflow accepts input schema and types ctx.input', () => {
+    const schema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        // SAFETY: test stub cast.
+        validate: (raw: JsonValue) => ({ value: raw as { target: string } }),
+      },
+    }
+    const def = defineWorkflow({
+      name: 'pipe_shaped',
+      input: schema,
+      nodes: [
+        {
+          id: 'step1',
+          run: (ctx) => ({ done: ctx.input.target }),
+        },
+      ],
+    })
+    expect(def.kind).toBe('workflow')
+    expect(def.input).toBe(schema)
   })
 
   test('effect.failed finishes the running node and fails the thread', () => {

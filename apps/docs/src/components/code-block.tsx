@@ -1,3 +1,4 @@
+import { Predicate } from 'effect'
 import { type ReactNode } from 'react'
 import { highlightCode } from './code-highlight'
 
@@ -9,7 +10,7 @@ export interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, children, lang = 'tsx', className = '' }: CodeBlockProps) {
-  const rawCode = typeof code === 'string' ? code : typeof children === 'string' ? children : ''
+  const rawCode = Predicate.isString(code) ? code : Predicate.isString(children) ? children : ''
   const html = highlightCode(rawCode, lang)
 
   return (
