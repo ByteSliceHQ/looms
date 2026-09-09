@@ -6,6 +6,7 @@ import {
   Scripts,
   Link,
 } from '@tanstack/react-router'
+import { ThemeToggle } from '../components/theme-toggle'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -37,6 +38,7 @@ function RootComponent() {
         <nav className="site-nav">
           <Link to="/docs">Docs</Link>
         </nav>
+        <ThemeToggle />
       </header>
       <Outlet />
     </RootDocument>
@@ -45,9 +47,14 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark');document.documentElement.classList.remove('light');}else{document.documentElement.classList.add('light');document.documentElement.classList.remove('dark');}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         {children}

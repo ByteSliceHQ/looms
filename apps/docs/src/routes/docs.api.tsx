@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/api')({
   component: Api,
@@ -17,8 +18,7 @@ function Api() {
       <h2>
         <code>createLooms</code>
       </h2>
-      <pre>
-        <code>{`import { agent } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
 import { vercelLlm } from '@looms/ai-vercel'
 import { approval } from '@looms/approval'
 import { createLooms } from '@looms/runtime'
@@ -35,8 +35,7 @@ const looms = createLooms({
   modules: [agent({ llm }), workflow(), approval(), payments()],
   store: s2(s2ConfigFromEnv(process.env)),
   serve: { port: 8787 },
-})`}</code>
-      </pre>
+})`}</CodeBlock>
       <table>
         <thead>
           <tr>

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/examples')({
   component: Examples,
@@ -15,8 +16,7 @@ function Examples() {
       </p>
 
       <h2>Agent with tools</h2>
-      <pre>
-        <code>{`import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
 import { gate } from '@looms/approval'
 import { z } from 'zod'
 
@@ -47,16 +47,14 @@ export const assistant = defineAgent({
   instructions: 'Greet people, delegate work, or ask for approval.',
   input: z.string(),
   tools: [greet, asAgentTool({ agent: specialist }), askApproval, checkout],
-})`}</code>
-      </pre>
+})`}</CodeBlock>
       <p>
         A tool can be a function, another agent, a workflow, or a human gate. The
         parent run waits until the child or approval finishes.
       </p>
 
       <h2>Workflow with approval and a domain module</h2>
-      <pre>
-        <code>{`import { gate } from '@looms/approval'
+      <CodeBlock lang="ts">{`import { gate } from '@looms/approval'
 import { createWaitId, invoke, wait } from '@looms/core'
 import { defineWorkflow } from '@looms/workflow'
 import { z } from 'zod'
@@ -89,8 +87,7 @@ export const checkout = defineWorkflow({
         ]),
     },
   ],
-})`}</code>
-      </pre>
+})`}</CodeBlock>
       <p>
         Nodes run after their <code>deps</code>. <code>ctx.effects</code> parks the
         node until matching events land. Author the payments module in{' '}
@@ -98,8 +95,7 @@ export const checkout = defineWorkflow({
       </p>
 
       <h2>React: chat and approvals</h2>
-      <pre>
-        <code>{`import {
+      <CodeBlock lang="tsx">{`import {
   LoomsLiveStoreProvider,
   useRunStore,
   useProjection,
@@ -130,16 +126,14 @@ function RunView({ runId }: { runId: string }) {
       <input onKeyDown={(e) => e.key === 'Enter' && send(e.currentTarget.value)} />
     </>
   )
-}`}</code>
-      </pre>
+}`}</CodeBlock>
       <p>
         The same projection reducers run on the host and in the browser, so the UI
         cannot drift from the log.
       </p>
 
       <h2>HTTP client</h2>
-      <pre>
-        <code>{`import { userMessage } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { userMessage } from '@looms/agent'
 import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
 import { assistant, checkout } from './definitions'
@@ -151,8 +145,7 @@ await client.signal(runId, [decision(approvalId, 'approve')])
 
 const { runId: chatId } = await client.start(assistant, 'Charge $40')
 await client.signal(chatId, [userMessage('Also greet Maya')])
-client.subscribeEvents(chatId, (event) => console.log(event.type))`}</code>
-      </pre>
+client.subscribeEvents(chatId, (event) => console.log(event.type))`}</CodeBlock>
       <p>
         The client has two verbs for input — <code>start</code> a definition and{' '}
         <code>signal</code> events — and modules provide the event builders. When
@@ -161,13 +154,11 @@ client.subscribeEvents(chatId, (event) => console.log(event.type))`}</code>
       </p>
 
       <h2>CLI</h2>
-      <pre>
-        <code>{`export LOOMS_URL=http://127.0.0.1:8787
+      <CodeBlock lang="bash">{`export LOOMS_URL=http://127.0.0.1:8787
 bun run --filter @looms/cli looms -- start agent echo '{"text":"hi"}'
 bun run --filter @looms/cli looms -- events <runId>
 bun run --filter @looms/cli looms -- approve <runId> <approvalId> --approve
-bun run --filter @looms/cli looms -- replay <runId> 4`}</code>
-      </pre>
+bun run --filter @looms/cli looms -- replay <runId> 4`}</CodeBlock>
     </>
   )
 }

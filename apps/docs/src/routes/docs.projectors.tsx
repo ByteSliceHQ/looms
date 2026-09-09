@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/projectors')({
   component: Projectors,
@@ -78,8 +79,7 @@ function Projectors() {
         Define a pure read model with <code>defineProjection</code> from{' '}
         <code>@looms/core</code>. Export it so both server and client can use it.
       </p>
-      <pre>
-        <code>{`import { defineProjection, type EventEnvelope } from '@looms/core'
+      <CodeBlock lang="ts">{`import { defineProjection, type EventEnvelope } from '@looms/core'
 
 export interface OrderState {
   orderId: string | null
@@ -137,8 +137,7 @@ export const orderTracker = defineProjection<OrderState>({
         return state
     }
   },
-})`}</code>
-      </pre>
+})`}</CodeBlock>
 
       <h3>Step 2: Provide the host connection</h3>
       <p>
@@ -146,8 +145,7 @@ export const orderTracker = defineProjection<OrderState>({
         <code>@looms/livestore/react</code>. The default endpoint points to{' '}
         <code>/api/livestore</code> on your Looms host:
       </p>
-      <pre>
-        <code>{`import { LoomsLiveStoreProvider } from '@looms/livestore/react'
+      <CodeBlock lang="tsx">{`import { LoomsLiveStoreProvider } from '@looms/livestore/react'
 import { OrderDashboard } from './order-dashboard'
 
 export function App({ runId }: { runId: string }) {
@@ -156,16 +154,14 @@ export function App({ runId }: { runId: string }) {
       <OrderDashboard runId={runId} />
     </LoomsLiveStoreProvider>
   )
-}`}</code>
-      </pre>
+}`}</CodeBlock>
 
       <h3>Step 3: Subscribe reactively with <code>useProjection</code></h3>
       <p>
         In your component, call <code>useRunStore(runId)</code> to connect to the
         run&apos;s event stream, then pass it to <code>useProjection</code>:
       </p>
-      <pre>
-        <code>{`import { useRunStore, useProjection } from '@looms/livestore/react'
+      <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/livestore/react'
 import { orderTracker } from './projections'
 
 export function OrderDashboard({ runId }: { runId: string }) {
@@ -186,8 +182,7 @@ export function OrderDashboard({ runId }: { runId: string }) {
       </ul>
     </div>
   )
-}`}</code>
-      </pre>
+}`}</CodeBlock>
       <p>
         Under the hood, <code>useProjection</code> leverages React 19&apos;s{' '}
         <code>useSyncExternalStore</code>. When new events append to the run log on the
@@ -200,8 +195,7 @@ export function OrderDashboard({ runId }: { runId: string }) {
         User actions do not mutate state directly; they post events to the log using{' '}
         <code>store.commit</code> or <code>client.signal</code>:
       </p>
-      <pre>
-        <code>{`import { decision } from '@looms/approval'
+      <CodeBlock lang="tsx">{`import { decision } from '@looms/approval'
 import { userMessage } from '@looms/agent'
 
 export function OrderControls({ runId }: { runId: string }) {
@@ -229,8 +223,7 @@ export function OrderControls({ runId }: { runId: string }) {
       <button onClick={handleReject}>Reject Order</button>
     </div>
   )
-}`}</code>
-      </pre>
+}`}</CodeBlock>
       <p>
         When <code>store.commit</code> runs, the signal lands on the server, wakes
         the parked thread, and streams back to all subscribers, updating all projections
@@ -242,8 +235,7 @@ export function OrderControls({ runId }: { runId: string }) {
         Because projections are pure folds over the event array, rendering historical UI
         states is effortless. You can fold over any prefix of the log:
       </p>
-      <pre>
-        <code>{`import { useState } from 'react'
+      <CodeBlock lang="tsx">{`import { useState } from 'react'
 import { foldProjection } from '@looms/core'
 import { useRunStore } from '@looms/livestore/react'
 import { orderTracker } from './projections'
@@ -269,8 +261,7 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
       <pre>{JSON.stringify(pastState, null, 2)}</pre>
     </div>
   )
-}`}</code>
-      </pre>
+}`}</CodeBlock>
 
       <h2>Server-Side Projectors (Cross-Run Storage)</h2>
       <p>
@@ -285,8 +276,7 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
         Wrap your event store with <code>withProjectors</code> from{' '}
         <code>@looms/projectors</code>. Events are delivered in log order after each commit.
       </p>
-      <pre>
-        <code>{`import { withProjectors } from '@looms/projectors'
+      <CodeBlock lang="ts">{`import { withProjectors } from '@looms/projectors'
 import { sqlite } from '@looms/projectors/sqlite'
 import { createLooms } from '@looms/runtime'
 import { s2, s2ConfigFromEnv } from '@looms/s2'
@@ -298,8 +288,7 @@ const looms = createLooms({
       console.warn(projector.name, error.message)
     },
   }),
-})`}</code>
-      </pre>
+})`}</CodeBlock>
 
       <h3>Built-in index helpers</h3>
       <p>
@@ -348,23 +337,20 @@ const looms = createLooms({
           </tr>
         </tbody>
       </table>
-      <pre>
-        <code>{`import { sqlite } from '@looms/projectors/sqlite'
+      <CodeBlock lang="ts">{`import { sqlite } from '@looms/projectors/sqlite'
 
 const index = sqlite({ path: './looms.db' })
 
 // Query cross-run indexes from your admin routes:
 const run = await index.getActor(runId)
-const pendingReviews = await index.listReviews(runId)`}</code>
-      </pre>
+const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
 
       <h3>Custom webhook and fan-out projectors</h3>
       <p>
         Any object implementing <code>project(events)</code> satisfies the{' '}
         <code>Projector</code> interface:
       </p>
-      <pre>
-        <code>{`import type { Projector } from '@looms/projectors'
+      <CodeBlock lang="ts">{`import type { Projector } from '@looms/projectors'
 
 export function approvalsWebhook(url: string): Projector {
   return {
@@ -384,8 +370,7 @@ export function approvalsWebhook(url: string): Projector {
       }
     },
   }
-}`}</code>
-      </pre>
+}`}</CodeBlock>
       <p>
         Next: see complete working examples of custom projections in{' '}
         <Link to="/docs/examples">Examples</Link>, or browse available packages in{' '}

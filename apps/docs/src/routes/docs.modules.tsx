@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/modules')({
   component: Modules,
@@ -62,8 +63,7 @@ function Modules() {
       </p>
 
       <h2>Start a host</h2>
-      <pre>
-        <code>{`import { agent } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
 import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
@@ -77,8 +77,7 @@ export const looms = createLooms({
 })
 
 await looms.start(assistant, 'Charge $40 after approval')
-await looms.start(checkout, { amount: 150, currency: 'USD' })`}</code>
-      </pre>
+await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       <p>
         Omit <code>modules</code> to get agent, workflow, and approval. Pass your
         own list to configure a module (the LLM adapter belongs to{' '}
@@ -95,13 +94,11 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</code>
         Every input to a run is an event. Modules export small builders so you
         never hand-write payloads:
       </p>
-      <pre>
-        <code>{`import { userMessage } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { userMessage } from '@looms/agent'
 import { decision } from '@looms/approval'
 
 await looms.signal(runId, [userMessage('Also greet Maya')])
-await looms.signal(runId, [decision(approvalId, 'approve')])`}</code>
-      </pre>
+await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <p>
         Your module can do the same: export a function that returns an{' '}
         <code>EventInput</code>, and callers use it with <code>signal</code> or{' '}
@@ -114,8 +111,7 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</code>
         optional projections for the UI. Handlers should be safe to retry — use{' '}
         <code>ctx.effectId</code> as an idempotency key.
       </p>
-      <pre>
-        <code>{`import {
+      <CodeBlock lang="ts">{`import {
   defineEffect,
   defineEventCatalog,
   defineProjection,
@@ -165,8 +161,7 @@ export function payments() {
     effects: { charge },
     projections: { ledger },
   })
-}`}</code>
-      </pre>
+}`}</CodeBlock>
       <p>
         Prefer a Zod (or other Standard Schema) object for each event so the
         payload is validated. When you only need a type,{' '}

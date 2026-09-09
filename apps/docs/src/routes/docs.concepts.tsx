@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/concepts')({
   component: Concepts,
@@ -299,13 +300,11 @@ function Concepts() {
         </div>
       </div>
 
-      <pre>
-        <code>{`// Domain effects compile down to the instruction set:
+      <CodeBlock lang="ts">{`// Domain effects compile down to the instruction set:
 CallLLM(...)             → Invoke('ai.generate', ...)
 DelegateToWorker(...)    → Spawn('researcher', ...)
 RequestApproval(...)     → Emit('approval.requested', ...) + Wait('approval.decided')
-SleepUntil(...)          → Wait('timer.fired')`}</code>
-      </pre>
+SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
 
       <h2>Durable Waiting &amp; Parking</h2>
       <p>
