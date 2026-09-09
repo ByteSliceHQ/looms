@@ -30,7 +30,8 @@ export function matchesWait(event: EventEnvelope, on: WaitCondition): boolean {
     return event.type === 'runtime.timer.fired'
   }
   if (!isWaitOnEvent(on)) return false
-  if (event.type !== on.type) return false
+  const matchesType = Array.isArray(on.type) ? on.type.includes(event.type) : event.type === on.type
+  if (!matchesType) return false
   if (on.match === undefined) return true
   return isSubset(on.match, event.payload)
 }

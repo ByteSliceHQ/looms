@@ -77,4 +77,92 @@ describe('createLoomsClient', () => {
     expect(received).toEqual(['runtime.run.started'])
     stop()
   })
+
+  test('stream yields live deltas then the completed run events', async () => {
+    const client = createLoomsClient({
+      fetch: async (input, init) => {
+        const href = hrefOf(input)
+        if (href === '/runs' && init?.method === 'POST') {
+          const stream = new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder()
+              controller.enqueue(
+                encoder.encode(
+                  `id: 1\ndata: ${JSON.stringify({
+                    batch: [
+                      {
+                        name: 'agent.turn.text_delta',
+                        args: {
+                          id: 'evt_delta',
+                          ts: Date.now(),
+                          payload: { turn: 1, delta: 'hel' },
+                          threadId: 'thr_1',
+                          parentThreadId: null,
+                          causationId: null,
+                          correlationId: null,
+                          effectId: null,
+                          ephemeral: true,
+                          origin: { type: 'system' },
+                        },
+                        seqNum: 1,
+                        parentSeqNum: 0,
+                        clientId: 'looms-host',
+                        sessionId: 'looms-host',
+                      },
+                    ],
+                  })}\n\n`,
+                ),
+              )
+              controller.enqueue(
+                encoder.encode(
+                  `id: 2\ndata: ${JSON.stringify({
+                    batch: [
+                      {
+                        name: 'agent.message',
+                        args: {
+                          id: 'evt_msg',
+                          ts: Date.now(),
+                          payload: { turn: 1, message: { role: 'assistant', content: 'hello' } },
+                          threadId: 'thr_1',
+                          parentThreadId: null,
+                          causationId: null,
+                          correlationId: null,
+                          effectId: null,
+                          ephemeral: false,
+                          origin: { type: 'system' },
+                        },
+                        seqNum: 2,
+                        parentSeqNum: 1,
+                        clientId: 'looms-host',
+                        sessionId: 'looms-host',
+                      },
+                    ],
+                  })}\n\n`,
+                ),
+              )
+              controller.enqueue(
+                encoder.encode(
+                  `event: done\ndata: ${JSON.stringify({
+                    runId: 'run_stream',
+                    threadId: 'thr_1',
+                    state: { status: 'completed' },
+                  })}\n\n`,
+                ),
+              )
+              controller.close()
+            },
+          })
+          return new Response(stream, { headers: { 'content-type': 'text/event-stream' } })
+        }
+        return new Response('not found', { status: 404 })
+      },
+    })
+    const handle = client.streamRun({ kind: 'agent', definitionName: 'echo', runId: 'run_stream' })
+    expect(handle.runId).toBe('run_stream')
+    const types: string[] = []
+    for await (const event of handle) {
+      types.push(event.type)
+    }
+    expect(types).toEqual(['agent.turn.text_delta', 'agent.message'])
+  })
 })

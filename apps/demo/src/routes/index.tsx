@@ -1,6 +1,18 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { StartPanel } from '../components/start-panel'
+import { ClientOnly, createFileRoute } from '@tanstack/react-router'
+import { Shell } from '../components/ide/shell'
+import { parseSearch, type DemoSearch } from '../lib/search'
+
+export type { DemoSearch }
 
 export const Route = createFileRoute('/')({
-  component: StartPanel,
+  validateSearch: parseSearch,
+  component: Home,
 })
+
+function Home() {
+  return (
+    <ClientOnly fallback={<p className="p-3 text-sm text-muted-foreground">Loading…</p>}>
+      <Shell />
+    </ClientOnly>
+  )
+}

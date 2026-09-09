@@ -38,9 +38,10 @@ export interface EffectsTool {
   readonly kind: 'effects'
   readonly name: string
   readonly description: string
+  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
   readonly inputSchema?: JsonValue
   effects(input: JsonValue): RuntimeEffect[]
-  waitOn?: { type: string; match?: JsonValue }
+  waitOn?: { type: string | readonly string[]; match?: JsonValue }
 }
 
 export type ToolLike = FunctionTool | ThreadTool | EffectsTool
@@ -176,15 +177,55 @@ export function asAgentTool(def: {
   description?: string
   input?: StandardSchemaV1<JsonValue, JsonValue>
   inputSchema?: JsonValue
-  agent: { kind: 'agent'; name: string; instructions?: string }
+  agent: {
+    kind: 'agent'
+    name: string
+    instructions?: string
+    input?: StandardSchemaV1<JsonValue, unknown>
+    inputSchema?: JsonValue
+  }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
+  // SAFETY: Agent input schema accepts JsonValue.
+  const agentInput =
+    'input' in def.agent && def.agent.input
+      ? (def.agent.input as StandardSchemaV1<JsonValue, JsonValue>)
+      : undefined
   return asThreadTool({
     name: def.name,
     description: def.description ?? def.agent.instructions,
-    input: def.input,
-    inputSchema: def.inputSchema,
+    input: def.input ?? agentInput,
+    inputSchema: def.inputSchema ?? def.agent.inputSchema,
     child: { kind: 'agent', name: def.agent.name },
+    mapInput: def.mapInput,
+  })
+}
+
+export function asWorkflowTool(def: {
+  name?: string
+  description?: string
+  input?: StandardSchemaV1<JsonValue, JsonValue>
+  inputSchema?: JsonValue
+  workflow: {
+    kind: 'workflow'
+    name: string
+    description?: string
+    input?: StandardSchemaV1<JsonValue, unknown>
+    inputSchema?: JsonValue
+  }
+  mapInput?: (input: JsonValue) => JsonValue
+}): ThreadTool {
+  // SAFETY: Workflow input schema accepts JsonValue.
+  const workflowInput =
+    'input' in def.workflow && def.workflow.input
+      ? (def.workflow.input as StandardSchemaV1<JsonValue, JsonValue>)
+      : undefined
+  return asThreadTool({
+    name: def.name,
+    description: def.description ?? def.workflow.description,
+    input: def.input ?? workflowInput,
+    inputSchema: def.inputSchema ?? def.workflow.inputSchema,
+    child: { kind: 'workflow', name: def.workflow.name },
     mapInput: def.mapInput,
   })
 }
@@ -192,14 +233,16 @@ export function asAgentTool(def: {
 export function asEffectsTool(def: {
   name: string
   description: string
+  input?: StandardSchemaV1<JsonValue, JsonValue>
   inputSchema?: JsonValue
   effects: (input: JsonValue) => RuntimeEffect[]
-  waitOn?: { type: string; match?: JsonValue }
+  waitOn?: { type: string | readonly string[]; match?: JsonValue }
 }): EffectsTool {
   return {
     kind: 'effects',
     name: def.name,
     description: def.description,
+    input: def.input,
     inputSchema: def.inputSchema,
     effects: def.effects,
     waitOn: def.waitOn,

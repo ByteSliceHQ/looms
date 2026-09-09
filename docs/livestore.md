@@ -31,4 +31,4 @@ store.subscribe(() => {
 })
 ```
 
-The host also exposes `/api/livestore` for the LiveStore sync protocol. New clients can poll `GET /runs/:id/events` instead — that is what `useRunStore` does by default.
+The host exposes `/api/livestore`. `useRunStore` opens one SSE connection (`?live=true`) per run and shares it across React subscribers. Catch-up is `GET /api/livestore?storeId=&cursor=`; `GET /runs/:id/events` remains available for one-shot reads.

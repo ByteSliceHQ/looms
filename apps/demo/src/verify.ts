@@ -6,6 +6,9 @@ import {
   foldRun,
   isJsonObject,
   isJsonString,
+  project,
+  threadTree,
+  toThreadTree,
   treeFromRun,
 } from '@looms/core'
 import { workflow } from '@looms/workflow'
@@ -128,6 +131,15 @@ export async function verifyDemo(): Promise<void> {
     if (!parsed.success || !parsed.data.result?.includes('summarize')) {
       throw new Error(`orchestrator bad output: ${JSON.stringify(rootOf(state)?.output)}`)
     }
+    const tree = treeFromRun(state)
+    const specialistNode = tree.root?.children.find((c) => c.definitionName === 'specialist')
+    if (!specialistNode) throw new Error('missing specialist child in tree')
+    const researcherNode = specialistNode.children.find((c) => c.definitionName === 'researcher')
+    if (!researcherNode) throw new Error('missing researcher grandchild in tree')
+    const pipelineNode = researcherNode.children.find((c) => c.definitionName === 'pipeline')
+    if (!pipelineNode) throw new Error('missing pipeline great-grandchild in tree')
+    const echoNode = pipelineNode.children.find((c) => c.definitionName === 'echo')
+    if (!echoNode) throw new Error('missing echo great-great-grandchild in tree')
   }
 
   {
@@ -135,6 +147,59 @@ export async function verifyDemo(): Promise<void> {
     const root = rootOf(state)
     if (root?.status !== 'running' && root?.status !== 'waiting') {
       throw new Error(`assistant expected running, got ${root?.status}`)
+    }
+  }
+
+  {
+    const { runId, state } = await looms.start(assistant, 'ask a specialist to research "number of lakes in minnesota"')
+    const tree = treeFromRun(state)
+    const specialistChild = tree.root?.children.find((c) => c.definitionName === 'specialist')
+    if (!specialistChild) throw new Error('assistant failed to spawn specialist child for research topic')
+    const events = await looms.getEvents(runId)
+    const spawnEvent = events.find((e) => e.type === 'agent.spawn.requested' && isJsonObject(e.payload) && e.payload.definitionName === 'specialist')
+    const spawnInput = isJsonObject(spawnEvent?.payload) ? spawnEvent?.payload.input : null
+    if (!isJsonObject(spawnInput) || !isJsonString(spawnInput.task) || !spawnInput.task) {
+      throw new Error(`specialist spawned with invalid input: ${JSON.stringify(spawnInput)}`)
+    }
+    if (spawnInput.task === 'analyze' || spawnInput.task === 'default') {
+      throw new Error(`specialist received fallback task instead of research topic: ${spawnInput.task}`)
+    }
+  }
+
+  {
+    const { state } = await looms.start(assistant, 'Ask the specialist to investigate latency')
+    const tree = treeFromRun(state)
+    const specialistChild = tree.root?.children.find((c) => c.definitionName === 'specialist')
+    if (!specialistChild) throw new Error('assistant failed to spawn specialist child')
+    const researcherGrandchild = specialistChild.children.find((c) => c.definitionName === 'researcher')
+    if (!researcherGrandchild) throw new Error('assistant specialist missing researcher grandchild')
+  }
+
+  {
+    const { runId, state } = await looms.start(assistant, 'facilitate checkout 175')
+    if (rootOf(state)?.status !== 'waiting') {
+      throw new Error(`assistant checkout expected waiting, got ${rootOf(state)?.status}`)
+    }
+    const pending = await looms.project(runId, pendingApprovals)
+    const approvalId = pending.items.find((item) => item.status === 'pending')?.approvalId
+    if (!approvalId) throw new Error('assistant checkout missing pending approval')
+    const next = await looms.signal(runId, [decision(approvalId, 'approve')])
+    const root = rootOf(next)
+    if (root?.status !== 'running' && root?.status !== 'waiting') {
+      throw new Error(`assistant after approve expected running, got ${root?.status}`)
+    }
+    const events = await looms.getEvents(runId)
+    const treeState = project(threadTree, events)
+    const tree = toThreadTree(treeState)
+    if (tree.root?.status === 'waiting') {
+      throw new Error('assistant threadTree stuck waiting after checkout approved (sibling wait leak)')
+    }
+    const checkoutChild = tree.root?.children.find((c) => c.definitionName === 'checkout')
+    if (!checkoutChild || checkoutChild.status !== 'completed') {
+      throw new Error(`assistant checkout child expected completed, got ${checkoutChild?.status}`)
+    }
+    if (!events.some((event) => event.type === 'agent.tool.result')) {
+      throw new Error('assistant expected tool result after checkout completed')
     }
   }
 
@@ -185,6 +250,15 @@ export async function verifyDemo(): Promise<void> {
     const events = await scripted.getEvents(runId)
     if (!events.some((event) => event.type === 'payments.charge.authorized')) {
       throw new Error('checkout_caller expected payments.charge.authorized')
+    }
+    const treeState = project(threadTree, events)
+    const tree = toThreadTree(treeState)
+    if (tree.root?.status !== 'completed') {
+      throw new Error(`checkout_caller threadTree root expected completed, got ${tree.root?.status}`)
+    }
+    const checkoutNode = tree.root.children.find((c) => c.definitionName === 'checkout')
+    if (!checkoutNode || checkoutNode.status !== 'completed') {
+      throw new Error(`checkout_caller threadTree checkout expected completed, got ${checkoutNode?.status}`)
     }
   }
 

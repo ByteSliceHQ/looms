@@ -9,3 +9,4 @@ export {
   type LoomsFetchResult,
 } from './server'
 export { handleLivestoreProxy, encodeLoomsEvent, type LiveStoreGlobalEncoded } from './livestore-proxy'
+export { createEventStreamResponse, type EventStreamOptions } from './sse'

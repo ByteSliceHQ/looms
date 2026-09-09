@@ -95,4 +95,31 @@ describe('handleLivestoreProxy SSE', () => {
     expect(Array.isArray(body.batch)).toBe(true)
     expect(Predicate.isNumber(body.head)).toBe(true)
   })
+
+  test('POST /runs with stream=true returns SSE frames', async () => {
+    const echo = defineAgent({
+      name: 'echo-start-stream',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: JSON.stringify(input) },
+        done: true,
+        output: input,
+      }),
+    })
+    const looms = createLooms({ definitions: [echo], modules: [agent()] })
+    const res = await looms.fetch(
+      new Request('http://looms.test/runs?stream=true', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify({ kind: 'agent', definitionName: 'echo-start-stream', input: { text: 'hi' } }),
+      }),
+    )
+    expect(res).not.toBeNull()
+    expect(res!.headers.get('content-type')).toBe('text/event-stream')
+    const frames = await readSseFrames(res!, 2)
+    expect(frames.length).toBeGreaterThanOrEqual(1)
+    expect(frames.some((frame) => frame.includes('runtime.run.started') || frame.includes('event: done'))).toBe(
+      true,
+    )
+  })
 })

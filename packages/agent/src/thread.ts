@@ -33,8 +33,11 @@ function readNumber(obj: { [key: string]: JsonValue }, key: string): number | un
 function inputToLine(input: JsonValue): Message | null {
   if (input === null) return null
   if (Predicate.isString(input)) return { role: 'user', content: input }
-  if (Predicate.isObject(input) && Predicate.isString(input.text)) {
-    return { role: 'user', content: input.text }
+  if (Predicate.isObject(input)) {
+    if (Predicate.isString(input.text)) return { role: 'user', content: input.text }
+    if (Predicate.isString(input.task)) return { role: 'user', content: input.task }
+    if (Predicate.isString(input.topic)) return { role: 'user', content: input.topic }
+    if (Predicate.isString(input.prompt)) return { role: 'user', content: input.prompt }
   }
   return { role: 'user', content: JSON.stringify(input) }
 }
@@ -240,12 +243,10 @@ export const agentThread = defineThread<AgentState>({
             }),
             wait({
               waitId,
-              on: { type: 'runtime.thread.completed', match: { threadId: childThreadId } },
-              tag: { toolCallId, name: definitionName },
-            }),
-            wait({
-              waitId: `${waitId}_fail`,
-              on: { type: 'runtime.thread.failed', match: { threadId: childThreadId } },
+              on: {
+                type: ['runtime.thread.completed', 'runtime.thread.failed'],
+                match: { threadId: childThreadId },
+              },
               tag: { toolCallId, name: definitionName },
             }),
           ],

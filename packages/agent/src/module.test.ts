@@ -159,4 +159,34 @@ describe('@looms/agent module', () => {
     expect(JSON.stringify(emitted?.effect)).toContain('agent.tool.result')
     expect(JSON.stringify(emitted?.effect)).toContain('approval handler down')
   })
+
+  test('started thread extracts task or topic from input object as user line', () => {
+    const registry = composeModules([agent()])
+    const runId = 'run_task'
+    const threadId = 'thr_task'
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'agent',
+              definitionName: 'specialist',
+              input: { task: 'number of lakes in minnesota' },
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+      ],
+      registry,
+    )
+    // SAFETY: Agent thread state holds lines array.
+    const threadState = state.threads[threadId]?.state as { lines: Array<{ role: string; content: string }> }
+    expect(threadState.lines[0]?.role).toBe('user')
+    expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')
+  })
 })

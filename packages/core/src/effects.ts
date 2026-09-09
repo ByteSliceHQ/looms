@@ -6,7 +6,7 @@ import { validateInput } from './schema'
 import type { JsonValue } from './types'
 
 export type WaitOnEvent = {
-  type: string
+  type: string | readonly string[]
   match?: JsonValue
 }
 
@@ -103,7 +103,7 @@ export interface EffectContext {
   readonly runId: string
   readonly threadId: string
   readonly causingEventId: string
-  emit(event: EventInput): void
+  emit(event: EventInput): Promise<void>
 }
 
 export type EffectInputSchema<TInput extends JsonValue> =

@@ -68,6 +68,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let liveStarted = false
   let liveAbort: AbortController | undefined
   let eventSource: EventSource | undefined
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let syncing: Promise<void> | null = null
 
   const notify = () => {
@@ -98,29 +99,43 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const pull = async () => {
-    const cursor = Math.max(0, fromSeq - 1)
-    const url = `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
-    const res = await fetchFn(url)
-    if (!res.ok) {
-      if (res.status === 404 || res.status === 416) return
-      const text = await res.text()
-      if (text.includes('out of range') || text.includes('Range not satisfiable')) return
-      throw new Error(`livestore pull failed: ${res.status}`)
-    }
-    const body: unknown = await res.json()
-    if (!Predicate.isReadonlyObject(body)) return
-    const batch = 'batch' in body && Array.isArray(body.batch) ? body.batch : []
-    applyBatch(
-      batch.map((raw) =>
-        decodeLoomsEvent(
-          // SAFETY: host pull batch items are EventEnvelope | LiveStoreGlobalEncoded.
-          raw as Parameters<typeof decodeLoomsEvent>[0],
-          options.storeId,
+    try {
+      const cursor = Math.max(0, fromSeq - 1)
+      const url = `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
+      const res = await fetchFn(url)
+      if (!res.ok) {
+        if (res.status === 404 || res.status === 416) return
+        const text = await res.text()
+        if (text.includes('out of range') || text.includes('Range not satisfiable')) return
+        throw new Error(`livestore pull failed: ${res.status}`)
+      }
+      const body: unknown = await res.json()
+      if (!Predicate.isReadonlyObject(body)) return
+      const batch = 'batch' in body && Array.isArray(body.batch) ? body.batch : []
+      applyBatch(
+        batch.map((raw) =>
+          decodeLoomsEvent(
+            // SAFETY: host pull batch items are EventEnvelope | LiveStoreGlobalEncoded.
+            raw as Parameters<typeof decodeLoomsEvent>[0],
+            options.storeId,
+          ),
         ),
-      ),
-    )
-    const head = 'head' in body && Predicate.isNumber(body.head) ? body.head : undefined
-    if (head !== undefined) fromSeq = Math.max(fromSeq, head + 1)
+      )
+      const head = 'head' in body && Predicate.isNumber(body.head) ? body.head : undefined
+      if (head !== undefined) fromSeq = Math.max(fromSeq, head + 1)
+    } catch (err) {
+      if (disposed) return
+      // When offline or host is restarting, suppress connection refused/fetch errors during sync
+      if (
+        err instanceof Error &&
+        (err.message.includes('fetch failed') ||
+          err.message.includes('ConnectionRefused') ||
+          err.message.includes('Unable to connect'))
+      ) {
+        return
+      }
+      throw err
+    }
   }
 
   const sync = async () => {
@@ -136,7 +151,23 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     return syncing
   }
 
+  const scheduleReconnect = (Ctor: typeof EventSource) => {
+    if (disposed || !liveStarted || reconnectTimer !== undefined) return
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined
+      if (disposed || !liveStarted) return
+      void sync()
+        .catch(() => {})
+        .finally(() => {
+          if (!disposed && liveStarted) {
+            startEventSource(Ctor)
+          }
+        })
+    }, reconnectDelayMs)
+  }
+
   const startEventSource = (Ctor: typeof EventSource) => {
+    if (disposed || !liveStarted) return
     const es = new Ctor(liveUrl())
     eventSource = es
     es.addEventListener('open', () => {
@@ -147,6 +178,14 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     })
     es.addEventListener('error', () => {
       live = es.readyState === Ctor.OPEN
+      if (es.readyState === Ctor.CLOSED && !disposed && liveStarted) {
+        // EventSource entered CLOSED state (e.g. server error or socket closed abruptly).
+        // Standard EventSource will NOT automatically reconnect on CLOSED, so we must
+        // clean up the dead instance and re-establish the connection.
+        es.close()
+        if (eventSource === es) eventSource = undefined
+        scheduleReconnect(Ctor)
+      }
     })
   }
 
@@ -192,6 +231,10 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   const stopLive = () => {
     liveStarted = false
     live = false
+    if (reconnectTimer !== undefined) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = undefined
+    }
     eventSource?.close()
     eventSource = undefined
     liveAbort?.abort()

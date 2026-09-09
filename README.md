@@ -16,7 +16,8 @@ Looms is an SDK for long-running work in your application. Each **run** is an ev
 
 ```bash
 bun install
-bun run demo            # debugger + chat on http://127.0.0.1:8787
+bun run dev             # demo http://127.0.0.1:8787 + docs http://127.0.0.1:8788
+# or either alone: bun run demo | bun run docs
 ```
 
 Host it in your app:
@@ -82,7 +83,7 @@ Runs speak one language: `start` a definition, `signal` events into it, read `pr
 - [LiveStore](./docs/livestore.md) — React subscriptions
 - [AI providers](./docs/ai-providers.md)
 
-Site (`apps/docs`): concepts, modules, projectors, API, examples.
+Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules, projectors, API, examples.
 
 ## Packages
 

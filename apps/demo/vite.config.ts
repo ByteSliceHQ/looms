@@ -1,19 +1,31 @@
+import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { nitro } from 'nitro/vite'
 
 export default defineConfig(({ mode }) => {
   // App-local `.env` → process.env (so Looms sees LOOMS_S2_*).
   Object.assign(process.env, loadEnv(mode, process.cwd(), ''))
 
+  const port = Number(process.env.PORT ?? 8787)
+  process.env.PORT = String(port)
+  process.env.NITRO_PORT = String(port)
+
   return {
     server: {
-      port: Number(process.env.PORT ?? 8787),
+      port,
+      strictPort: true,
       host: process.env.HOST ?? '127.0.0.1',
     },
     worker: {
       format: 'es',
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(import.meta.dirname, './src'),
+      },
     },
     plugins: [
       tanstackStart({
@@ -30,6 +42,7 @@ export default defineConfig(({ mode }) => {
       }),
       nitro({ preset: 'bun' }),
       viteReact(),
+      tailwindcss(),
     ],
   }
 })

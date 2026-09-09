@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { encodeLoomsEvent, type EventEnvelope } from '@looms/core'
+import { encodeLoomsEvent, type EventEnvelope, type JsonValue } from '@looms/core'
 import { createLoomsStore } from './store'
 
 function event(seq: number, type: string): EventEnvelope {
@@ -156,5 +156,76 @@ describe('createLoomsStore reconnect', () => {
     expect(connections).toBeGreaterThanOrEqual(2)
     store.dispose()
     void server.stop()
+  })
+
+  test('recovers and reconnects when EventSource enters CLOSED state', async () => {
+    type ListenerFn = (payload?: JsonValue) => void
+    interface MockInstance {
+      readyState: number
+      listeners: Map<string, Array<ListenerFn>>
+      close(): void
+      dispatch(name: string, payload?: JsonValue): void
+    }
+    const instances: MockInstance[] = []
+
+    class MockEventSource {
+      static readonly CONNECTING = 0
+      static readonly OPEN = 1
+      static readonly CLOSED = 2
+
+      readyState = MockEventSource.OPEN
+      listeners = new Map<string, Array<ListenerFn>>()
+
+      constructor(_url: string) {
+        instances.push(this)
+      }
+
+      addEventListener(name: string, fn: ListenerFn) {
+        const list = this.listeners.get(name) ?? []
+        list.push(fn)
+        this.listeners.set(name, list)
+      }
+
+      dispatch(name: string, payload?: JsonValue) {
+        for (const fn of this.listeners.get(name) ?? []) fn(payload)
+      }
+
+      close() {
+        this.readyState = MockEventSource.CLOSED
+      }
+    }
+
+    const prevEventSource = globalThis.EventSource
+    const MockCtor: unknown = MockEventSource
+    // SAFETY: Mocking global EventSource to test reconnection on CLOSED state.
+    globalThis.EventSource = MockCtor as typeof EventSource
+
+    try {
+      const store = createLoomsStore({
+        storeId: 'run_1',
+        endpoint: 'http://127.0.0.1:9999',
+        reconnectDelayMs: 15,
+      })
+
+      expect(instances.length).toBe(1)
+      instances[0]?.dispatch('open')
+      instances[0]?.dispatch('message', {
+        data: JSON.stringify({ batch: [encodeLoomsEvent(event(1, 'runtime.run.started'))] }),
+      })
+      expect(store.events().length).toBe(1)
+
+      // Simulate unexpected server error or socket close that transitions EventSource to CLOSED
+      instances[0]!.readyState = MockEventSource.CLOSED
+      instances[0]?.dispatch('error')
+
+      // Store must automatically recover by creating a new EventSource instance
+      await waitFor(() => instances.length >= 2)
+      expect(instances.length).toBe(2)
+      expect(instances[0]?.readyState).toBe(MockEventSource.CLOSED)
+
+      store.dispose()
+    } finally {
+      globalThis.EventSource = prevEventSource
+    }
   })
 })

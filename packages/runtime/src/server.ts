@@ -1,4 +1,5 @@
 import {
+  createRunId,
   EventStoreTag,
   InvalidInputError,
   JsonValueSchema,
@@ -8,6 +9,7 @@ import {
 import { Effect, Schema } from 'effect'
 import { handleLivestoreProxy } from './livestore-proxy'
 import type { LoomsRuntime } from './runtime'
+import { createEventStreamResponse } from './sse'
 
 export interface FetchHandlerOptions {
   runtime: LoomsRuntime
@@ -46,6 +48,45 @@ const SignalBodySchema = Schema.Struct({
 
 function run<A, E>(effect: Effect.Effect<A, E, EventStoreTag>, store: EventStore): Promise<A> {
   return Effect.runPromise(Effect.provideService(effect, EventStoreTag, store))
+}
+
+function wantsRunStream(req: Request, url: URL): boolean {
+  const accept = req.headers.get('accept') ?? ''
+  return url.searchParams.get('stream') === 'true' || accept.includes('text/event-stream')
+}
+
+function streamStartRun(
+  req: Request,
+  runtime: LoomsRuntime,
+  store: EventStore,
+  args: { kind: string; definitionName: string; input: JsonValue; runId: string },
+): Response {
+  return createEventStreamResponse({
+    signal: req.signal,
+    request: req,
+    store,
+    runId: args.runId,
+    fromSeq: 1,
+    onStart: async (write, close) => {
+      try {
+        const result = await run(
+          runtime.startRun({
+            kind: args.kind,
+            definitionName: args.definitionName,
+            input: args.input,
+            runId: args.runId,
+          }),
+          store,
+        )
+        write(`event: done\ndata: ${JSON.stringify(result)}\n\n`)
+      } catch (cause: unknown) {
+        const error = cause instanceof Error ? cause.message : String(cause)
+        write(`event: error\ndata: ${JSON.stringify({ error })}\n\n`)
+      } finally {
+        close()
+      }
+    },
+  })
 }
 
 async function readJson(req: Request): Promise<JsonValue> {
@@ -93,13 +134,22 @@ export function createFetchHandler(
         if (!definitionName || !kind) {
           return Response.json({ error: 'kind and definitionName required' }, { status: 400 })
         }
+        const runId = body.runId ?? createRunId()
+        if (wantsRunStream(req, url)) {
+          return streamStartRun(req, runtime, store, {
+            kind,
+            definitionName,
+            input: body.input ?? null,
+            runId,
+          })
+        }
         try {
           const result = await run(
             runtime.startRun({
               kind,
               definitionName,
               input: body.input ?? null,
-              runId: body.runId,
+              runId,
             }),
             store,
           )
@@ -195,7 +245,9 @@ export function serveHttp(
   const server = Bun.serve({
     port,
     hostname,
-    async fetch(req) {
+    idleTimeout: 0,
+    async fetch(req, srv) {
+      srv.timeout(req, 0)
       const result = await fetchHandler(req)
       if (result === null) return new Response('Not Found', { status: 404 })
       return result

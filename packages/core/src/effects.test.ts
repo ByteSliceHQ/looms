@@ -7,7 +7,7 @@ const ctx: EffectContext = {
   runId: 'run_1',
   threadId: 'thr_1',
   causingEventId: 'evt_1',
-  emit: () => undefined,
+  emit: async () => undefined,
 }
 
 describe('defineEffect', () => {

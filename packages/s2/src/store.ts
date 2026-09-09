@@ -6,6 +6,7 @@ import {
   S2Error,
 } from '@s2-dev/streamstore'
 import {
+  createKeyedSerializer,
   EventStoreConflictError,
   EventStoreError,
   EventStoreTag,
@@ -67,6 +68,7 @@ export function s2(config: S2Config): EventStore {
   const client = createClient(parsed)
   const basin = client.basin(parsed.basin)
   const ensured = new Set<string>()
+  const appends = createKeyedSerializer()
 
   let basinEnsured = false
   const ensureBasin = Effect.tryPromise({
@@ -133,9 +135,11 @@ export function s2(config: S2Config): EventStore {
           matchSeqNum: options?.expectedTail,
         })
         const appendResult = yield* Effect.promise(() =>
-          stream.append(input).then(
-            (ack) => ({ ok: true as const, ack }),
-            (err: S2Error | Error) => ({ ok: false as const, err }),
+          appends.run(runId, () =>
+            stream.append(input).then(
+              (ack) => ({ ok: true as const, ack }),
+              (err: S2Error | Error) => ({ ok: false as const, err }),
+            ),
           ),
         )
 

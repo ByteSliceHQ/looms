@@ -3,6 +3,8 @@
   "ui": "tui",
   "globalPassThroughEnv": [
     "PORT",
+    "DOCS_PORT",
+    "HOST",
     "LOOMS_S2_ACCESS_TOKEN",
     "LOOMS_S2_BASIN",
     "LOOMS_S2_ENDPOINT",

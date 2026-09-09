@@ -187,6 +187,69 @@ describe('foldRun', () => {
     expect(state.outstandingEffects[0]?.effect.type).toBe('runtime.complete')
   })
 
+  test('satisfies multi-event wait when any matched event occurs', () => {
+    const registry = composeModules([
+      defineRuntimeModule({
+        namespace: 'noop',
+        protocolVersion: '1.0.0',
+        threads: {
+          agent: defineThread({
+            kind: 'agent',
+            initialState: () => ({}),
+            reduce: (state) => ({ state }),
+          }),
+        },
+      }),
+    ])
+    const runId = 'run_multi_wait_fold'
+    const threadId = 'thr_parent'
+    const events = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.registered',
+        payload: {
+          waitId: 'wait_child',
+          threadId,
+          on: {
+            type: ['runtime.thread.completed', 'runtime.thread.failed'],
+            match: { threadId: 'child' },
+          },
+          tag: { toolCallId: 'tc_1', name: 'checkout' },
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.satisfied',
+        payload: {
+          waitId: 'wait_child',
+          event: {
+            id: 'ev_done',
+            type: 'runtime.thread.completed',
+            payload: { threadId: 'child', output: { ok: true } },
+          },
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+    ])
+
+    const state = foldRun(events, registry)
+    expect(Object.keys(state.waits)).toEqual([])
+    expect(state.threads[threadId]?.status).toBe('running')
+  })
+
   test('unhandled effect.failed fails the thread and drops its waits', () => {
     const registry = composeModules([counterModule])
     const runId = 'run_fail'
@@ -363,6 +426,8 @@ describe('match', () => {
     })
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'a1' } })).toBe(true)
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'nope' } })).toBe(false)
+    expect(matchesWait(event, { type: ['other.event', 'gate.decided'], match: { gateId: 'a1' } })).toBe(true)
+    expect(matchesWait(event, { type: ['other.event', 'third.event'], match: { gateId: 'a1' } })).toBe(false)
   })
 })
 
@@ -494,6 +559,144 @@ describe('threadTree projection', () => {
     projState = foldProjection(threadTree, [e4], projState)
     tree = toThreadTree(projState)
     expect(tree.root?.status).toBe('running')
+  })
+
+  test('tracks thread status when multi-event child wait is satisfied', () => {
+    const runId = 'run_child_wait'
+    const parentId = 'thr_parent'
+    const childId = 'thr_child'
+    const tag = { toolCallId: 'tc_1', name: 'checkout' }
+
+    const events = [
+      createEvent(runId, {
+        type: 'runtime.run.started',
+        payload: { rootThreadId: parentId, kind: 'agent', definitionName: 'assistant', input: null },
+        threadId: null,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId: parentId,
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId: parentId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.registered',
+        payload: {
+          waitId: 'wait_child',
+          on: {
+            type: ['runtime.thread.completed', 'runtime.thread.failed'],
+            match: { threadId: childId },
+          },
+          tag,
+        },
+        threadId: parentId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId: childId,
+          kind: 'workflow',
+          definitionName: 'checkout',
+          input: null,
+          parentThreadId: parentId,
+        },
+        threadId: childId,
+        origin: { type: 'system' },
+      }),
+    ]
+
+    let projState = foldProjection(threadTree, events)
+    expect(toThreadTree(projState).root?.status).toBe('waiting')
+    expect(projState.activeWaits?.[parentId]).toEqual(['wait_child'])
+
+    projState = foldProjection(
+      threadTree,
+      [
+        createEvent(runId, {
+          type: 'runtime.wait.satisfied',
+          payload: {
+            waitId: 'wait_child',
+            tag,
+            event: {
+              id: 'ev_child_done',
+              type: 'runtime.thread.completed',
+              payload: { threadId: childId, output: { ok: true } },
+            },
+          },
+          threadId: parentId,
+          origin: { type: 'system' },
+        }),
+      ],
+      projState,
+    )
+
+    const tree = toThreadTree(projState)
+    expect(tree.root?.status).toBe('running')
+    expect(projState.activeWaits?.[parentId]).toEqual([])
+  })
+
+  test('preserves parent activeWaits when a child thread starts', () => {
+    const runId = 'run_preserve_waits'
+    const parentId = 'thr_parent'
+    const childId = 'thr_child'
+
+    let projState = foldProjection(threadTree, [
+      createEvent(runId, {
+        type: 'runtime.run.started',
+        payload: { rootThreadId: parentId, kind: 'agent', definitionName: 'assistant', input: null },
+        threadId: null,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId: parentId,
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId: parentId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.wait.registered',
+        payload: { waitId: 'wait_1', on: { type: 'approval.decided' }, tag: { toolCallId: 't1' } },
+        threadId: parentId,
+        origin: { type: 'system' },
+      }),
+    ])
+    expect(projState.activeWaits?.[parentId]).toEqual(['wait_1'])
+
+    projState = foldProjection(
+      threadTree,
+      [
+        createEvent(runId, {
+          type: 'runtime.thread.started',
+          payload: {
+            threadId: childId,
+            kind: 'workflow',
+            definitionName: 'checkout',
+            input: null,
+            parentThreadId: parentId,
+          },
+          threadId: childId,
+          origin: { type: 'system' },
+        }),
+      ],
+      projState,
+    )
+
+    expect(projState.activeWaits?.[parentId]).toEqual(['wait_1'])
+    expect(toThreadTree(projState).root?.status).toBe('waiting')
   })
 })
 

@@ -6,8 +6,9 @@ import {
   type EventStore,
   type LiveStoreGlobalEncoded,
 } from '@looms/core'
-import { Effect, Fiber, Predicate, Stream } from 'effect'
+import { Effect, Predicate } from 'effect'
 import type { LoomsRuntime } from './runtime'
+import { createEventStreamResponse } from './sse'
 
 export { encodeLoomsEvent, type LiveStoreGlobalEncoded }
 
@@ -47,57 +48,12 @@ export async function handleLivestoreProxy(
       return Response.json({ batch: events.map(encodeLoomsEvent), head })
     }
 
-    const stream = new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder()
-        let closed = false
-        let heartbeat: ReturnType<typeof setInterval> | undefined
-        let fiber: Fiber.Fiber<void, unknown> | undefined
-        const close = () => {
-          if (closed) return
-          closed = true
-          if (heartbeat !== undefined) clearInterval(heartbeat)
-          if (fiber) Effect.runFork(Fiber.interrupt(fiber))
-          try {
-            controller.close()
-          } catch {
-            // already closed by the runtime
-          }
-        }
-        const write = (text: string) => {
-          if (closed) return
-          try {
-            controller.enqueue(encoder.encode(text))
-          } catch {
-            close()
-          }
-        }
-        fiber = Effect.runFork(
-          store.subscribe(storeId, { fromSeq: cursor + 1 }).pipe(
-            Stream.tap((event) =>
-              Effect.sync(() => {
-                write(
-                  `id: ${event.seq}\ndata: ${JSON.stringify({ batch: [encodeLoomsEvent(event)] })}\n\n`,
-                )
-              }),
-            ),
-            Stream.runDrain,
-          ),
-        )
-        heartbeat = setInterval(() => write(': keepalive\n\n'), 15_000)
-        if (req.signal.aborted) {
-          close()
-          return
-        }
-        req.signal.addEventListener('abort', close)
-      },
-    })
-    return new Response(stream, {
-      headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache, no-transform',
-        connection: 'keep-alive',
-      },
+    return createEventStreamResponse({
+      signal: req.signal,
+      request: req,
+      store,
+      runId: storeId,
+      fromSeq: cursor + 1,
     })
   }
 

@@ -1,4 +1,10 @@
-export { createLoomsClient, type LoomsClient, type LoomsClientOptions, type StartResult } from './client'
+export {
+  createLoomsClient,
+  type LoomsClient,
+  type LoomsClientOptions,
+  type StartResult,
+  type StreamHandle,
+} from './client'
 export {
   consumeSseStream,
   delay,

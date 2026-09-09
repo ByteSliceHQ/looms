@@ -3,11 +3,13 @@ import { Predicate } from 'effect'
 
 export interface SseFrame {
   id?: string
+  event?: string
   data: string
 }
 
 export function parseSseFrame(raw: string): SseFrame | undefined {
   let id: string | undefined
+  let event: string | undefined
   const dataLines: string[] = []
   for (const line of raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
     if (line.startsWith(':')) continue
@@ -15,12 +17,16 @@ export function parseSseFrame(raw: string): SseFrame | undefined {
       id = line.slice(3).trim()
       continue
     }
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+      continue
+    }
     if (line.startsWith('data:')) {
       dataLines.push(line.slice(5).trimStart())
     }
   }
   if (dataLines.length === 0) return undefined
-  return { id, data: dataLines.join('\n') }
+  return { id, event, data: dataLines.join('\n') }
 }
 
 export async function consumeSseStream(

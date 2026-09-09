@@ -232,4 +232,37 @@ describe('createLooms', () => {
         : '',
     ).toContain('boom handler down')
   })
+
+  test('streams text deltas in order before the assistant message', async () => {
+    const llm = {
+      async complete(args: { onTextDelta?: (delta: string) => void | Promise<void> }) {
+        await args.onTextDelta?.('hel')
+        await args.onTextDelta?.('lo')
+        return {
+          message: { role: 'assistant', content: 'hello' },
+          done: true,
+          output: { text: 'hello' },
+        }
+      },
+    }
+    const bot = defineAgent({
+      name: 'streamer',
+      instructions: 'stream',
+    })
+    const looms = createLooms({
+      definitions: [bot],
+      modules: [agent({ llm })],
+    })
+    const { runId } = await looms.start(bot, 'hi')
+    const events = await looms.getEvents(runId)
+    const deltas = events.filter((event) => event.type === 'agent.turn.text_delta')
+    expect(
+      deltas.map((event) => (Predicate.isObject(event.payload) ? event.payload.delta : '')),
+    ).toEqual(['hel', 'lo'])
+    const firstDelta = events.findIndex((event) => event.type === 'agent.turn.text_delta')
+    const message = events.findIndex((event) => event.type === 'agent.message')
+    expect(firstDelta).toBeGreaterThan(-1)
+    expect(message).toBeGreaterThan(firstDelta)
+    expect(deltas.every((event) => event.ephemeral === true)).toBe(true)
+  })
 })

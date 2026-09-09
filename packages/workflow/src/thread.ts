@@ -159,12 +159,10 @@ export const workflowThread = defineThread<WorkflowState>({
             }),
             wait({
               waitId,
-              on: { type: 'runtime.thread.completed', match: { threadId: childThreadId } },
-              tag: { nodeId },
-            }),
-            wait({
-              waitId: `${waitId}_fail`,
-              on: { type: 'runtime.thread.failed', match: { threadId: childThreadId } },
+              on: {
+                type: ['runtime.thread.completed', 'runtime.thread.failed'],
+                match: { threadId: childThreadId },
+              },
               tag: { nodeId },
             }),
           ],

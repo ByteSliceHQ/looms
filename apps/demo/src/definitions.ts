@@ -23,18 +23,137 @@ export const echo = defineAgent({
   }),
 })
 
-export const specialist = defineAgent({
-  name: 'specialist',
-  instructions: 'Specialize on a short task.',
-  input: z.object({ task: z.string() }),
-  runTurn: ({ input }) => ({
-    message: { role: 'assistant', content: `done:${input.task}` },
-    done: true,
-    output: { result: `done:${input.task}` },
+export const calculate = defineTool({
+  name: 'calculate',
+  description: 'Perform a mathematical or statistical calculation on numbers (sum, multiply, average, percentage)',
+  input: z.object({
+    operation: z.enum(['multiply', 'add', 'average', 'percentage']),
+    values: z.array(z.number()),
   }),
+  handler: (args) => {
+    const { operation, values } = args
+    if (values.length === 0) return { result: 0 }
+    switch (operation) {
+      case 'multiply':
+        return { result: values.reduce((acc, v) => acc * v, 1) }
+      case 'add':
+        return { result: values.reduce((acc, v) => acc + v, 0) }
+      case 'average':
+        return { result: values.reduce((acc, v) => acc + v, 0) / values.length }
+      case 'percentage': {
+        const first = values[0]
+        const second = values[1]
+        return {
+          result: first !== undefined && second !== undefined && second !== 0 ? (first / second) * 100 : 0,
+        }
+      }
+      default: {
+        const exhaustiveCheck: never = operation
+        return exhaustiveCheck
+      }
+    }
+  },
 })
 
-const SpecialistInputSchema = z.object({ task: z.string().optional() })
+export const queryKb = defineTool({
+  name: 'query_kb',
+  description: 'Look up knowledge base articles, benchmarks, and operational telemetry for a topic',
+  input: z.object({ topic: z.string().default('general') }),
+  handler: (args) => {
+    const topic = isJsonObject(args) && isJsonString(args.topic) ? args.topic : 'general'
+    return {
+      topic,
+      entries: [
+        { key: 'cache_hit_rate', value: '94.2%', status: 'nominal' },
+        { key: 'p99_latency_ms', value: '12.4ms', status: 'nominal' },
+        { key: 'active_replicas', value: '3', status: 'nominal' },
+      ],
+      summary: `Found 3 verified telemetry records for topic: "${topic}".`,
+    }
+  },
+})
+
+export const pipeline = defineWorkflow({
+  name: 'pipeline',
+  input: z.object({ n: z.number().default(21) }),
+  nodes: [
+    {
+      id: 'double',
+      run: (ctx) => ctx.input.n * 2,
+    },
+    {
+      id: 'spawn',
+      deps: ['double'],
+      run: (ctx) =>
+        ctx.spawn(echo, {
+          text: `n=${JSON.stringify(ctx.results.double ?? null)}`,
+        }),
+    },
+    {
+      id: 'format',
+      deps: ['spawn'],
+      run: (ctx) => ({
+        doubled: ctx.results.double ?? null,
+        child: ctx.results.spawn ?? null,
+      }),
+    },
+  ],
+  output: ({ results }) => results,
+})
+
+export const researcher = defineAgent({
+  name: 'researcher',
+  instructions: [
+    'You are a specialized researcher agent.',
+    'Your goal is to gather facts, search telemetry knowledge bases, or trigger the data pipeline workflow.',
+    'You have tools:',
+    '- `query_kb`: look up domain knowledge, telemetry, and operational benchmark data for a topic.',
+    '- `pipeline`: workflow tool that runs data computation and spawns echo subagents.',
+    'Synthesize your findings and return a concise, factual summary.',
+  ].join(' '),
+  input: z.object({
+    topic: z.string().describe('The research topic, telemetry metric, or domain to investigate').default('general'),
+  }),
+  tools: [queryKb, pipeline],
+})
+
+const ResearcherInputSchema = z.object({
+  topic: z.string().describe('The research topic or telemetry query to investigate'),
+})
+
+export const SpecialistInputSchema = z.object({
+  task: z.string().describe('The specific topic, question, or research task to investigate and analyze'),
+})
+
+export const specialist = defineAgent({
+  name: 'specialist',
+  instructions: [
+    'You are the Specialist agent.',
+    'You handle in-depth domain problems by coordinating sub-specialists, analytical calculations, and workflows.',
+    'You have the following tools available:',
+    '- `researcher`: delegate deep investigation, telemetry lookups, or pipeline tasks to the researcher sub-agent.',
+    '- `pipeline`: run the data calculation and verification workflow directly.',
+    '- `calculate`: compute numerical expressions or metrics.',
+    'Analyze the task, invoke your tools to gather facts or compute results, and provide a clear final summary.',
+  ].join(' '),
+  input: z.object({
+    task: z.string().describe('The specific topic, question, or research task to investigate and analyze').default('general'),
+  }),
+  tools: [
+    asAgentTool({
+      name: 'researcher',
+      description: 'Delegate deep investigation and fact gathering to the researcher sub-agent',
+      agent: researcher,
+      input: ResearcherInputSchema,
+      mapInput: (input) => {
+        const parsed = ResearcherInputSchema.safeParse(input)
+        return { topic: parsed.success && parsed.data.topic ? parsed.data.topic : 'general' }
+      },
+    }),
+    pipeline,
+    calculate,
+  ],
+})
 
 export const orchestrator = defineAgent({
   name: 'orchestrator',
@@ -45,6 +164,7 @@ export const orchestrator = defineAgent({
       name: 'specialist',
       description: 'Run the specialist child agent',
       agent: specialist,
+      input: SpecialistInputSchema,
       mapInput: (input) => {
         const parsed = SpecialistInputSchema.safeParse(input)
         return { task: parsed.success && parsed.data.task ? parsed.data.task : 'default' }
@@ -75,10 +195,16 @@ export const orchestrator = defineAgent({
     }
     const strParsed = z.string().safeParse(output)
     const content = strParsed.success ? strParsed.data : JSON.stringify(output)
+    const resultText =
+      isJsonObject(output) && isJsonString(output.result)
+        ? output.result
+        : isJsonObject(output) && isJsonString(output.text)
+          ? output.text
+          : content
     return {
       message: { role: 'assistant', content },
       done: true,
-      output,
+      output: { result: resultText, details: output },
     }
   },
 })
@@ -134,7 +260,8 @@ function isRejected(result: JsonValue | null): boolean {
 
 export const checkout = defineWorkflow({
   name: 'checkout',
-  description: 'Approval gate above threshold, then a payments charge',
+  description:
+    'Run an approval gate (above $100) then charge. Blocks until the human decides in the Approvals panel; do not ask the user to approve in chat — the gate handles that. When the tool returns, report the gate outcome and charge result.',
   input: z.object({
     amount: z.number().default(150),
     currency: z.string().default('USD'),
@@ -159,11 +286,7 @@ export const checkout = defineWorkflow({
           }),
           wait({
             waitId: createWaitId(),
-            on: { type: 'payments.charge.authorized' },
-          }),
-          wait({
-            waitId: createWaitId(),
-            on: { type: 'payments.charge.declined' },
+            on: { type: ['payments.charge.authorized', 'payments.charge.declined'] },
           }),
         ])
       },
@@ -178,35 +301,15 @@ export const checkout = defineWorkflow({
       }),
     },
   ],
-  output: ({ results }) => results,
-})
-
-export const pipeline = defineWorkflow({
-  name: 'pipeline',
-  input: z.object({ n: z.number().default(21) }),
-  nodes: [
-    {
-      id: 'double',
-      run: (ctx) => ctx.input.n * 2,
-    },
-    {
-      id: 'spawn',
-      deps: ['double'],
-      run: (ctx) =>
-        ctx.spawn(echo, {
-          text: `n=${JSON.stringify(ctx.results.double ?? null)}`,
-        }),
-    },
-    {
-      id: 'format',
-      deps: ['spawn'],
-      run: (ctx) => ({
-        doubled: ctx.results.double ?? null,
-        child: ctx.results.spawn ?? null,
-      }),
-    },
-  ],
-  output: ({ results }) => results,
+  output: ({ results }) => ({
+    status: isRejected(results.gate ?? null) ? 'rejected' : 'approved',
+    summary: isRejected(results.gate ?? null)
+      ? 'Checkout was rejected by human approval.'
+      : 'Checkout was approved and charge was authorized.',
+    gate: results.gate ?? null,
+    charge: results.charge ?? null,
+    notify: results.notify ?? null,
+  }),
 })
 
 const greet = defineTool({
@@ -222,6 +325,9 @@ const greet = defineTool({
 const askApproval = asEffectsTool({
   name: 'ask_approval',
   description: 'Ask a human to approve or reject a request',
+  input: z.object({
+    title: z.string().describe('The question or title for the approval request'),
+  }),
   effects: (input) => {
     const title = isJsonObject(input) && isJsonString(input.title) ? input.title : 'Approve this request?'
     return gate({ title })
@@ -235,11 +341,40 @@ export const assistant = defineAgent({
   input: z.string(),
   instructions: [
     'You are the Looms demo assistant.',
-    'You can greet people, delegate a short task to the specialist agent,',
+    'You can greet people, delegate complex tasks to the specialist agent,',
     'run checkout (approval + payments), or ask for a standalone approval.',
+    'When a user asks to investigate, research, analyze, or run specialist tasks, call the specialist tool.',
+    'The checkout tool already includes its own human approval gate and payment charge.',
+    'After a tool returns, report the actual outcome from the tool result.',
+    'Never ask the user to approve or reject again after checkout (or ask_approval) has already returned a decision.',
     'Use tools when they help; otherwise answer directly.',
   ].join(' '),
-  tools: [greet, specialist, checkout, askApproval],
+  tools: [
+    greet,
+    asAgentTool({
+      name: 'specialist',
+      description: 'Delegate technical tasks, deep investigations, or calculations to the specialist agent',
+      agent: specialist,
+      input: SpecialistInputSchema,
+      mapInput: (input) => {
+        const parsed = SpecialistInputSchema.safeParse(input)
+        if (parsed.success && parsed.data.task) return { task: parsed.data.task }
+        if (isJsonString(input)) return { task: input }
+        return { task: 'analyze' }
+      },
+    }),
+    checkout,
+    askApproval,
+  ],
 })
 
-export const definitions = [echo, greeter, specialist, orchestrator, checkout, pipeline, assistant] as const
+export const definitions = [
+  echo,
+  greeter,
+  specialist,
+  researcher,
+  orchestrator,
+  checkout,
+  pipeline,
+  assistant,
+] as const

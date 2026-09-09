@@ -1,11 +1,5 @@
 import type { ReactNode } from 'react'
-import {
-  Outlet,
-  createRootRoute,
-  HeadContent,
-  Scripts,
-  Link,
-} from '@tanstack/react-router'
+import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { LoomsLiveStoreProvider } from '@looms/livestore/react'
 import appCss from '../styles.css?url'
 
@@ -16,13 +10,7 @@ export const Route = createRootRoute({
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Looms Demo' },
     ],
-    links: [
-      { rel: 'stylesheet', href: appCss },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap',
-      },
-    ],
+    links: [{ rel: 'stylesheet', href: appCss }],
   }),
   component: RootComponent,
 })
@@ -31,19 +19,7 @@ function RootComponent() {
   return (
     <RootDocument>
       <LoomsLiveStoreProvider>
-        <main>
-          <h1>
-            <Link to="/" style={{ color: 'inherit', textDecoration: 'none' }}>
-              Looms Demo
-            </Link>
-          </h1>
-          <p className="sub">
-            Event-sourced thread kernel with pluggable modules. Start a run, then inspect the
-            debugger or chat.{' '}
-            <Link to="/chat">Chat</Link>
-          </p>
-          <Outlet />
-        </main>
+        <Outlet />
       </LoomsLiveStoreProvider>
     </RootDocument>
   )
@@ -51,11 +27,11 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body className="h-screen overflow-hidden">
         {children}
         <Scripts />
       </body>

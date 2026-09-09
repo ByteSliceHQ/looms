@@ -194,14 +194,6 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       if (!waitId) return state
       const existingWait = state.waits[waitId]
       let next = removeWait(state, waitId)
-      if (existingWait?.tag !== undefined) {
-        const tagJson = JSON.stringify(existingWait.tag)
-        for (const [id, record] of Object.entries(next.waits)) {
-          if (record.threadId === existingWait.threadId && JSON.stringify(record.tag) === tagJson) {
-            next = removeWait(next, id)
-          }
-        }
-      }
       const threadId = existingWait?.threadId ?? event.threadId
       if (!threadId) return next
       const existing = next.threads[threadId]

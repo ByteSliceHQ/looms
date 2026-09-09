@@ -3,6 +3,7 @@ import {
   buildSnapshotEvent,
   composeModules,
   createEvent,
+  createKeyedSerializer,
   createThreadId,
   createRunId,
   EventStoreTag,
@@ -229,6 +230,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const services = moduleServices(options.modules, registeredDefinitions)
   const waking = new Set<string>()
   const snapshotEvery = options.snapshotEvery
+  const liveAppends = createKeyedSerializer()
 
   const runtime: LoomsRuntime<TModules> = {
     modules: options.modules,
@@ -402,23 +404,26 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                       )
                       continue
                     }
+                    const appendLive = (input: EventInput) => {
+                      const targetThreadId = input.threadId ?? item.threadId
+                      const ephemeral = createEvent(runId, {
+                        ...input,
+                        effectId: item.effectId,
+                        causationId: item.causingEventId,
+                        threadId: targetThreadId,
+                        ephemeral: input.ephemeral ?? true,
+                        origin: input.origin ?? { type: 'thread', threadId: item.threadId },
+                      })
+                      return liveAppends.run(runId, () =>
+                        Effect.runPromise(store.append(runId, stripSeq([ephemeral]))).then(() => undefined),
+                      )
+                    }
                     const outcomes = yield* dispatchEffect(registry, services, definitions, item.effect, {
                       effectId: item.effectId,
                       runId,
                       threadId: item.threadId,
                       causingEventId: item.causingEventId,
-                      emit: (input) => {
-                        const targetThreadId = input.threadId ?? item.threadId
-                        const ephemeral = createEvent(runId, {
-                          ...input,
-                          effectId: item.effectId,
-                          causationId: item.causingEventId,
-                          threadId: targetThreadId,
-                          ephemeral: true,
-                          origin: input.origin ?? { type: 'thread', threadId: item.threadId },
-                        })
-                        void Effect.runPromise(store.append(runId, stripSeq([ephemeral])))
-                      },
+                      emit: appendLive,
                     })
                     const before = groupProduced.length
                     if (outcomes.length === 0) {
@@ -463,6 +468,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             const produced = groupResults.flat()
 
             if (produced.length === 0) break
+            yield* Effect.promise(() => liveAppends.drain(runId))
             const beforeFold = state
             const intermediateState = foldRun(produced, registry, { runId, initial: beforeFold })
             const synthesized = synthesizedThreadFailed(beforeFold, intermediateState, produced)
@@ -508,6 +514,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           return state
         } finally {
           waking.delete(runId)
+          liveAppends.clear(runId)
         }
       }),
   }

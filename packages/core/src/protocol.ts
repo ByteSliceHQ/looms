@@ -4,7 +4,7 @@ import { JsonValueSchema } from './envelope'
 import type { WaitCondition } from './effects'
 
 const WaitOnEventSchema = Schema.Struct({
-  type: Schema.String,
+  type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
   match: Schema.optional(JsonValueSchema),
 })
 

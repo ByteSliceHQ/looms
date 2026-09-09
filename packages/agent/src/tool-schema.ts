@@ -58,7 +58,7 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
     case 'thread':
       return tool.input
     case 'effects':
-      return undefined
+      return tool.input
     default: {
       const exhaustiveCheck: never = tool
       return exhaustiveCheck

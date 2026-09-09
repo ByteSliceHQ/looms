@@ -64,6 +64,7 @@ export interface TreeBuildState {
   runId: string
   records: { [threadId: string]: ThreadRecord }
   rootThreadId: string | null
+  /** Wait ids still open for a thread (mirrors fold `state.waits`). */
   activeWaits?: { [threadId: string]: string[] }
 }
 
@@ -111,6 +112,7 @@ export const threadTree = defineProjection<TreeBuildState>({
         }
         const rootThreadId = state.rootThreadId ?? threadId
         return {
+          ...state,
           runId: event.runId,
           rootThreadId,
           records: { ...state.records, [threadId]: record },
@@ -170,6 +172,7 @@ export const threadTree = defineProjection<TreeBuildState>({
         if (!threadId) return { ...state, runId: event.runId }
         const existing = state.records[threadId]
         if (!existing || isTerminalStatus(existing.status)) return { ...state, runId: event.runId }
+
         const currentWaits = waitId
           ? (state.activeWaits?.[threadId] ?? []).filter((id) => id !== waitId)
           : []

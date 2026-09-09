@@ -17,3 +17,4 @@ export {
   s2,
   S2EventStoreLive,
 } from './store'
+export { createKeyedSerializer, type KeyedSerializer } from './serialize'

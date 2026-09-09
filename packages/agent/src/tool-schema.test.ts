@@ -1,12 +1,18 @@
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
-import { normalizeTools } from './definitions'
+import { asAgentTool, asEffectsTool, asWorkflowTool, normalizeTools } from './definitions'
 import { toolJsonSchema, toolSpecs } from './tool-schema'
 
 const CheckoutInput = Schema.toStandardSchemaV1(
   Schema.Struct({
     amount: Schema.Number,
     currency: Schema.String,
+  }),
+)
+
+const TaskInput = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    task: Schema.String,
   }),
 )
 
@@ -25,6 +31,62 @@ describe('tool schema', () => {
     expect(tools[0].input).toBe(CheckoutInput)
     expect(tools[0].childKind).toBe('workflow')
     expect(tools[0].childName).toBe('checkout')
+  })
+
+  test('asAgentTool inherits input from agent definition if not overridden', () => {
+    const tool = asAgentTool({
+      agent: {
+        kind: 'agent',
+        name: 'specialist',
+        instructions: 'Specialist agent',
+        input: TaskInput,
+      },
+    })
+    expect(tool.input).toBe(TaskInput)
+    const schema = toolJsonSchema(tool)
+    expect(JSON.stringify(schema)).toContain('task')
+  })
+
+  test('asAgentTool respects explicit input override', () => {
+    const OverrideInput = Schema.toStandardSchemaV1(Schema.Struct({ topic: Schema.String }))
+    const tool = asAgentTool({
+      agent: {
+        kind: 'agent',
+        name: 'specialist',
+        instructions: 'Specialist agent',
+        input: TaskInput,
+      },
+      input: OverrideInput,
+    })
+    expect(tool.input).toBe(OverrideInput)
+    const schema = toolJsonSchema(tool)
+    expect(JSON.stringify(schema)).toContain('topic')
+  })
+
+  test('asWorkflowTool inherits input from workflow definition', () => {
+    const tool = asWorkflowTool({
+      workflow: {
+        kind: 'workflow',
+        name: 'checkout',
+        input: CheckoutInput,
+      },
+    })
+    expect(tool.input).toBe(CheckoutInput)
+    const schema = toolJsonSchema(tool)
+    expect(JSON.stringify(schema)).toContain('amount')
+  })
+
+  test('asEffectsTool exposes input schema in toolSpecs', () => {
+    const ApprovalInput = Schema.toStandardSchemaV1(Schema.Struct({ title: Schema.String }))
+    const tool = asEffectsTool({
+      name: 'ask_approval',
+      description: 'Ask for approval',
+      input: ApprovalInput,
+      effects: () => [],
+    })
+    const specs = toolSpecs([tool])
+    expect(specs[0]?.name).toBe('ask_approval')
+    expect(JSON.stringify(specs[0]?.inputJsonSchema)).toContain('title')
   })
 
   test('toolSpecs include properties from thread-tool input schemas', () => {

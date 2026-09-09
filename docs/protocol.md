@@ -29,7 +29,7 @@ Matching is by event `type` plus an optional payload subset (`match: { approvalI
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/health` | Liveness |
-| `POST` | `/runs` | Start `{ kind, definitionName, input }` |
+| `POST` | `/runs` | Start `{ kind, definitionName, input }` (`Accept: text/event-stream` or `?stream=true` streams the log live) |
 | `GET` | `/runs` | List run ids |
 | `GET` | `/runs/:id` | Current run state |
 | `GET` | `/runs/:id/events` | Event log (`?fromSeq=` for catch-up) |
@@ -38,6 +38,7 @@ Matching is by event `type` plus an optional payload subset (`match: { approvalI
 | `POST` | `/runs/:id/wake` | Resume processing |
 | `GET` | `/runs/:id/replay?seq=` | State before / after an event |
 | `GET` | `/runs/:id/projections/:name` | Named read model |
+| `GET` | `/api/livestore` | LiveStore pull (`?storeId=&cursor=`) or SSE (`live=true` / `Accept: text/event-stream`) |
 
 `looms.fetch(request)` handles these paths (and `/api/livestore` for LiveStore). It returns `null` for everything else so you can mount Looms next to your own UI.
 
