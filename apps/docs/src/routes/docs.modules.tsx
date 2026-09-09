@@ -179,6 +179,41 @@ export function payments() {
         charge as a tool. See <Link to="/docs/examples">Examples</Link> for
         definitions and a React ledger.
       </p>
+
+      <h2>Module Composition Principles</h2>
+      <p>
+        To ensure packages from different teams or authors interoperate reliably,
+        modules follow explicit architectural rules:
+      </p>
+      <ul>
+        <li>
+          <strong>Stable namespaces:</strong> Every module defines a unique namespace
+          (e.g. <code>agent</code>, <code>workflow</code>, <code>payments</code>).
+          Event and effect type names are scoped to prevent collision.
+        </li>
+        <li>
+          <strong>Open-world event catalogs:</strong> Applications do not maintain a
+          gigantic central event union. Installing modules composes their typed event
+          catalogs automatically.
+        </li>
+        <li>
+          <strong>Universal thread kinds:</strong> The runtime kernel knows nothing
+          about agents or DAGs. Kinds are open-ended; <code>agent</code> and{' '}
+          <code>workflow</code> are simply kinds contributed by modules.
+        </li>
+        <li>
+          <strong>Observational freedom:</strong> While behavioral reducers own their
+          thread&apos;s state, projection reducers may freely observe events across
+          multiple modules (for example, a financial ledger observing both payment
+          events and LLM token usage).
+        </li>
+        <li>
+          <strong>Idempotent effect execution:</strong> Effect handlers receive{' '}
+          <code>ctx.effectId</code>. Handlers must use this ID as an idempotency key
+          when interacting with external APIs (like Stripe or GitHub) to guarantee
+          safe retries after network hiccups.
+        </li>
+      </ul>
     </>
   )
 }

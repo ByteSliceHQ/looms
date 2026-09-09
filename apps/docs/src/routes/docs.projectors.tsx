@@ -7,29 +7,283 @@ export const Route = createFileRoute('/docs/projectors')({
 function Projectors() {
   return (
     <>
-      <h1>Projectors</h1>
+      <h1>Projections &amp; Projectors</h1>
       <p>
-        A run&apos;s event log is the source of truth. A projector watches that log
-        and writes a query surface you can rebuild: lists, search, webhooks,
-        warehouses.
-      </p>
-      <p>Use one when you need to ask questions a single run log cannot answer:</p>
-      <ul>
-        <li>list runs or threads by status, kind, or definition</li>
-        <li>show pending approvals across the whole host</li>
-        <li>fan out to a search index or Slack</li>
-        <li>drive an admin UI that is not subscribed to one run</li>
-      </ul>
-      <p>
-        For a single-run UI — chat, debugger, ledger — fold the log in the browser
-        with <code>useProjection</code>. See <Link to="/docs/examples">Examples</Link>.
+        In an event-sourced architecture, the canonical source of truth is the append-only
+        event log. State is never mutated in place—it is <strong>projected</strong>.
       </p>
 
-      <h2>Attach them to the host</h2>
+      <div className="flow">
+        <span>Run Stream (Truth)</span>
+        <b>&rarr;</b>
+        <span>Pure Fold</span>
+        <b>&rarr;</b>
+        <span>Projections (UI &amp; State)</span>
+        <b>+</b>
+        <span>Projectors (DB &amp; Indexes)</span>
+      </div>
+
+      <h2>Two Different Reducer Contracts</h2>
       <p>
-        Wrap the event store with <code>withProjectors</code>. Events are delivered
-        in log order after each append. A failing projector does not roll back the
-        log; override that with <code>onError</code> if you need to alert.
+        Looms cleanly separates behavioral execution from observational views:
+      </p>
+
+      <div className="compare">
+        <div className="compare-card">
+          <span className="compare-tag intent">Behavioral Reducer</span>
+          <h3>Changes Runtime Behavior</h3>
+          <p>
+            <code>(State, Event) &rarr; &#123; state, effects &#125;</code>
+          </p>
+          <p>
+            Owned by Thread kinds (agents, workflows). May request Effects to interact
+            with the outside world or spawn children.
+          </p>
+        </div>
+
+        <div className="compare-card">
+          <span className="compare-tag fact">Projection Reducer</span>
+          <h3>Derives an Observational View</h3>
+          <p>
+            <code>(State, Event) &rarr; State</code>
+          </p>
+          <p>
+            Pure observation. Folds events into a read model (chat history, financial ledger,
+            approval queue). Never causes side-effects.
+          </p>
+        </div>
+      </div>
+
+      <div className="callout">
+        <strong>Projections are Portable; LiveStore is an Adapter:</strong> A projection
+        definition is pure TypeScript. The same projection can be folded in-memory on the
+        host, rendered reactively in the browser via LiveStore, or materialized into SQLite,
+        Postgres, or ClickHouse for analytics.
+      </div>
+
+      <h2>Building Custom UIs Using Projections</h2>
+      <p>
+        In traditional full-stack apps, building real-time dashboards or agent interfaces
+        requires writing ad-hoc REST endpoints, custom WebSocket schemas, and complex cache
+        invalidation logic—leading to inevitable state drift.
+      </p>
+      <p>
+        With Looms projections, the UI subscribes directly to the Run event stream. When
+        events land, client-side projections re-fold instantly. There are no bespoke sync
+        APIs to maintain.
+      </p>
+
+      <h3>Step 1: Define your domain projection</h3>
+      <p>
+        Define a pure read model with <code>defineProjection</code> from{' '}
+        <code>@looms/core</code>. Export it so both server and client can use it.
+      </p>
+      <pre>
+        <code>{`import { defineProjection, type EventEnvelope } from '@looms/core'
+
+export interface OrderState {
+  orderId: string | null
+  items: string[]
+  total: number
+  status: 'draft' | 'awaiting_approval' | 'processing' | 'completed' | 'failed'
+  approvalId: string | null
+  paymentId: string | null
+  history: { step: string; timestamp: number }[]
+}
+
+export const orderTracker = defineProjection<OrderState>({
+  name: 'orderTracker',
+  initialState: {
+    orderId: null,
+    items: [],
+    total: 0,
+    status: 'draft',
+    approvalId: null,
+    paymentId: null,
+    history: [],
+  },
+  reduce(state, event: EventEnvelope) {
+    switch (event.type) {
+      case 'order.created':
+        return {
+          ...state,
+          orderId: event.payload.orderId,
+          items: event.payload.items,
+          total: event.payload.total,
+          status: 'draft',
+          history: [...state.history, { step: 'Order Created', timestamp: event.ts }],
+        }
+      case 'approval.requested':
+        return {
+          ...state,
+          status: 'awaiting_approval',
+          approvalId: event.payload.approvalId,
+          history: [...state.history, { step: 'Approval Requested', timestamp: event.ts }],
+        }
+      case 'approval.decided':
+        return {
+          ...state,
+          status: event.payload.decision === 'approve' ? 'processing' : 'failed',
+          history: [...state.history, { step: \`Approval \${event.payload.decision}d\`, timestamp: event.ts }],
+        }
+      case 'payments.charge.authorized':
+        return {
+          ...state,
+          status: 'completed',
+          paymentId: event.payload.chargeId,
+          history: [...state.history, { step: 'Payment Authorized', timestamp: event.ts }],
+        }
+      default:
+        return state
+    }
+  },
+})`}</code>
+      </pre>
+
+      <h3>Step 2: Provide the host connection</h3>
+      <p>
+        Wrap your React tree or page with <code>LoomsLiveStoreProvider</code> from{' '}
+        <code>@looms/livestore/react</code>. The default endpoint points to{' '}
+        <code>/api/livestore</code> on your Looms host:
+      </p>
+      <pre>
+        <code>{`import { LoomsLiveStoreProvider } from '@looms/livestore/react'
+import { OrderDashboard } from './order-dashboard'
+
+export function App({ runId }: { runId: string }) {
+  return (
+    <LoomsLiveStoreProvider endpoint="http://localhost:8787/api/livestore">
+      <OrderDashboard runId={runId} />
+    </LoomsLiveStoreProvider>
+  )
+}`}</code>
+      </pre>
+
+      <h3>Step 3: Subscribe reactively with <code>useProjection</code></h3>
+      <p>
+        In your component, call <code>useRunStore(runId)</code> to connect to the
+        run&apos;s event stream, then pass it to <code>useProjection</code>:
+      </p>
+      <pre>
+        <code>{`import { useRunStore, useProjection } from '@looms/livestore/react'
+import { orderTracker } from './projections'
+
+export function OrderDashboard({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const order = useProjection(store, orderTracker)
+
+  return (
+    <div className="order-card">
+      <h2>Order {order.orderId ?? 'Initiating...'}</h2>
+      <div className="badge">{order.status}</div>
+      <p>Total: \${order.total}</p>
+
+      <h3>Timeline</h3>
+      <ul>
+        {order.history.map((h, i) => (
+          <li key={i}>{h.step} &mdash; {new Date(h.timestamp).toLocaleTimeString()}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}`}</code>
+      </pre>
+      <p>
+        Under the hood, <code>useProjection</code> leverages React 19&apos;s{' '}
+        <code>useSyncExternalStore</code>. When new events append to the run log on the
+        server, the SSE connection receives them and re-evaluates the projection.
+        Updates are synchronous, reactive, and completely flicker-free.
+      </p>
+
+      <h3>Step 4: Dispatch user interactions via signals</h3>
+      <p>
+        User actions do not mutate state directly; they post events to the log using{' '}
+        <code>store.commit</code> or <code>client.signal</code>:
+      </p>
+      <pre>
+        <code>{`import { decision } from '@looms/approval'
+import { userMessage } from '@looms/agent'
+
+export function OrderControls({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const order = useProjection(store, orderTracker)
+
+  const handleApprove = () => {
+    if (order.approvalId) {
+      store.commit(decision(order.approvalId, 'approve'))
+    }
+  }
+
+  const handleReject = () => {
+    if (order.approvalId) {
+      store.commit(decision(order.approvalId, 'reject'))
+    }
+  }
+
+  if (order.status !== 'awaiting_approval') return null
+
+  return (
+    <div className="actions">
+      <p>Human approval required for orders over \$100</p>
+      <button onClick={handleApprove}>Approve Order</button>
+      <button onClick={handleReject}>Reject Order</button>
+    </div>
+  )
+}`}</code>
+      </pre>
+      <p>
+        When <code>store.commit</code> runs, the signal lands on the server, wakes
+        the parked thread, and streams back to all subscribers, updating all projections
+        automatically.
+      </p>
+
+      <h3>Step 5: Time-travel debugging in the client</h3>
+      <p>
+        Because projections are pure folds over the event array, rendering historical UI
+        states is effortless. You can fold over any prefix of the log:
+      </p>
+      <pre>
+        <code>{`import { useState } from 'react'
+import { foldProjection } from '@looms/core'
+import { useRunStore } from '@looms/livestore/react'
+import { orderTracker } from './projections'
+
+export function TimeTravelSlider({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const events = store.events()
+  const [step, setStep] = useState(events.length)
+
+  // Reconstruct state at event #step with zero backend round-trips:
+  const pastState = foldProjection(orderTracker, events.slice(0, step))
+
+  return (
+    <div>
+      <input
+        type="range"
+        min={0}
+        max={events.length}
+        value={step}
+        onChange={(e) => setStep(Number(e.target.value))}
+      />
+      <span>Viewing step {step} of {events.length}</span>
+      <pre>{JSON.stringify(pastState, null, 2)}</pre>
+    </div>
+  )
+}`}</code>
+      </pre>
+
+      <h2>Server-Side Projectors (Cross-Run Storage)</h2>
+      <p>
+        While client-side projections fold the log of a <em>single run</em>,{' '}
+        <strong>projectors</strong> run on the host to watch the entire event store across{' '}
+        <em>all runs</em>. Use them to maintain queryable tables, full-text search, or fan
+        out to webhooks and Slack.
+      </p>
+
+      <h3>Attach projectors to the host</h3>
+      <p>
+        Wrap your event store with <code>withProjectors</code> from{' '}
+        <code>@looms/projectors</code>. Events are delivered in log order after each commit.
       </p>
       <pre>
         <code>{`import { withProjectors } from '@looms/projectors'
@@ -47,10 +301,10 @@ const looms = createLooms({
 })`}</code>
       </pre>
 
-      <h2>Built-in indexes</h2>
+      <h3>Built-in index helpers</h3>
       <p>
-        Memory, SQLite, and Postgres helpers keep a run index and an approval index
-        up to date as events append. Query them from your admin routes.
+        Looms includes built-in projectors for Memory, SQLite, and Postgres to keep a
+        searchable run index and an approval index up to date:
       </p>
       <table>
         <thead>
@@ -68,7 +322,7 @@ const looms = createLooms({
             <td>
               <code>@looms/projectors</code>
             </td>
-            <td>Tests and single-process hosts</td>
+            <td>Unit tests and single-process development</td>
           </tr>
           <tr>
             <td>
@@ -78,8 +332,7 @@ const looms = createLooms({
               <code>@looms/projectors/sqlite</code>
             </td>
             <td>
-              File path or an existing <code>db</code>. Defaults to{' '}
-              <code>:memory:</code>
+              Local file path or existing <code>db</code>. Defaults to <code>:memory:</code>
             </td>
           </tr>
           <tr>
@@ -90,26 +343,25 @@ const looms = createLooms({
               <code>@looms/projectors/postgres</code>
             </td>
             <td>
-              Pass <code>{'{ url }'}</code> or an existing postgres.js{' '}
-              <code>{'{ sql }'}</code>
+              Production servers. Pass <code>{'{ url }'}</code> or an existing postgres.js client
             </td>
           </tr>
         </tbody>
       </table>
       <pre>
-        <code>{`import { memory } from '@looms/projectors'
-import { postgres } from '@looms/projectors/postgres'
-import { sqlite } from '@looms/projectors/sqlite'
+        <code>{`import { sqlite } from '@looms/projectors/sqlite'
 
 const index = sqlite({ path: './looms.db' })
+
+// Query cross-run indexes from your admin routes:
 const run = await index.getActor(runId)
-const pending = await index.listReviews(runId)`}</code>
+const pendingReviews = await index.listReviews(runId)`}</code>
       </pre>
 
-      <h2>Webhook or search</h2>
+      <h3>Custom webhook and fan-out projectors</h3>
       <p>
-        Any object with <code>project(events)</code> works. Keep it idempotent — a
-        batch can be delivered more than once.
+        Any object implementing <code>project(events)</code> satisfies the{' '}
+        <code>Projector</code> interface:
       </p>
       <pre>
         <code>{`import type { Projector } from '@looms/projectors'
@@ -135,8 +387,9 @@ export function approvalsWebhook(url: string): Projector {
 }`}</code>
       </pre>
       <p>
-        Optional <code>init</code> opens connections or creates tables.{' '}
-        <code>dispose</code> closes them.
+        Next: see complete working examples of custom projections in{' '}
+        <Link to="/docs/examples">Examples</Link>, or browse available packages in{' '}
+        <Link to="/docs/modules">Modules</Link>.
       </p>
     </>
   )

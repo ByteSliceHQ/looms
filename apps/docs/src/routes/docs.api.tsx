@@ -318,6 +318,16 @@ const looms = createLooms({
               Named projection (<code>conversation</code>, <code>ledger</code>, …)
             </td>
           </tr>
+          <tr>
+            <td>GET</td>
+            <td>
+              <code>/api/livestore</code>
+            </td>
+            <td>
+              LiveStore pull (<code>?storeId=&cursor=</code>) or SSE (
+              <code>live=true</code> / <code>Accept: text/event-stream</code>)
+            </td>
+          </tr>
         </tbody>
       </table>
       <p>
