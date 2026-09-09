@@ -15,6 +15,9 @@ import type { ToolCall } from './types'
 
 const CallLlmInput = Schema.Struct({
   turn: Schema.Number,
+  definitionName: Schema.optional(Schema.String),
+  messages: Schema.optional(Schema.Array(Schema.MutableJson)),
+  input: Schema.optional(Schema.MutableJson),
 })
 
 const ToolCallSchema = Schema.Struct({
@@ -25,6 +28,7 @@ const ToolCallSchema = Schema.Struct({
 
 const ExecuteToolInput = Schema.Struct({
   turn: Schema.Number,
+  definitionName: Schema.optional(Schema.String),
   toolCall: ToolCallSchema,
 })
 
@@ -36,19 +40,32 @@ export const callLlmEffect = defineEffect({
   type: 'agent.callLLM',
   input: CallLlmInput,
   execute: (input, ctx) =>
-    runCallLlm(input.turn, ctx.runId, ctx.threadId, (event) => ctx.emit(event)),
+    runCallLlm({
+      turn: input.turn,
+      definitionName: input.definitionName,
+      // SAFETY: message arrays in callLLM input are serialized Message objects.
+      messages: (input.messages as import('./types').Message[]) ?? [],
+      input: input.input ?? null,
+      runId: ctx.runId,
+      threadId: ctx.threadId,
+      emit: (event) => ctx.emit(event),
+    }),
 })
 
-function runCallLlm(
-  turn: number,
-  _runId: string,
-  threadId: string,
-  emit: (event: EventInput) => void,
-): Effect.Effect<ReadonlyArray<EventInput>, Error, LlmTag | AgentDefinitionsTag> {
+function runCallLlm(args: {
+  turn: number
+  definitionName?: string
+  messages: import('./types').Message[]
+  input: JsonValue
+  runId: string
+  threadId: string
+  emit: (event: EventInput) => void
+}): Effect.Effect<ReadonlyArray<EventInput>, Error, LlmTag | AgentDefinitionsTag> {
   return Effect.gen(function* () {
+    const { turn, threadId, emit, definitionName, messages, input } = args
     const agents = yield* AgentDefinitionsTag
     const llm = yield* LlmTag
-    const definition = agents.get(currentDefinitionName(threadId))
+    const definition = definitionName ? agents.get(definitionName) : undefined
     if (!definition) {
       return [
         {
@@ -80,8 +97,8 @@ function runCallLlm(
     const turnCtx = {
       threadId,
       turn,
-      messages: currentLines(threadId),
-      input: currentInput(threadId),
+      messages,
+      input,
       tools,
       instructions: definition.instructions,
     }
@@ -167,7 +184,7 @@ export const executeToolEffect = defineEffect({
     Effect.gen(function* () {
       const threadId = ctx.threadId
       const agents = yield* AgentDefinitionsTag
-      const definition = agents.get(currentDefinitionName(threadId))
+      const definition = input.definitionName ? agents.get(input.definitionName) : undefined
       if (!definition) {
         return [
           {
@@ -305,34 +322,12 @@ export const executeToolEffect = defineEffect({
           ]
         }
         default: {
-          const _exhaustive: never = tool
-          return _exhaustive
+          const exhaustiveCheck: never = tool
+          return exhaustiveCheck
         }
       }
     }),
 })
-
-/** Filled by the runtime before dispatching agent effects. */
-const threadBindings = new Map<string, { definitionName: string; lines: import('./types').Message[]; input: JsonValue }>()
-
-export function bindAgentThread(
-  threadId: string,
-  binding: { definitionName: string; lines: import('./types').Message[]; input: JsonValue },
-): void {
-  threadBindings.set(threadId, binding)
-}
-
-function currentDefinitionName(threadId: string): string {
-  return threadBindings.get(threadId)?.definitionName ?? ''
-}
-
-function currentLines(threadId: string): import('./types').Message[] {
-  return threadBindings.get(threadId)?.lines ?? []
-}
-
-function currentInput(threadId: string): JsonValue {
-  return threadBindings.get(threadId)?.input ?? null
-}
 
 export function readToolCall(value: JsonValue): ToolCall | null {
   if (!Predicate.isObject(value)) return null

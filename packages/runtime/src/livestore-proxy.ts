@@ -11,6 +11,13 @@ import type { LoomsRuntime } from './runtime'
 
 export { encodeLoomsEvent, type LiveStoreGlobalEncoded }
 
+function readCursor(req: Request, url: URL): number {
+  const lastEventId = req.headers.get('last-event-id')
+  const raw = lastEventId !== null && lastEventId !== '' ? lastEventId : (url.searchParams.get('cursor') ?? '0')
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
 export async function handleLivestoreProxy(
   req: Request,
   runtime: LoomsRuntime,
@@ -27,7 +34,7 @@ export async function handleLivestoreProxy(
     if (!storeId) {
       return Response.json({ error: 'storeId required' }, { status: 400 })
     }
-    const cursor = Number(url.searchParams.get('cursor') ?? '0')
+    const cursor = readCursor(req, url)
     const acceptHeader = req.headers.get('accept') ?? ''
     const isLive =
       url.searchParams.get('live') === 'true' ||
@@ -43,29 +50,53 @@ export async function handleLivestoreProxy(
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder()
-        const write = (data: { batch: ReturnType<typeof encodeLoomsEvent>[] }) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        let closed = false
+        let heartbeat: ReturnType<typeof setInterval> | undefined
+        let fiber: Fiber.Fiber<void, unknown> | undefined
+        const close = () => {
+          if (closed) return
+          closed = true
+          if (heartbeat !== undefined) clearInterval(heartbeat)
+          if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+          try {
+            controller.close()
+          } catch {
+            // already closed by the runtime
+          }
         }
-        const fiber = Effect.runFork(
+        const write = (text: string) => {
+          if (closed) return
+          try {
+            controller.enqueue(encoder.encode(text))
+          } catch {
+            close()
+          }
+        }
+        fiber = Effect.runFork(
           store.subscribe(storeId, { fromSeq: cursor + 1 }).pipe(
             Stream.tap((event) =>
               Effect.sync(() => {
-                write({ batch: [encodeLoomsEvent(event)] })
+                write(
+                  `id: ${event.seq}\ndata: ${JSON.stringify({ batch: [encodeLoomsEvent(event)] })}\n\n`,
+                )
               }),
             ),
             Stream.runDrain,
           ),
         )
-        req.signal.addEventListener('abort', () => {
-          Effect.runFork(Fiber.interrupt(fiber))
-          controller.close()
-        })
+        heartbeat = setInterval(() => write(': keepalive\n\n'), 15_000)
+        if (req.signal.aborted) {
+          close()
+          return
+        }
+        req.signal.addEventListener('abort', close)
       },
     })
     return new Response(stream, {
       headers: {
         'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
       },
     })
   }

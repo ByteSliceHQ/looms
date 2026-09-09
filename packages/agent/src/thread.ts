@@ -93,9 +93,22 @@ function readToolCall(obj: { [key: string]: JsonValue }): ToolCall {
   }
 }
 
+function callLlmInvocation(state: AgentState, turn: number) {
+  return invoke(
+    'agent.callLLM',
+    asJson({
+      turn,
+      definitionName: state.definitionName,
+      messages: state.lines,
+      input: state.input,
+    }),
+  )
+}
+
 export const agentThread = defineThread<AgentState>({
   kind: 'agent',
   initialState: (ctx) => ({
+    definitionName: ctx.definitionName,
     lines: [],
     pendingToolCalls: [],
     turn: 0,
@@ -108,11 +121,15 @@ export const agentThread = defineThread<AgentState>({
   reduce(state, event, ctx) {
     switch (event.type) {
       case 'runtime.thread.started': {
-        const line = inputToLine(state.input)
+        const payload = asObject(event.payload)
+        const defName = readString(payload, 'definitionName') ?? state.definitionName
+        const input = payload.input !== undefined ? payload.input : state.input
+        const line = inputToLine(input)
         const lines = line ? [line] : state.lines
+        const nextState = { ...state, definitionName: defName, input, lines }
         return {
-          state: { ...state, lines },
-          effects: [invoke('agent.callLLM', { turn: 1 })],
+          state: nextState,
+          effects: [callLlmInvocation(nextState, 1)],
         }
       }
       case 'agent.message.received': {
@@ -122,9 +139,10 @@ export const agentThread = defineThread<AgentState>({
         if (state.pendingToolCalls.length > 0) {
           return { state: { ...state, lines } }
         }
+        const nextState = { ...state, lines }
         return {
-          state: { ...state, lines },
-          effects: [invoke('agent.callLLM', { turn: state.turn + 1 })],
+          state: nextState,
+          effects: [callLlmInvocation(nextState, state.turn + 1)],
         }
       }
       case 'agent.turn.started': {
@@ -155,6 +173,7 @@ export const agentThread = defineThread<AgentState>({
               'agent.executeTool',
               asJson({
                 turn: readNumber(payload, 'turn') ?? state.turn,
+                definitionName: state.definitionName,
                 toolCall,
               }),
             ),
@@ -181,7 +200,7 @@ export const agentThread = defineThread<AgentState>({
           ],
         }
         if (pendingToolCalls.length === 0) {
-          return { state: next, effects: [invoke('agent.callLLM', { turn: state.turn + 1 })] }
+          return { state: next, effects: [callLlmInvocation(next, state.turn + 1)] }
         }
         return { state: next }
       }
@@ -197,7 +216,7 @@ export const agentThread = defineThread<AgentState>({
           next = { ...next, pendingToolCalls: [] }
           return {
             state: next,
-            effects: [invoke('agent.callLLM', { turn: state.turn + 1 })],
+            effects: [callLlmInvocation(next, state.turn + 1)],
           }
         }
         return { state: next }

@@ -27,6 +27,7 @@ export interface PendingEffectTool {
 }
 
 export interface AgentState {
+  definitionName?: string
   lines: Message[]
   pendingToolCalls: ToolCall[]
   turn: number

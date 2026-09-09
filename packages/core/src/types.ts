@@ -1,7 +1,10 @@
+import { Predicate } from 'effect'
+
 /** JSON-compatible values used in event payloads and effect I/O. */
 export type JsonPrimitive = string | number | boolean | null
-export type JsonValue = JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue }
+export type JsonArray = JsonValue[] | readonly JsonValue[]
 export type JsonObject = { readonly [key: string]: JsonValue }
+export type JsonValue = JsonPrimitive | JsonArray | JsonObject
 
 /** Structs that JSON-serialize to event payloads. */
 export interface JsonPayload {
@@ -21,19 +24,15 @@ export function fromJsonStruct<T>(value: JsonValue): T {
 }
 
 export function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
-  return Object.prototype.toString.call(value) === '[object Object]'
+  return Predicate.isObject(value) && !Array.isArray(value)
 }
 
 export function isJsonString(value: unknown): value is string {
-  return Object.prototype.toString.call(value) === '[object String]' && !(value instanceof String)
+  return Predicate.isString(value)
 }
 
 export function isJsonNumber(value: unknown): value is number {
-  return (
-    Object.prototype.toString.call(value) === '[object Number]' &&
-    !(value instanceof Number) &&
-    Number.isFinite(Number(value))
-  )
+  return Predicate.isNumber(value) && Number.isFinite(value)
 }
 
 export type ThreadStatus = 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled'

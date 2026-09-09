@@ -9,26 +9,24 @@ import { Effect, Predicate, Schema } from 'effect'
 import { readyNodes, type NodeResult, type WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
 
-const ScheduleInput = Schema.Struct({})
-const RunNodeInput = Schema.Struct({
-  nodeId: Schema.String,
+const NodeStateSchema = Schema.Struct({
+  status: Schema.String,
+  result: Schema.optional(Schema.NullOr(Schema.MutableJson)),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
-const threadBindings = new Map<
-  string,
-  { definitionName: string; nodes: { [id: string]: { status: string; result: JsonValue | null } }; input: JsonValue }
->()
+const ScheduleInput = Schema.Struct({
+  definitionName: Schema.optional(Schema.String),
+  nodes: Schema.optional(Schema.Record(Schema.String, NodeStateSchema)),
+  input: Schema.optional(Schema.MutableJson),
+})
 
-export function bindWorkflowThread(
-  threadId: string,
-  binding: {
-    definitionName: string
-    nodes: { [id: string]: { status: string; result: JsonValue | null } }
-    input: JsonValue
-  },
-): void {
-  threadBindings.set(threadId, binding)
-}
+const RunNodeInput = Schema.Struct({
+  definitionName: Schema.optional(Schema.String),
+  nodeId: Schema.String,
+  input: Schema.optional(Schema.MutableJson),
+  results: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(Schema.MutableJson))),
+})
 
 function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
   if (!Predicate.isObject(raw) || !('type' in raw)) return false
@@ -40,18 +38,23 @@ function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
 export const scheduleEffect = defineEffect({
   type: 'workflow.schedule',
   input: ScheduleInput,
-  execute: (_input, ctx) =>
+  execute: (input, ctx) =>
     Effect.gen(function* () {
       const workflows = yield* WorkflowDefinitionsTag
       const threadId = ctx.threadId
-      const binding = threadBindings.get(threadId)
-      const definition = binding ? workflows.get(binding.definitionName) : undefined
-      if (!definition || !binding) return []
-      const nodes = { ...binding.nodes }
+      const definition = input.definitionName ? workflows.get(input.definitionName) : undefined
+      if (!definition) return []
+      const rawNodes = input.nodes ?? {}
+      const nodes: { [id: string]: { status: string; result: JsonValue | null } } = {}
+      for (const [id, n] of Object.entries(rawNodes)) {
+        // SAFETY: NodeState results are valid JSON-serializable node execution outputs.
+        nodes[id] = { status: n.status, result: (n.result as JsonValue) ?? null }
+      }
       for (const node of definition.nodes) {
         if (!nodes[node.id]) nodes[node.id] = { status: 'pending', result: null }
       }
-      return scheduleEvents(definition, { ...binding, nodes }, threadId)
+      // SAFETY: Workflow input is validated and serialized as JsonValue.
+      return scheduleEvents(definition, { nodes, input: (input.input as JsonValue) ?? null }, threadId)
     }),
 })
 
@@ -113,9 +116,8 @@ export const runNodeEffect = defineEffect({
     Effect.gen(function* () {
       const workflows = yield* WorkflowDefinitionsTag
       const threadId = ctx.threadId
-      const binding = threadBindings.get(threadId)
-      const definition = binding ? workflows.get(binding.definitionName) : undefined
-      if (!definition || !binding) {
+      const definition = input.definitionName ? workflows.get(input.definitionName) : undefined
+      if (!definition) {
         return [
           {
             type: 'workflow.node.finished',
@@ -124,14 +126,26 @@ export const runNodeEffect = defineEffect({
           },
         ]
       }
-      return yield* runNode(definition, binding, input.nodeId, threadId)
+      const rawResults = input.results ?? {}
+      const results: { [id: string]: JsonValue | null } = {}
+      for (const [id, val] of Object.entries(rawResults)) {
+        // SAFETY: Node results dictionary maps node IDs to JSON values or null.
+        results[id] = (val as JsonValue) ?? null
+      }
+      return yield* runNode(
+        definition,
+        // SAFETY: Workflow input is validated and serialized as JsonValue.
+        { input: (input.input as JsonValue) ?? null, results },
+        input.nodeId,
+        threadId,
+      )
     }),
 })
 
 function runNode(
   definition: WorkflowDefinition,
   binding: {
-    nodes: { [id: string]: { status: string; result: JsonValue | null } }
+    results: { [id: string]: JsonValue | null }
     input: JsonValue
   },
   nodeId: string,
@@ -148,10 +162,7 @@ function runNode(
         },
       ]
     }
-    const results: { [id: string]: JsonValue | null } = {}
-    for (const [id, node] of Object.entries(binding.nodes)) {
-      results[id] = node.result
-    }
+    const results = binding.results
     const raw = yield* Effect.tryPromise({
       try: () =>
         Promise.resolve(
@@ -230,8 +241,8 @@ function runNode(
           },
         ]
       default: {
-        const _exhaustive: never = result
-        return _exhaustive
+        const exhaustiveCheck: never = result
+        return exhaustiveCheck
       }
     }
   })

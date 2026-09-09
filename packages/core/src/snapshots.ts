@@ -84,6 +84,10 @@ export function foldFromSnapshots(
     if (trailing.length === 0) {
       return fromJsonStruct<RunState>(decoded.state)
     }
+    return foldRun(trailing, registry, {
+      runId,
+      initial: fromJsonStruct<RunState>(decoded.state),
+    })
   }
   return foldRun(events, registry, { runId })
 }

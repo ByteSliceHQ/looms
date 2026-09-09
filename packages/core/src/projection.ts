@@ -1,6 +1,7 @@
 import { Predicate } from 'effect'
 import type { EventEnvelope } from './envelope'
 import type { RunState, ThreadRecord } from './state'
+import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus } from './types'
 
 export interface ProjectionDefinition<S = unknown> {
@@ -63,6 +64,7 @@ export interface TreeBuildState {
   runId: string
   records: { [threadId: string]: ThreadRecord }
   rootThreadId: string | null
+  activeWaits?: { [threadId: string]: string[] }
 }
 
 function readPayload(event: EventEnvelope): { [key: string]: JsonValue } {
@@ -141,6 +143,50 @@ export const threadTree = defineProjection<TreeBuildState>({
           },
         }
       }
+      case 'runtime.wait.registered': {
+        const threadId = event.threadId ?? readString(payload, 'threadId')
+        const waitId = readString(payload, 'waitId')
+        if (!threadId || !waitId) return { ...state, runId: event.runId }
+        const existing = state.records[threadId]
+        if (!existing || isTerminalStatus(existing.status)) return { ...state, runId: event.runId }
+        const currentWaits = state.activeWaits?.[threadId] ?? []
+        const nextWaits = currentWaits.includes(waitId) ? currentWaits : [...currentWaits, waitId]
+        return {
+          ...state,
+          runId: event.runId,
+          activeWaits: { ...state.activeWaits, [threadId]: nextWaits },
+          records: {
+            ...state.records,
+            [threadId]: {
+              ...existing,
+              status: 'waiting',
+            },
+          },
+        }
+      }
+      case 'runtime.wait.satisfied': {
+        const threadId = event.threadId ?? readString(payload, 'threadId')
+        const waitId = readString(payload, 'waitId')
+        if (!threadId) return { ...state, runId: event.runId }
+        const existing = state.records[threadId]
+        if (!existing || isTerminalStatus(existing.status)) return { ...state, runId: event.runId }
+        const currentWaits = waitId
+          ? (state.activeWaits?.[threadId] ?? []).filter((id) => id !== waitId)
+          : []
+        const nextStatus: ThreadStatus = currentWaits.length > 0 ? 'waiting' : 'running'
+        return {
+          ...state,
+          runId: event.runId,
+          activeWaits: { ...state.activeWaits, [threadId]: currentWaits },
+          records: {
+            ...state.records,
+            [threadId]: {
+              ...existing,
+              status: nextStatus,
+            },
+          },
+        }
+      }
       default:
         return state.runId === event.runId ? state : { ...state, runId: event.runId }
     }
@@ -160,6 +206,7 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
 
 export function treeFromRun(state: RunState): ThreadTree {
   const records = Object.values(state.threads)
+  const waitingThreadIds = new Set(Object.values(state.waits).map((w) => w.threadId))
   const byParent = new Map<string | null, ThreadRecord[]>()
   for (const record of records) {
     const key = record.parentThreadId
@@ -167,14 +214,19 @@ export function treeFromRun(state: RunState): ThreadTree {
     list.push(record)
     byParent.set(key, list)
   }
-  const toNode = (record: ThreadRecord): ThreadNode => ({
-    threadId: record.threadId,
-    kind: record.kind,
-    definitionName: record.definitionName,
-    status: record.status,
-    parentThreadId: record.parentThreadId,
-    children: (byParent.get(record.threadId) ?? []).map(toNode),
-  })
+  const toNode = (record: ThreadRecord): ThreadNode => {
+    const isWaiting =
+      !isTerminalStatus(record.status) &&
+      (record.status === 'waiting' || waitingThreadIds.has(record.threadId))
+    return {
+      threadId: record.threadId,
+      kind: record.kind,
+      definitionName: record.definitionName,
+      status: isWaiting ? 'waiting' : record.status,
+      parentThreadId: record.parentThreadId,
+      children: (byParent.get(record.threadId) ?? []).map(toNode),
+    }
+  }
   const rootRecord = state.rootThreadId
     ? state.threads[state.rootThreadId]
     : records.find((r) => r.parentThreadId === null)

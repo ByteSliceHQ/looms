@@ -22,12 +22,12 @@ export function withProjectors(
   const onError = options?.onError ?? defaultOnError
 
   return {
-    append: (actorId, events, appendOptions) =>
+    append: (runId, events, appendOptions) =>
       Effect.gen(function* () {
-        const result = yield* store.append(actorId, events, appendOptions)
+        const result = yield* store.append(runId, events, appendOptions)
         const fromSeq = result.sequences[0]
         if (fromSeq !== undefined && projectors.length > 0) {
-          const written = yield* store.read(actorId, {
+          const written = yield* store.read(runId, {
             fromSeq,
             limit: result.sequences.length,
           })
@@ -43,9 +43,9 @@ export function withProjectors(
         }
         return result
       }),
-    read: (actorId, readOptions) => store.read(actorId, readOptions),
-    tail: (actorId) => store.tail(actorId),
-    subscribe: (actorId, subscribeOptions) => store.subscribe(actorId, subscribeOptions),
+    read: (runId, readOptions) => store.read(runId, readOptions),
+    tail: (runId) => store.tail(runId),
+    subscribe: (runId, subscribeOptions) => store.subscribe(runId, subscribeOptions),
     listRuns: () => store.listRuns(),
   }
 }

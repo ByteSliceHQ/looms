@@ -7,6 +7,8 @@ import { defineThread } from './thread'
 import { foldRun } from './fold'
 import { matchesWait, isSubset } from './match'
 import { replayTo } from './replay'
+import { buildSnapshotEvent, foldFromSnapshots } from './snapshots'
+import { foldProjection, threadTree, toThreadTree } from './projection'
 import { composeModules, defineRuntimeModule } from './index'
 import { createEffectId } from './ids'
 
@@ -390,3 +392,109 @@ describe('replayTo', () => {
     expect(step?.effects[0]?.type).toBe('counter.tick')
   })
 })
+
+describe('foldFromSnapshots', () => {
+  test('folds trailing events starting from the snapshot state', () => {
+    const registry = composeModules([counterModule])
+    const runId = 'run_snap'
+    const threadId = 'thr_snap'
+
+    const initialEvents = assignSeq([
+      createEvent(runId, {
+        type: 'runtime.run.started',
+        payload: { rootThreadId: threadId, kind: 'counter', definitionName: 'counter', input: null },
+        threadId: null,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' },
+      }),
+      createEvent(runId, {
+        type: 'counter.incremented',
+        payload: { by: 1 },
+        threadId,
+        origin: { type: 'thread', threadId },
+      }),
+    ])
+
+    const snapshot = buildSnapshotEvent(runId, initialEvents, registry, { includeState: true })
+    const snapshotWithSeq = { ...snapshot, seq: initialEvents.length + 1 }
+
+    const trailingEvent = createEvent(
+      runId,
+      {
+        type: 'counter.incremented',
+        payload: { by: 1 },
+        threadId,
+        origin: { type: 'thread', threadId },
+      },
+      { seq: snapshotWithSeq.seq + 1 },
+    )
+
+    const allEvents = [...initialEvents, snapshotWithSeq, trailingEvent]
+    const state = foldFromSnapshots(allEvents, registry, { runId })
+
+    const thread = state.threads[threadId]
+    expect(thread).toBeDefined()
+    expect(thread?.state).toEqual({ count: 2 })
+    expect(thread?.status).toBe('running')
+    // At count: 2, complete effect is emitted
+    expect(state.outstandingEffects.some((e) => e.effect.type === 'runtime.complete')).toBe(true)
+  })
+})
+
+describe('threadTree projection', () => {
+  test('tracks running, waiting, and satisfied wait statuses', () => {
+    const runId = 'run_tree'
+    const threadId = 'thr_tree'
+    const waitId = 'wait_1'
+
+    const e1 = createEvent(runId, {
+      type: 'runtime.run.started',
+      payload: { rootThreadId: threadId, kind: 'agent', definitionName: 'agent', input: null },
+      threadId: null,
+      origin: { type: 'system' },
+    })
+    const e2 = createEvent(runId, {
+      type: 'runtime.thread.started',
+      payload: { threadId, kind: 'agent', definitionName: 'agent', input: null, parentThreadId: null },
+      threadId,
+      origin: { type: 'system' },
+    })
+
+    let projState = foldProjection(threadTree, [e1, e2])
+    let tree = toThreadTree(projState)
+    expect(tree.root?.status).toBe('running')
+
+    const e3 = createEvent(runId, {
+      type: 'runtime.wait.registered',
+      payload: { waitId, on: { type: 'approval.decided' } },
+      threadId,
+      origin: { type: 'system' },
+    })
+    projState = foldProjection(threadTree, [e3], projState)
+    tree = toThreadTree(projState)
+    expect(tree.root?.status).toBe('waiting')
+
+    const e4 = createEvent(runId, {
+      type: 'runtime.wait.satisfied',
+      payload: { waitId, event: { id: 'ev_dec', type: 'approval.decided', payload: {} } },
+      threadId,
+      origin: { type: 'system' },
+    })
+    projState = foldProjection(threadTree, [e4], projState)
+    tree = toThreadTree(projState)
+    expect(tree.root?.status).toBe('running')
+  })
+})
+
+

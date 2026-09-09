@@ -75,8 +75,8 @@ function applyOp(db: Database, op: IndexOp): void {
       ])
       return
     default: {
-      const _exhaustive: never = op
-      return _exhaustive
+      const exhaustiveCheck: never = op
+      return exhaustiveCheck
     }
   }
 }

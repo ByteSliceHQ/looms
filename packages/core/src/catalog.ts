@@ -66,12 +66,12 @@ export function defineEventCatalog<TNamespace extends string, TEntries extends C
   return {
     namespace,
     entries,
-    event(key, payload, meta) {
+    event(key, eventPayload, meta) {
       const { runId, ...rest } = meta
       return createEvent(runId, {
         ...rest,
         type: eventType(namespace, key),
-        payload: asJson(payload),
+        payload: asJson(eventPayload),
       })
     },
   }

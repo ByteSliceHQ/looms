@@ -3,7 +3,6 @@ import type { Layer } from 'effect'
 import type { EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { ProjectionDefinition } from './projection'
-import type { ThreadRecord } from './state'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
@@ -62,8 +61,6 @@ export interface RuntimeModule<
   readonly dependencies?: readonly RuntimeModuleDependency[]
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
   readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<never, never, never>
-  /** Called with each thread's folded record before its effects are dispatched. */
-  readonly bindThread?: (record: ThreadRecord) => void
 }
 
 export function defineRuntimeModule<

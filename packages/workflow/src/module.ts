@@ -1,9 +1,9 @@
-import { defineRuntimeModule, fromJsonStruct, type JsonValue, type ModuleServicesContext } from '@looms/core'
+import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
 import { workflowCatalog } from './catalog'
 import type { WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsLive } from './definitions-store'
-import { workflowThread, type WorkflowState } from './thread'
-import { bindWorkflowThread, runNodeEffect, scheduleEffect } from './effects'
+import { workflowThread } from './thread'
+import { runNodeEffect, scheduleEffect } from './effects'
 import { nodes } from './projections'
 
 function workflowDefinitions(ctx: ModuleServicesContext): WorkflowDefinition[] {
@@ -28,18 +28,5 @@ export function workflow() {
     },
     projections: { nodes },
     services: (ctx) => WorkflowDefinitionsLive(workflowDefinitions(ctx)),
-    bindThread: (record) => {
-      if (record.kind !== 'workflow') return
-      const state = fromJsonStruct<WorkflowState>(record.state)
-      const nodeStates: { [id: string]: { status: string; result: JsonValue | null } } = {}
-      for (const [id, node] of Object.entries(state.nodes ?? {})) {
-        nodeStates[id] = { status: node.status, result: node.result }
-      }
-      bindWorkflowThread(record.threadId, {
-        definitionName: record.definitionName,
-        nodes: nodeStates,
-        input: record.input,
-      })
-    },
   })
 }

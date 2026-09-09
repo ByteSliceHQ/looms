@@ -1,6 +1,6 @@
 import type { Message, ToolCall } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
-import { type ModelMessage } from 'ai'
+import { type JSONValue, type ModelMessage } from 'ai'
 
 export function toModelMessages(messages: Message[]): ModelMessage[] {
   const converted: ModelMessage[] = []
@@ -49,8 +49,8 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
         })
         break
       default: {
-        const _exhaustive: never = message.role
-        return _exhaustive
+        const exhaustiveCheck: never = message.role
+        return exhaustiveCheck
       }
     }
   }
@@ -60,10 +60,10 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
 
 function parseToolOutput(
   content: string,
-): { type: 'json'; value: JsonValue } | { type: 'text'; value: string } {
+): { type: 'json'; value: JSONValue } | { type: 'text'; value: string } {
   try {
-    // SAFETY: tool message content is JSON from Looms tool.result payloads.
-    return { type: 'json', value: JSON.parse(content) as JsonValue }
+    // SAFETY: tool message content is parsed JSON from JSON.parse.
+    return { type: 'json', value: JSON.parse(content) as JSONValue }
   } catch {
     return { type: 'text', value: content }
   }

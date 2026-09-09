@@ -62,7 +62,14 @@ export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
           toolCalls,
         }
       }
-      const lastUser = [...args.messages].reverse().find((m) => m.role === 'user')
+      let lastUser: import('./types').Message | undefined
+      for (let i = args.messages.length - 1; i >= 0; i--) {
+        const item = args.messages[i]
+        if (item?.role === 'user') {
+          lastUser = item
+          break
+        }
+      }
       const lastContent = args.messages.at(-1)?.content
       const content =
         lastUser?.content ??

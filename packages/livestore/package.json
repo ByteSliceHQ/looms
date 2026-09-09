@@ -28,13 +28,7 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@livestore/adapter-web": "0.5.0-dev.0",
-    "@livestore/common": "0.5.0-dev.0",
-    "@livestore/livestore": "0.5.0-dev.0",
-    "@livestore/peer-deps": "0.5.0-dev.0",
-    "@livestore/react": "0.5.0-dev.0",
-    "@livestore/utils": "0.5.0-dev.0",
-    "@livestore/wa-sqlite": "0.5.0-dev.0",
+    "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
     "effect": "4.0.0-rc.112"
   },

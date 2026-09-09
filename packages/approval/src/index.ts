@@ -115,8 +115,8 @@ export const pendingApprovals = defineProjection<{ items: PendingApproval[] }>({
   name: 'pendingApprovals',
   initialState: { items: [] },
   reduce(state, event) {
-    const payload = payloadObject(event)
-    const approvalId = isJsonString(payload.approvalId) ? payload.approvalId : undefined
+    const data = payloadObject(event)
+    const approvalId = isJsonString(data.approvalId) ? data.approvalId : undefined
     if (!approvalId) return state
     switch (event.type) {
       case 'approval.requested': {
@@ -126,8 +126,8 @@ export const pendingApprovals = defineProjection<{ items: PendingApproval[] }>({
             ...state.items.filter((item) => item.approvalId !== approvalId),
             {
               approvalId,
-              title: isJsonString(payload.title) ? payload.title : 'Approval',
-              description: isJsonString(payload.description) ? payload.description : undefined,
+              title: isJsonString(data.title) ? data.title : 'Approval',
+              description: isJsonString(data.description) ? data.description : undefined,
               status: 'pending',
               threadId,
             },
@@ -135,7 +135,7 @@ export const pendingApprovals = defineProjection<{ items: PendingApproval[] }>({
         }
       }
       case 'approval.decided': {
-        const outcome = payload.outcome === 'reject' ? 'rejected' : 'approved'
+        const outcome = data.outcome === 'reject' ? 'rejected' : 'approved'
         return {
           items: state.items.map((item) =>
             item.approvalId === approvalId ? { ...item, status: outcome } : item,

@@ -60,8 +60,8 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
     case 'effects':
       return undefined
     default: {
-      const _exhaustive: never = tool
-      return _exhaustive
+      const exhaustiveCheck: never = tool
+      return exhaustiveCheck
     }
   }
 }

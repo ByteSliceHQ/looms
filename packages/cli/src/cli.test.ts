@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { TestConsole } from 'effect/testing'
 import { cliTestLayer, runCli } from './commands'
 
@@ -18,7 +18,7 @@ const run = (argv: ReadonlyArray<string>) =>
 describe('@looms/cli', () => {
   test('--help prints usage', async () => {
     const { exit, out } = await run(['--help'])
-    expect(exit._tag).toBe('Success')
+    expect(Exit.isSuccess(exit)).toBe(true)
     expect(out).toContain('serve')
     expect(out).toContain('start')
     expect(out).toContain('approve')
@@ -32,7 +32,7 @@ describe('@looms/cli', () => {
 
   test('unknown command fails', async () => {
     const { exit, out, err } = await run(['nope'])
-    expect(exit._tag).toBe('Failure')
+    expect(Exit.isFailure(exit)).toBe(true)
     const text = `${out}\n${err}`
     expect(text.toLowerCase()).toMatch(/unknown|did you mean|nope/)
   })

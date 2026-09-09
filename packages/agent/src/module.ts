@@ -1,13 +1,12 @@
-import { defineRuntimeModule, fromJsonStruct, type ModuleServicesContext } from '@looms/core'
+import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
 import { Layer } from 'effect'
 import { agentCatalog } from './catalog'
 import type { AgentDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
 import { agentThread } from './thread'
-import { bindAgentThread, callLlmEffect, executeToolEffect } from './effects'
+import { callLlmEffect, executeToolEffect } from './effects'
 import { llmFromAdapter, LlmTag, StubLlmLive, type LlmAdapter, type StubLlmPolicy } from './llm'
 import { conversation, tokenUsage } from './projections'
-import type { AgentState } from './types'
 
 export interface AgentModuleOptions {
   /** Model adapter used for every agent turn. Defaults to a deterministic stub for tests and scripted agents. */
@@ -43,14 +42,5 @@ export function agent(options: AgentModuleOptions = {}) {
       tokenUsage,
     },
     services: (ctx) => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions(ctx))),
-    bindThread: (record) => {
-      if (record.kind !== 'agent') return
-      const state = fromJsonStruct<AgentState>(record.state)
-      bindAgentThread(record.threadId, {
-        definitionName: record.definitionName,
-        lines: state.lines ?? [],
-        input: record.input,
-      })
-    },
   })
 }

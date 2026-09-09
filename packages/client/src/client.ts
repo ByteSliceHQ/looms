@@ -1,4 +1,5 @@
 import type { DefinitionInput, DefinitionRef, EventEnvelope, EventInput, JsonValue, RunState } from '@looms/core'
+import { consumeSseStream, delay, eventsFromSseData } from './sse'
 
 export interface LoomsClientOptions {
   baseUrl?: string
@@ -57,27 +58,42 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       request<{ runId: string; step: unknown }>(`/runs/${runId}/replay?seq=${seq}`),
     project: (runId: string, name: string) =>
       request<{ runId: string; name: string; value: unknown }>(`/runs/${runId}/projections/${name}`),
-    subscribeEvents: (runId: string, onEvent: (event: EventEnvelope) => void, intervalMs = 400) => {
+    subscribeEvents: (runId: string, onEvent: (event: EventEnvelope) => void, reconnectDelayMs = 1_000) => {
       let fromSeq = 1
-      let stopped = false
-      const tick = async () => {
-        if (stopped) return
-        try {
-          const { events } = await request<{ runId: string; events: EventEnvelope[] }>(
-            `/runs/${runId}/events?fromSeq=${fromSeq}`,
-          )
-          for (const event of events) {
-            onEvent(event)
-            fromSeq = Math.max(fromSeq, event.seq + 1)
+      const controller = new AbortController()
+
+      const run = async () => {
+        while (!controller.signal.aborted) {
+          try {
+            const cursor = Math.max(0, fromSeq - 1)
+            const headers = new Headers({ accept: 'text/event-stream' })
+            if (cursor > 0) headers.set('last-event-id', String(cursor))
+            const res = await fetchImpl(
+              `${baseUrl}/api/livestore?storeId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
+              { headers, signal: controller.signal },
+            )
+            if (!res.ok || !res.body) throw new Error(res.ok ? 'livestore sse missing body' : `HTTP ${res.status}`)
+            await consumeSseStream(
+              res.body,
+              (frame) => {
+                for (const event of eventsFromSseData(frame.data, runId)) {
+                  onEvent(event)
+                  fromSeq = Math.max(fromSeq, event.seq + 1)
+                }
+              },
+              controller.signal,
+            )
+          } catch {
+            if (controller.signal.aborted) return
           }
-        } catch {
-          // next tick retries
+          if (controller.signal.aborted) return
+          await delay(reconnectDelayMs, controller.signal)
         }
-        if (!stopped) setTimeout(() => void tick(), intervalMs)
       }
-      void tick()
+
+      void run()
       return () => {
-        stopped = true
+        controller.abort()
       }
     },
   }

@@ -29,10 +29,10 @@ describe('moduleConformance', () => {
 
 describe('createTestRuntime', () => {
   test('folds an empty run deterministically', async () => {
-    const test = await createTestRuntime([sample])
+    const testRuntime = await createTestRuntime([sample])
     const runId = 'run_test'
-    await assertReplayDeterministic(test, runId)
-    const events = await test.run(test.runtime.getEvents(runId))
+    await assertReplayDeterministic(testRuntime, runId)
+    const events = await testRuntime.run(testRuntime.runtime.getEvents(runId))
     expect(events).toEqual([])
   })
 })

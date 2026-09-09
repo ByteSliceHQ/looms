@@ -55,8 +55,8 @@ function applyOp(
       return
     }
     default: {
-      const _exhaustive: never = op
-      return _exhaustive
+      const exhaustiveCheck: never = op
+      return exhaustiveCheck
     }
   }
 }

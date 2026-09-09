@@ -21,6 +21,7 @@ export interface NodeState {
 }
 
 export interface WorkflowState {
+  definitionName?: string
   nodes: { [nodeId: string]: NodeState }
   concurrency: number
   input: JsonValue
@@ -37,9 +38,41 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
+function scheduleInvocation(state: WorkflowState) {
+  const nodes: { [id: string]: { status: string; result: JsonValue | null } } = {}
+  for (const [id, node] of Object.entries(state.nodes)) {
+    nodes[id] = { status: node.status, result: node.result }
+  }
+  return invoke(
+    'workflow.schedule',
+    asJson({
+      definitionName: state.definitionName,
+      nodes,
+      input: state.input,
+    }),
+  )
+}
+
+function runNodeInvocation(state: WorkflowState, nodeId: string) {
+  const results: { [id: string]: JsonValue | null } = {}
+  for (const [id, node] of Object.entries(state.nodes)) {
+    results[id] = node.result
+  }
+  return invoke(
+    'workflow.runNode',
+    asJson({
+      definitionName: state.definitionName,
+      nodeId,
+      input: state.input,
+      results,
+    }),
+  )
+}
+
 export const workflowThread = defineThread<WorkflowState>({
   kind: 'workflow',
   initialState: (ctx) => ({
+    definitionName: ctx.definitionName,
     nodes: {},
     concurrency: 8,
     input: ctx.input,
@@ -49,6 +82,7 @@ export const workflowThread = defineThread<WorkflowState>({
     switch (event.type) {
       case 'runtime.thread.started': {
         const payload = asObject(event.payload)
+        const defName = readString(payload, 'definitionName') ?? state.definitionName
         const inputObj = Predicate.isObject(payload.input) ? payload.input : {}
         const nodeIds = Array.isArray(inputObj.nodeIds)
           ? inputObj.nodeIds.filter(Predicate.isString)
@@ -57,23 +91,31 @@ export const workflowThread = defineThread<WorkflowState>({
         for (const nodeId of nodeIds) {
           nodes[nodeId] = { status: 'pending', result: null, error: null }
         }
+        const nextState: WorkflowState = {
+          ...state,
+          definitionName: defName,
+          nodes,
+          nodeIds,
+          input: payload.input ?? state.input,
+        }
         return {
-          state: { ...state, nodes, nodeIds, input: payload.input ?? state.input },
-          effects: [invoke('workflow.schedule', {})],
+          state: nextState,
+          effects: [scheduleInvocation(nextState)],
         }
       }
       case 'workflow.node.started': {
         const nodeId = readString(asObject(event.payload), 'nodeId')
         if (!nodeId) return { state }
-        return {
-          state: {
-            ...state,
-            nodes: {
-              ...state.nodes,
-              [nodeId]: { status: 'running', result: null, error: null },
-            },
+        const nextState: WorkflowState = {
+          ...state,
+          nodes: {
+            ...state.nodes,
+            [nodeId]: { status: 'running', result: null, error: null },
           },
-          effects: [invoke('workflow.runNode', { nodeId })],
+        }
+        return {
+          state: nextState,
+          effects: [runNodeInvocation(nextState, nodeId)],
         }
       }
       case 'workflow.node.finished': {
@@ -96,7 +138,7 @@ export const workflowThread = defineThread<WorkflowState>({
         if (failed) {
           return { state: next, effects: [fail(error)] }
         }
-        return { state: next, effects: [invoke('workflow.schedule', {})] }
+        return { state: next, effects: [scheduleInvocation(next)] }
       }
       case 'workflow.spawn.requested': {
         const payload = asObject(event.payload)
