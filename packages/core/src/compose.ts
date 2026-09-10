@@ -2,7 +2,7 @@ import type { CatalogEvent, EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
-import type { AnyRuntimeModule, RuntimeModule } from './module'
+import type { AnyRuntimeModule, EffectMiddleware, RuntimeModule } from './module'
 import type { ProjectionDefinition } from './projection'
 import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
@@ -18,17 +18,17 @@ export class ModuleCompositionError extends Error {
 export interface ComposedRegistry extends FoldRegistry {
   readonly modules: readonly AnyRuntimeModule[]
   readonly effects: ReadonlyMap<string, EffectDefinition>
-  readonly handlers: ReadonlyMap<string, EffectDefinition>
   readonly projections: ReadonlyMap<string, ProjectionDefinition>
   readonly catalogs: readonly EventCatalog[]
+  readonly middleware: readonly EffectMiddleware[]
 }
 
 export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRegistry {
   const namespaces = new Set<string>()
   const threads = new Map<string, ThreadDefinition>()
   const effects = new Map<string, EffectDefinition>()
-  const handlers = new Map<string, EffectDefinition>()
   const projections = new Map<string, ProjectionDefinition>()
+  const middleware: EffectMiddleware[] = []
   const catalogs: EventCatalog[] = [protocolCatalog]
 
   for (const module of modules) {
@@ -70,14 +70,11 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
           throw new ModuleCompositionError(`Duplicate effect type: ${definition.type}`)
         }
         effects.set(definition.type, definition)
-        handlers.set(definition.type, definition)
       }
     }
 
-    if (module.handlers) {
-      for (const [type, definition] of Object.entries(module.handlers)) {
-        handlers.set(type, definition)
-      }
+    if (module.middleware) {
+      middleware.push(...module.middleware)
     }
 
     if (module.projections) {
@@ -90,7 +87,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     }
   }
 
-  return { modules, threads, effects, handlers, projections, catalogs }
+  return { modules, threads, effects, projections, catalogs, middleware }
 }
 
 export type ProtocolEvents = CatalogEvent<'runtime', typeof protocolCatalog.entries>

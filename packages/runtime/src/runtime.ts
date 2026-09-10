@@ -1,4 +1,4 @@
-import { Effect, Layer, Predicate } from 'effect'
+import { Effect, Layer, Predicate, Schedule } from 'effect'
 
 import {
   asJson,
@@ -12,7 +12,6 @@ import {
   foldFromSnapshots,
   foldRun,
   isPrimitiveEffect,
-  isRunParked,
   isRunTerminal,
   isWaitOnTimer,
   matchingWaits,
@@ -35,6 +34,7 @@ import {
   type ReplayStep,
   type RunState,
   type RuntimeEffect,
+  type WaitOnTimer,
 } from '@looms/core'
 
 export type { RegisteredDefinition } from '@looms/core'
@@ -54,6 +54,7 @@ export interface StartRunArgs {
   input?: JsonValue
   runId?: string
   threadId?: string
+  idempotencyKey?: string
 }
 
 export interface StartResult {
@@ -71,6 +72,7 @@ export interface LoomsRuntime<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
   ): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
   wake(runId: string): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
   getRun(runId: string): Effect.Effect<RunState, EventStoreError, EventStoreTag>
@@ -91,6 +93,8 @@ export interface LoomsRuntime<
     threadId?: string,
   ): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
   listRuns(): Effect.Effect<string[], EventStoreError, EventStoreTag>
+  rescanTimers(): Effect.Effect<number, EventStoreError, EventStoreTag>
+  dispose(): void
 }
 
 function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[] {
@@ -100,8 +104,9 @@ function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[] {
 function moduleServices(
   modules: readonly AnyRuntimeModule[],
   definitions: ReadonlyArray<RegisteredDefinition>,
-): Layer.Layer<never, never, never> {
-  let merged: Layer.Layer<never, never, never> = Layer.empty
+): Layer.Layer<any, never, never> {
+  // SAFETY: Layer.empty has empty requirements and error channel
+  let merged: Layer.Layer<any, never, never> = Layer.empty as Layer.Layer<any, never, never>
   for (const module of modules) {
     if (module.services) merged = Layer.merge(merged, module.services({ definitions }))
   }
@@ -242,6 +247,31 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const waking = new Set<string>()
   const snapshotEvery = options.snapshotEvery
   const liveAppends = createKeyedSerializer()
+  const scheduledTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  const clearScheduledTimer = (runId: string) => {
+    const existing = scheduledTimers.get(runId)
+    if (existing) {
+      clearTimeout(existing)
+      scheduledTimers.delete(runId)
+    }
+  }
+
+  const scheduleTimerWake = (runId: string, timerAt: number) => {
+    clearScheduledTimer(runId)
+    const delay = Math.max(0, timerAt - Date.now() + 5)
+    const handle = setTimeout(() => {
+      scheduledTimers.delete(runId)
+      if (options.store) {
+        Effect.runPromise(
+          Effect.provideService(runtime.wake(runId), EventStoreTag, options.store),
+        ).catch((err) => {
+          console.error('[timer wake error]', err)
+        })
+      }
+    }, delay)
+    scheduledTimers.set(runId, handle)
+  }
 
   const runtime: LoomsRuntime<TModules> = {
     modules: options.modules,
@@ -278,6 +308,30 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         return replayTo(events, registry, seq)
       }),
 
+    rescanTimers: () =>
+      Effect.gen(function* () {
+        const store = yield* EventStoreTag
+        const runIds = yield* store.listRuns()
+        let count = 0
+        for (const runId of runIds) {
+          const runState = yield* runtime.getRun(runId)
+          if (isRunTerminal(runState)) continue
+          let earliestTimerAt: number | null = null
+          for (const waitRecord of Object.values(runState.waits)) {
+            if (isWaitOnTimer(waitRecord.on)) {
+              if (earliestTimerAt === null || waitRecord.on.timerAt < earliestTimerAt) {
+                earliestTimerAt = waitRecord.on.timerAt
+              }
+            }
+          }
+          if (earliestTimerAt !== null) {
+            scheduleTimerWake(runId, earliestTimerAt)
+            count += 1
+          }
+        }
+        return count
+      }),
+
     startRun: (args) =>
       Effect.gen(function* () {
         if (!definitions.get(`${args.kind}:${args.definitionName}`)) {
@@ -285,7 +339,26 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             new Error(`Unknown definition ${args.kind}:${args.definitionName}`),
           )
         }
+        const store = yield* EventStoreTag
         const runId = args.runId ?? createRunId()
+
+        // Idempotency check if run already has events
+        const existingEvents = yield* store.read(runId)
+        if (existingEvents.length > 0) {
+          const existingState = foldFromSnapshots(existingEvents, registry, { runId })
+          if (
+            (args.idempotencyKey &&
+              existingState.processedIdempotencyKeys?.includes(args.idempotencyKey)) ||
+            existingState.rootThreadId
+          ) {
+            return {
+              runId,
+              threadId: existingState.rootThreadId ?? '',
+              state: existingState,
+            }
+          }
+        }
+
         const threadId = args.threadId ?? createThreadId()
         const startedEvents = yield* threadStartedEvents(definitions, {
           kind: args.kind,
@@ -299,7 +372,6 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           started && Predicate.isObject(started.payload)
             ? (started.payload.input ?? null)
             : (args.input ?? null)
-        const store = yield* EventStoreTag
         const batch = [
           createEvent(runId, {
             type: 'runtime.run.started',
@@ -311,6 +383,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             },
             threadId: null,
             origin: { type: 'system' },
+            idempotencyKey: args.idempotencyKey,
           }),
           ...startedEvents.map((input) =>
             createEvent(runId, {
@@ -324,17 +397,34 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         return { runId, threadId, state }
       }),
 
-    signal: (runId, events) =>
+    signal: (runId, events, signalOpts) =>
       Effect.gen(function* () {
         const store = yield* EventStoreTag
-        const batch = events.map((input) =>
+        const currentEvents = yield* store.read(runId)
+        const currentState = foldFromSnapshots(currentEvents, registry, { runId })
+
+        if (
+          signalOpts?.idempotencyKey &&
+          currentState.processedIdempotencyKeys?.includes(signalOpts.idempotencyKey)
+        ) {
+          return currentState
+        }
+
+        const filteredEvents = events.filter((input) => {
+          const key = input.idempotencyKey ?? signalOpts?.idempotencyKey
+          return !key || !currentState.processedIdempotencyKeys?.includes(key)
+        })
+        if (filteredEvents.length === 0) {
+          return currentState
+        }
+
+        const batch = filteredEvents.map((input) =>
           createEvent(runId, {
             ...input,
             origin: input.origin ?? { type: 'external' },
+            idempotencyKey: input.idempotencyKey ?? signalOpts?.idempotencyKey,
           }),
         )
-        const currentEvents = yield* store.read(runId)
-        const currentState = foldFromSnapshots(currentEvents, registry, { runId })
         const folded = foldRun(batch, registry, { runId, initial: currentState })
         const satisfied = waitSatisfiedEvents(folded, batch)
         const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
@@ -364,12 +454,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           let state = foldFromSnapshots(events, registry, { runId })
           let guard = 0
 
-          while (!isRunTerminal(state) && !isRunParked(state) && guard < 100) {
+          while (!isRunTerminal(state) && guard < 100) {
             guard += 1
 
             const now = Date.now()
             const due = Object.values(state.waits).filter(
-              (record) => isWaitOnTimer(record.on) && record.on.timerAt <= now,
+              (record) => isWaitOnTimer(record.on) && record.on.timerAt <= now + 5,
             )
             if (due.length > 0) {
               const batch: EventEnvelope[] = []
@@ -545,12 +635,32 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             state = foldFromSnapshots(events, registry, { runId })
           }
 
+          const pendingTimers = Object.values(state.waits).filter(
+            (record) => isWaitOnTimer(record.on) && record.on.timerAt > Date.now(),
+          )
+          if (pendingTimers.length > 0 && !isRunTerminal(state)) {
+            // SAFETY: pendingTimers elements are already filtered with isWaitOnTimer(record.on)
+            const earliestTimerAt = Math.min(
+              ...pendingTimers.map((r) => (r.on as WaitOnTimer).timerAt),
+            )
+            scheduleTimerWake(runId, earliestTimerAt)
+          } else {
+            clearScheduledTimer(runId)
+          }
+
           return state
         } finally {
           waking.delete(runId)
           liveAppends.clear(runId)
         }
       }),
+
+    dispose: () => {
+      for (const handle of scheduledTimers.values()) {
+        clearTimeout(handle)
+      }
+      scheduledTimers.clear()
+    },
   }
 
   return runtime
@@ -558,106 +668,134 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
 function dispatchEffect(
   registry: ComposedRegistry,
-  services: Layer.Layer<never, never, never>,
+  services: Layer.Layer<any, never, never>,
   definitions: ReadonlyMap<string, RegisteredDefinition>,
   effect: RuntimeEffect,
   ctx: EffectContext,
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
   const currentThreadId = ctx.threadId
 
-  if (isPrimitiveEffect(effect)) {
-    switch (effect.type) {
-      case 'runtime.spawn': {
-        const childThreadId = effect.childThreadId ?? ''
-        return threadStartedEvents(definitions, {
-          kind: effect.kind,
-          definitionName: effect.definitionName,
-          input: effect.input,
-          threadId: childThreadId,
-          parentThreadId: currentThreadId,
-        })
-      }
-      case 'runtime.wait': {
-        const events: EventInput[] = [
-          {
-            type: 'runtime.wait.registered',
-            payload: asJson({
-              waitId: effect.waitId,
-              threadId: currentThreadId,
-              on: effect.on,
-              tag: effect.tag ?? null,
-            }),
-            threadId: currentThreadId,
-          },
-        ]
-        if (isWaitOnTimer(effect.on)) {
-          events.push({
-            type: 'runtime.timer.set',
-            payload: { timerId: effect.waitId, waitId: effect.waitId, wakeAt: effect.on.timerAt },
-            threadId: currentThreadId,
+  const baseDispatch = (
+    eff: RuntimeEffect,
+    effCtx: EffectContext,
+  ): Effect.Effect<ReadonlyArray<EventInput>, Error> => {
+    if (isPrimitiveEffect(eff)) {
+      switch (eff.type) {
+        case 'runtime.spawn': {
+          const childThreadId = eff.childThreadId ?? ''
+          return threadStartedEvents(definitions, {
+            kind: eff.kind,
+            definitionName: eff.definitionName,
+            input: eff.input,
+            threadId: childThreadId,
+            parentThreadId: currentThreadId,
           })
         }
-        return Effect.succeed(events)
-      }
-      case 'runtime.emit':
-        return Effect.succeed([effect.event])
-      case 'runtime.complete':
-        return Effect.succeed([
-          {
-            type: 'runtime.thread.completed',
-            payload: { threadId: currentThreadId, output: effect.output },
-            threadId: currentThreadId,
-          },
-        ])
-      case 'runtime.fail':
-        return Effect.succeed([
-          {
-            type: 'runtime.thread.failed',
-            payload: { threadId: currentThreadId, error: effect.error },
-            threadId: currentThreadId,
-          },
-        ])
-      case 'runtime.cancel': {
-        const targetThreadId = effect.threadId ?? ''
-        return Effect.succeed([
-          {
-            type: 'runtime.thread.cancelled',
-            payload: { threadId: targetThreadId, reason: 'cancelled' },
-            threadId: targetThreadId,
-          },
-        ])
-      }
-      default: {
-        const exhaustiveCheck: never = effect
-        return exhaustiveCheck
+        case 'runtime.wait': {
+          const events: EventInput[] = [
+            {
+              type: 'runtime.wait.registered',
+              payload: asJson({
+                waitId: eff.waitId,
+                threadId: currentThreadId,
+                on: eff.on,
+                tag: eff.tag ?? null,
+              }),
+              threadId: currentThreadId,
+            },
+          ]
+          if (isWaitOnTimer(eff.on)) {
+            events.push({
+              type: 'runtime.timer.set',
+              payload: { timerId: eff.waitId, waitId: eff.waitId, wakeAt: eff.on.timerAt },
+              threadId: currentThreadId,
+            })
+          }
+          return Effect.succeed(events)
+        }
+        case 'runtime.emit':
+          return Effect.succeed([eff.event])
+        case 'runtime.complete':
+          return Effect.succeed([
+            {
+              type: 'runtime.thread.completed',
+              payload: { threadId: currentThreadId, output: eff.output },
+              threadId: currentThreadId,
+            },
+          ])
+        case 'runtime.fail':
+          return Effect.succeed([
+            {
+              type: 'runtime.thread.failed',
+              payload: { threadId: currentThreadId, error: eff.error },
+              threadId: currentThreadId,
+            },
+          ])
+        case 'runtime.cancel': {
+          const targetThreadId = eff.threadId ?? ''
+          return Effect.succeed([
+            {
+              type: 'runtime.thread.cancelled',
+              payload: { threadId: targetThreadId, reason: 'cancelled' },
+              threadId: targetThreadId,
+            },
+          ])
+        }
+        default: {
+          const exhaustiveCheck: never = eff
+          return exhaustiveCheck
+        }
       }
     }
-  }
 
-  const handler = registry.handlers.get(effect.type)
-  if (!handler) {
-    return Effect.succeed([
-      {
-        type: 'runtime.effect.failed',
-        payload: { effectId: ctx.effectId, error: `No handler for ${effect.type}` },
-        threadId: currentThreadId,
-      },
-    ])
-  }
-  const input = 'input' in effect ? effect.input : {}
-  return handler.execute(input, ctx).pipe(
-    Effect.provide(services),
-    Effect.catch((err) =>
-      Effect.succeed([
+    const handler = registry.effects.get(eff.type)
+    if (!handler) {
+      return Effect.succeed([
         {
           type: 'runtime.effect.failed',
-          payload: {
-            effectId: ctx.effectId,
-            error: err instanceof Error ? err.message : String(err),
-          },
+          payload: { effectId: effCtx.effectId, error: `No handler for ${eff.type}` },
           threadId: currentThreadId,
         },
-      ]),
-    ),
-  )
+      ])
+    }
+    const input = 'input' in eff ? eff.input : {}
+    let execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = handler
+      .execute(input, effCtx)
+      .pipe(Effect.provide(services))
+
+    if (handler.retry && handler.retry.maxAttempts > 1) {
+      const retryPolicy = handler.retry
+      const backoff = retryPolicy.backoffMs ?? 100
+      execution = execution.pipe(
+        Effect.retry({
+          times: retryPolicy.maxAttempts - 1,
+          schedule: Schedule.spaced(backoff),
+        }),
+      )
+    }
+
+    return execution.pipe(
+      Effect.catch((err) =>
+        Effect.succeed([
+          {
+            type: 'runtime.effect.failed',
+            payload: {
+              effectId: effCtx.effectId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            threadId: currentThreadId,
+          },
+        ]),
+      ),
+    )
+  }
+
+  if (registry.middleware && registry.middleware.length > 0) {
+    const pipeline = registry.middleware.reduceRight<
+      (e: RuntimeEffect, c: EffectContext) => Effect.Effect<ReadonlyArray<EventInput>, Error>
+    >((next, mw) => (e, c) => mw(e, c, next), baseDispatch)
+    return pipeline(effect, ctx)
+  }
+
+  return baseDispatch(effect, ctx)
 }

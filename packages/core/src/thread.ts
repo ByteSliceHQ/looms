@@ -13,15 +13,14 @@ export interface StartContext {
   readonly input: JsonValue
 }
 
-export interface ReduceContext {
+export interface ThreadContext {
   readonly runId: string
   readonly threadId: string
   readonly parentThreadId: string | null
 }
 
-export interface ReduceResult<S = JsonValue> {
-  state: S
-  effects?: RuntimeEffect[]
+export interface ThreadOutput {
+  readonly effects?: RuntimeEffect[]
 }
 
 export interface ThreadDefinition<S = any> {
@@ -29,7 +28,8 @@ export interface ThreadDefinition<S = any> {
   readonly shape?: unknown
   readonly input?: StandardSchemaV1<JsonValue, JsonValue>
   initialState(ctx: StartContext): S
-  reduce(state: S, event: EventEnvelope, ctx: ReduceContext): ReduceResult<S>
+  step(state: S, event: EventEnvelope, ctx: ThreadContext): S
+  output(state: S, ctx: ThreadContext): ThreadOutput
 }
 
 export function defineThread<TShape extends SchemaInput>(def: {
@@ -37,22 +37,37 @@ export function defineThread<TShape extends SchemaInput>(def: {
   readonly shape: TShape
   readonly input?: StandardSchemaV1<JsonValue, JsonValue>
   initialState(ctx: StartContext): InferSchemaOutput<TShape>
-  reduce(
+  step(
     state: InferSchemaOutput<TShape>,
     event: EventEnvelope,
-    ctx: ReduceContext,
-  ): ReduceResult<InferSchemaOutput<TShape>>
+    ctx: ThreadContext,
+  ): InferSchemaOutput<TShape>
+  output?(state: InferSchemaOutput<TShape>, ctx: ThreadContext): ThreadOutput
 }): ThreadDefinition<InferSchemaOutput<TShape>>
-export function defineThread<S = JsonValue, TShape extends SchemaInput = SchemaInput>(def: {
+export function defineThread<S = JsonValue>(def: {
   readonly kind: string
-  readonly shape?: TShape
+  readonly shape?: unknown
   readonly input?: StandardSchemaV1<JsonValue, JsonValue>
   initialState(ctx: StartContext): S
-  reduce(state: S, event: EventEnvelope, ctx: ReduceContext): ReduceResult<S>
+  step(state: S, event: EventEnvelope, ctx: ThreadContext): S
+  output?(state: S, ctx: ThreadContext): ThreadOutput
 }): ThreadDefinition<S>
-export function defineThread(def: ThreadDefinition<any>): ThreadDefinition<any> {
-  // SAFETY: kind reducers own their state shape; the kernel stores it as JsonValue.
-  return def
+export function defineThread(def: {
+  readonly kind: string
+  readonly shape?: unknown
+  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
+  initialState(ctx: StartContext): any
+  step(state: any, event: EventEnvelope, ctx: ThreadContext): any
+  output?(state: any, ctx: ThreadContext): ThreadOutput
+}): ThreadDefinition<any> {
+  return {
+    kind: def.kind,
+    shape: def.shape,
+    input: def.input,
+    initialState: (ctx) => def.initialState(ctx),
+    step: (state, event, ctx) => def.step(state, event, ctx),
+    output: def.output ? (state, ctx) => def.output!(state, ctx) : () => ({}),
+  }
 }
 
 export function isTerminalStatus(status: ThreadStatus): boolean {

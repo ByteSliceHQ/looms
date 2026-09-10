@@ -3,7 +3,16 @@ import { describe, expect, test } from 'bun:test'
 import { Effect, Predicate, Schema } from 'effect'
 
 import { agent, asEffectsTool, defineAgent } from '@looms/agent'
-import { defineEffect, defineRuntimeModule, invoke, wait, type JsonValue } from '@looms/core'
+import { approval, decision, gate } from '@looms/approval'
+import {
+  defineEffect,
+  defineRuntimeModule,
+  defineThread,
+  invoke,
+  makeMemoryEventStore,
+  wait,
+  type JsonValue,
+} from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
@@ -277,5 +286,296 @@ describe('createLooms', () => {
     expect(firstDelta).toBeGreaterThan(-1)
     expect(message).toBeGreaterThan(firstDelta)
     expect(deltas.every((event) => event.ephemeral === true)).toBe(true)
+  })
+
+  test('middleware intercepts effects across modules', async () => {
+    const intercepted: string[] = []
+    const auditModule = defineRuntimeModule({
+      namespace: 'audit',
+      protocolVersion: '1.0.0',
+      middleware: [
+        (effect, ctx, next) => {
+          intercepted.push(effect.type)
+          return next(effect, ctx)
+        },
+      ],
+    })
+
+    const bot = defineAgent({
+      name: 'echo',
+      instructions: 'echo',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'done' },
+        done: true,
+      }),
+    })
+
+    const looms = createLooms({
+      definitions: [bot],
+      modules: [agent(), auditModule],
+    })
+
+    const { runId } = await looms.start(bot, 'test')
+    expect(intercepted).toContain('agent.callLLM')
+    const events = await looms.getEvents(runId)
+    expect(events.some((e) => e.type === 'agent.message')).toBe(true)
+  })
+
+  test('retries transient effect failures according to retry policy', async () => {
+    let attempts = 0
+    const flakyEffect = defineEffect({
+      type: 'test.flaky',
+      retry: { maxAttempts: 3, backoffMs: 5 },
+      execute: () => {
+        attempts += 1
+        if (attempts < 3) {
+          return Effect.fail(new Error('transient network glitch'))
+        }
+        return Effect.succeed([{ type: 'test.flaky.succeeded', payload: { attempts } }])
+      },
+    })
+
+    const testModule = defineRuntimeModule({
+      namespace: 'test',
+      protocolVersion: '1.0.0',
+      effects: { flaky: flakyEffect },
+      threads: {
+        worker: defineThread({
+          kind: 'worker',
+          initialState: () => ({}),
+          step: (state) => state,
+          output: () => ({ effects: [invoke('test.flaky', {}, 'flaky-call')] }),
+        }),
+      },
+    })
+
+    const workerDef = {
+      kind: 'worker',
+      name: 'flaky_worker',
+      value: { kind: 'worker', name: 'flaky_worker' },
+    }
+
+    const looms = createLooms({
+      definitions: [workerDef],
+      modules: [testModule],
+    })
+
+    const { runId } = await looms.start(workerDef, {})
+    expect(attempts).toBe(3)
+    const events = await looms.getEvents(runId)
+    expect(events.some((e) => e.type === 'test.flaky.succeeded')).toBe(true)
+  })
+
+  test('automatically wakes sleeping workflows when timer expires', async () => {
+    let wokeUp = false
+    const sleeper = defineWorkflow({
+      name: 'sleeper',
+      nodes: [
+        {
+          id: 'step1',
+          run: (ctx) => ctx.sleep(20),
+        },
+        {
+          id: 'step2',
+          deps: ['step1'],
+          run: () => {
+            wokeUp = true
+            return { done: true }
+          },
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [sleeper],
+      modules: [workflow()],
+    })
+
+    const { runId } = await looms.start(sleeper, {})
+    const initialRun = await looms.getRun(runId)
+    expect(initialRun.status).toBe('running')
+    expect(wokeUp).toBe(false)
+
+    // Wait for the automatic timer scheduler to fire wake(runId)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const finalRun = await looms.getRun(runId)
+    expect(wokeUp).toBe(true)
+    expect(finalRun.status).toBe('completed')
+    await looms.stop()
+  })
+
+  test('rescans and schedules pending timers across process restart', async () => {
+    let wokeUp = false
+    const sleeper = defineWorkflow({
+      name: 'sleeping-restart-workflow',
+      nodes: [
+        {
+          id: 'step1',
+          run: (ctx) => ctx.sleep(30),
+        },
+        {
+          id: 'step2',
+          deps: ['step1'],
+          run: () => {
+            wokeUp = true
+            return { done: true }
+          },
+        },
+      ],
+    })
+
+    const sharedStore = await Effect.runPromise(makeMemoryEventStore)
+
+    // First process starts the sleeping workflow then stops (simulating shutdown)
+    const looms1 = createLooms({
+      definitions: [sleeper],
+      modules: [workflow()],
+      store: sharedStore,
+    })
+
+    const { runId } = await looms1.start(sleeper, {})
+    const initialRun = await looms1.getRun(runId)
+    expect(initialRun.status).toBe('running')
+    expect(wokeUp).toBe(false)
+
+    // Shut down first process (cancels all in-memory timers)
+    await looms1.stop()
+
+    // Second process boots up with the same persistent store
+    const looms2 = createLooms({
+      definitions: [sleeper],
+      modules: [workflow()],
+      store: sharedStore,
+    })
+
+    // Wait for the restored timer to wake up in the second process
+    await looms2.ready()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const finalRun = await looms2.getRun(runId)
+    expect(wokeUp).toBe(true)
+    expect(finalRun.status).toBe('completed')
+    await looms2.stop()
+  })
+
+  test('idempotent start returns existing run without duplicate start events', async () => {
+    let runCount = 0
+    const workflowDef = defineWorkflow({
+      name: 'idempotent-flow',
+      nodes: [
+        {
+          id: 'step1',
+          run: () => {
+            runCount += 1
+            return { ok: true }
+          },
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [workflowDef],
+      modules: [workflow()],
+    })
+
+    const runId = 'run_idempotent_test_1'
+    const idempotencyKey = 'req_unique_key_123'
+
+    const res1 = await looms.start(workflowDef, {}, { runId, idempotencyKey })
+    expect(res1.runId).toBe(runId)
+    expect(res1.state.status).toBe('completed')
+    expect(runCount).toBe(1)
+
+    // Second start with same runId and idempotencyKey
+    const res2 = await looms.start(workflowDef, {}, { runId, idempotencyKey })
+    expect(res2.runId).toBe(runId)
+    expect(res2.state.status).toBe('completed')
+    expect(runCount).toBe(1)
+
+    const events = await looms.getEvents(runId)
+    const startEvents = events.filter((e) => e.type === 'runtime.run.started')
+    expect(startEvents.length).toBe(1)
+    expect(startEvents[0]?.idempotencyKey).toBe(idempotencyKey)
+    await looms.stop()
+  })
+
+  test('idempotent signal ignores duplicates with identical idempotency key', async () => {
+    const workflowDef = defineWorkflow({
+      name: 'signal-flow',
+      nodes: [
+        {
+          id: 'wait-node',
+          run: (ctx) => ctx.wait({ type: 'test.signal' }),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [workflowDef],
+      modules: [workflow()],
+    })
+
+    const { runId } = await looms.start(workflowDef, {})
+
+    // Send signal with idempotencyKey
+    const idempotencyKey = 'sig_key_456'
+    await looms.signal(runId, [{ type: 'test.signal', payload: { data: 1 }, threadId: null }], {
+      idempotencyKey,
+    })
+
+    const eventsAfterFirstSignal = await looms.getEvents(runId)
+    const signalEvents1 = eventsAfterFirstSignal.filter((e) => e.type === 'test.signal')
+    expect(signalEvents1.length).toBe(1)
+
+    // Re-send same signal with same idempotencyKey
+    await looms.signal(runId, [{ type: 'test.signal', payload: { data: 1 }, threadId: null }], {
+      idempotencyKey,
+    })
+
+    const eventsAfterSecondSignal = await looms.getEvents(runId)
+    const signalEvents2 = eventsAfterSecondSignal.filter((e) => e.type === 'test.signal')
+    expect(signalEvents2.length).toBe(1)
+    await looms.stop()
+  })
+
+  test('workflow gate with approval request emits approval.requested exactly once while waiting', async () => {
+    const gatedFlow = defineWorkflow({
+      name: 'gated-flow',
+      nodes: [
+        {
+          id: 'gate-step',
+          run: (ctx) => ctx.effects(gate({ title: 'Approve test run?' })),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [gatedFlow],
+      modules: [workflow(), approval()],
+    })
+
+    const { runId, state } = await looms.start(gatedFlow, {})
+    expect(state.status).toBe('running')
+    const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
+    expect(root?.status).toBe('waiting')
+
+    const events = await looms.getEvents(runId)
+    const reqEvents = events.filter((e) => e.type === 'approval.requested')
+    expect(reqEvents.length).toBe(1)
+    expect(reqEvents[0]?.payload).toBeDefined()
+
+    const firstReq = reqEvents[0]
+    expect(firstReq).toBeDefined()
+    const payload = firstReq && Predicate.isObject(firstReq.payload) ? firstReq.payload : {}
+    const approvalId = Predicate.isString(payload.approvalId) ? payload.approvalId : ''
+    expect(approvalId).not.toBe('')
+    const afterDecision = await looms.signal(runId, [decision(approvalId, 'approve')])
+    expect(afterDecision.status).toBe('completed')
+
+    const eventsAfterDone = await looms.getEvents(runId)
+    const finalReqs = eventsAfterDone.filter((e) => e.type === 'approval.requested')
+    expect(finalReqs.length).toBe(1)
+    await looms.stop()
   })
 })

@@ -35,6 +35,8 @@ export interface RunState {
   threads: { [threadId: string]: ThreadRecord }
   waits: { [waitId: string]: WaitRecord }
   outstandingEffects: OutstandingEffect[]
+  completedEffectIds?: string[]
+  processedIdempotencyKeys?: string[]
 }
 
 export function emptyRunState(runId: string): RunState {
@@ -45,6 +47,8 @@ export function emptyRunState(runId: string): RunState {
     threads: {},
     waits: {},
     outstandingEffects: [],
+    completedEffectIds: [],
+    processedIdempotencyKeys: [],
   }
 }
 

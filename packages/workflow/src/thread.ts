@@ -4,11 +4,13 @@ import {
   asJson,
   createWaitId,
   defineThread,
+  emit,
   fail,
   invoke,
   isWithdrawnError,
   spawn,
   wait,
+  type EventInput,
   type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
@@ -29,12 +31,44 @@ export const NodeStateSchema = Schema.Struct({
 })
 export type NodeState = Schema.Schema.Type<typeof NodeStateSchema>
 
+export interface WorkflowPendingSpawn {
+  readonly childThreadId: string
+  readonly kind: string
+  readonly definitionName: string
+  readonly nodeId: string
+  readonly input: JsonValue
+}
+
+export interface WorkflowPendingSleep {
+  readonly waitId: string
+  readonly wakeAt: number
+  readonly nodeId: string
+}
+
+export interface WorkflowPendingEffects {
+  readonly nodeId: string
+  readonly effects: RuntimeEffect[]
+}
+
+export interface WorkflowPendingEmit {
+  readonly id: string
+  readonly event: EventInput
+}
+
 export interface WorkflowState {
   definitionName?: string
   nodes: { [nodeId: string]: NodeState }
   concurrency: number
   input: JsonValue
   nodeIds: string[]
+  needsSchedule: boolean
+  runningNodes: string[]
+  pendingSpawns: WorkflowPendingSpawn[]
+  pendingSleeps: WorkflowPendingSleep[]
+  pendingEffects: WorkflowPendingEffects[]
+  pendingEmits: WorkflowPendingEmit[]
+  status: 'running' | 'completed' | 'failed'
+  error: string | null
 }
 
 function asObject(payload: JsonValue): { [key: string]: JsonValue } {
@@ -77,6 +111,7 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
       input: state.input,
       results,
     }),
+    `runNode_${nodeId}`,
   )
 }
 
@@ -88,8 +123,16 @@ export const workflowThread = defineThread<WorkflowState>({
     concurrency: 8,
     input: ctx.input,
     nodeIds: [],
+    needsSchedule: false,
+    runningNodes: [],
+    pendingSpawns: [],
+    pendingSleeps: [],
+    pendingEffects: [],
+    pendingEmits: [],
+    status: 'running',
+    error: null,
   }),
-  reduce(state, event, ctx) {
+  step(state, event, ctx) {
     switch (event.type) {
       case 'runtime.thread.started': {
         const payload = asObject(event.payload)
@@ -102,40 +145,37 @@ export const workflowThread = defineThread<WorkflowState>({
         for (const nodeId of nodeIds) {
           nodes[nodeId] = { status: 'pending', result: null, error: null }
         }
-        const nextState: WorkflowState = {
+        return {
           ...state,
           definitionName: defName,
           nodes,
           nodeIds,
           input: payload.input ?? state.input,
-        }
-        return {
-          state: nextState,
-          effects: [scheduleInvocation(nextState)],
+          needsSchedule: true,
         }
       }
       case 'workflow.node.started': {
         const nodeId = readString(asObject(event.payload), 'nodeId')
-        if (!nodeId) return { state }
-        const nextState: WorkflowState = {
+        if (!nodeId) return state
+        return {
           ...state,
           nodes: {
             ...state.nodes,
             [nodeId]: { status: 'running', result: null, error: null },
           },
-        }
-        return {
-          state: nextState,
-          effects: [runNodeInvocation(nextState, nodeId)],
+          runningNodes: state.runningNodes.includes(nodeId)
+            ? state.runningNodes
+            : [...state.runningNodes, nodeId],
+          needsSchedule: false,
         }
       }
       case 'workflow.node.finished': {
         const payload = asObject(event.payload)
         const nodeId = readString(payload, 'nodeId')
-        if (!nodeId) return { state }
+        if (!nodeId) return state
         const error = payload.error
         const failed = Predicate.isString(error) && error.length > 0
-        const next: WorkflowState = {
+        return {
           ...state,
           nodes: {
             ...state.nodes,
@@ -145,11 +185,15 @@ export const workflowThread = defineThread<WorkflowState>({
               error: failed ? error : null,
             },
           },
+          runningNodes: state.runningNodes.filter((id) => id !== nodeId),
+          pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+          pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
+          pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
+          pendingEmits: state.pendingEmits.filter((item) => item.id !== `finished_${nodeId}`),
+          status: failed ? 'failed' : state.status,
+          error: failed ? error : state.error,
+          needsSchedule: !failed,
         }
-        if (failed) {
-          return { state: next, effects: [fail(error)] }
-        }
-        return { state: next, effects: [scheduleInvocation(next)] }
       }
       case 'workflow.spawn.requested': {
         const payload = asObject(event.payload)
@@ -157,25 +201,18 @@ export const workflowThread = defineThread<WorkflowState>({
         const kind = readString(payload, 'kind')
         const definitionName = readString(payload, 'definitionName')
         const nodeId = readString(payload, 'nodeId')
-        if (!childThreadId || !kind || !definitionName || !nodeId) return { state }
-        const waitId = createWaitId()
+        if (!childThreadId || !kind || !definitionName || !nodeId) return state
         return {
-          state,
-          effects: [
-            spawn({
+          ...state,
+          pendingSpawns: [
+            ...state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+            {
               childThreadId,
               kind,
               definitionName,
+              nodeId,
               input: payload.input ?? null,
-            }),
-            wait({
-              waitId,
-              on: {
-                type: ['runtime.thread.completed', 'runtime.thread.failed'],
-                match: { threadId: childThreadId },
-              },
-              tag: { nodeId },
-            }),
+            },
           ],
         }
       }
@@ -184,10 +221,13 @@ export const workflowThread = defineThread<WorkflowState>({
         const waitId = readString(payload, 'waitId')
         const wakeAt = payload.wakeAt
         const nodeId = readString(payload, 'nodeId')
-        if (!waitId || !Predicate.isNumber(wakeAt) || !nodeId) return { state }
+        if (!waitId || !Predicate.isNumber(wakeAt) || !nodeId) return state
         return {
-          state,
-          effects: [wait({ waitId, on: { timerAt: wakeAt }, tag: { nodeId } })],
+          ...state,
+          pendingSleeps: [
+            ...state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
+            { waitId, wakeAt, nodeId },
+          ],
         }
       }
       case 'workflow.effects.requested': {
@@ -196,35 +236,47 @@ export const workflowThread = defineThread<WorkflowState>({
         const raw = payload.effects
         // SAFETY: node handlers serialize RuntimeEffect values into the event payload.
         const effects: RuntimeEffect[] = Array.isArray(raw) ? (raw as RuntimeEffect[]) : []
-        if (!nodeId) return { state, effects }
-        return {
-          state,
-          effects: effects.map((effect) => {
-            if (effect.type !== 'runtime.wait' || !('on' in effect)) return effect
+        if (!nodeId) return state
+        const taggedEffects = effects.map((effect, idx) => {
+          if (effect.type === 'runtime.wait' && 'on' in effect) {
             const tag = Predicate.isObject(effect.tag) ? { ...effect.tag, nodeId } : { nodeId }
             return { ...effect, tag }
-          }),
+          }
+          if (!('tag' in effect && Predicate.isString(effect.tag))) {
+            return { ...effect, tag: `${nodeId}_${effect.type}_${idx}` }
+          }
+          return effect
+        })
+        return {
+          ...state,
+          pendingEffects: [
+            ...state.pendingEffects.filter((item) => item.nodeId !== nodeId),
+            { nodeId, effects: taggedEffects },
+          ],
         }
       }
       case 'runtime.effect.failed': {
         const payload = asObject(event.payload)
         const error = readString(payload, 'error') ?? 'effect failed'
-        if (isWithdrawnError(error)) return { state }
+        if (isWithdrawnError(error)) return state
         const running = Object.entries(state.nodes).find(([, node]) => node.status === 'running')
-        if (!running) return { state }
+        if (!running) return state
         const nodeId = running[0]
         const message = `Node ${nodeId} failed: ${error}`
         return {
-          state: {
-            ...state,
-            nodes: {
-              ...state.nodes,
-              [nodeId]: { status: 'failed', result: null, error: message },
-            },
+          ...state,
+          nodes: {
+            ...state.nodes,
+            [nodeId]: { status: 'failed', result: null, error: message },
           },
-          effects: [
+          runningNodes: state.runningNodes.filter((id) => id !== nodeId),
+          pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+          pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
+          pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
+          pendingEmits: [
+            ...state.pendingEmits.filter((item) => item.id !== `finished_${nodeId}`),
             {
-              type: 'runtime.emit',
+              id: `finished_${nodeId}`,
               event: {
                 type: 'workflow.node.finished',
                 payload: asJson({ nodeId, result: null, error: message }),
@@ -237,28 +289,32 @@ export const workflowThread = defineThread<WorkflowState>({
       case 'runtime.wait.satisfied': {
         const payload = asObject(event.payload)
         const tag = payload.tag
-        if (!Predicate.isObject(tag)) return { state }
+        if (!Predicate.isObject(tag)) return state
         const nodeId = readString(tag, 'nodeId')
-        if (!nodeId) return { state }
+        if (!nodeId) return state
         const embedded = payload.event
         const embeddedObj =
           Predicate.isObject(embedded) && Predicate.isObject(embedded.payload)
             ? embedded.payload
             : {}
         const error = readString(embeddedObj, 'error') ?? null
+        const result =
+          embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : { waited: true })
 
         return {
-          state,
-          effects: [
+          ...state,
+          pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+          pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
+          pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
+          pendingEmits: [
+            ...state.pendingEmits.filter((item) => item.id !== `finished_${nodeId}`),
             {
-              type: 'runtime.emit',
+              id: `finished_${nodeId}`,
               event: {
                 type: 'workflow.node.finished',
                 payload: asJson({
                   nodeId,
-                  result:
-                    embeddedObj.output ??
-                    (Predicate.isObject(embedded) ? embedded.payload : { waited: true }),
+                  result,
                   error,
                 }),
                 threadId: ctx.threadId,
@@ -268,7 +324,70 @@ export const workflowThread = defineThread<WorkflowState>({
         }
       }
       default:
-        return { state }
+        return state
     }
+  },
+  output(state, ctx) {
+    const effects: RuntimeEffect[] = []
+
+    if (state.status === 'failed' && state.error) {
+      effects.push(fail(state.error))
+      return { effects }
+    }
+
+    if (state.needsSchedule) {
+      effects.push(scheduleInvocation(state))
+    }
+
+    for (const nodeId of state.runningNodes) {
+      const hasSpawn = state.pendingSpawns.some((item) => item.nodeId === nodeId)
+      const hasSleep = state.pendingSleeps.some((item) => item.nodeId === nodeId)
+      const hasEffects = state.pendingEffects.some((item) => item.nodeId === nodeId)
+      if (!hasSpawn && !hasSleep && !hasEffects) {
+        effects.push(runNodeInvocation(state, nodeId))
+      }
+    }
+
+    for (const spawnReq of state.pendingSpawns) {
+      const waitId = createWaitId(ctx.threadId, `spawn_${spawnReq.childThreadId}`)
+      effects.push(
+        spawn({
+          childThreadId: spawnReq.childThreadId,
+          kind: spawnReq.kind,
+          definitionName: spawnReq.definitionName,
+          input: spawnReq.input,
+        }),
+        wait({
+          waitId,
+          on: {
+            type: ['runtime.thread.completed', 'runtime.thread.failed'],
+            match: { threadId: spawnReq.childThreadId },
+          },
+          tag: { nodeId: spawnReq.nodeId },
+        }),
+      )
+    }
+
+    for (const sleepReq of state.pendingSleeps) {
+      effects.push(
+        wait({
+          waitId: sleepReq.waitId,
+          on: { timerAt: sleepReq.wakeAt },
+          tag: { nodeId: sleepReq.nodeId },
+        }),
+      )
+    }
+
+    for (const effectReq of state.pendingEffects) {
+      for (const eff of effectReq.effects) {
+        effects.push(eff)
+      }
+    }
+
+    for (const emitReq of state.pendingEmits) {
+      effects.push(emit(emitReq.event))
+    }
+
+    return { effects }
   },
 })

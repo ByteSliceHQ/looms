@@ -31,6 +31,7 @@ const StartRunBodySchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   input: Schema.optional(JsonValueSchema),
   runId: Schema.optional(Schema.String),
+  idempotencyKey: Schema.optional(Schema.String),
 })
 
 const SignalBodySchema = Schema.Struct({
@@ -46,7 +47,17 @@ const SignalBodySchema = Schema.Struct({
   type: Schema.optional(Schema.String),
   payload: Schema.optional(JsonValueSchema),
   threadId: Schema.optional(Schema.NullOr(Schema.String)),
+  idempotencyKey: Schema.optional(Schema.String),
 })
+
+function extractIdempotencyKey(req: Request, bodyKey?: string): string | undefined {
+  return (
+    bodyKey ??
+    req.headers.get('idempotency-key') ??
+    req.headers.get('x-idempotency-key') ??
+    undefined
+  )
+}
 
 function run<A, E>(effect: Effect.Effect<A, E, EventStoreTag>, store: EventStore): Promise<A> {
   return Effect.runPromise(Effect.provideService(effect, EventStoreTag, store))
@@ -61,7 +72,13 @@ function streamStartRun(
   req: Request,
   runtime: LoomsRuntime,
   store: EventStore,
-  args: { kind: string; definitionName: string; input: JsonValue; runId: string },
+  args: {
+    kind: string
+    definitionName: string
+    input: JsonValue
+    runId: string
+    idempotencyKey?: string
+  },
 ): Response {
   return createEventStreamResponse({
     signal: req.signal,
@@ -77,6 +94,7 @@ function streamStartRun(
             definitionName: args.definitionName,
             input: args.input,
             runId: args.runId,
+            idempotencyKey: args.idempotencyKey,
           }),
           store,
         )
@@ -137,12 +155,14 @@ export function createFetchHandler(
           return Response.json({ error: 'kind and definitionName required' }, { status: 400 })
         }
         const runId = body.runId ?? createRunId()
+        const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
         if (wantsRunStream(req, url)) {
           return streamStartRun(req, runtime, store, {
             kind,
             definitionName,
             input: body.input ?? null,
             runId,
+            idempotencyKey,
           })
         }
         try {
@@ -152,6 +172,7 @@ export function createFetchHandler(
               definitionName,
               input: body.input ?? null,
               runId,
+              idempotencyKey,
             }),
             store,
           )
@@ -198,7 +219,8 @@ export function createFetchHandler(
                 },
               ]
             : [])
-        const state = await run(runtime.signal(runId, events), store)
+        const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
+        const state = await run(runtime.signal(runId, events, { idempotencyKey }), store)
         return Response.json({ runId, state })
       }
 

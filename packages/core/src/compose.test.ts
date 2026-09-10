@@ -11,7 +11,7 @@ import { defineThread } from './thread'
 const ping = defineThread({
   kind: 'ping',
   initialState: () => ({}),
-  reduce: (state) => ({ state }),
+  step: (state) => state,
 })
 
 describe('composeModules', () => {
@@ -41,6 +41,6 @@ describe('composeModules', () => {
     })
     const composed = composeModules([module])
     expect(composed.threads.get('ping')).toBe(ping)
-    expect(composed.handlers.get('demo.work')).toBe(effect)
+    expect(composed.effects.get('demo.work')).toBe(effect)
   })
 })

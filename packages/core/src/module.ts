@@ -1,11 +1,23 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Layer } from 'effect'
+import type { Effect, Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
-import type { EffectDefinition } from './effects'
+import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
+import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
+
+export type NextEffectHandler = (
+  effect: RuntimeEffect,
+  ctx: EffectContext,
+) => Effect.Effect<ReadonlyArray<EventInput>, Error>
+
+export type EffectMiddleware = (
+  effect: RuntimeEffect,
+  ctx: EffectContext,
+  next: NextEffectHandler,
+) => Effect.Effect<ReadonlyArray<EventInput>, Error>
 
 export interface RuntimeModuleDependency {
   readonly namespace: string
@@ -59,11 +71,11 @@ export interface RuntimeModule<
   readonly events?: TEvents
   readonly threads?: TThreads
   readonly effects?: TEffects
-  readonly handlers?: { readonly [type: string]: EffectDefinition }
   readonly projections?: TProjections
   readonly dependencies?: readonly RuntimeModuleDependency[]
+  readonly middleware?: readonly EffectMiddleware[]
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
-  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<never, never, never>
+  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<any, never, never>
 }
 
 export function defineRuntimeModule<

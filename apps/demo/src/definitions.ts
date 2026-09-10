@@ -295,12 +295,16 @@ export const checkout = defineWorkflow({
       run: (ctx) => {
         if (isRejected(ctx.results.gate ?? null)) return { charged: false, reason: 'rejected' }
         return ctx.effects([
-          invoke('payments.charge', {
-            amount: ctx.input.amount,
-            currency: ctx.input.currency,
-          }),
+          invoke(
+            'payments.charge',
+            {
+              amount: ctx.input.amount,
+              currency: ctx.input.currency,
+            },
+            `charge_${ctx.nodeId}`,
+          ),
           wait({
-            waitId: createWaitId(),
+            waitId: createWaitId(ctx.nodeId, 'charge'),
             on: { type: ['payments.charge.authorized', 'payments.charge.declined'] },
           }),
         ])

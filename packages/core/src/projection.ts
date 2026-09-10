@@ -220,6 +220,7 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
     threads: state.records,
     waits: {},
     outstandingEffects: [],
+    completedEffectIds: [],
   })
 }
 

@@ -225,7 +225,7 @@ function runNode(
             type: 'workflow.sleep.requested',
             payload: {
               nodeId,
-              waitId: createWaitId(),
+              waitId: createWaitId(threadId, `sleep_${nodeId}`),
               wakeAt: Date.now() + result.ms,
             },
             threadId,

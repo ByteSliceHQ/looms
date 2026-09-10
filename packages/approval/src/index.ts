@@ -59,7 +59,7 @@ export function gate(args: {
   actions?: ApprovalAction[]
   schema?: JsonValue
 }): RuntimeEffect[] {
-  const approvalId = args.approvalId ?? createWaitId()
+  const approvalId = args.approvalId ?? createWaitId('approval')
   const actions = args.actions ?? [
     { id: 'approve', label: 'Approve', outcome: 'approve' as const },
     { id: 'reject', label: 'Reject', outcome: 'reject' as const },
@@ -74,9 +74,10 @@ export function gate(args: {
         actions,
         schema: args.schema,
       }),
+      `request_${approvalId}`,
     ),
     wait({
-      waitId: createWaitId(),
+      waitId: createWaitId(approvalId, 'decision'),
       on: { type: 'approval.decided', match: { approvalId } },
       tag: { approvalId },
     }),

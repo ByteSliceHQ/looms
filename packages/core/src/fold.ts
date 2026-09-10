@@ -5,8 +5,7 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { emptyRunState } from './state'
-import type { ThreadDefinition, ReduceContext } from './thread'
-import { isTerminalStatus } from './thread'
+import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
 export interface FoldRegistry {
@@ -35,13 +34,19 @@ function cloneState(state: RunState): RunState {
     threads: { ...state.threads },
     waits: { ...state.waits },
     outstandingEffects: [...state.outstandingEffects],
+    completedEffectIds: state.completedEffectIds ? [...state.completedEffectIds] : [],
+    processedIdempotencyKeys: state.processedIdempotencyKeys
+      ? [...state.processedIdempotencyKeys]
+      : [],
   }
 }
 
 function completeEffect(state: RunState, effectId: string): RunState {
+  const completed = state.completedEffectIds ?? []
   return {
     ...state,
     outstandingEffects: state.outstandingEffects.filter((item) => item.effectId !== effectId),
+    completedEffectIds: completed.includes(effectId) ? completed : [...completed, effectId],
   }
 }
 
@@ -214,23 +219,88 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
   }
 }
 
-function appendEffects(
+function deriveEffectId(
+  threadId: string,
+  causingSeq: number,
+  index: number,
+  effect: RuntimeEffect,
+  existingId?: string,
+): string {
+  if ('tag' in effect && Predicate.isString(effect.tag)) {
+    return createEffectId(threadId, effect.tag)
+  }
+  if ('waitId' in effect && Predicate.isString(effect.waitId)) {
+    return createEffectId(threadId, effect.waitId)
+  }
+  if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
+    return createEffectId(threadId, `spawn_${effect.childThreadId}`)
+  }
+  if (existingId) {
+    return existingId
+  }
+  return createEffectId(threadId, causingSeq, index)
+}
+
+function mapEffects(
+  threadId: string,
+  event: EventEnvelope,
+  effects: RuntimeEffect[],
+  completed: readonly string[],
+  existingForThread: readonly OutstandingEffect[],
+): OutstandingEffect[] {
+  const remainingExisting = [...existingForThread]
+  return effects
+    .map((effect, index) => {
+      const matchIndex = remainingExisting.findIndex((item) => {
+        if ('tag' in effect && Predicate.isString(effect.tag)) {
+          return item.effectId === createEffectId(threadId, effect.tag)
+        }
+        if ('waitId' in effect && Predicate.isString(effect.waitId)) {
+          return item.effectId === createEffectId(threadId, effect.waitId)
+        }
+        if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
+          return item.effectId === createEffectId(threadId, `spawn_${effect.childThreadId}`)
+        }
+        return item.effect.type === effect.type
+      })
+      const existing = matchIndex >= 0 ? remainingExisting.splice(matchIndex, 1)[0] : undefined
+      const effectId = deriveEffectId(threadId, event.seq, index, effect, existing?.effectId)
+      return (
+        existing ?? {
+          effectId,
+          threadId,
+          causingSeq: event.seq,
+          causingEventId: event.id,
+          effect,
+        }
+      )
+    })
+    .filter((item) => !completed.includes(item.effectId))
+}
+
+/** Reconcile a thread's outstanding effects with output-derived enabled work. */
+function reconcileOutputEffects(
   state: RunState,
   threadId: string,
   event: EventEnvelope,
   effects: RuntimeEffect[],
 ): RunState {
-  if (effects.length === 0) return state
-  const added: OutstandingEffect[] = effects.map((effect, index) => ({
-    effectId: createEffectId(threadId, event.seq, index),
-    threadId,
-    causingSeq: event.seq,
-    causingEventId: event.id,
-    effect,
-  }))
+  const record = state.threads[threadId]
+  if (record && isTerminalStatus(record.status)) {
+    return {
+      ...state,
+      outstandingEffects: state.outstandingEffects.filter((item) => item.threadId !== threadId),
+    }
+  }
+
+  const completed = state.completedEffectIds ?? []
+  const existingForThread = state.outstandingEffects.filter((item) => item.threadId === threadId)
+  const mapped = mapEffects(threadId, event, effects, completed, existingForThread)
+  const otherThreadEffects = state.outstandingEffects.filter((item) => item.threadId !== threadId)
+
   return {
     ...state,
-    outstandingEffects: [...state.outstandingEffects, ...added],
+    outstandingEffects: [...otherThreadEffects, ...mapped],
   }
 }
 
@@ -241,26 +311,33 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   if (!record) return state
   const definition = registry.threads.get(record.kind)
   if (!definition) return state
-  const ctx: ReduceContext = {
+  const ctx: ThreadContext = {
     runId: state.runId,
     threadId,
     parentThreadId: record.parentThreadId,
   }
-  const result = definition.reduce(record.state, event, ctx)
-  const next = putThread(state, { ...record, state: result.state })
-  return appendEffects(next, threadId, event, result.effects ?? [])
+
+  const nextState = definition.step(record.state, event, ctx)
+  const outputEffects = definition.output(nextState, ctx).effects ?? []
+
+  let next = putThread(state, { ...record, state: nextState })
+  next = reconcileOutputEffects(next, threadId, event, outputEffects)
+  return next
 }
 
 function failUnhandledEffect(
   state: RunState,
   event: EventEnvelope,
-  effectsBeforeDeliver: number,
+  effectIdsBeforeDeliver: ReadonlySet<string>,
 ): RunState {
   if (event.type !== 'runtime.effect.failed') return state
   const payload = payloadObject(event)
   const error = readString(payload, 'error') ?? 'effect failed'
   if (isWithdrawnError(error)) return state
-  if (state.outstandingEffects.length > effectsBeforeDeliver) return state
+  const handled = state.outstandingEffects.some(
+    (item) => !effectIdsBeforeDeliver.has(item.effectId),
+  )
+  if (handled) return state
   const threadId = event.threadId
   if (!threadId) return state
   const existing = state.threads[threadId]
@@ -284,10 +361,16 @@ export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldR
   if (event.effectId) {
     next = completeEffect(next, event.effectId)
   }
+  if (event.idempotencyKey) {
+    const keys = next.processedIdempotencyKeys ?? []
+    if (!keys.includes(event.idempotencyKey)) {
+      next = { ...next, processedIdempotencyKeys: [...keys, event.idempotencyKey] }
+    }
+  }
   next = applyProtocol(next, event, registry)
-  const effectsBeforeDeliver = next.outstandingEffects.length
+  const effectIdsBeforeDeliver = new Set(next.outstandingEffects.map((item) => item.effectId))
   next = deliver(next, event, registry)
-  return failUnhandledEffect(next, event, effectsBeforeDeliver)
+  return failUnhandledEffect(next, event, effectIdsBeforeDeliver)
 }
 
 export function foldRun(

@@ -45,6 +45,7 @@ export interface Looms {
   start<TDef extends DefinitionRef>(
     definition: TDef,
     input?: DefinitionInput<TDef>,
+    options?: { runId?: string; threadId?: string; idempotencyKey?: string },
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
   startRun(args: {
@@ -52,11 +53,18 @@ export interface Looms {
     definitionName: string
     input?: JsonValue
     runId?: string
+    threadId?: string
+    idempotencyKey?: string
   }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
-  signal(runId: string, events: ReadonlyArray<EventInput>): Promise<RunState>
+  signal(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
   wake(runId: string): Promise<RunState>
+  rescanTimers(): Promise<number>
   project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   fetch(req: Request): Promise<Response | null>
@@ -101,6 +109,12 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           store,
           definitions: toRegistered(definitions),
         })
+        // Automatically rescan pending timers from existing runs in the store
+        await Effect.runPromise(
+          Effect.provideService(runtime.rescanTimers(), EventStoreTag, store),
+        ).catch((err) => {
+          console.error('[rescan timers error]', err)
+        })
         const fetchHandler = createFetchHandler({ runtime, store })
         return { runtime, store, fetchHandler }
       })()
@@ -127,19 +141,24 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
       return { store: init.store, runtime: init.runtime }
     },
     startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
-    start: (definition, input) =>
+    start: (definition, input, startOpts) =>
       runEffect((i) =>
         i.runtime.startRun({
           kind: definition.kind,
           definitionName: definition.name,
           // SAFETY: input is validated against the definition's schema inside startRun.
           input: input as JsonValue | undefined,
+          runId: startOpts?.runId,
+          threadId: startOpts?.threadId,
+          idempotencyKey: startOpts?.idempotencyKey,
         }),
       ),
     getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),
     getEvents: (runId, opts) => runEffect((i) => i.runtime.getEvents(runId, opts)),
-    signal: (runId, events) => runEffect((i) => i.runtime.signal(runId, events)),
+    signal: (runId, events, signalOpts) =>
+      runEffect((i) => i.runtime.signal(runId, events, signalOpts)),
     wake: (runId) => runEffect((i) => i.runtime.wake(runId)),
+    rescanTimers: () => runEffect((i) => i.runtime.rescanTimers()),
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     fetch: async (req) => {
@@ -156,6 +175,10 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
       if (runningServer) {
         runningServer.stop()
         runningServer = undefined
+      }
+      if (initPromise) {
+        const init = await initPromise
+        init.runtime.dispose()
       }
     },
   }

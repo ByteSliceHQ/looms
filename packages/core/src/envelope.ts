@@ -35,6 +35,7 @@ export const EventEnvelopeSchema = Schema.Struct({
   effectId: Schema.optional(Schema.NullOr(Schema.String)),
   origin: EventOriginSchema,
   ephemeral: Schema.optional(Schema.Boolean),
+  idempotencyKey: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
 export type EventEnvelope<TType extends string = string, TPayload extends JsonValue = JsonValue> = {
@@ -51,6 +52,7 @@ export type EventEnvelope<TType extends string = string, TPayload extends JsonVa
   effectId?: string | null
   origin: EventOrigin
   ephemeral?: boolean
+  idempotencyKey?: string | null
 }
 
 export type TypedEvent<TType extends string, TPayload extends JsonValue> = EventEnvelope<
@@ -70,6 +72,7 @@ export type EventInput = {
   ephemeral?: boolean
   id?: string
   ts?: number
+  idempotencyKey?: string | null
 }
 
 export type AppendableEvent = Omit<EventEnvelope, 'seq'> & { seq?: number }
@@ -108,6 +111,7 @@ export function createEvent<TType extends string>(
     effectId: input.effectId,
     origin: input.origin ?? { type: 'system' },
     ephemeral: input.ephemeral,
+    idempotencyKey: input.idempotencyKey ?? null,
   }
 }
 

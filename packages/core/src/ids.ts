@@ -1,3 +1,5 @@
+import { Predicate } from 'effect'
+
 let counter = 0
 
 function token(): string {
@@ -17,22 +19,41 @@ export function createThreadId(): string {
   return `thr_${token()}`
 }
 
-export function createWaitId(): string {
+export function createWaitId(scope?: string, tag?: string | number): string {
+  if (scope !== undefined && tag !== undefined) {
+    return `wait_${scope}_${tag}`
+  }
+  if (scope !== undefined) {
+    return `wait_${scope}_${token()}`
+  }
   return `wait_${token()}`
 }
 
-export function createEffectId(threadId: string, causingSeq: number, index: number): string {
-  return `${threadId}:${causingSeq}:${index}`
+export function createEffectId(
+  threadId: string,
+  causingSeqOrTag: number | string,
+  index?: number,
+): string {
+  if (Predicate.isString(causingSeqOrTag)) {
+    return `${threadId}:${causingSeqOrTag}`
+  }
+  return `${threadId}:${causingSeqOrTag}:${index ?? 0}`
 }
 
 export function parseEffectId(
   effectId: string,
-): { threadId: string; causingSeq: number; index: number } | null {
-  const last = effectId.lastIndexOf(':')
-  const second = last > 0 ? effectId.lastIndexOf(':', last - 1) : -1
-  if (last <= 0 || second < 0) return null
-  const causingSeq = Number(effectId.slice(second + 1, last))
-  const index = Number(effectId.slice(last + 1))
-  if (!Number.isFinite(causingSeq) || !Number.isFinite(index)) return null
-  return { threadId: effectId.slice(0, second), causingSeq, index }
+): { threadId: string; causingSeq?: number; tag?: string; index?: number } | null {
+  const parts = effectId.split(':')
+  if (parts.length < 2) return null
+  if (parts.length === 3) {
+    const seq = Number(parts[1])
+    const idx = Number(parts[2])
+    if (Number.isFinite(seq) && Number.isFinite(idx)) {
+      return { threadId: parts[0]!, causingSeq: seq, index: idx }
+    }
+  }
+  return {
+    threadId: parts[0]!,
+    tag: parts.slice(1).join(':'),
+  }
 }

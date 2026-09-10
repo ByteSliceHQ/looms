@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import type { JsonValue } from '@looms/core'
+import type { EventInput, JsonValue, RuntimeEffect } from '@looms/core'
 
 export const ToolCallSchema = Schema.Struct({
   id: Schema.String,
@@ -37,15 +37,88 @@ export const TokenUsageSchema = Schema.Struct({
 })
 export type TokenUsage = Schema.Schema.Type<typeof TokenUsageSchema>
 
+export const ThreadStartedPayloadSchema = Schema.Struct({
+  definitionName: Schema.optional(Schema.String),
+  input: Schema.optional(Schema.Unknown),
+})
+
+export const AgentMessagePayloadSchema = Schema.Struct({
+  message: MessageSchema,
+})
+
+export const AgentTurnStartedPayloadSchema = Schema.Struct({
+  turn: Schema.optional(Schema.Number),
+})
+
+export const AgentToolCallRequestedPayloadSchema = Schema.Struct({
+  toolCall: ToolCallSchema,
+  turn: Schema.optional(Schema.Number),
+})
+
+export const AgentToolResultPayloadSchema = Schema.Struct({
+  toolCallId: Schema.String,
+  name: Schema.optional(Schema.String),
+  result: Schema.optional(Schema.Unknown),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+export const AgentSteeredPayloadSchema = Schema.Struct({
+  message: MessageSchema,
+  interrupt: Schema.optional(Schema.Boolean),
+})
+
+export const AgentSpawnRequestedPayloadSchema = Schema.Struct({
+  childThreadId: Schema.String,
+  kind: Schema.String,
+  definitionName: Schema.String,
+  toolCallId: Schema.String,
+  input: Schema.optional(Schema.Unknown),
+})
+
+export const AgentEffectsRequestedPayloadSchema = Schema.Struct({
+  toolCallId: Schema.String,
+  effects: Schema.optional(Schema.Array(Schema.Unknown)),
+  waitOn: Schema.optional(
+    Schema.Struct({
+      type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+      match: Schema.optional(Schema.Unknown),
+    }),
+  ),
+})
+
 export interface PendingEffectTool {
   toolCallId: string
   name: string
+}
+
+export interface AgentPendingSpawn {
+  readonly childThreadId: string
+  readonly kind: string
+  readonly definitionName: string
+  readonly toolCallId: string
+  readonly input: JsonValue
+}
+
+export interface AgentPendingEffects {
+  readonly toolCallId: string
+  readonly effects: RuntimeEffect[]
+  readonly waitOn?: { type: string | readonly string[]; match?: JsonValue }
+}
+
+export interface AgentPendingEmit {
+  readonly id: string
+  readonly event: EventInput
 }
 
 export interface AgentState {
   definitionName?: string
   lines: Message[]
   pendingToolCalls: ToolCall[]
+  executingToolCalls: ToolCall[]
+  pendingSpawns: AgentPendingSpawn[]
+  pendingEffects: AgentPendingEffects[]
+  pendingEmits: AgentPendingEmit[]
+  needsLlmCall: boolean
   turn: number
   maxTurns: number
   pendingSteer: Message | null

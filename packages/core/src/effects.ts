@@ -52,9 +52,16 @@ export type CancelEffect = {
   threadId: string
 }
 
+export interface RetryPolicy {
+  readonly maxAttempts: number
+  readonly backoffMs?: number
+  readonly maxBackoffMs?: number
+}
+
 export type InvokeEffect = {
   type: string
   input: JsonValue
+  tag?: string
 }
 
 export type PrimitiveEffect =
@@ -119,10 +126,11 @@ export type EffectHandlerResult<R = never> =
   | Promise<ReadonlyArray<EventInput>>
   | Effect.Effect<ReadonlyArray<EventInput>, Error, R>
 
-export interface EffectDefinition<TInput extends JsonValue = JsonValue> {
+export interface EffectDefinition<TInput extends JsonValue = JsonValue, R = any> {
   readonly type: string
   readonly input?: EffectInputSchema<TInput>
-  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<EventInput>, Error>
+  readonly retry?: RetryPolicy
+  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<EventInput>, Error, R>
 }
 
 function liftHandlerResult<R>(
@@ -140,39 +148,28 @@ function liftHandlerResult<R>(
   return Effect.succeed(result)
 }
 
-/**
- * Handlers may `yield*` host services. `createRuntime` provides each module's
- * `services` Layer before the effect is run, so those requirements are closed here.
- */
-function closeHandlerRequirements<R>(
-  effect: Effect.Effect<ReadonlyArray<EventInput>, Error, R>,
-): Effect.Effect<ReadonlyArray<EventInput>, Error> {
-  // SAFETY: createRuntime provides each module's `services` Layer before runPromise.
-  return effect as Effect.Effect<ReadonlyArray<EventInput>, Error>
-}
-
 export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(def: {
   type: string
   input?: EffectInputSchema<TInput>
+  retry?: RetryPolicy
   execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R>
-}): EffectDefinition<TInput> {
+}): EffectDefinition<TInput, R> {
   const schema = def.input
   return {
     type: def.type,
     input: schema,
+    retry: def.retry,
     execute: (raw, ctx) =>
-      closeHandlerRequirements(
-        Effect.gen(function* () {
-          const input = schema
-            ? yield* Effect.tryPromise({
-                try: () => validateInput(schema, raw),
-                catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-              })
-            : raw
-          // SAFETY: input was validated by schema or raw JsonValue is accepted as TInput.
-          return yield* liftHandlerResult(def.execute(input as TInput, ctx))
-        }),
-      ),
+      Effect.gen(function* () {
+        const input = schema
+          ? yield* Effect.tryPromise({
+              try: () => validateInput(schema, raw),
+              catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+            })
+          : raw
+        // SAFETY: input has been validated against schema or is unconstrained raw input
+        return yield* liftHandlerResult(def.execute(input as TInput, ctx))
+      }),
   }
 }
 
@@ -220,6 +217,6 @@ export function cancel(threadId: string): CancelEffect {
   return { type: 'runtime.cancel', threadId }
 }
 
-export function invoke(type: string, input: JsonValue): InvokeEffect {
-  return { type, input }
+export function invoke(type: string, input: JsonValue, tag?: string): InvokeEffect {
+  return tag !== undefined ? { type, input, tag } : { type, input }
 }
