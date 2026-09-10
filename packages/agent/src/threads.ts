@@ -478,7 +478,7 @@ export const agentThread = defineThread({
         return state
     }
   },
-  output(state: AgentState, ctx) {
+  effects(state: AgentState, ctx) {
     const effects: RuntimeEffect[] = []
 
     if (state.needsLlmCall) {
@@ -551,7 +551,7 @@ export const agentThread = defineThread({
       effects.push(emit(emitReq.event))
     }
 
-    return { effects }
+    return effects
   },
 })
 

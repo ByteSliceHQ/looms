@@ -384,7 +384,7 @@ describe('createLooms', () => {
           kind: 'worker',
           initialState: () => ({}),
           step: (state) => state,
-          output: () => ({ effects: [invoke('test.flaky', {}, 'flaky-call')] }),
+          effects: () => [invoke('test.flaky', {}, 'flaky-call')],
         }),
       },
     })

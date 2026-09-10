@@ -35,12 +35,12 @@ const counter = defineThread({
         return state
     }
   },
-  output(state) {
+  effects(state) {
     if (state.count >= 2) {
-      return { effects: [complete({ count: state.count })] }
+      return [complete({ count: state.count })]
     }
 
-    return { effects: [invoke('counter.tick', { by: 1 })] }
+    return [invoke('counter.tick', { by: 1 })]
   },
 })
 
@@ -153,12 +153,12 @@ describe('foldRun', () => {
 
         return state
       },
-      output(state) {
+      effects(state) {
         if (state.ready) {
-          return { effects: [complete({ ready: true })] }
+          return [complete({ ready: true })]
         }
 
-        return { effects: [wait({ waitId: 'w1', on: { type: 'counter.incremented' } })] }
+        return [wait({ waitId: 'w1', on: { type: 'counter.incremented' } })]
       },
     })
 
@@ -372,12 +372,12 @@ describe('foldRun', () => {
 
         return state
       },
-      output(state) {
+      effects(state) {
         if (state.saw) {
-          return { effects: [invoke('handler.recover', {}, 'recover')] }
+          return [invoke('handler.recover', {}, 'recover')]
         }
 
-        return { effects: [] }
+        return []
       },
     })
 
@@ -819,7 +819,7 @@ describe('threadTree projection', () => {
     expect(stepped).toEqual({ count: 1 })
   })
 
-  test('thread with step and output derives enabled effects from state', () => {
+  test('thread with step and effects derives enabled work from state', () => {
     const LightState = Schema.Struct({
       phase: Schema.Union([
         Schema.Literal('green'),
@@ -848,16 +848,16 @@ describe('threadTree projection', () => {
 
         return state
       },
-      output(state) {
+      effects(state) {
         if (state.phase === 'green') {
-          return { effects: [invoke('drive', { speed: 30 }, 'drive-now')] }
+          return [invoke('drive', { speed: 30 }, 'drive-now')]
         }
 
         if (state.phase === 'yellow') {
-          return { effects: [invoke('slow', { speed: 10 }, 'slow-now')] }
+          return [invoke('slow', { speed: 10 }, 'slow-now')]
         }
 
-        return { effects: [invoke('stop', {}, 'stop-now')] }
+        return [invoke('stop', {}, 'stop-now')]
       },
     })
 
@@ -884,7 +884,7 @@ describe('threadTree projection', () => {
       origin: { type: 'system' },
     })
 
-    // Green phase -> output should be 'drive'
+    // Green phase -> effects should enable 'drive'
     const state1 = foldRun([startEvent], registry)
     expect(state1.threads[threadId]?.state).toEqual({ phase: 'green', ticks: 0 })
     expect(state1.outstandingEffects).toHaveLength(1)

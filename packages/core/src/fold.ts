@@ -353,8 +353,8 @@ function mapEffects(
     .filter((item) => !completed.includes(item.effectId))
 }
 
-/** Reconcile a thread's outstanding effects with output-derived enabled work. */
-function reconcileOutputEffects(
+/** Reconcile a thread's outstanding effects with enabled work from `effects()`. */
+function reconcileEffects(
   state: RunState,
   threadId: string,
   event: EventEnvelope,
@@ -406,10 +406,10 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   }
 
   const nextState = definition.step(record.state, event, ctx)
-  const outputEffects = definition.output(nextState, ctx).effects ?? []
+  const enabled = definition.effects(nextState, ctx)
 
   let next = putThread(state, { ...record, state: nextState })
-  next = reconcileOutputEffects(next, threadId, event, outputEffects)
+  next = reconcileEffects(next, threadId, event, enabled)
   return next
 }
 

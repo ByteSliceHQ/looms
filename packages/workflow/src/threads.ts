@@ -391,12 +391,12 @@ export const workflowThread = defineThread({
         return state
     }
   },
-  output(state: WorkflowState, ctx) {
+  effects(state: WorkflowState, ctx) {
     const effects: RuntimeEffect[] = []
 
     if (state.status === 'failed' && state.error) {
       effects.push(fail(state.error))
-      return { effects }
+      return effects
     }
 
     if (state.needsSchedule) {
@@ -454,6 +454,6 @@ export const workflowThread = defineThread({
       effects.push(emit(emitReq.event))
     }
 
-    return { effects }
+    return effects
   },
 })

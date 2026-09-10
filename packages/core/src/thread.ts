@@ -17,17 +17,13 @@ export interface ThreadContext {
   readonly parentThreadId: string | null
 }
 
-export interface ThreadOutput {
-  readonly effects?: RuntimeEffect[]
-}
-
 export interface ThreadDefinition<S = any> {
   readonly kind: string
   readonly shape?: unknown
   readonly input?: SchemaInput
   initialState(ctx: StartContext): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
-  output(state: S, ctx: ThreadContext): ThreadOutput
+  effects(state: S, ctx: ThreadContext): RuntimeEffect[]
 }
 
 export function defineThread<
@@ -43,7 +39,7 @@ export function defineThread<
     event: EventEnvelope,
     ctx: ThreadContext,
   ): InferSchemaOutput<TShape>
-  output?(state: InferSchemaOutput<TShape>, ctx: ThreadContext): ThreadOutput
+  effects?(state: InferSchemaOutput<TShape>, ctx: ThreadContext): RuntimeEffect[]
 }): ThreadDefinition<InferSchemaOutput<TShape>>
 export function defineThread<
   S = JsonValue,
@@ -54,7 +50,7 @@ export function defineThread<
   readonly input?: TInputSchema
   initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
-  output?(state: S, ctx: ThreadContext): ThreadOutput
+  effects?(state: S, ctx: ThreadContext): RuntimeEffect[]
 }): ThreadDefinition<S>
 
 export function defineThread(def: {
@@ -63,7 +59,7 @@ export function defineThread(def: {
   readonly input?: SchemaInput
   initialState(ctx: StartContext): any
   step(state: any, event: EventEnvelope, ctx: ThreadContext): any
-  output?(state: any, ctx: ThreadContext): ThreadOutput
+  effects?(state: any, ctx: ThreadContext): RuntimeEffect[]
 }): ThreadDefinition {
   return {
     kind: def.kind,
@@ -71,7 +67,7 @@ export function defineThread(def: {
     input: def.input,
     initialState: (ctx) => def.initialState(ctx),
     step: (state, event, ctx) => def.step(state, event, ctx),
-    output: def.output ? (state, ctx) => def.output!(state, ctx) : () => ({}),
+    effects: def.effects ? (state, ctx) => def.effects!(state, ctx) : () => [],
   }
 }
 
