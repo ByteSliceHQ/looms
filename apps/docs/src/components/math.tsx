@@ -17,7 +17,7 @@ export interface MathBlockProps {
  */
 export function MathBlock({ math, className = '' }: MathBlockProps) {
   return (
-    <div className={`equation ${className}`.trim()}>
+    <div className={`equation my-7 overflow-x-auto text-center ${className}`.trim()}>
       <Streamdown
         mode="static"
         plugins={{ math: mathPlugin }}
@@ -45,7 +45,7 @@ export function MathInline({ math, className = '' }: MathInlineProps) {
   })
   return (
     <span
-      className={`math-inline ${className}`.trim()}
+      className={`inline-block align-baseline px-0.5 text-foreground ${className}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

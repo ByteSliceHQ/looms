@@ -16,7 +16,7 @@ function DocsIndex() {
         worker observes the same durable event log.
       </p>
 
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>Event</span><b>&rarr;</b><span>Pure Reducer</span><b>&rarr;</b><span>State + Effects</span><b>&rarr;</b><span>World</span><b>&rarr;</b><span>Event</span>
       </div>
 
@@ -42,7 +42,7 @@ function DocsIndex() {
         </li>
       </ul>
 
-      <p className="muted">
+      <p className="text-sm text-muted">
         Looking for the formal algebraic model? Read the <Link to="/docs/math">Math</Link> specifications.
       </p>
 

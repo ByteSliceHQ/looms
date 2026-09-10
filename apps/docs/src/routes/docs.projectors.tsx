@@ -14,7 +14,7 @@ function Projectors() {
         event log. State is never mutated in place—it is <strong>projected</strong>.
       </p>
 
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>Run Stream (Truth)</span>
         <b>&rarr;</b>
         <span>Pure Fold</span>
@@ -29,9 +29,9 @@ function Projectors() {
         Looms cleanly separates behavioral execution from observational views:
       </p>
 
-      <div className="compare">
-        <div className="compare-card">
-          <span className="compare-tag intent">Behavioral Reducer</span>
+      <div className="my-8 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-14">
+        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
+          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Behavioral Reducer</span>
           <h3>Changes Runtime Behavior</h3>
           <p>
             <code>(State, Event) &rarr; &#123; state, effects &#125;</code>
@@ -42,8 +42,8 @@ function Projectors() {
           </p>
         </div>
 
-        <div className="compare-card">
-          <span className="compare-tag fact">Projection Reducer</span>
+        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
+          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Projection Reducer</span>
           <h3>Derives an Observational View</h3>
           <p>
             <code>(State, Event) &rarr; State</code>
@@ -55,7 +55,7 @@ function Projectors() {
         </div>
       </div>
 
-      <div className="callout">
+      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
         <strong>Projections are Portable; LiveStore is an Adapter:</strong> A projection
         definition is pure TypeScript. The same projection can be folded in-memory on the
         host, rendered reactively in the browser via LiveStore, or materialized into SQLite,

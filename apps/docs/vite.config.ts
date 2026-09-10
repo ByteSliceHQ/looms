@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { nitro } from 'nitro/vite'
 
 // Nitro/Vite honor PORT over server.port; pin docs so a shared PORT (e.g. from demo) cannot collide.
@@ -23,5 +24,6 @@ export default defineConfig({
     }),
     nitro({ preset: 'bun' }),
     viteReact(),
+    tailwindcss(),
   ],
 })

@@ -25,18 +25,30 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
-  notFoundComponent: () => <p className="landing">Not found.</p>,
+  notFoundComponent: () => (
+    <p className="mx-auto max-w-[42rem] px-5 py-14 text-muted md:px-8 md:pt-24 md:pb-20">
+      Not found.
+    </p>
+  ),
 })
 
 function RootComponent() {
   return (
     <RootDocument>
-      <header className="site-header">
-        <Link to="/" className="brand">
+      <header className="mx-auto flex max-w-[68rem] items-center gap-8 border-b border-line-subtle px-8 py-5">
+        <Link
+          to="/"
+          className="text-[1.1rem] font-semibold tracking-tight text-foreground no-underline"
+        >
           Looms
         </Link>
-        <nav className="site-nav">
-          <Link to="/docs">Docs</Link>
+        <nav className="flex gap-5">
+          <Link
+            to="/docs"
+            className="text-sm text-muted no-underline hover:text-foreground"
+          >
+            Docs
+          </Link>
         </nav>
         <ThemeToggle />
       </header>

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "bun .output/server/index.mjs",
+    "start": "PORT=8788 bun .output/server/index.mjs",
     "check-types": "bun x tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -27,7 +27,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "@tailwindcss/vite": "^4.3.3",
     "nitro": "^3.0.260903-beta",
+    "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
     "vite": "^8.2.2"
   }

@@ -1,7 +1,24 @@
+@import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
 
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-background-subtle: var(--bg-subtle);
+  --color-foreground: var(--text);
+  --color-body: var(--text-body);
+  --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+  --color-line: var(--line);
+  --color-line-subtle: var(--line-subtle);
+  --color-code-bg: var(--code-bg);
+  --color-line-number: var(--line-number);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+}
+
 :root {
-  /* Tailwind Neutral Grays */
   --neutral-50: #fafafa;
   --neutral-100: #f5f5f5;
   --neutral-200: #e5e5e5;
@@ -70,53 +87,30 @@ html.dark {
   --line-number: #506477;
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  html,
+  body {
+    @apply m-0 min-h-full;
+  }
+
+  body {
+    @apply bg-background font-sans text-body leading-relaxed antialiased;
+  }
+
+  a {
+    @apply text-foreground underline decoration-neutral-300 underline-offset-[3px] transition-[text-decoration-color] duration-150;
+  }
+
+  a:hover {
+    @apply decoration-foreground;
+  }
+
+  code {
+    @apply rounded bg-code-bg px-[0.35em] py-[0.15em] font-mono text-[0.86em] text-foreground;
+  }
 }
 
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-}
-
-body {
-  font-family: var(--sans);
-  color: var(--text-body);
-  background: var(--bg);
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Links */
-a {
-  color: var(--text);
-  text-decoration: underline;
-  text-decoration-color: var(--neutral-300);
-  text-underline-offset: 3px;
-  transition: text-decoration-color 0.15s ease;
-}
-
-a:hover {
-  text-decoration-color: var(--text);
-}
-
-/* Inline Code */
-code {
-  font-family: var(--mono);
-  font-size: 0.86em;
-  background: var(--code-bg);
-  color: var(--text);
-  padding: 0.15em 0.35em;
-  border-radius: 4px;
-}
-
-/* Code Blocks */
-.code-block {
-  margin: 1.5rem 0 2rem;
-}
-
+/* Code blocks and Shiki-generated markup */
 .code-block pre,
 pre {
   background: var(--code-bg);
@@ -142,7 +136,6 @@ pre code {
   font-size: inherit;
 }
 
-/* Shiki line numbering and vertical gap fix */
 pre.shiki {
   counter-reset: line;
 }
@@ -166,13 +159,12 @@ pre.shiki .line::before {
   margin-right: 1.25rem;
   text-align: right;
   color: var(--line-number);
-  font-size: 0.70rem;
+  font-size: 0.7rem;
   opacity: 0.6;
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
 
-/* Shiki dual-theme support (light and dark mode) */
 @media (prefers-color-scheme: dark) {
   html:not(.light) .code-block pre,
   html:not(.light) pre {
@@ -246,324 +238,34 @@ td strong {
   font-weight: 500;
 }
 
-/* Site Header */
-.site-header {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-  padding: 1.25rem 2rem;
-  border-bottom: 1px solid var(--line-subtle);
-  max-width: 68rem;
-  margin: 0 auto;
-}
-
-.brand {
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  text-decoration: none;
-}
-
-.site-nav {
-  display: flex;
-  gap: 1.25rem;
-}
-
-.site-nav a {
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 0.9rem;
-}
-
-.site-nav a.active,
-.site-nav a:hover {
-  color: var(--text);
-  text-decoration: none;
-}
-
-/* Theme Toggle Button */
-.theme-toggle {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  border-radius: 6px;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.theme-toggle:hover {
-  color: var(--text);
-  border-color: var(--muted);
-  background: var(--bg-subtle);
-}
-
-.theme-toggle:focus-visible {
-  outline: 2px solid var(--line);
-  outline-offset: 2px;
-}
-
-.theme-toggle svg {
-  width: 15px;
-  height: 15px;
-  display: block;
-}
-
-.theme-toggle-sun,
-.theme-toggle-moon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.theme-toggle-sun {
-  display: none;
-}
-
-.theme-toggle-moon {
-  display: inline-flex;
-}
-
-@media (prefers-color-scheme: dark) {
-  html:not(.light) .theme-toggle-sun {
-    display: inline-flex;
+@layer components {
+  .prose h1 {
+    @apply mb-5 mt-0 text-[2.1rem] font-semibold leading-tight tracking-tight text-foreground;
   }
-  html:not(.light) .theme-toggle-moon {
-    display: none;
+
+  .prose h2 {
+    @apply mb-3.5 mt-14 text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground;
+  }
+
+  .prose h3 {
+    @apply mb-2 mt-9 text-[1.05rem] font-semibold leading-snug tracking-tight text-foreground;
+  }
+
+  .prose p {
+    @apply mb-4 mt-0 leading-relaxed;
+  }
+
+  .prose ul,
+  .prose ol {
+    @apply mb-5 mt-0 pl-5 leading-relaxed;
+  }
+
+  .prose li {
+    @apply my-1.5;
   }
 }
 
-html.dark .theme-toggle-sun {
-  display: inline-flex !important;
-}
-
-html.dark .theme-toggle-moon {
-  display: none !important;
-}
-
-html.light .theme-toggle-sun {
-  display: none !important;
-}
-
-html.light .theme-toggle-moon {
-  display: inline-flex !important;
-}
-
-/* Landing Page */
-.landing {
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: 6rem 2rem 5rem;
-}
-
-.landing-brand {
-  margin: 0 0 1.25rem;
-  font-size: 3rem;
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  color: var(--text);
-}
-
-.landing h2 {
-  margin: 0 0 1rem;
-  font-size: 1.35rem;
-  font-weight: 400;
-  color: var(--text-body);
-  line-height: 1.45;
-}
-
-.landing p {
-  margin: 0 0 1.5rem;
-  color: var(--muted);
-  line-height: 1.65;
-}
-
-.landing-links {
-  margin: 3rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem 1.75rem;
-}
-
-.landing-links li {
-  margin: 0;
-}
-
-.landing-links a {
-  font-size: 0.9rem;
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.landing-links a:hover {
-  color: var(--text);
-}
-
-.cta {
-  display: inline-block;
-  color: var(--bg);
-  background: var(--text);
-  text-decoration: none;
-  padding: 0.55rem 1.1rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-  border-radius: 5px;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.cta:hover {
-  background: var(--neutral-700);
-  text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html:not(.light) .cta:hover {
-    background: #cbd5e1;
-  }
-}
-
-html.dark .cta:hover {
-  background: #cbd5e1;
-}
-
-/* Docs Layout */
-.docs {
-  display: grid;
-  grid-template-columns: 12rem minmax(0, 44rem);
-  gap: 4rem;
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 3rem 2rem 6rem;
-}
-
-.docs-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 0.25rem;
-}
-
-.docs-nav a {
-  color: var(--muted);
-  font-size: 0.88rem;
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.docs-nav a.active {
-  color: var(--text);
-  font-weight: 500;
-}
-
-.docs-nav a:hover {
-  color: var(--text);
-}
-
-/* Typography Hierarchy in Prose */
-.prose h1 {
-  margin: 0 0 1.25rem;
-  font-size: 2.1rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  color: var(--text);
-  line-height: 1.2;
-}
-
-.prose h2 {
-  margin: 3.5rem 0 0.85rem;
-  font-size: 1.3rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--text);
-  line-height: 1.35;
-}
-
-.prose h3 {
-  margin: 2.25rem 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  line-height: 1.4;
-}
-
-.prose p {
-  margin: 0 0 1rem;
-  line-height: 1.65;
-}
-
-.prose ul,
-.prose ol {
-  margin: 0 0 1.25rem;
-  padding-left: 1.25rem;
-  line-height: 1.65;
-}
-
-.prose li {
-  margin: 0.35rem 0;
-}
-
-p.muted {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-/* Flow: Clean typographic pipeline with zero boxes */
-.flow {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-  margin: 1.5rem 0 2rem;
-  font-family: var(--mono);
-  font-size: 0.82rem;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.flow span {
-  color: var(--text);
-  font-weight: 500;
-}
-
-.flow b {
-  color: var(--muted-light);
-  font-weight: 400;
-  padding: 0 0.1rem;
-}
-
-/* Callout: Quiet editorial margin note with zero background box */
-.callout {
-  margin: 2rem 0 2.5rem;
-  padding: 0.25rem 0 0.25rem 1.25rem;
-  border-left: 2px solid var(--line);
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: var(--text-body);
-}
-
-.callout strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
-/* Math Equations: Pure display math with generous vertical whitespace, no boxes, no borders */
-.equation {
-  margin: 1.75rem 0 2.25rem;
-  overflow-x: auto;
-  text-align: center;
-}
-
+/* KaTeX display math centering (Streamdown-generated markup) */
 .equation .katex-display {
   margin: 0;
   display: flex;
@@ -573,145 +275,4 @@ p.muted {
 .equation > div {
   margin: 0;
   padding: 0;
-}
-
-.math-inline {
-  display: inline-block;
-  vertical-align: baseline;
-  color: var(--text);
-  padding: 0 0.1em;
-}
-
-/* Core Vocabulary: Clean 2-column typographic list with zero cards or borders */
-.term-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2.25rem 3.5rem;
-  margin: 2rem 0 3.5rem;
-}
-
-.term-card {
-  margin: 0;
-  padding: 0;
-}
-
-.term-card h3 {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.term-card p {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--muted);
-  line-height: 1.55;
-}
-
-/* Compare: Two clean columns without card boxes or badges */
-.compare {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3.5rem;
-  margin: 2rem 0 2.5rem;
-}
-
-.compare-card {
-  margin: 0;
-  padding: 0;
-}
-
-.compare-tag {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 0.4rem;
-}
-
-.compare-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.compare-card p {
-  margin: 0 0 0.75rem;
-  font-size: 0.9rem;
-  color: var(--muted);
-  line-height: 1.55;
-}
-
-.compare-card ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  color: var(--text-body);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-
-/* Instructions: Clean 2-column grid without card boxes */
-.instruction-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.75rem 3.5rem;
-  margin: 1.75rem 0 2.25rem;
-}
-
-.instruction-card {
-  margin: 0;
-  padding: 0;
-}
-
-.instruction-card code {
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--text);
-  background: transparent;
-  padding: 0;
-}
-
-.instruction-card p {
-  margin: 0.35rem 0 0;
-  font-size: 0.88rem;
-  color: var(--muted);
-  line-height: 1.55;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .docs {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    padding: 2rem 1.25rem 4rem;
-  }
-
-  .docs-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
-    border-bottom: 1px solid var(--line-subtle);
-    padding-bottom: 1rem;
-  }
-
-  .term-grid,
-  .compare,
-  .instruction-grid {
-    grid-template-columns: 1fr;
-    gap: 1.75rem;
-  }
-
-  .landing {
-    padding: 3.5rem 1.25rem 3rem;
-  }
-
-  .landing-brand {
-    font-size: 2.4rem;
-  }
 }

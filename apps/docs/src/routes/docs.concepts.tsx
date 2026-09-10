@@ -18,7 +18,7 @@ function Concepts() {
         which cross into the outside world and return new events.
       </p>
 
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>Event</span>
         <b>&rarr;</b>
         <span>Pure Reducer</span>
@@ -30,19 +30,19 @@ function Concepts() {
         <span>Event</span>
       </div>
 
-      <div className="callout">
+      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
         <strong>Core Invariant:</strong> The only way logical runtime state changes
         is by processing an Event.
       </div>
 
-      <p className="muted">
+      <p className="text-sm text-muted">
         Looking for the formal algebraic specifications and proofs? See <Link to="/docs/math">Math</Link>.
       </p>
 
       <h2>Core Vocabulary</h2>
 
-      <div className="term-grid">
-        <article className="term-card">
+      <div className="my-8 mb-14 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Run</h3>
           <p>
             The durability boundary and event-stream container for one logical operation.
@@ -51,7 +51,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Thread</h3>
           <p>
             The universal runtime unit of computation. Belongs
@@ -60,7 +60,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Thread Kind</h3>
           <p>
             The behavioral specialization of a thread. Built-in kinds are <code>agent</code>{' '}
@@ -68,7 +68,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>State</h3>
           <p>
             Durable logical state reconstructed by folding events through reducers. State is a
@@ -76,7 +76,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Event</h3>
           <p>
             An immutable fact appended to the Run log. It describes something that already
@@ -85,7 +85,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Signal</h3>
           <p>
             An externally originated Event injected into the stream (user messages, human
@@ -93,7 +93,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Reducer</h3>
           <p>
             Pure, deterministic logic. Behavioral reducers map State + Event to next State +
@@ -101,7 +101,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Effect</h3>
           <p>
             A requested consequence or intent: an instruction to the host to interact with
@@ -109,7 +109,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Projection</h3>
           <p>
             A derived read model folded from the event stream: reactive UI views (chat,
@@ -117,7 +117,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Thread Tree</h3>
           <p>
             The parent/child invocation hierarchy answering <em>&ldquo;Who spawned whom?&rdquo;</em>{' '}
@@ -125,7 +125,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Causation Graph</h3>
           <p>
             The event relationship answering <em>&ldquo;Why did this happen?&rdquo;</em>,
@@ -133,7 +133,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Durable Wait</h3>
           <p>
             A parked condition where a thread consumes zero worker or CPU resources until a
@@ -141,7 +141,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Replay</h3>
           <p>
             Reconstructing thread state or views by re-running pure reducers over historical
@@ -149,7 +149,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Snapshot</h3>
           <p>
             A persisted projection checkpoint that accelerates state reconstruction for long
@@ -157,7 +157,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Runtime Module</h3>
           <p>
             A composable package contributing namespaced events, effect handlers, thread
@@ -166,7 +166,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>Projector</h3>
           <p>
             A background worker that observes the event stream to maintain persistent,
@@ -181,9 +181,9 @@ function Concepts() {
         <em>has occurred</em> and what the runtime <em>should cause</em>:
       </p>
 
-      <div className="compare">
-        <div className="compare-card">
-          <span className="compare-tag fact">Event: Immutable Fact</span>
+      <div className="my-8 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-14">
+        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
+          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Event: Immutable Fact</span>
           <h3>Something already happened</h3>
           <p>Events are past-tense, durable records written to the log.</p>
           <ul>
@@ -194,8 +194,8 @@ function Concepts() {
           </ul>
         </div>
 
-        <div className="compare-card">
-          <span className="compare-tag intent">Effect: Requested Consequence</span>
+        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
+          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Effect: Requested Consequence</span>
           <h3>Something the runtime should cause</h3>
           <p>Effects are imperative intents returned by pure reducers.</p>
           <ul>
@@ -207,10 +207,10 @@ function Concepts() {
         </div>
       </div>
 
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>Event</span><b>&rarr;</b><span>Reducer</span><b>&rarr;</b><span>State + Effects</span>
       </div>
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>Effect</span><b>&rarr;</b><span>World (IO)</span><b>&rarr;</b><span>Event</span>
       </div>
 
@@ -227,8 +227,8 @@ function Concepts() {
         rather than tangling them into separate silos:
       </p>
 
-      <div className="term-grid">
-        <article className="term-card">
+      <div className="my-8 mb-14 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>1. Thread Tree (Structure)</h3>
           <p>
             <strong>&ldquo;Who belongs to whom?&rdquo;</strong> The parent-child invocation
@@ -237,7 +237,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>2. Run Stream (History)</h3>
           <p>
             <strong>&ldquo;What happened?&rdquo;</strong> The single canonical, append-only
@@ -245,7 +245,7 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="term-card">
+        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <h3>3. Causation Graph (Reason)</h3>
           <p>
             <strong>&ldquo;Why did it happen?&rdquo;</strong> The causal provenance graph
@@ -267,8 +267,8 @@ function Concepts() {
         effects lower into a small runtime instruction set:
       </p>
 
-      <div className="instruction-grid">
-        <div className="instruction-card">
+      <div className="my-7 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
+        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <code>Invoke</code>
           <p>
             Execute external computation with side-effects in reality (e.g., call an LLM API,
@@ -276,7 +276,7 @@ function Concepts() {
           </p>
         </div>
 
-        <div className="instruction-card">
+        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <code>Spawn</code>
           <p>
             Create and start a child Thread (an agent, a DAG workflow, or a custom thread kind)
@@ -284,14 +284,14 @@ function Concepts() {
           </p>
         </div>
 
-        <div className="instruction-card">
+        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <code>Emit</code>
           <p>
             Communicate outward by appending an event or signal to the Run stream.
           </p>
         </div>
 
-        <div className="instruction-card">
+        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
           <code>Wait</code>
           <p>
             Suspend thread execution until a matching event, payload pattern, child completion,
@@ -311,7 +311,7 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         In traditional runtimes, waiting for an approval, child job, or webhook ties up an
         in-memory process or call stack. In Looms:
       </p>
-      <div className="flow">
+      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
         <span>WAITING</span>
         <b>&rarr;</b>
         <span>persist state to log</span>
@@ -370,7 +370,7 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         </tbody>
       </table>
 
-      <div className="callout">
+      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
         <strong>The North Star:</strong> User code describes computation declaratively; the
         runtime controls durability, scheduling, recovery, and replay.
       </div>

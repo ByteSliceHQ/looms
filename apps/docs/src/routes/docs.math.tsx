@@ -90,7 +90,7 @@ function MathDocs() {
         historical analysis and crash recovery never cause duplicate side effects.
       </p>
 
-      <div className="callout">
+      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
         <strong>Return to conceptual overview:</strong> See <Link to="/docs/concepts">Concepts</Link> for
         architectural principles, core vocabulary, and the event/effect boundary.
       </div>
