@@ -20,7 +20,7 @@ function DocsLayout() {
           </Link>
         ))}
       </nav>
-      <div className="prose">
+      <div className="prose max-w-none">
         <Outlet />
       </div>
     </div>

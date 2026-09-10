@@ -17,7 +17,7 @@ export interface MathBlockProps {
  */
 export function MathBlock({ math, className = '' }: MathBlockProps) {
   return (
-    <div className={`equation my-7 overflow-x-auto text-center ${className}`.trim()}>
+    <div className={`equation not-prose my-7 overflow-x-auto text-center ${className}`.trim()}>
       <Streamdown mode="static" plugins={{ math: mathPlugin }} parseIncompleteMarkdown={false}>
         {`$$\n${math}\n$$`}
       </Streamdown>

@@ -16,7 +16,7 @@ export function CodeBlock({ code, children, lang = 'tsx', className = '' }: Code
 
   return (
     <div
-      className={`code-block mt-6 mb-8 ${className}`.trim()}
+      className={`code-block not-prose mt-6 mb-8 ${className}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

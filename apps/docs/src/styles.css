@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
 
+@plugin '@tailwindcss/typography';
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -238,31 +240,34 @@ td strong {
   font-weight: 500;
 }
 
-@layer components {
-  .prose h1 {
-    @apply text-foreground mt-0 mb-5 text-[2.1rem] leading-tight font-semibold tracking-tight;
-  }
+.prose {
+  --tw-prose-body: var(--text-body);
+  --tw-prose-headings: var(--text);
+  --tw-prose-lead: var(--muted);
+  --tw-prose-links: var(--text);
+  --tw-prose-bold: var(--text);
+  --tw-prose-counters: var(--muted);
+  --tw-prose-bullets: var(--muted);
+  --tw-prose-hr: var(--line);
+  --tw-prose-quotes: var(--text-body);
+  --tw-prose-quote-borders: var(--line);
+  --tw-prose-captions: var(--muted);
+  --tw-prose-kbd: var(--text);
+  --tw-prose-code: var(--text);
+  --tw-prose-pre-code: var(--text);
+  --tw-prose-pre-bg: var(--code-bg);
+  --tw-prose-th-borders: var(--line);
+  --tw-prose-td-borders: var(--line-subtle);
+}
 
-  .prose h2 {
-    @apply text-foreground mt-14 mb-3.5 text-[1.3rem] leading-snug font-semibold tracking-tight;
-  }
+.prose :where(h1, h2) {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
 
-  .prose h3 {
-    @apply text-foreground mt-9 mb-2 text-[1.05rem] leading-snug font-semibold tracking-tight;
-  }
-
-  .prose p {
-    @apply mt-0 mb-4 leading-relaxed;
-  }
-
-  .prose ul,
-  .prose ol {
-    @apply mt-0 mb-5 pl-5 leading-relaxed;
-  }
-
-  .prose li {
-    @apply my-1.5;
-  }
+.prose :where(code):not(:where([class~='not-prose'], [class~='not-prose'] *))::before,
+.prose :where(code):not(:where([class~='not-prose'], [class~='not-prose'] *))::after {
+  content: none;
 }
 
 /* KaTeX display math centering (Streamdown-generated markup) */
