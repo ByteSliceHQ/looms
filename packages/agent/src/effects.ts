@@ -7,7 +7,7 @@ import { normalizeTools, type ToolLike } from './definitions'
 import { AgentDefinitionsTag } from './definitions-store'
 import { LlmTag } from './llm'
 import { toolSpecs } from './tool-schema'
-import { MessageSchema, ToolCallSchema, type ToolCall } from './types'
+import { MessageSchema, ToolCallSchema, type Message, type ToolCall } from './types'
 
 const CallLlmInput = Schema.Struct({
   turn: Schema.Number,
@@ -34,7 +34,7 @@ export const callLlmEffect = defineEffect({
       turn: input.turn,
       definitionName: input.definitionName,
       // SAFETY: message arrays in callLLM input are serialized Message objects.
-      messages: (input.messages as import('./types').Message[]) ?? [],
+      messages: (input.messages as Message[]) ?? [],
       input: input.input ?? null,
       runId: ctx.runId,
       threadId: ctx.threadId,
@@ -45,7 +45,7 @@ export const callLlmEffect = defineEffect({
 function runCallLlm(args: {
   turn: number
   definitionName?: string
-  messages: import('./types').Message[]
+  messages: Message[]
   input: JsonValue
   runId: string
   threadId: string

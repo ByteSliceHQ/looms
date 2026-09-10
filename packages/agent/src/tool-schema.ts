@@ -1,4 +1,3 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Schema } from 'effect'
 
 import type { JsonValue, SchemaInput } from '@looms/core'

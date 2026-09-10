@@ -154,6 +154,7 @@ export function defineEffect<
   execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R>
 }): EffectDefinition<TInput, R> {
   const schema = def.input
+  // SAFETY: execute validates raw JsonValue against the optional schema before the typed handler.
   return {
     type: def.type,
     input: schema,

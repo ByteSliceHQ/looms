@@ -71,6 +71,7 @@ export interface WorkflowState {
   error: string | null
 }
 
+// SAFETY: WorkflowState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
 export const WorkflowStateSchema = Schema.Unknown as Schema.Schema<WorkflowState>
 
 function asObject(payload: JsonValue): { [key: string]: JsonValue } {

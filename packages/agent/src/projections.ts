@@ -1,10 +1,10 @@
 import { Predicate } from 'effect'
 
-import { defineProjection, type EventEnvelope } from '@looms/core'
+import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
 
 import { ConversationSchema, TokenUsageSchema, type Message, type ToolCall } from './types'
 
-function payloadObject(event: EventEnvelope): { [key: string]: import('@looms/core').JsonValue } {
+function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) {
     return {}
   }

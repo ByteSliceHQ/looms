@@ -92,6 +92,7 @@ export interface TreeBuildState {
   activeWaits?: { [threadId: string]: string[] }
 }
 
+// SAFETY: TreeBuildState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
 export const TreeBuildStateSchema = Schema.Unknown as Schema.Schema<TreeBuildState>
 
 function readPayload(event: EventEnvelope): { [key: string]: JsonValue } {

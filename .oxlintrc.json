@@ -64,6 +64,12 @@
     "anti-slop-effect/no-bare-try-promise": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
     "curly": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "disallowTypeAnnotations": true
+      }
+    ],
     "@stylistic/padding-line-between-statements": [
       "error",
       {

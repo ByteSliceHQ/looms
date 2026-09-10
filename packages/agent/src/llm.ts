@@ -67,7 +67,7 @@ export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
         }
       }
 
-      let lastUser: import('./types').Message | undefined
+      let lastUser: Message | undefined
 
       for (let i = args.messages.length - 1; i >= 0; i--) {
         const item = args.messages[i]

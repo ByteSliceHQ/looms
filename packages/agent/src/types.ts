@@ -127,4 +127,5 @@ export interface AgentState {
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
 }
 
+// SAFETY: AgentState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
 export const AgentStateSchema = Schema.Unknown as Schema.Schema<AgentState>
