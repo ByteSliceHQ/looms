@@ -1,11 +1,11 @@
 import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
 
-import { workflowCatalog } from './catalog'
+import { workflowCatalog } from './events'
 import type { WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsLive } from './definitions-store'
 import { runNodeEffect, scheduleEffect } from './effects'
 import { nodes } from './projections'
-import { workflowThread } from './thread'
+import { workflowThread } from './threads'
 
 function workflowDefinitions(ctx: ModuleServicesContext): WorkflowDefinition[] {
   const found: WorkflowDefinition[] = []

@@ -2,7 +2,7 @@ import { Predicate, Schema } from 'effect'
 
 import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
 
-import { NodeStateSchema } from './thread'
+import { NodeStateSchema } from './threads'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) return {}

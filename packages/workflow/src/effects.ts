@@ -10,7 +10,7 @@ import {
 
 import { readyNodes, type NodeResult, type WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
-import { NodeStateSchema } from './thread'
+import { NodeStateSchema } from './threads'
 
 const ScheduleInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
