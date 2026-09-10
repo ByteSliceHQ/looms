@@ -14,5 +14,7 @@ coverage/
 .s2-lite/
 .s2/
 dump.rdb
-.output
-.tanstack
+.output/
+**/.output/
+.tanstack/
+**/.tanstack/
