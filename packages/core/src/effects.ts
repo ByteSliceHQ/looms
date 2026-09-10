@@ -1,9 +1,11 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Schema } from 'effect'
 import { Effect } from 'effect'
 
 import type { EventInput } from './envelope'
-import { validateInput } from './schema'
+import {
+  validateInput,
+  type InferDefinedSchema,
+  type SchemaInput,
+} from './schema'
 import type { JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -114,21 +116,16 @@ export interface EffectContext {
   emit(event: EventInput): Promise<void>
 }
 
-export type EffectInputSchema<TInput extends JsonValue> =
-  | StandardSchemaV1<JsonValue, TInput>
-  | StandardSchemaV1<unknown, TInput>
-  | StandardSchemaV1<any, TInput>
-  | Schema.Schema<TInput>
-  | { _output: TInput }
+export type EffectInputSchema = SchemaInput
 
 export type EffectHandlerResult<R = never> =
   | ReadonlyArray<EventInput>
   | Promise<ReadonlyArray<EventInput>>
   | Effect.Effect<ReadonlyArray<EventInput>, Error, R>
 
-export interface EffectDefinition<TInput extends JsonValue = JsonValue, R = any> {
+export interface EffectDefinition<TInput = JsonValue, R = any> {
   readonly type: string
-  readonly input?: EffectInputSchema<TInput>
+  readonly input?: SchemaInput
   readonly retry?: RetryPolicy
   execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<EventInput>, Error, R>
 }
@@ -148,9 +145,9 @@ function liftHandlerResult<R>(
   return Effect.succeed(result)
 }
 
-export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(def: {
+export function defineEffect<TSchema = undefined, TInput = InferDefinedSchema<TSchema>, R = never>(def: {
   type: string
-  input?: EffectInputSchema<TInput>
+  input?: TSchema
   retry?: RetryPolicy
   execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R>
 }): EffectDefinition<TInput, R> {
@@ -159,7 +156,7 @@ export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(de
     type: def.type,
     input: schema,
     retry: def.retry,
-    execute: (raw, ctx) =>
+    execute: (raw: JsonValue, ctx) =>
       Effect.gen(function* () {
         const input = schema
           ? yield* Effect.tryPromise({
@@ -170,7 +167,7 @@ export function defineEffect<TInput extends JsonValue = JsonValue, R = never>(de
         // SAFETY: input has been validated against schema or is unconstrained raw input
         return yield* liftHandlerResult(def.execute(input as TInput, ctx))
       }),
-  }
+  } as EffectDefinition<TInput, R>
 }
 
 export function spawn(args: {

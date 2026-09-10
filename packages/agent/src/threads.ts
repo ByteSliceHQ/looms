@@ -24,6 +24,7 @@ import {
   AgentToolResultPayloadSchema,
   AgentTurnStartedPayloadSchema,
   MessageSchema,
+  AgentStateSchema,
   type AgentState,
   type Message,
   type ToolCall,
@@ -74,9 +75,10 @@ function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[
   return [...lines]
 }
 
-export const agentThread = defineThread<AgentState>({
+export const agentThread = defineThread({
   kind: 'agent',
-  initialState: (ctx) => ({
+  shape: AgentStateSchema,
+  initialState: (ctx): AgentState => ({
     definitionName: ctx.definitionName,
     lines: [],
     pendingToolCalls: [],
@@ -92,7 +94,7 @@ export const agentThread = defineThread<AgentState>({
     output: null,
     pendingEffectTools: {},
   }),
-  step(state, event, ctx) {
+  step(state: AgentState, event, ctx): AgentState {
     switch (event.type) {
       case 'runtime.thread.started': {
         const payload = Predicate.isObject(event.payload) ? event.payload : {}
@@ -369,7 +371,7 @@ export const agentThread = defineThread<AgentState>({
         return state
     }
   },
-  output(state, ctx) {
+  output(state: AgentState, ctx) {
     const effects: RuntimeEffect[] = []
 
     if (state.needsLlmCall) {

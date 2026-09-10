@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { Schema } from 'effect'
 
-import type { JsonValue, RuntimeEffect } from '@looms/core'
+import type { InferDefinedSchema, JsonValue, RuntimeEffect } from '@looms/core'
 
 export interface WorkflowNodeContext<TInput = JsonValue> {
   readonly threadId: string
@@ -32,7 +33,7 @@ export interface WorkflowDefinition<
   readonly kind: 'workflow'
   readonly name: TName
   readonly description?: string
-  readonly input?: StandardSchemaV1<JsonValue, TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
   readonly nodes: WorkflowNodeDefinition<TInput>[]
   readonly concurrency?: number
   output?(ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }): TOutput
@@ -42,8 +43,8 @@ export type AnyWorkflowDefinition = WorkflowDefinition<string, JsonValue, JsonVa
 
 export function defineWorkflow<
   TName extends string,
-  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
+  TSchema = undefined,
+  TInput = InferDefinedSchema<TSchema>,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName

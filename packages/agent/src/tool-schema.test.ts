@@ -12,18 +12,14 @@ import {
 } from './definitions'
 import { toolJsonSchema, toolSpecs } from './tool-schema'
 
-const CheckoutInput = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    amount: Schema.Number,
-    currency: Schema.String,
-  }),
-)
+const CheckoutInput = Schema.Struct({
+  amount: Schema.Number,
+  currency: Schema.String,
+})
 
-const TaskInput = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    task: Schema.String,
-  }),
-)
+const TaskInput = Schema.Struct({
+  task: Schema.String,
+})
 
 describe('tool schema', () => {
   test('normalizeTools carries definition input onto thread tools', () => {
@@ -57,7 +53,7 @@ describe('tool schema', () => {
   })
 
   test('asAgentTool respects explicit input override', () => {
-    const OverrideInput = Schema.toStandardSchemaV1(Schema.Struct({ topic: Schema.String }))
+    const OverrideInput = Schema.Struct({ topic: Schema.String })
     const tool = asAgentTool({
       agent: {
         kind: 'agent',
@@ -86,7 +82,7 @@ describe('tool schema', () => {
   })
 
   test('asEffectsTool exposes input schema in toolSpecs', () => {
-    const ApprovalInput = Schema.toStandardSchemaV1(Schema.Struct({ title: Schema.String }))
+    const ApprovalInput = Schema.Struct({ title: Schema.String })
     const tool = asEffectsTool({
       name: 'ask_approval',
       description: 'Ask for approval',

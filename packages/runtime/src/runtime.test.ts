@@ -121,7 +121,7 @@ describe('createLooms', () => {
   })
 
   test('invalid spawn input fails the child and unblocks the parent', async () => {
-    const RequiredN = Schema.toStandardSchemaV1(Schema.Struct({ n: Schema.Number }))
+    const RequiredN = Schema.Struct({ n: Schema.Number })
     const child = defineWorkflow({
       name: 'needs_n',
       input: RequiredN,
@@ -149,7 +149,7 @@ describe('createLooms', () => {
   })
 
   test('invalid thread-tool args return a tool error without spawning', async () => {
-    const RequiredN = Schema.toStandardSchemaV1(Schema.Struct({ n: Schema.Number }))
+    const RequiredN = Schema.Struct({ n: Schema.Number })
     const child = defineWorkflow({
       name: 'needs_n',
       input: RequiredN,

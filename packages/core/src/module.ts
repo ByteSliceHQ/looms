@@ -1,9 +1,9 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Effect, Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
 import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
 import type { EventInput } from './envelope'
+import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ProjectionDefinition } from './projection'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
@@ -28,25 +28,23 @@ export interface RuntimeModuleDependency {
 export interface DefinitionRef {
   readonly kind: string
   readonly name: string
-  readonly input?: StandardSchemaV1<unknown, unknown> | undefined
+  readonly input?: SchemaInput | undefined
 }
 
 /** A definition registered on a host, keyed by `${kind}:${name}`. */
 export interface RegisteredDefinition {
   readonly kind: string
   readonly name: string
-  readonly input?: { readonly '~standard'?: unknown } | undefined
+  readonly input?: SchemaInput | undefined
   readonly value: DefinitionRef
 }
 
 /**
- * Input type accepted when starting a definition: the schema's parsed type
- * (definitions declare `StandardSchemaV1<JsonValue, TInput>`), or JsonValue when it has none.
+ * Input type accepted when starting a definition: inferred from the definition's
+ * `input` Standard Schema / Effect Schema, or JsonValue when it has none.
  */
 export type DefinitionInput<TDef> = TDef extends { readonly input?: infer S }
-  ? NonNullable<S> extends StandardSchemaV1<unknown, infer TParsed>
-    ? TParsed
-    : JsonValue
+  ? InferDefinedSchema<S>
   : JsonValue
 
 export interface ModuleServicesContext {

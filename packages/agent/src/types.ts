@@ -126,3 +126,5 @@ export interface AgentState {
   output: JsonValue | null
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
 }
+
+export const AgentStateSchema = Schema.Unknown as Schema.Schema<AgentState>

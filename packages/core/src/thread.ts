@@ -1,16 +1,14 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
-
 import type { RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
-import type { InferSchemaOutput, SchemaInput } from './schema'
+import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
 import type { ThreadStatus, JsonValue } from './types'
 
-export interface StartContext {
+export interface StartContext<TInput = JsonValue> {
   readonly runId: string
   readonly threadId: string
   readonly parentThreadId: string | null
   readonly definitionName: string
-  readonly input: JsonValue
+  readonly input: TInput
 }
 
 export interface ThreadContext {
@@ -26,17 +24,20 @@ export interface ThreadOutput {
 export interface ThreadDefinition<S = any> {
   readonly kind: string
   readonly shape?: unknown
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
+  readonly input?: SchemaInput
   initialState(ctx: StartContext): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
   output(state: S, ctx: ThreadContext): ThreadOutput
 }
 
-export function defineThread<TShape extends SchemaInput>(def: {
+export function defineThread<
+  TShape,
+  TInputSchema extends SchemaInput | undefined = undefined,
+>(def: {
   readonly kind: string
   readonly shape: TShape
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
-  initialState(ctx: StartContext): InferSchemaOutput<TShape>
+  readonly input?: TInputSchema
+  initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): InferSchemaOutput<TShape>
   step(
     state: InferSchemaOutput<TShape>,
     event: EventEnvelope,
@@ -44,18 +45,21 @@ export function defineThread<TShape extends SchemaInput>(def: {
   ): InferSchemaOutput<TShape>
   output?(state: InferSchemaOutput<TShape>, ctx: ThreadContext): ThreadOutput
 }): ThreadDefinition<InferSchemaOutput<TShape>>
-export function defineThread<S = JsonValue>(def: {
+export function defineThread<
+  S = JsonValue,
+  TInputSchema extends SchemaInput | undefined = undefined,
+>(def: {
   readonly kind: string
   readonly shape?: unknown
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
-  initialState(ctx: StartContext): S
+  readonly input?: TInputSchema
+  initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
   output?(state: S, ctx: ThreadContext): ThreadOutput
 }): ThreadDefinition<S>
 export function defineThread(def: {
   readonly kind: string
   readonly shape?: unknown
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
+  readonly input?: SchemaInput
   initialState(ctx: StartContext): any
   step(state: any, event: EventEnvelope, ctx: ThreadContext): any
   output?(state: any, ctx: ThreadContext): ThreadOutput

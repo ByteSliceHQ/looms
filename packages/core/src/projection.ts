@@ -1,7 +1,7 @@
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 
 import type { EventEnvelope } from './envelope'
-import type { InferSchemaOutput, SchemaInput } from './schema'
+import type { InferSchemaOutput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus } from './types'
@@ -13,15 +13,15 @@ export interface ProjectionDefinition<S = unknown> {
   reduce(state: S, event: EventEnvelope): S
 }
 
-export function defineProjection<TShape extends SchemaInput>(def: {
+export function defineProjection<TShape>(def: {
   readonly name: string
   readonly shape: TShape
   readonly initialState: InferSchemaOutput<TShape>
   reduce(state: InferSchemaOutput<TShape>, event: EventEnvelope): InferSchemaOutput<TShape>
 }): ProjectionDefinition<InferSchemaOutput<TShape>>
-export function defineProjection<S = unknown, TShape extends SchemaInput = SchemaInput>(def: {
+export function defineProjection<S = unknown>(def: {
   readonly name: string
-  readonly shape?: TShape
+  readonly shape?: unknown
   readonly initialState: S
   reduce(state: S, event: EventEnvelope): S
 }): ProjectionDefinition<S>
@@ -84,6 +84,8 @@ export interface TreeBuildState {
   activeWaits?: { [threadId: string]: string[] }
 }
 
+export const TreeBuildStateSchema = Schema.Unknown as Schema.Schema<TreeBuildState>
+
 function readPayload(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) return {}
   return event.payload
@@ -94,10 +96,11 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
-export const threadTree = defineProjection<TreeBuildState>({
+export const threadTree = defineProjection({
   name: 'threadTree',
-  initialState: { runId: '', records: {}, rootThreadId: null },
-  reduce(state, event) {
+  shape: TreeBuildStateSchema,
+  initialState: { runId: '', records: {}, rootThreadId: null } satisfies TreeBuildState,
+  reduce(state: TreeBuildState, event): TreeBuildState {
     const payload = readPayload(event)
     switch (event.type) {
       case 'runtime.run.started': {
@@ -256,18 +259,22 @@ export function treeFromRun(state: RunState): ThreadTree {
   }
 }
 
-export interface TimelineEntry {
-  seq: number
-  id: string
-  type: string
-  threadId: string | null
-  causationId: string | null
-  effectId: string | null
-  ts: number
-}
+export const TimelineEntrySchema = Schema.Struct({
+  seq: Schema.Number,
+  id: Schema.String,
+  type: Schema.String,
+  threadId: Schema.NullOr(Schema.String),
+  causationId: Schema.NullOr(Schema.String),
+  effectId: Schema.NullOr(Schema.String),
+  ts: Schema.Number,
+})
+export type TimelineEntry = Schema.Schema.Type<typeof TimelineEntrySchema>
 
-export const timeline = defineProjection<TimelineEntry[]>({
+export const TimelineSchema = Schema.mutable(Schema.Array(TimelineEntrySchema))
+
+export const timeline = defineProjection({
   name: 'timeline',
+  shape: TimelineSchema,
   initialState: [],
   reduce(state, event) {
     const threadId = event.threadId ?? null

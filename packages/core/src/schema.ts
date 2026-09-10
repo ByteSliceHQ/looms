@@ -13,16 +13,27 @@ export class InvalidInputError extends Error {
   }
 }
 
-export type SchemaInput = StandardSchemaV1<any, any> | Schema.Schema<any> | { _output: any }
+export type SchemaInput =
+  | StandardSchemaV1<any, any>
+  | Schema.Top
+  | Schema.Schema<any>
+  | { _output: any }
 
 export type InferSchemaOutput<T> =
-  T extends StandardSchemaV1<any, infer Out>
+  T extends Schema.Schema<infer Out>
     ? Out
-    : T extends Schema.Schema<infer Out>
-      ? Out
-      : T extends { _output: infer Out }
+    : T extends Schema.Top
+      ? Schema.Schema.Type<T>
+      : T extends StandardSchemaV1<any, infer Out>
         ? Out
-        : never
+        : T extends { _output: infer Out }
+          ? Out
+          : never
+
+/** Output of an optional `input` / `shape` schema, or `TFallback` when the schema is omitted. */
+export type InferDefinedSchema<T, TFallback = JsonValue> = [T] extends [undefined]
+  ? TFallback
+  : InferSchemaOutput<NonNullable<T>>
 
 type SchemaCandidate<TInput> =
   | StandardSchemaV1<JsonValue, TInput>

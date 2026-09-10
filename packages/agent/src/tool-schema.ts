@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Schema } from 'effect'
 
-import type { JsonValue } from '@looms/core'
+import type { JsonValue, SchemaInput } from '@looms/core'
 
 import { normalizeTools, type AgentToolEntry, type ToolLike } from './definitions'
 import type { LlmToolSpec } from './llm'
@@ -18,10 +18,7 @@ interface StandardJsonSchemaHolder {
   }
 }
 
-type SchemaCandidate =
-  | StandardSchemaV1<JsonValue, JsonValue>
-  | StandardJsonSchemaHolder
-  | Schema.Codec<JsonValue>
+type SchemaCandidate = SchemaInput | StandardJsonSchemaHolder | Schema.Codec<JsonValue>
 
 const EMPTY_OBJECT_SCHEMA: JsonValue = { type: 'object' }
 

@@ -71,6 +71,8 @@ export interface WorkflowState {
   error: string | null
 }
 
+export const WorkflowStateSchema = Schema.Unknown as Schema.Schema<WorkflowState>
+
 function asObject(payload: JsonValue): { [key: string]: JsonValue } {
   if (!Predicate.isObject(payload)) return {}
   return payload
@@ -115,9 +117,10 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
   )
 }
 
-export const workflowThread = defineThread<WorkflowState>({
+export const workflowThread = defineThread({
   kind: 'workflow',
-  initialState: (ctx) => ({
+  shape: WorkflowStateSchema,
+  initialState: (ctx): WorkflowState => ({
     definitionName: ctx.definitionName,
     nodes: {},
     concurrency: 8,
@@ -132,7 +135,7 @@ export const workflowThread = defineThread<WorkflowState>({
     status: 'running',
     error: null,
   }),
-  step(state, event, ctx) {
+  step(state: WorkflowState, event, ctx): WorkflowState {
     switch (event.type) {
       case 'runtime.thread.started': {
         const payload = asObject(event.payload)
@@ -327,7 +330,7 @@ export const workflowThread = defineThread<WorkflowState>({
         return state
     }
   },
-  output(state, ctx) {
+  output(state: WorkflowState, ctx) {
     const effects: RuntimeEffect[] = []
 
     if (state.status === 'failed' && state.error) {

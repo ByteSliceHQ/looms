@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { Schema } from 'effect'
 
-import type { JsonValue, RuntimeEffect } from '@looms/core'
+import type { InferDefinedSchema, JsonValue, RuntimeEffect, SchemaInput } from '@looms/core'
 
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
@@ -19,7 +20,7 @@ export interface FunctionTool<
   readonly kind: 'function'
   readonly name: TName
   readonly description: string
-  readonly input?: StandardSchemaV1<JsonValue, TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
   readonly inputSchema?: JsonValue
   handler(input: TInput, ctx: ToolContext): Promise<TOutput> | TOutput
 }
@@ -28,7 +29,7 @@ export interface ThreadTool {
   readonly kind: 'thread'
   readonly name: string
   readonly description: string
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
+  readonly input?: SchemaInput
   readonly inputSchema?: JsonValue
   readonly childKind: string
   readonly childName: string
@@ -40,7 +41,7 @@ export interface EffectsTool {
   readonly kind: 'effects'
   readonly name: string
   readonly description: string
-  readonly input?: StandardSchemaV1<JsonValue, JsonValue>
+  readonly input?: SchemaInput
   readonly inputSchema?: JsonValue
   effects(input: JsonValue): RuntimeEffect[]
   waitOn?: { type: string | readonly string[]; match?: JsonValue }
@@ -55,7 +56,7 @@ export type AgentToolEntry =
       name: string
       instructions?: string
       description?: string
-      input?: StandardSchemaV1<JsonValue, JsonValue>
+      input?: SchemaInput
     }
 
 export interface AgentTurnContext<TInput = JsonValue> {
@@ -84,7 +85,7 @@ export interface AgentDefinition<
   readonly name: TName
   readonly model?: string
   readonly instructions: string
-  readonly input?: StandardSchemaV1<JsonValue, TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
   readonly tools?: ToolLike[]
   readonly maxTurns?: number
   readonly conversational?: boolean
@@ -117,8 +118,8 @@ export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolL
 
 export function defineTool<
   TName extends string,
-  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
+  TSchema = undefined,
+  TInput = InferDefinedSchema<TSchema>,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName
@@ -133,8 +134,8 @@ export function defineTool<
 
 export function defineAgent<
   TName extends string,
-  TSchema extends StandardSchemaV1<any, any> | undefined = undefined,
-  TInput = TSchema extends StandardSchemaV1<any, infer TOut> ? TOut : JsonValue,
+  TSchema = undefined,
+  TInput = InferDefinedSchema<TSchema>,
   TOutput extends JsonValue = JsonValue,
 >(def: {
   name: TName
@@ -161,7 +162,7 @@ export function defineAgent<
 export function asThreadTool(def: {
   name?: string
   description?: string
-  input?: StandardSchemaV1<JsonValue, JsonValue>
+  input?: SchemaInput
   inputSchema?: JsonValue
   child: { kind: string; name: string }
   mapInput?: (input: JsonValue) => JsonValue
@@ -182,26 +183,21 @@ export function asThreadTool(def: {
 export function asAgentTool(def: {
   name?: string
   description?: string
-  input?: StandardSchemaV1<JsonValue, JsonValue>
+  input?: SchemaInput
   inputSchema?: JsonValue
   agent: {
     kind: 'agent'
     name: string
     instructions?: string
-    input?: StandardSchemaV1<JsonValue, unknown>
+    input?: SchemaInput
     inputSchema?: JsonValue
   }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
-  // SAFETY: Agent input schema accepts JsonValue.
-  const agentInput =
-    'input' in def.agent && def.agent.input
-      ? (def.agent.input as StandardSchemaV1<JsonValue, JsonValue>)
-      : undefined
   return asThreadTool({
     name: def.name,
     description: def.description ?? def.agent.instructions,
-    input: def.input ?? agentInput,
+    input: def.input ?? def.agent.input,
     inputSchema: def.inputSchema ?? def.agent.inputSchema,
     child: { kind: 'agent', name: def.agent.name },
     mapInput: def.mapInput,
@@ -211,26 +207,21 @@ export function asAgentTool(def: {
 export function asWorkflowTool(def: {
   name?: string
   description?: string
-  input?: StandardSchemaV1<JsonValue, JsonValue>
+  input?: SchemaInput
   inputSchema?: JsonValue
   workflow: {
     kind: 'workflow'
     name: string
     description?: string
-    input?: StandardSchemaV1<JsonValue, unknown>
+    input?: SchemaInput
     inputSchema?: JsonValue
   }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
-  // SAFETY: Workflow input schema accepts JsonValue.
-  const workflowInput =
-    'input' in def.workflow && def.workflow.input
-      ? (def.workflow.input as StandardSchemaV1<JsonValue, JsonValue>)
-      : undefined
   return asThreadTool({
     name: def.name,
     description: def.description ?? def.workflow.description,
-    input: def.input ?? workflowInput,
+    input: def.input ?? def.workflow.input,
     inputSchema: def.inputSchema ?? def.workflow.inputSchema,
     child: { kind: 'workflow', name: def.workflow.name },
     mapInput: def.mapInput,
@@ -240,7 +231,7 @@ export function asWorkflowTool(def: {
 export function asEffectsTool(def: {
   name: string
   description: string
-  input?: StandardSchemaV1<JsonValue, JsonValue>
+  input?: SchemaInput
   inputSchema?: JsonValue
   effects: (input: JsonValue) => RuntimeEffect[]
   waitOn?: { type: string | readonly string[]; match?: JsonValue }

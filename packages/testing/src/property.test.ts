@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 import fc from 'fast-check'
 
 import {
@@ -19,8 +19,12 @@ describe('Property-based testing for Looms core invariants', () => {
     namespace: 'counter',
     protocolVersion: '1.0.0',
     threads: [
-      defineThread<{ count: number; history: string[] }>({
+      defineThread({
         kind: 'counter',
+        shape: Schema.Struct({
+          count: Schema.Number,
+          history: Schema.mutable(Schema.Array(Schema.String)),
+        }),
         initialState: () => ({ count: 0, history: [] }),
         step(state, event) {
           if (event.type === 'counter.increment') {

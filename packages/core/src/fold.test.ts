@@ -18,8 +18,11 @@ const counterCatalog = defineEventCatalog('counter', {
   incremented: Schema.Struct({ by: Schema.Number }),
 })
 
-const counter = defineThread<{ count: number }>({
+const CounterState = Schema.Struct({ count: Schema.Number })
+
+const counter = defineThread({
   kind: 'counter',
+  shape: CounterState,
   initialState: () => ({ count: 0 }),
   step(state, event) {
     switch (event.type) {
@@ -135,8 +138,9 @@ describe('foldRun', () => {
   })
 
   test('registers and satisfies waits', () => {
-    const waiter = defineThread<{ ready: boolean }>({
+    const waiter = defineThread({
       kind: 'waiter',
+      shape: Schema.Struct({ ready: Schema.Boolean }),
       initialState: () => ({ ready: false }),
       step(state, event) {
         if (event.type === 'runtime.wait.satisfied') {
@@ -342,8 +346,9 @@ describe('foldRun', () => {
   })
 
   test('handled effect.failed leaves the thread running', () => {
-    const handler = defineThread<{ saw: boolean }>({
+    const handler = defineThread({
       kind: 'handler',
+      shape: Schema.Struct({ saw: Schema.Boolean }),
       initialState: () => ({ saw: false }),
       step(state, event) {
         if (event.type === 'runtime.effect.failed') {
@@ -777,10 +782,18 @@ describe('threadTree projection', () => {
   })
 
   test('thread with step and output derives enabled effects from state', () => {
-    type LightState = { phase: 'green' | 'yellow' | 'red'; ticks: number }
-    const trafficLight = defineThread<LightState>({
+    const LightState = Schema.Struct({
+      phase: Schema.Union([
+        Schema.Literal('green'),
+        Schema.Literal('yellow'),
+        Schema.Literal('red'),
+      ]),
+      ticks: Schema.Number,
+    })
+    const trafficLight = defineThread({
       kind: 'traffic_light',
-      initialState: () => ({ phase: 'green', ticks: 0 }),
+      shape: LightState,
+      initialState: () => ({ phase: 'green' as const, ticks: 0 }),
       step(state, event) {
         if (event.type === 'tick') {
           if (state.phase === 'green') return { phase: 'yellow', ticks: state.ticks + 1 }
