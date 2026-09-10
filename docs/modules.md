@@ -68,7 +68,7 @@ const Charge = z.object({
   amount: z.number(),
 })
 
-const catalog = defineEventCatalog('payments', {
+const events = defineEventCatalog('payments', {
   'charge.requested': Charge,
   'charge.authorized': Charge,
 })
@@ -104,7 +104,7 @@ export function payments() {
   return defineRuntimeModule({
     namespace: 'payments',
     protocolVersion: '1.0.0',
-    events: catalog,
+    events,
     effects: { charge },
     projections: { ledger },
   })
@@ -115,12 +115,31 @@ Prefer a Zod (or other Standard Schema) object for each event so the payload is 
 
 Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Agents can expose the same charge as a tool.
 
+## File layout
+
+Built-in modules (`@looms/agent`, `@looms/workflow`, `@looms/approval`) use one file per slot on `defineRuntimeModule`. Open the folder and the names tell you where to look:
+
+```
+src/
+  events.ts        # namespaced event catalog
+  threads.ts       # thread kinds (omit if the module has none)
+  effects.ts       # host-side effect handlers
+  projections.ts   # read models
+  signals.ts       # builders for looms.signal / store.commit
+  module.ts        # defineRuntimeModule wiring
+  index.ts         # public re-exports
+```
+
+A small domain module can stay in one file. When a second event, effect, or projection appears, split along these names so the folder stays scannable.
+
 Conventions that keep modules composable:
 
 - Event and effect types are namespaced (`payments.charge.authorized`)
 - Handlers are idempotent on `ctx.effectId`
 - Projections only fold events — they do not perform I/O
 - Declare `dependencies` when you wait on another module's events
+- Put each module slot in its own file once the module is more than a sketch
+- Pass `input` or `shape` (a Standard Schema or Effect Schema) to `define*` and let types infer — do not pass generics
 
 ## Testing
 

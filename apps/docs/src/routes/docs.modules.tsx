@@ -123,7 +123,7 @@ const Charge = z.object({
   amount: z.number(),
 })
 
-const catalog = defineEventCatalog('payments', {
+const events = defineEventCatalog('payments', {
   'charge.requested': Charge,
   'charge.authorized': Charge,
 })
@@ -159,7 +159,7 @@ export function payments() {
   return defineRuntimeModule({
     namespace: 'payments',
     protocolVersion: '1.0.0',
-    events: catalog,
+    events,
     effects: { charge },
     projections: { ledger },
   })
@@ -173,6 +173,24 @@ export function payments() {
         Workflows invoke <code>payments.charge</code> and wait on{' '}
         <code>payments.charge.authorized</code>. Agents can expose the same charge as a tool. See{' '}
         <Link to="/docs/examples">Examples</Link> for definitions and a React ledger.
+      </p>
+
+      <h2>File layout</h2>
+      <p>
+        Built-in modules use one file per slot on <code>defineRuntimeModule</code>. Open the folder
+        and the names tell you where to look:
+      </p>
+      <CodeBlock lang="text">{`src/
+  events.ts        # namespaced event catalog
+  threads.ts       # thread kinds (omit if the module has none)
+  effects.ts       # host-side effect handlers
+  projections.ts   # read models
+  signals.ts       # builders for looms.signal / store.commit
+  module.ts        # defineRuntimeModule wiring
+  index.ts         # public re-exports`}</CodeBlock>
+      <p>
+        A small domain module can stay in one file. When a second event, effect, or projection
+        appears, split along these names so the folder stays scannable.
       </p>
 
       <h2>Module Composition Principles</h2>
@@ -205,6 +223,11 @@ export function payments() {
           <code>ctx.effectId</code>. Handlers must use this ID as an idempotency key when
           interacting with external APIs (like Stripe or GitHub) to guarantee safe retries after
           network hiccups.
+        </li>
+        <li>
+          <strong>Inferred <code>define*</code> types:</strong> Pass <code>input</code> or{' '}
+          <code>shape</code> (a Standard Schema or Effect Schema). The factory infers handler and
+          state types — do not pass generics.
         </li>
       </ul>
     </>
