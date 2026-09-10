@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+
 import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/api')({
@@ -10,9 +11,9 @@ function Api() {
     <>
       <h1>API / SDK</h1>
       <p>
-        Start with <code>createLooms</code> from <code>@looms/runtime</code>. It
-        registers agents, workflows, approvals, and any extra modules you pass, then
-        gives you a host you can call in-process or over HTTP.
+        Start with <code>createLooms</code> from <code>@looms/runtime</code>. It registers agents,
+        workflows, approvals, and any extra modules you pass, then gives you a host you can call
+        in-process or over HTTP.
       </p>
 
       <h2>
@@ -53,8 +54,7 @@ const looms = createLooms({
               <code>[]</code>
             </td>
             <td>
-              Anything you can <code>start</code>: agents, workflows, or kinds from your
-              own modules
+              Anything you can <code>start</code>: agents, workflows, or kinds from your own modules
             </td>
           </tr>
           <tr>
@@ -65,8 +65,8 @@ const looms = createLooms({
               <code>[agent(), workflow(), approval()]</code>
             </td>
             <td>
-              Configure a module (<code>agent({'{ llm }'})</code>), add domain modules,
-              or drop ones you do not need
+              Configure a module (<code>agent({'{ llm }'})</code>), add domain modules, or drop ones
+              you do not need
             </td>
           </tr>
           <tr>
@@ -89,21 +89,20 @@ const looms = createLooms({
         </tbody>
       </table>
       <p>
-        The LLM adapter lives on the agent module (<code>agent({'{ llm }'})</code>),
-        not on the host — the host does not know what an agent is. Without one, agents
-        run on a deterministic stub.
+        The LLM adapter lives on the agent module (<code>agent({'{ llm }'})</code>), not on the host
+        — the host does not know what an agent is. Without one, agents run on a deterministic stub.
       </p>
       <p>Common methods:</p>
       <ul>
         <li>
-          <code>start(definition, input)</code> — start any definition; the input type
-          follows its schema. <code>startRun({'{ kind, definitionName, input }'})</code>{' '}
-          when you only have names.
+          <code>start(definition, input)</code> — start any definition; the input type follows its
+          schema. <code>startRun({'{ kind, definitionName, input }'})</code> when you only have
+          names.
         </li>
         <li>
-          <code>signal(runId, events)</code> — post events into a run. Modules ship
-          builders: <code>userMessage()</code> from <code>@looms/agent</code>,{' '}
-          <code>decision()</code> from <code>@looms/approval</code>.
+          <code>signal(runId, events)</code> — post events into a run. Modules ship builders:{' '}
+          <code>userMessage()</code> from <code>@looms/agent</code>, <code>decision()</code> from{' '}
+          <code>@looms/approval</code>.
         </li>
         <li>
           <code>getRun</code>, <code>getEvents</code>, <code>wake</code>
@@ -115,9 +114,8 @@ const looms = createLooms({
           <code>replayTo(runId, seq)</code> — state before and after an event
         </li>
         <li>
-          <code>fetch(request)</code> — handle <code>/runs</code> and{' '}
-          <code>/api/livestore</code>; returns <code>null</code> for other paths so
-          you can mount Looms next to your own UI
+          <code>fetch(request)</code> — handle <code>/runs</code> and <code>/api/livestore</code>;
+          returns <code>null</code> for other paths so you can mount Looms next to your own UI
         </li>
         <li>
           <code>serve()</code> / <code>stop()</code>
@@ -146,9 +144,8 @@ const looms = createLooms({
               <code>@looms/agent</code>
             </td>
             <td>
-              <code>agent({'{ llm }'})</code>, <code>defineAgent</code>,{' '}
-              <code>defineTool</code>, <code>conversation</code>,{' '}
-              <code>userMessage</code>
+              <code>agent({'{ llm }'})</code>, <code>defineAgent</code>, <code>defineTool</code>,{' '}
+              <code>conversation</code>, <code>userMessage</code>
             </td>
           </tr>
           <tr>
@@ -172,8 +169,8 @@ const looms = createLooms({
               <code>@looms/core</code>
             </td>
             <td>
-              <code>defineRuntimeModule</code>, <code>defineEffect</code>,{' '}
-              <code>invoke</code>, <code>wait</code>
+              <code>defineRuntimeModule</code>, <code>defineEffect</code>, <code>invoke</code>,{' '}
+              <code>wait</code>
             </td>
           </tr>
           <tr>
@@ -253,8 +250,7 @@ const looms = createLooms({
               <code>/runs</code>
             </td>
             <td>
-              Start a run:{' '}
-              <code>{'{ kind, definitionName, input }'}</code>
+              Start a run: <code>{'{ kind, definitionName, input }'}</code>
             </td>
           </tr>
           <tr>
@@ -323,8 +319,8 @@ const looms = createLooms({
               <code>/api/livestore</code>
             </td>
             <td>
-              LiveStore pull (<code>?storeId=&cursor=</code>) or SSE (
-              <code>live=true</code> / <code>Accept: text/event-stream</code>)
+              LiveStore pull (<code>?storeId=&cursor=</code>) or SSE (<code>live=true</code> /{' '}
+              <code>Accept: text/event-stream</code>)
             </td>
           </tr>
         </tbody>

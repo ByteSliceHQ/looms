@@ -1,5 +1,6 @@
-import { encodeLoomsEvent, type EventEnvelope, type EventStore } from '@looms/core'
 import { Effect, Fiber, Stream } from 'effect'
+
+import { encodeLoomsEvent, type EventEnvelope, type EventStore } from '@looms/core'
 
 export interface EventStreamOptions {
   signal: AbortSignal
@@ -80,7 +81,9 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
         store.subscribe(runId, { fromSeq }).pipe(
           Stream.tap((event: EventEnvelope) =>
             Effect.sync(() => {
-              write(`id: ${event.seq}\ndata: ${JSON.stringify({ batch: [encodeLoomsEvent(event)] })}\n\n`)
+              write(
+                `id: ${event.seq}\ndata: ${JSON.stringify({ batch: [encodeLoomsEvent(event)] })}\n\n`,
+              )
             }),
           ),
           Stream.runDrain,

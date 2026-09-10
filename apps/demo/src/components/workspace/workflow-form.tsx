@@ -1,15 +1,21 @@
 import { useState } from 'react'
-import type { JsonValue } from '@looms/core'
-import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { JsonView } from '../json-view'
-import type { WorkflowRunType } from '../../catalog'
+
 import { rememberRun } from '@/hooks/use-recent-runs'
 import { useRun } from '@/hooks/use-run'
 import { loomsClient } from '@/lib/looms-client'
 import { statusClass } from '@/lib/status'
+import type { JsonValue } from '@looms/core'
 
-function fieldValue(value: string, type: 'string' | 'number', fallback: string | number): JsonValue {
+import type { WorkflowRunType } from '../../catalog'
+import { JsonView } from '../json-view'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
+
+function fieldValue(
+  value: string,
+  type: 'string' | 'number',
+  fallback: string | number,
+): JsonValue {
   if (type === 'number') {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : Number(fallback)
@@ -34,9 +40,9 @@ function WorkflowResult({ runId }: { runId: string }) {
       {completed?.type === 'runtime.thread.completed' ? (
         <JsonView value={completed.payload.output} />
       ) : failed?.type === 'runtime.thread.failed' ? (
-        <p className="text-xs text-status-failed">{failed.payload.error}</p>
+        <p className="text-status-failed text-xs">{failed.payload.error}</p>
       ) : (
-        <p className="text-xs text-muted-foreground">Running…</p>
+        <p className="text-muted-foreground text-xs">Running…</p>
       )}
     </div>
   )
@@ -86,7 +92,7 @@ export function WorkflowForm({
     <div className="flex h-full flex-col gap-4 p-3">
       <div>
         <h2 className="text-sm font-medium">{type.label}</h2>
-        <p className="text-xs text-muted-foreground">{type.description}</p>
+        <p className="text-muted-foreground text-xs">{type.description}</p>
       </div>
       <form
         className="space-y-3"
@@ -97,7 +103,7 @@ export function WorkflowForm({
       >
         {type.fields.map((field) => (
           <label key={field.name} className="block space-y-1">
-            <span className="text-[11px] text-muted-foreground">{field.label}</span>
+            <span className="text-muted-foreground text-[11px]">{field.label}</span>
             <Input
               type={field.type === 'number' ? 'number' : 'text'}
               value={values[field.name] ?? ''}
@@ -111,7 +117,7 @@ export function WorkflowForm({
           {pending ? 'Starting…' : runId ? 'Run again' : 'Start'}
         </Button>
       </form>
-      {error ? <p className="text-xs text-status-failed">{error}</p> : null}
+      {error ? <p className="text-status-failed text-xs">{error}</p> : null}
       {runId ? <WorkflowResult runId={runId} /> : null}
     </div>
   )

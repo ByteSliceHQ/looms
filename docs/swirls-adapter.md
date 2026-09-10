@@ -6,17 +6,17 @@ The compile-to-modules framing: Swirls keeps its DSL and product types. An adapt
 
 ## Mapping
 
-| Swirls concept | Looms concept |
-|---|---|
-| `execution_actors` row | Run `runId` / S2 stream `runs/{id}` |
-| `execution_events` | `EventEnvelope` log (`@looms/core`) |
-| `workflow_execution` | module `@looms/workflow`, kind `workflow` |
-| `agent_session` | module `@looms/agent`, kind `agent` |
-| Temporal `swirlsGraphWorkflow` | `@looms/workflow` reducer + host wake |
-| Temporal signals (`review:*`) | `@looms/approval` `approval.decided` + `runtime.signal.received` |
-| Durable Object live projection | `@looms/livestore` `useRunStore` / `useProjection` |
-| Fabric macaroon / Anvil secrets | **Out of Looms** — inject via Swirls Layer adapters |
-| Daytona / Archil sandboxes | Tool handlers in Swirls, not in Looms core |
+| Swirls concept                  | Looms concept                                                    |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `execution_actors` row          | Run `runId` / S2 stream `runs/{id}`                              |
+| `execution_events`              | `EventEnvelope` log (`@looms/core`)                              |
+| `workflow_execution`            | module `@looms/workflow`, kind `workflow`                        |
+| `agent_session`                 | module `@looms/agent`, kind `agent`                              |
+| Temporal `swirlsGraphWorkflow`  | `@looms/workflow` reducer + host wake                            |
+| Temporal signals (`review:*`)   | `@looms/approval` `approval.decided` + `runtime.signal.received` |
+| Durable Object live projection  | `@looms/livestore` `useRunStore` / `useProjection`               |
+| Fabric macaroon / Anvil secrets | **Out of Looms** — inject via Swirls Layer adapters              |
+| Daytona / Archil sandboxes      | Tool handlers in Swirls, not in Looms core                       |
 
 ## Suggested dogfood path
 

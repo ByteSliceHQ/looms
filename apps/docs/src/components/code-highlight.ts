@@ -35,21 +35,11 @@ export const loomsLight = {
       settings: { foreground: '#0ea5a4' }, // Mint / Cyan
     },
     {
-      scope: [
-        'keyword',
-        'keyword.control',
-        'keyword.operator',
-        'storage.type',
-        'storage.modifier',
-      ],
+      scope: ['keyword', 'keyword.control', 'keyword.operator', 'storage.type', 'storage.modifier'],
       settings: { foreground: '#3b6998' }, // Poimandres Desaturated Slate Blue
     },
     {
-      scope: [
-        'string',
-        'punctuation.definition.string',
-        'string.template',
-      ],
+      scope: ['string', 'punctuation.definition.string', 'string.template'],
       settings: { foreground: '#0f766e' }, // Mint / Deep Sea
     },
     {

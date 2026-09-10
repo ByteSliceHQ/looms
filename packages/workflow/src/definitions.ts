@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+
 import type { JsonValue, RuntimeEffect } from '@looms/core'
 
 export interface WorkflowNodeContext<TInput = JsonValue> {
@@ -51,13 +52,19 @@ export function defineWorkflow<
   nodes: Array<{
     id: string
     deps?: string[]
-    run: (ctx: WorkflowNodeContext<TInput>) => Promise<JsonValue | NodeResult> | JsonValue | NodeResult
+    run: (
+      ctx: WorkflowNodeContext<TInput>,
+    ) => Promise<JsonValue | NodeResult> | JsonValue | NodeResult
   }>
   concurrency?: number
   output?: (ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }) => TOutput
 }): WorkflowDefinition<TName, TInput, TOutput> {
   // SAFETY: factory fields match WorkflowDefinition.
-  return { kind: 'workflow', ...def, input: def.input } as WorkflowDefinition<TName, TInput, TOutput>
+  return { kind: 'workflow', ...def, input: def.input } as WorkflowDefinition<
+    TName,
+    TInput,
+    TOutput
+  >
 }
 
 export function readyNodes(

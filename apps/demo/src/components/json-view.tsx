@@ -1,11 +1,11 @@
-import type { JsonValue } from '@looms/core'
 import { cn } from '@/lib/utils'
+import type { JsonValue } from '@looms/core'
 
 export function JsonView({ value, className }: { value: JsonValue; className?: string }) {
   return (
     <pre
       className={cn(
-        'overflow-auto font-mono text-[11px] leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground',
+        'text-muted-foreground overflow-auto font-mono text-[11px] leading-relaxed wrap-break-word whitespace-pre-wrap',
         className,
       )}
     >

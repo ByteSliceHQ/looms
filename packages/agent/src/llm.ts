@@ -1,5 +1,7 @@
-import type { JsonValue } from '@looms/core'
 import { Context, Effect, Layer, Predicate } from 'effect'
+
+import type { JsonValue } from '@looms/core'
+
 import type { AgentTurnContext, AgentTurnResult, ToolLike } from './definitions'
 import type { Message, ToolCall } from './types'
 

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+
 import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/examples')({
@@ -10,9 +11,8 @@ function Examples() {
     <>
       <h1>Examples</h1>
       <p>
-        Patterns you can copy into an app. The demo at{' '}
-        <code>bun run demo</code> is a fuller version of the same pieces: checkout,
-        an assistant, a run debugger, and chat.
+        Patterns you can copy into an app. The demo at <code>bun run demo</code> is a fuller version
+        of the same pieces: checkout, an assistant, a run debugger, and chat.
       </p>
 
       <h2>Agent with tools</h2>
@@ -49,8 +49,8 @@ export const assistant = defineAgent({
   tools: [greet, asAgentTool({ agent: specialist }), askApproval, checkout],
 })`}</CodeBlock>
       <p>
-        A tool can be a function, another agent, a workflow, or a human gate. The
-        parent run waits until the child or approval finishes.
+        A tool can be a function, another agent, a workflow, or a human gate. The parent run waits
+        until the child or approval finishes.
       </p>
 
       <h2>Workflow with approval and a domain module</h2>
@@ -89,9 +89,8 @@ export const checkout = defineWorkflow({
   ],
 })`}</CodeBlock>
       <p>
-        Nodes run after their <code>deps</code>. <code>ctx.effects</code> parks the
-        node until matching events land. Author the payments module in{' '}
-        <Link to="/docs/modules">Modules</Link>.
+        Nodes run after their <code>deps</code>. <code>ctx.effects</code> parks the node until
+        matching events land. Author the payments module in <Link to="/docs/modules">Modules</Link>.
       </p>
 
       <h2>React: chat and approvals</h2>
@@ -128,8 +127,8 @@ function RunView({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
       <p>
-        The same projection reducers run on the host and in the browser, so the UI
-        cannot drift from the log.
+        The same projection reducers run on the host and in the browser, so the UI cannot drift from
+        the log.
       </p>
 
       <h2>HTTP client</h2>
@@ -147,10 +146,9 @@ const { runId: chatId } = await client.start(assistant, 'Charge $40')
 await client.signal(chatId, [userMessage('Also greet Maya')])
 client.subscribeEvents(chatId, (event) => console.log(event.type))`}</CodeBlock>
       <p>
-        The client has two verbs for input — <code>start</code> a definition and{' '}
-        <code>signal</code> events — and modules provide the event builders. When
-        you only have names (no definition object), use{' '}
-        <code>startRun({'{ kind, definitionName, input }'})</code>.
+        The client has two verbs for input — <code>start</code> a definition and <code>signal</code>{' '}
+        events — and modules provide the event builders. When you only have names (no definition
+        object), use <code>startRun({'{ kind, definitionName, input }'})</code>.
       </p>
 
       <h2>CLI</h2>

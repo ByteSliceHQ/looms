@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import * as net from 'node:net'
-import { EventStoreConflictError } from '@looms/core'
+
 import { Predicate, Schema } from 'effect'
+
+import { EventStoreConflictError } from '@looms/core'
+
 import {
   findS2Binary,
   isPortOpen,

@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "sortImports": {
+    "internalPattern": ["~/", "@/", "#", "@looms/"]
+  },
+  "sortTailwindcss": {
+    "functions": ["clsx", "cn", "cva", "twMerge"]
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.output/**",
+    "**/node_modules/**",
+    "**/.flox/**",
+    "**/.turbo/**",
+    "**/.tanstack/**",
+    "**/coverage/**",
+    "**/routeTree.gen.ts",
+    "bun.lock",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**"
+  ]
+}

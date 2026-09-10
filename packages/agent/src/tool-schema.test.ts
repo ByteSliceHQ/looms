@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Schema } from 'effect'
-import { asAgentTool, asEffectsTool, asWorkflowTool, defineAgent, defineTool, normalizeTools } from './definitions'
+
+import {
+  asAgentTool,
+  asEffectsTool,
+  asWorkflowTool,
+  defineAgent,
+  defineTool,
+  normalizeTools,
+} from './definitions'
 import { toolJsonSchema, toolSpecs } from './tool-schema'
 
 const CheckoutInput = Schema.toStandardSchemaV1(

@@ -1,5 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+
 import type { JsonValue, RuntimeEffect } from '@looms/core'
+
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
 
@@ -87,7 +89,9 @@ export interface AgentDefinition<
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen
-  runTurn?(ctx: AgentTurnContext<TInput>): Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
+  runTurn?(
+    ctx: AgentTurnContext<TInput>,
+  ): Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
 }
 
 export type AnyAgentDefinition = AgentDefinition<string, JsonValue, JsonValue>
@@ -141,7 +145,9 @@ export function defineAgent<
   maxTurns?: number
   conversational?: boolean
   stopWhen?: StopWhen
-  runTurn?: (ctx: AgentTurnContext<TInput>) => Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
+  runTurn?: (
+    ctx: AgentTurnContext<TInput>,
+  ) => Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
 }): AgentDefinition<TName, TInput, TOutput> {
   // SAFETY: factory fields match AgentDefinition.
   return {

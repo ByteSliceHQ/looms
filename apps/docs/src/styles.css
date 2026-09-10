@@ -94,7 +94,7 @@ html.dark {
   }
 
   body {
-    @apply bg-background font-sans text-body leading-relaxed antialiased;
+    @apply bg-background text-body font-sans leading-relaxed antialiased;
   }
 
   a {
@@ -106,7 +106,7 @@ html.dark {
   }
 
   code {
-    @apply rounded bg-code-bg px-[0.35em] py-[0.15em] font-mono text-[0.86em] text-foreground;
+    @apply bg-code-bg text-foreground rounded px-[0.35em] py-[0.15em] font-mono text-[0.86em];
   }
 }
 
@@ -240,24 +240,24 @@ td strong {
 
 @layer components {
   .prose h1 {
-    @apply mb-5 mt-0 text-[2.1rem] font-semibold leading-tight tracking-tight text-foreground;
+    @apply text-foreground mt-0 mb-5 text-[2.1rem] leading-tight font-semibold tracking-tight;
   }
 
   .prose h2 {
-    @apply mb-3.5 mt-14 text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground;
+    @apply text-foreground mt-14 mb-3.5 text-[1.3rem] leading-snug font-semibold tracking-tight;
   }
 
   .prose h3 {
-    @apply mb-2 mt-9 text-[1.05rem] font-semibold leading-snug tracking-tight text-foreground;
+    @apply text-foreground mt-9 mb-2 text-[1.05rem] leading-snug font-semibold tracking-tight;
   }
 
   .prose p {
-    @apply mb-4 mt-0 leading-relaxed;
+    @apply mt-0 mb-4 leading-relaxed;
   }
 
   .prose ul,
   .prose ol {
-    @apply mb-5 mt-0 pl-5 leading-relaxed;
+    @apply mt-0 mb-5 pl-5 leading-relaxed;
   }
 
   .prose li {

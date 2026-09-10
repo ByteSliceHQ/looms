@@ -1,4 +1,5 @@
 import createPostgresClient, { type Sql } from 'postgres'
+
 import {
   createIndexProjector,
   type IndexBackend,

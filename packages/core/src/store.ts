@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Queue, Ref, Stream } from 'effect'
+
 import { withAssignedSeq, type AppendableEvent, type EventEnvelope } from './envelope'
 
 export class EventStoreError extends Error {
@@ -19,9 +20,13 @@ export class EventStoreConflictError extends EventStoreError {
   readonly expectedTail: number
   readonly actualTail: number
   constructor(runId: string, expectedTail: number, actualTail: number) {
-    super(`Conflict appending to ${runId}: expected tail ${expectedTail}, got ${actualTail}`, undefined, {
-      conflict: true,
-    })
+    super(
+      `Conflict appending to ${runId}: expected tail ${expectedTail}, got ${actualTail}`,
+      undefined,
+      {
+        conflict: true,
+      },
+    )
     this.name = 'EventStoreConflictError'
     this.expectedTail = expectedTail
     this.actualTail = actualTail
@@ -55,7 +60,9 @@ export interface EventStore {
   readonly listRuns: () => Effect.Effect<string[], EventStoreError>
 }
 
-export class EventStoreTag extends Context.Service<EventStoreTag, EventStore>()('looms/EventStore') {}
+export class EventStoreTag extends Context.Service<EventStoreTag, EventStore>()(
+  'looms/EventStore',
+) {}
 
 interface RunLog {
   events: EventEnvelope[]
@@ -101,7 +108,11 @@ export const makeMemoryEventStore = Effect.gen(function* () {
           return next
         }).pipe(
           Effect.catchDefect((cause) =>
-            Effect.fail(cause instanceof EventStoreError ? cause : new EventStoreError('append failed', cause)),
+            Effect.fail(
+              cause instanceof EventStoreError
+                ? cause
+                : new EventStoreError('append failed', cause),
+            ),
           ),
         )
         const tail = yield* service.tail(runId)

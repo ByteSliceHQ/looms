@@ -12,7 +12,7 @@ export function RecentRuns({
   if (runs.length === 0) return null
   return (
     <div>
-      <h2 className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
         Recent
       </h2>
       <ul>
@@ -27,7 +27,9 @@ export function RecentRuns({
               )}
             >
               <span className="min-w-0 truncate">{run.definitionName}</span>
-              <span className="ml-auto shrink-0 font-mono text-muted-foreground">{shortId(run.runId)}</span>
+              <span className="text-muted-foreground ml-auto shrink-0 font-mono">
+                {shortId(run.runId)}
+              </span>
             </button>
           </li>
         ))}

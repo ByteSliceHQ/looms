@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import {
-  threadTree,
-  toThreadTree,
-} from '@looms/core'
+
+import { threadTree, toThreadTree } from '@looms/core'
 import { useProjection, useRunStore } from '@looms/livestore/react'
+
 import type { DemoEvents } from '../runtime'
 
 export function useRun(runId: string) {

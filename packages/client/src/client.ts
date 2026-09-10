@@ -1,3 +1,5 @@
+import { Predicate } from 'effect'
+
 import {
   createRunId,
   type DefinitionInput,
@@ -7,7 +9,7 @@ import {
   type JsonValue,
   type RunState,
 } from '@looms/core'
-import { Predicate } from 'effect'
+
 import { consumeSseStream, delay, eventsFromSseData } from './sse'
 
 export interface LoomsClientOptions {
@@ -59,7 +61,8 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
             `${baseUrl}/api/livestore?storeId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
             { headers, signal: controller.signal },
           )
-          if (!res.ok || !res.body) throw new Error(res.ok ? 'livestore sse missing body' : `HTTP ${res.status}`)
+          if (!res.ok || !res.body)
+            throw new Error(res.ok ? 'livestore sse missing body' : `HTTP ${res.status}`)
           await consumeSseStream(
             res.body,
             (frame) => {
@@ -84,8 +87,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     }
   }
 
-  const startRun = (args: { kind: string; definitionName: string; input?: JsonValue; runId?: string }) =>
-    request<StartResult>('/runs', { method: 'POST', body: JSON.stringify(args) })
+  const startRun = (args: {
+    kind: string
+    definitionName: string
+    input?: JsonValue
+    runId?: string
+  }) => request<StartResult>('/runs', { method: 'POST', body: JSON.stringify(args) })
 
   const streamRun = (args: {
     kind: string
@@ -189,7 +196,9 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       if (opts?.fromSeq !== undefined) params.set('fromSeq', String(opts.fromSeq))
       if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
       const q = params.toString()
-      return request<{ runId: string; events: EventEnvelope[] }>(`/runs/${runId}/events${q ? `?${q}` : ''}`)
+      return request<{ runId: string; events: EventEnvelope[] }>(
+        `/runs/${runId}/events${q ? `?${q}` : ''}`,
+      )
     },
     signal: (runId: string, events: ReadonlyArray<EventInput>) =>
       request<{ runId: string; state: RunState }>(`/runs/${runId}/events`, {
@@ -201,14 +210,19 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     replayTo: (runId: string, seq: number) =>
       request<{ runId: string; step: unknown }>(`/runs/${runId}/replay?seq=${seq}`),
     project: (runId: string, name: string) =>
-      request<{ runId: string; name: string; value: unknown }>(`/runs/${runId}/projections/${name}`),
+      request<{ runId: string; name: string; value: unknown }>(
+        `/runs/${runId}/projections/${name}`,
+      ),
     subscribeEvents,
     /**
      * Subscribe to the run log, then start execution so deltas arrive live.
      * Yields events in store order, including live module events such as `agent.turn.text_delta`.
      */
     streamRun,
-    stream: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>): StreamHandle =>
+    stream: <TDef extends DefinitionRef>(
+      definition: TDef,
+      input?: DefinitionInput<TDef>,
+    ): StreamHandle =>
       streamRun({
         kind: definition.kind,
         definitionName: definition.name,

@@ -1,19 +1,26 @@
 {
   "name": "looms",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "description": "Pluggable event-sourced thread runtime",
-  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ByteSliceHQ/looms.git"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "check-types": "turbo run check-types",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
     "lint": "oxlint .",
     "test": "turbo run test",
-    "verify": "turbo run build check-types test verify && bun run lint",
+    "verify": "turbo run build check-types test verify && bun run lint && bun run fmt:check",
     "dev": "turbo run dev --filter=@looms/demo --filter=@looms/docs",
     "demo": "turbo run dev --filter=@looms/demo",
     "docs": "turbo run dev --filter=@looms/docs",
@@ -30,6 +37,7 @@
     "@oxlint/plugins": "1.81.0",
     "@types/bun": "^1.3.9",
     "effect": "4.0.0-rc.112",
+    "oxfmt": "0.67.0",
     "oxlint": "1.81.0",
     "oxlint-tsgolint": "7.0.2001",
     "turbo": "^2.5.8",
@@ -38,10 +46,5 @@
   "engines": {
     "bun": ">=1.3.0"
   },
-  "packageManager": "bun@1.3.14",
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ByteSliceHQ/looms.git"
-  }
+  "packageManager": "bun@1.3.14"
 }

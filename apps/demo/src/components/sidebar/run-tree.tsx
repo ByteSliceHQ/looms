@@ -1,10 +1,12 @@
-import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import type { ThreadNode } from '@looms/core'
-import { StatusDot } from '../status-dot'
+import { useState } from 'react'
+
 import { useRun } from '@/hooks/use-run'
-import { cn, shortId } from '@/lib/utils'
 import { statusClass } from '@/lib/status'
+import { cn, shortId } from '@/lib/utils'
+import type { ThreadNode } from '@looms/core'
+
+import { StatusDot } from '../status-dot'
 
 function NodeRow({
   node,
@@ -38,7 +40,7 @@ function NodeRow({
         {hasChildren ? (
           <button
             type="button"
-            className="size-4 shrink-0 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground size-4 shrink-0"
             onClick={() => onToggle(node.threadId)}
           >
             {isCollapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
@@ -53,11 +55,15 @@ function NodeRow({
         >
           <StatusDot status={node.status} />
           <span className="truncate">
-            <span className="font-medium text-foreground">{node.definitionName}</span>
-            <span className="ml-1 text-[10px] text-muted-foreground font-mono">({node.kind})</span>
+            <span className="text-foreground font-medium">{node.definitionName}</span>
+            <span className="text-muted-foreground ml-1 font-mono text-[10px]">({node.kind})</span>
           </span>
-          <span className={cn('shrink-0 text-[10px]', statusClass(node.status))}>{node.status}</span>
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">{count}</span>
+          <span className={cn('shrink-0 text-[10px]', statusClass(node.status))}>
+            {node.status}
+          </span>
+          <span className="text-muted-foreground ml-auto shrink-0 font-mono text-[10px]">
+            {count}
+          </span>
         </button>
       </div>
       {hasChildren && !isCollapsed ? (
@@ -104,7 +110,7 @@ export function RunTree({
 
   return (
     <div>
-      <h2 className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
         Run tree
       </h2>
       <button
@@ -118,7 +124,7 @@ export function RunTree({
         <StatusDot status={status} />
         <span className="truncate font-mono">{shortId(runId)}</span>
         <span className={cn('ml-auto', statusClass(status))}>{status}</span>
-        <span className="font-mono text-[10px] text-muted-foreground">{runCount}</span>
+        <span className="text-muted-foreground font-mono text-[10px]">{runCount}</span>
       </button>
       {tree.root ? (
         <ul>
@@ -133,7 +139,7 @@ export function RunTree({
           />
         </ul>
       ) : (
-        <p className="px-2 text-xs text-muted-foreground">Waiting for threads…</p>
+        <p className="text-muted-foreground px-2 text-xs">Waiting for threads…</p>
       )}
     </div>
   )

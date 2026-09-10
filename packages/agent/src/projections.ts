@@ -1,5 +1,7 @@
-import { defineProjection, type EventEnvelope } from '@looms/core'
 import { Predicate } from 'effect'
+
+import { defineProjection, type EventEnvelope } from '@looms/core'
+
 import { ConversationSchema, TokenUsageSchema, type Message, type ToolCall } from './types'
 
 function payloadObject(event: EventEnvelope): { [key: string]: import('@looms/core').JsonValue } {
@@ -25,7 +27,12 @@ export const conversation = defineProjection({
         if (Array.isArray(calls)) {
           const collected: ToolCall[] = []
           for (const item of calls) {
-            if (!Predicate.isObject(item) || !Predicate.isString(item.id) || !Predicate.isString(item.name)) continue
+            if (
+              !Predicate.isObject(item) ||
+              !Predicate.isString(item.id) ||
+              !Predicate.isString(item.name)
+            )
+              continue
             collected.push({ id: item.id, name: item.name, arguments: item.arguments ?? null })
           }
           if (collected.length > 0) toolCalls = collected
@@ -43,7 +50,9 @@ export const conversation = defineProjection({
         const payload = payloadObject(event)
         const error = payload.error
         const content =
-          Predicate.isString(error) && error.length > 0 ? error : JSON.stringify(payload.result ?? null)
+          Predicate.isString(error) && error.length > 0
+            ? error
+            : JSON.stringify(payload.result ?? null)
         const toolLine: Message = {
           role: 'tool',
           content,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createKeyedSerializer } from './serialize'
 
 describe('createKeyedSerializer', () => {
@@ -7,7 +8,7 @@ describe('createKeyedSerializer', () => {
     const order: number[] = []
     const tasks = [0, 1, 2, 3, 4].map((index) =>
       serializer.run('same-stream', async () => {
-        await Bun.sleep(5 + ((4 - index) * 3))
+        await Bun.sleep(5 + (4 - index) * 3)
         order.push(index)
         return index
       }),

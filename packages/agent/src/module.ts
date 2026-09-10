@@ -1,12 +1,14 @@
-import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
 import { Layer } from 'effect'
+
+import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
+
 import { agentCatalog } from './catalog'
 import type { AgentDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
-import { agentThread } from './thread'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { llmFromAdapter, LlmTag, StubLlmLive, type LlmAdapter, type StubLlmPolicy } from './llm'
 import { conversation, tokenUsage } from './projections'
+import { agentThread } from './thread'
 
 export interface AgentModuleOptions {
   /** Model adapter used for every agent turn. Defaults to a deterministic stub for tests and scripted agents. */

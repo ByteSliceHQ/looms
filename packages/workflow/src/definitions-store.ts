@@ -1,13 +1,15 @@
 import { Context, Layer } from 'effect'
+
 import type { WorkflowDefinition } from './definitions'
 
 export interface WorkflowDefinitionStore {
   get(name: string): WorkflowDefinition | undefined
 }
 
-export class WorkflowDefinitionsTag extends Context.Service<WorkflowDefinitionsTag, WorkflowDefinitionStore>()(
-  'looms/WorkflowDefinitions',
-) {}
+export class WorkflowDefinitionsTag extends Context.Service<
+  WorkflowDefinitionsTag,
+  WorkflowDefinitionStore
+>()('looms/WorkflowDefinitions') {}
 
 export function makeWorkflowDefinitionStore(
   definitions: ReadonlyArray<WorkflowDefinition>,

@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { agent, defineAgent } from '@looms/agent'
+
 import { Predicate } from 'effect'
+
+import { agent, defineAgent } from '@looms/agent'
+
 import { createLooms } from './looms'
 
 async function readSseFrames(res: Response, count: number): Promise<string[]> {
@@ -63,9 +66,12 @@ describe('handleLivestoreProxy SSE', () => {
     const events = await looms.getEvents(runId)
     expect(events.length).toBeGreaterThan(1)
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`, {
-        headers: { 'last-event-id': '1', accept: 'text/event-stream' },
-      }),
+      new Request(
+        `http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`,
+        {
+          headers: { 'last-event-id': '1', accept: 'text/event-stream' },
+        },
+      ),
     )
     expect(res).not.toBeNull()
     const frames = await readSseFrames(res!, 1)
@@ -111,15 +117,21 @@ describe('handleLivestoreProxy SSE', () => {
       new Request('http://looms.test/runs?stream=true', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify({ kind: 'agent', definitionName: 'echo-start-stream', input: { text: 'hi' } }),
+        body: JSON.stringify({
+          kind: 'agent',
+          definitionName: 'echo-start-stream',
+          input: { text: 'hi' },
+        }),
       }),
     )
     expect(res).not.toBeNull()
     expect(res!.headers.get('content-type')).toBe('text/event-stream')
     const frames = await readSseFrames(res!, 2)
     expect(frames.length).toBeGreaterThanOrEqual(1)
-    expect(frames.some((frame) => frame.includes('runtime.run.started') || frame.includes('event: done'))).toBe(
-      true,
-    )
+    expect(
+      frames.some(
+        (frame) => frame.includes('runtime.run.started') || frame.includes('event: done'),
+      ),
+    ).toBe(true)
   })
 })

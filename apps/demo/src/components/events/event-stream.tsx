@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { useRun } from '@/hooks/use-run'
+import { cn, shortId } from '@/lib/utils'
+
+import type { DemoEvents } from '../../runtime'
 import { Input } from '../ui/input'
 import { EventInspector } from './event-inspector'
 import {
@@ -9,9 +14,6 @@ import {
   summarizeEvent,
   type EventFamily,
 } from './event-summary'
-import { useRun } from '@/hooks/use-run'
-import { cn, shortId } from '@/lib/utils'
-import type { DemoEvents } from '../../runtime'
 
 const FAMILIES: EventFamily[] = ['runtime', 'agent', 'workflow', 'approval', 'payments', 'wait']
 const ROW_ESTIMATE = 28
@@ -86,12 +88,14 @@ export function EventStream({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-2 py-1.5">
-        <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="border-border flex flex-wrap items-center gap-1.5 border-b px-2 py-1.5">
+        <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
           Events
         </span>
         {threadId ? (
-          <span className="font-mono text-[10px] text-muted-foreground">thr {shortId(threadId)}</span>
+          <span className="text-muted-foreground font-mono text-[10px]">
+            thr {shortId(threadId)}
+          </span>
         ) : null}
         <Input
           value={query}
@@ -114,7 +118,7 @@ export function EventStream({
             </button>
           ))}
         </div>
-        <label className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+        <label className="text-muted-foreground ml-auto flex items-center gap-1 text-[11px]">
           <input
             type="checkbox"
             checked={follow}
@@ -177,21 +181,23 @@ function EventRow({
       )}
     >
       <span className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', familyClass(family))} />
-      <span className="w-7 shrink-0 text-right text-muted-foreground tabular-nums">{event.seq}</span>
-      <span className="w-10 shrink-0 text-right text-muted-foreground tabular-nums">
+      <span className="text-muted-foreground w-7 shrink-0 text-right tabular-nums">
+        {event.seq}
+      </span>
+      <span className="text-muted-foreground w-10 shrink-0 text-right tabular-nums">
         {offset !== undefined ? `+${offset}` : ''}
       </span>
       <span className="min-w-0 flex-1">
         <span className="text-foreground">{summary.title}</span>
         {summary.detail ? (
-          <span className="ml-1 text-muted-foreground">{summary.detail}</span>
+          <span className="text-muted-foreground ml-1">{summary.detail}</span>
         ) : null}
       </span>
       {event.causationId ? (
-        <span className="shrink-0 text-muted-foreground">← {shortId(event.causationId)}</span>
+        <span className="text-muted-foreground shrink-0">← {shortId(event.causationId)}</span>
       ) : null}
       {event.threadId ? (
-        <span className="shrink-0 text-muted-foreground">{shortId(event.threadId)}</span>
+        <span className="text-muted-foreground shrink-0">{shortId(event.threadId)}</span>
       ) : null}
     </button>
   )

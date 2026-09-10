@@ -1,4 +1,9 @@
-export { createLoomsStore, type LoomsClientStore, type LoomsClientStoreOptions, type StoreListener } from './store'
+export {
+  createLoomsStore,
+  type LoomsClientStore,
+  type LoomsClientStoreOptions,
+  type StoreListener,
+} from './store'
 export { materializeEvents } from './materialize'
 export {
   emptyTables,

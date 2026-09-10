@@ -1,5 +1,7 @@
-import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
 import { Predicate, Schema } from 'effect'
+
+import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
+
 import { NodeStateSchema } from './thread'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {

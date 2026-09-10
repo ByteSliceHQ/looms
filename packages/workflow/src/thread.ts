@@ -1,3 +1,5 @@
+import { Predicate, Schema } from 'effect'
+
 import {
   asJson,
   createWaitId,
@@ -10,7 +12,6 @@ import {
   type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
-import { Predicate, Schema } from 'effect'
 
 export const NodeStatusSchema = Schema.Union([
   Schema.Literal('pending'),
@@ -47,7 +48,9 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
 }
 
 function scheduleInvocation(state: WorkflowState) {
-  const nodes: { [id: string]: { status: string; result: JsonValue | null; error: string | null } } = {}
+  const nodes: {
+    [id: string]: { status: string; result: JsonValue | null; error: string | null }
+  } = {}
   for (const [id, node] of Object.entries(state.nodes)) {
     nodes[id] = { status: node.status, result: node.result, error: node.error }
   }
@@ -192,9 +195,7 @@ export const workflowThread = defineThread<WorkflowState>({
         const nodeId = readString(payload, 'nodeId')
         const raw = payload.effects
         // SAFETY: node handlers serialize RuntimeEffect values into the event payload.
-        const effects: RuntimeEffect[] = Array.isArray(raw)
-          ? (raw as RuntimeEffect[])
-          : []
+        const effects: RuntimeEffect[] = Array.isArray(raw) ? (raw as RuntimeEffect[]) : []
         if (!nodeId) return { state, effects }
         return {
           state,
@@ -241,7 +242,9 @@ export const workflowThread = defineThread<WorkflowState>({
         if (!nodeId) return { state }
         const embedded = payload.event
         const embeddedObj =
-          Predicate.isObject(embedded) && Predicate.isObject(embedded.payload) ? embedded.payload : {}
+          Predicate.isObject(embedded) && Predicate.isObject(embedded.payload)
+            ? embedded.payload
+            : {}
         const error = readString(embeddedObj, 'error') ?? null
 
         return {
@@ -253,7 +256,9 @@ export const workflowThread = defineThread<WorkflowState>({
                 type: 'workflow.node.finished',
                 payload: asJson({
                   nodeId,
-                  result: embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : { waited: true }),
+                  result:
+                    embeddedObj.output ??
+                    (Predicate.isObject(embedded) ? embedded.payload : { waited: true }),
                   error,
                 }),
                 threadId: ctx.threadId,

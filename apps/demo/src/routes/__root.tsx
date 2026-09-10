@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react'
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
+
 import { LoomsLiveStoreProvider } from '@looms/livestore/react'
+
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({

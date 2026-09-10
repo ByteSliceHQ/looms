@@ -19,7 +19,11 @@ function readSeq(value: number | string | undefined): number | undefined {
   return parsed.success ? parsed.data : undefined
 }
 
-export function parseSearch(search: { run?: string; thread?: string; seq?: number | string }): DemoSearch {
+export function parseSearch(search: {
+  run?: string
+  thread?: string
+  seq?: number | string
+}): DemoSearch {
   const run = optionalId.safeParse(search.run)
   const thread = optionalId.safeParse(search.thread)
   const seq = readSeq(search.seq)

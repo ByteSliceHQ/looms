@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { asJson, type ReplayStep } from '@looms/core'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
-import { JsonView } from '../json-view'
+
 import { loomsClient } from '@/lib/looms-client'
+import { asJson, type ReplayStep } from '@looms/core'
+
 import type { DemoEvents } from '../../runtime'
+import { JsonView } from '../json-view'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 
 export function EventInspector({ runId, event }: { runId: string; event: DemoEvents }) {
   const [step, setStep] = useState<ReplayStep | null>(null)
@@ -21,10 +23,10 @@ export function EventInspector({ runId, event }: { runId: string; event: DemoEve
   }, [runId, event.seq])
 
   return (
-    <div className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-border">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
+    <div className="border-border flex max-h-[45%] min-h-0 shrink-0 flex-col border-t">
+      <div className="text-muted-foreground flex items-center gap-2 px-3 py-1.5 text-[11px]">
         <span className="font-mono">{event.seq}</span>
-        <span className="truncate font-mono text-foreground">{event.type}</span>
+        <span className="text-foreground truncate font-mono">{event.type}</span>
       </div>
       <Tabs defaultValue="payload" className="min-h-0 flex-1 px-3 pb-2">
         <TabsList>
@@ -56,13 +58,25 @@ export function EventInspector({ runId, event }: { runId: string; event: DemoEve
           />
         </TabsContent>
         <TabsContent value="before" className="overflow-auto">
-          {step ? <JsonView value={asJson(step.before)} /> : <p className="text-xs text-muted-foreground">Loading…</p>}
+          {step ? (
+            <JsonView value={asJson(step.before)} />
+          ) : (
+            <p className="text-muted-foreground text-xs">Loading…</p>
+          )}
         </TabsContent>
         <TabsContent value="after" className="overflow-auto">
-          {step ? <JsonView value={asJson(step.after)} /> : <p className="text-xs text-muted-foreground">Loading…</p>}
+          {step ? (
+            <JsonView value={asJson(step.after)} />
+          ) : (
+            <p className="text-muted-foreground text-xs">Loading…</p>
+          )}
         </TabsContent>
         <TabsContent value="effects" className="overflow-auto">
-          {step ? <JsonView value={asJson(step.effects)} /> : <p className="text-xs text-muted-foreground">Loading…</p>}
+          {step ? (
+            <JsonView value={asJson(step.effects)} />
+          ) : (
+            <p className="text-muted-foreground text-xs">Loading…</p>
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -1,6 +1,8 @@
 import { Bot, Workflow } from 'lucide-react'
-import { catalog, type RunType } from '../../catalog'
+
 import { cn } from '@/lib/utils'
+
+import { catalog, type RunType } from '../../catalog'
 
 export function RunTypes({
   selected,
@@ -11,7 +13,7 @@ export function RunTypes({
 }) {
   return (
     <div>
-      <h2 className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
         Run types
       </h2>
       <ul>
@@ -28,10 +30,10 @@ export function RunTypes({
                   active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
                 )}
               >
-                <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <Icon className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{item.label}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="text-muted-foreground block truncate text-[11px]">
                     {item.kind}
                     {item.kind === 'agent' && item.conversational ? ' · chat' : ''}
                   </span>

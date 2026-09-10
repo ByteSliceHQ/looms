@@ -1,6 +1,7 @@
+import { type JSONValue, type ModelMessage } from 'ai'
+
 import type { Message, ToolCall } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
-import { type JSONValue, type ModelMessage } from 'ai'
 
 export function toModelMessages(messages: Message[]): ModelMessage[] {
   const converted: ModelMessage[] = []
@@ -19,7 +20,8 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
           break
         }
         const content: Array<
-          { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: JsonValue }
+          | { type: 'text'; text: string }
+          | { type: 'tool-call'; toolCallId: string; toolName: string; input: JsonValue }
         > = []
         if (message.content) {
           content.push({ type: 'text', text: message.content })

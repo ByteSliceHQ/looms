@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+
 import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/projectors')({
@@ -10,11 +11,11 @@ function Projectors() {
     <>
       <h1>Projections &amp; Projectors</h1>
       <p>
-        In an event-sourced architecture, the canonical source of truth is the append-only
-        event log. State is never mutated in place—it is <strong>projected</strong>.
+        In an event-sourced architecture, the canonical source of truth is the append-only event
+        log. State is never mutated in place—it is <strong>projected</strong>.
       </p>
 
-      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
+      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
         <span>Run Stream (Truth)</span>
         <b>&rarr;</b>
         <span>Pure Fold</span>
@@ -25,25 +26,27 @@ function Projectors() {
       </div>
 
       <h2>Two Different Reducer Contracts</h2>
-      <p>
-        Looms cleanly separates behavioral execution from observational views:
-      </p>
+      <p>Looms cleanly separates behavioral execution from observational views:</p>
 
       <div className="my-8 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-14">
-        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
-          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Behavioral Reducer</span>
+        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
+          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
+            Behavioral Reducer
+          </span>
           <h3>Changes Runtime Behavior</h3>
           <p>
             <code>(State, Event) &rarr; &#123; state, effects &#125;</code>
           </p>
           <p>
-            Owned by Thread kinds (agents, workflows). May request Effects to interact
-            with the outside world or spawn children.
+            Owned by Thread kinds (agents, workflows). May request Effects to interact with the
+            outside world or spawn children.
           </p>
         </div>
 
-        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
-          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Projection Reducer</span>
+        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
+          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
+            Projection Reducer
+          </span>
           <h3>Derives an Observational View</h3>
           <p>
             <code>(State, Event) &rarr; State</code>
@@ -55,31 +58,29 @@ function Projectors() {
         </div>
       </div>
 
-      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
-        <strong>Projections are Portable; LiveStore is an Adapter:</strong> A projection
-        definition is pure TypeScript. The same projection can be folded in-memory on the
-        host, rendered reactively in the browser via LiveStore, or materialized into SQLite,
-        Postgres, or ClickHouse for analytics.
+      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
+        <strong>Projections are Portable; LiveStore is an Adapter:</strong> A projection definition
+        is pure TypeScript. The same projection can be folded in-memory on the host, rendered
+        reactively in the browser via LiveStore, or materialized into SQLite, Postgres, or
+        ClickHouse for analytics.
       </div>
 
       <h2>Building Custom UIs Using Projections</h2>
       <p>
-        In traditional full-stack apps, building real-time dashboards or agent interfaces
-        requires writing ad-hoc REST endpoints, custom WebSocket schemas, and complex cache
-        invalidation logic—leading to inevitable state drift.
+        In traditional full-stack apps, building real-time dashboards or agent interfaces requires
+        writing ad-hoc REST endpoints, custom WebSocket schemas, and complex cache invalidation
+        logic—leading to inevitable state drift.
       </p>
       <p>
-        With Looms projections, the UI subscribes directly to the Run event stream. When
-        events land, client-side projections re-fold instantly. There are no bespoke sync
-        APIs to maintain.
+        With Looms projections, the UI subscribes directly to the Run event stream. When events
+        land, client-side projections re-fold instantly. There are no bespoke sync APIs to maintain.
       </p>
 
       <h3>Step 1: Define your domain projection</h3>
       <p>
-        Define a pure read model with <code>defineProjection</code> from{' '}
-        <code>@looms/core</code>. You can provide a Zod (or Standard Schema){' '}
-        <code>shape</code> to infer the state type automatically without an explicit generic.
-        Export it so both server and client can use it.
+        Define a pure read model with <code>defineProjection</code> from <code>@looms/core</code>.
+        You can provide a Zod (or Standard Schema) <code>shape</code> to infer the state type
+        automatically without an explicit generic. Export it so both server and client can use it.
       </p>
       <CodeBlock lang="ts">{`import { defineProjection, type EventEnvelope } from '@looms/core'
 import { z } from 'zod'
@@ -162,10 +163,12 @@ export function App({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
 
-      <h3>Step 3: Subscribe reactively with <code>useProjection</code></h3>
+      <h3>
+        Step 3: Subscribe reactively with <code>useProjection</code>
+      </h3>
       <p>
-        In your component, call <code>useRunStore(runId)</code> to connect to the
-        run&apos;s event stream, then pass it to <code>useProjection</code>:
+        In your component, call <code>useRunStore(runId)</code> to connect to the run&apos;s event
+        stream, then pass it to <code>useProjection</code>:
       </p>
       <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/livestore/react'
 import { orderTracker } from './projections'
@@ -191,9 +194,9 @@ export function OrderDashboard({ runId }: { runId: string }) {
 }`}</CodeBlock>
       <p>
         Under the hood, <code>useProjection</code> leverages React 19&apos;s{' '}
-        <code>useSyncExternalStore</code>. When new events append to the run log on the
-        server, the SSE connection receives them and re-evaluates the projection.
-        Updates are synchronous, reactive, and completely flicker-free.
+        <code>useSyncExternalStore</code>. When new events append to the run log on the server, the
+        SSE connection receives them and re-evaluates the projection. Updates are synchronous,
+        reactive, and completely flicker-free.
       </p>
 
       <h3>Step 4: Dispatch user interactions via signals</h3>
@@ -231,15 +234,14 @@ export function OrderControls({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
       <p>
-        When <code>store.commit</code> runs, the signal lands on the server, wakes
-        the parked thread, and streams back to all subscribers, updating all projections
-        automatically.
+        When <code>store.commit</code> runs, the signal lands on the server, wakes the parked
+        thread, and streams back to all subscribers, updating all projections automatically.
       </p>
 
       <h3>Step 5: Time-travel debugging in the client</h3>
       <p>
-        Because projections are pure folds over the event array, rendering historical UI
-        states is effortless. You can fold over any prefix of the log:
+        Because projections are pure folds over the event array, rendering historical UI states is
+        effortless. You can fold over any prefix of the log:
       </p>
       <CodeBlock lang="tsx">{`import { useState } from 'react'
 import { foldProjection } from '@looms/core'
@@ -273,14 +275,14 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
       <p>
         While client-side projections fold the log of a <em>single run</em>,{' '}
         <strong>projectors</strong> run on the host to watch the entire event store across{' '}
-        <em>all runs</em>. Use them to maintain queryable tables, full-text search, or fan
-        out to webhooks and Slack.
+        <em>all runs</em>. Use them to maintain queryable tables, full-text search, or fan out to
+        webhooks and Slack.
       </p>
 
       <h3>Attach projectors to the host</h3>
       <p>
-        Wrap your event store with <code>withProjectors</code> from{' '}
-        <code>@looms/projectors</code>. Events are delivered in log order after each commit.
+        Wrap your event store with <code>withProjectors</code> from <code>@looms/projectors</code>.
+        Events are delivered in log order after each commit.
       </p>
       <CodeBlock lang="ts">{`import { withProjectors } from '@looms/projectors'
 import { sqlite } from '@looms/projectors/sqlite'
@@ -298,8 +300,8 @@ const looms = createLooms({
 
       <h3>Built-in index helpers</h3>
       <p>
-        Looms includes built-in projectors for Memory, SQLite, and Postgres to keep a
-        searchable run index and an approval index up to date:
+        Looms includes built-in projectors for Memory, SQLite, and Postgres to keep a searchable run
+        index and an approval index up to date:
       </p>
       <table>
         <thead>
@@ -353,8 +355,8 @@ const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
 
       <h3>Custom webhook and fan-out projectors</h3>
       <p>
-        Any object implementing <code>project(events)</code> satisfies the{' '}
-        <code>Projector</code> interface:
+        Any object implementing <code>project(events)</code> satisfies the <code>Projector</code>{' '}
+        interface:
       </p>
       <CodeBlock lang="ts">{`import type { Projector } from '@looms/projectors'
 

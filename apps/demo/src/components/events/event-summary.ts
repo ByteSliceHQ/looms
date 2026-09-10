@@ -1,5 +1,6 @@
-import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
 import { compactJson } from '@/lib/utils'
+import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
+
 import type { DemoEvents } from '../../runtime'
 
 export type EventFamily = 'runtime' | 'agent' | 'workflow' | 'approval' | 'payments' | 'wait'
@@ -70,7 +71,10 @@ function toolCallSummary(payload: JsonValue | null): ToolCallSummary {
 export function summarizeEvent(event: DemoEvents): EventSummary {
   switch (event.type) {
     case 'runtime.run.started':
-      return { title: 'run started', detail: `${event.payload.kind}:${event.payload.definitionName}` }
+      return {
+        title: 'run started',
+        detail: `${event.payload.kind}:${event.payload.definitionName}`,
+      }
     case 'runtime.run.completed':
       return {
         title: event.payload.error ? 'run failed' : 'run completed',
@@ -123,7 +127,9 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
     }
     case 'agent.tool.result':
       return {
-        title: event.payload.error ? `tool error ${event.payload.name}` : `tool result ${event.payload.name}`,
+        title: event.payload.error
+          ? `tool error ${event.payload.name}`
+          : `tool result ${event.payload.name}`,
         detail: event.payload.error ?? compactJson(event.payload.result),
       }
     case 'agent.steered':
@@ -140,7 +146,8 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
     case 'workflow.node.finished':
       return {
         title: event.payload.error ? 'node failed' : 'node finished',
-        detail: event.payload.error ?? `${event.payload.nodeId} ${compactJson(event.payload.result)}`,
+        detail:
+          event.payload.error ?? `${event.payload.nodeId} ${compactJson(event.payload.result)}`,
       }
     case 'workflow.node.skipped':
       return { title: 'node skipped', detail: `${event.payload.nodeId} · ${event.payload.reason}` }
@@ -183,7 +190,13 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
 
 export function searchText(event: DemoEvents): string {
   const summary = summarizeEvent(event)
-  return [event.type, event.threadId ?? '', summary.title, summary.detail ?? '', text(event.id) ?? '']
+  return [
+    event.type,
+    event.threadId ?? '',
+    summary.title,
+    summary.detail ?? '',
+    text(event.id) ?? '',
+  ]
     .join(' ')
     .toLowerCase()
 }

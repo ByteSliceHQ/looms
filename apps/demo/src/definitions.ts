@@ -1,8 +1,9 @@
+import { z } from 'zod'
+
 import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
 import { gate } from '@looms/approval'
 import { createWaitId, invoke, isJsonObject, isJsonString, wait, type JsonValue } from '@looms/core'
 import { defineWorkflow } from '@looms/workflow'
-import { z } from 'zod'
 
 function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -25,7 +26,8 @@ export const echo = defineAgent({
 
 export const calculate = defineTool({
   name: 'calculate',
-  description: 'Perform a mathematical or statistical calculation on numbers (sum, multiply, average, percentage)',
+  description:
+    'Perform a mathematical or statistical calculation on numbers (sum, multiply, average, percentage)',
   input: z.object({
     operation: z.enum(['multiply', 'add', 'average', 'percentage']),
     values: z.array(z.number()),
@@ -44,7 +46,10 @@ export const calculate = defineTool({
         const first = values[0]
         const second = values[1]
         return {
-          result: first !== undefined && second !== undefined && second !== 0 ? (first / second) * 100 : 0,
+          result:
+            first !== undefined && second !== undefined && second !== 0
+              ? (first / second) * 100
+              : 0,
         }
       }
       default: {
@@ -112,7 +117,10 @@ export const researcher = defineAgent({
     'Synthesize your findings and return a concise, factual summary.',
   ].join(' '),
   input: z.object({
-    topic: z.string().describe('The research topic, telemetry metric, or domain to investigate').default('general'),
+    topic: z
+      .string()
+      .describe('The research topic, telemetry metric, or domain to investigate')
+      .default('general'),
   }),
   tools: [queryKb, pipeline],
 })
@@ -122,7 +130,9 @@ const ResearcherInputSchema = z.object({
 })
 
 export const SpecialistInputSchema = z.object({
-  task: z.string().describe('The specific topic, question, or research task to investigate and analyze'),
+  task: z
+    .string()
+    .describe('The specific topic, question, or research task to investigate and analyze'),
 })
 
 export const specialist = defineAgent({
@@ -137,7 +147,10 @@ export const specialist = defineAgent({
     'Analyze the task, invoke your tools to gather facts or compute results, and provide a clear final summary.',
   ].join(' '),
   input: z.object({
-    task: z.string().describe('The specific topic, question, or research task to investigate and analyze').default('general'),
+    task: z
+      .string()
+      .describe('The specific topic, question, or research task to investigate and analyze')
+      .default('general'),
   }),
   tools: [
     asAgentTool({
@@ -271,7 +284,9 @@ export const checkout = defineWorkflow({
       id: 'gate',
       run: (ctx) => {
         if (ctx.input.amount < 100) return { skipped: true, reason: 'below-threshold' }
-        return ctx.effects(gate({ title: `Approve charge of ${ctx.input.amount} ${ctx.input.currency}?` }))
+        return ctx.effects(
+          gate({ title: `Approve charge of ${ctx.input.amount} ${ctx.input.currency}?` }),
+        )
       },
     },
     {
@@ -329,7 +344,8 @@ const askApproval = asEffectsTool({
     title: z.string().describe('The question or title for the approval request'),
   }),
   effects: (input) => {
-    const title = isJsonObject(input) && isJsonString(input.title) ? input.title : 'Approve this request?'
+    const title =
+      isJsonObject(input) && isJsonString(input.title) ? input.title : 'Approve this request?'
     return gate({ title })
   },
   waitOn: { type: 'approval.decided' },
@@ -353,7 +369,8 @@ export const assistant = defineAgent({
     greet,
     asAgentTool({
       name: 'specialist',
-      description: 'Delegate technical tasks, deep investigations, or calculations to the specialist agent',
+      description:
+        'Delegate technical tasks, deep investigations, or calculations to the specialist agent',
       agent: specialist,
       input: SpecialistInputSchema,
       mapInput: (input) => {

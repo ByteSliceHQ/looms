@@ -1,4 +1,5 @@
 import { payload, defineEventCatalog, type JsonValue } from '@looms/core'
+
 import type { Message, ToolCall, TokenUsage } from './types'
 
 export const agentCatalog = defineEventCatalog('agent', {

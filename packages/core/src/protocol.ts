@@ -1,7 +1,8 @@
 import { Schema } from 'effect'
+
 import { defineEventCatalog, type EventsOfCatalog } from './catalog'
-import { JsonValueSchema } from './envelope'
 import type { WaitCondition } from './effects'
+import { JsonValueSchema } from './envelope'
 
 const WaitOnEventSchema = Schema.Struct({
   type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
@@ -109,18 +110,38 @@ export function isProtocolType(type: string): type is ProtocolEventType {
 }
 
 export type RunStartedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['run.started']>
-export type RunCompletedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['run.completed']>
-export type ThreadStartedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['thread.started']>
-export type ThreadCompletedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['thread.completed']>
-export type ThreadFailedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['thread.failed']>
-export type ThreadCancelledPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['thread.cancelled']>
-export type WaitRegisteredPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['wait.registered']>
-export type WaitSatisfiedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['wait.satisfied']>
+export type RunCompletedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['run.completed']
+>
+export type ThreadStartedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['thread.started']
+>
+export type ThreadCompletedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['thread.completed']
+>
+export type ThreadFailedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['thread.failed']
+>
+export type ThreadCancelledPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['thread.cancelled']
+>
+export type WaitRegisteredPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['wait.registered']
+>
+export type WaitSatisfiedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['wait.satisfied']
+>
 export type TimerSetPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['timer.set']>
 export type TimerFiredPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['timer.fired']>
-export type EffectFailedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['effect.failed']>
-export type SnapshotTakenPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['snapshot.taken']>
+export type EffectFailedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['effect.failed']
+>
+export type SnapshotTakenPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['snapshot.taken']
+>
 
-export function asWaitCondition(value: Schema.Schema.Type<typeof WaitConditionSchema>): WaitCondition {
+export function asWaitCondition(
+  value: Schema.Schema.Type<typeof WaitConditionSchema>,
+): WaitCondition {
   return value
 }

@@ -1,4 +1,5 @@
 import { Predicate } from 'effect'
+
 import type { EventEnvelope } from './envelope'
 import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
@@ -12,9 +13,7 @@ export interface ProjectionDefinition<S = unknown> {
   reduce(state: S, event: EventEnvelope): S
 }
 
-export function defineProjection<
-  TShape extends SchemaInput,
->(def: {
+export function defineProjection<TShape extends SchemaInput>(def: {
   readonly name: string
   readonly shape: TShape
   readonly initialState: InferSchemaOutput<TShape>

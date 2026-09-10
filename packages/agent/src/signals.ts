@@ -27,7 +27,11 @@ export function steer(
 ): EventInput {
   return {
     type: 'agent.steered',
-    payload: asJson({ turn: 0, interrupt: options.interrupt ?? true, message: { role: 'user', content } }),
+    payload: asJson({
+      turn: 0,
+      interrupt: options.interrupt ?? true,
+      message: { role: 'user', content },
+    }),
     threadId: options.threadId,
   }
 }

@@ -1,19 +1,21 @@
+import { ChevronDown } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { asJson } from '@looms/core'
+
+import { useRun } from '@/hooks/use-run'
 import { conversation, tokenUsage } from '@looms/agent'
 import { pendingApprovals } from '@looms/approval'
-import { nodes } from '@looms/workflow'
+import { asJson } from '@looms/core'
 import { useProjection } from '@looms/livestore/react'
+import { nodes } from '@looms/workflow'
+
 import { ledger } from '../../modules/payments'
+import { JsonView } from '../json-view'
 import { Badge } from '../ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
-import { JsonView } from '../json-view'
 import { Approvals } from './approvals'
 import { Ledger } from './ledger'
 import { TokenUsage } from './token-usage'
 import { WorkflowNodes } from './workflow-nodes'
-import { useRun } from '@/hooks/use-run'
-import { ChevronDown } from 'lucide-react'
 
 function Section({
   title,
@@ -29,9 +31,9 @@ function Section({
   const [open, setOpen] = useState(true)
   const [showRaw, setShowRaw] = useState(false)
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border">
+    <Collapsible open={open} onOpenChange={setOpen} className="border-border border-b">
       <div className="flex items-center gap-1 px-2 py-1.5">
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        <CollapsibleTrigger className="text-muted-foreground flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] font-medium tracking-wide uppercase">
           <ChevronDown className={`size-3 transition-transform ${open ? '' : '-rotate-90'}`} />
           {title}
           {count !== undefined ? (
@@ -42,7 +44,7 @@ function Section({
         </CollapsibleTrigger>
         <button
           type="button"
-          className="text-[10px] text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground text-[10px]"
           onClick={() => setShowRaw((value) => !value)}
         >
           {showRaw ? 'view' : 'raw'}
@@ -67,7 +69,7 @@ export function ProjectionsPanel({ runId }: { runId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
-      <div className="border-b border-border px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="border-border text-muted-foreground border-b px-2 py-1.5 text-[11px] font-medium tracking-wide uppercase">
         Projections
       </div>
       <Section title="Approvals" count={approvals.items.length} raw={approvals}>

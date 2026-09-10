@@ -1,3 +1,5 @@
+import { Effect, Predicate } from 'effect'
+
 import {
   composeModules,
   EventStoreTag,
@@ -8,7 +10,6 @@ import {
   type EventStore,
 } from '@looms/core'
 import { createRuntime, type LoomsRuntime, type RegisteredDefinition } from '@looms/runtime'
-import { Effect, Predicate } from 'effect'
 
 type NamedEffect = {
   readonly type: string

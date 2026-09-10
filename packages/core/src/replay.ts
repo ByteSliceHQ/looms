@@ -1,5 +1,5 @@
-import type { EventEnvelope } from './envelope'
 import type { RuntimeEffect } from './effects'
+import type { EventEnvelope } from './envelope'
 import { foldEvent, foldRun, type FoldRegistry } from './fold'
 import { emptyRunState, type RunState } from './state'
 

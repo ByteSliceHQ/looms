@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { EventEnvelope } from './envelope'
+
 import type { RuntimeEffect } from './effects'
+import type { EventEnvelope } from './envelope'
 import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { ThreadStatus, JsonValue } from './types'
 
@@ -31,9 +32,7 @@ export interface ThreadDefinition<S = any> {
   reduce(state: S, event: EventEnvelope, ctx: ReduceContext): ReduceResult<S>
 }
 
-export function defineThread<
-  TShape extends SchemaInput,
->(def: {
+export function defineThread<TShape extends SchemaInput>(def: {
   readonly kind: string
   readonly shape: TShape
   readonly input?: StandardSchemaV1<JsonValue, JsonValue>

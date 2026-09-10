@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import {
   asJson,
   defineEffect,
@@ -10,7 +12,6 @@ import {
   type EventEnvelope,
   type JsonValue,
 } from '@looms/core'
-import { z } from 'zod'
 
 const ChargeRequested = z.object({
   chargeId: z.string(),
@@ -56,12 +57,12 @@ export const chargeEffect = defineEffect({
     const chargeId = input.chargeId ?? ctx.effectId
     const currency = input.currency ?? 'USD'
     const outcome = decideOutcome(ctx.effectId, input)
-    
+
     return [
       {
         type: 'payments.charge.requested',
         payload: asJson({ chargeId, amount: input.amount, currency }),
-        threadId: ctx.threadId
+        threadId: ctx.threadId,
       },
       outcome === 'authorized'
         ? {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { composeModules, createEvent, foldRun, type JsonValue } from '@looms/core'
+
 import { defineWorkflow } from './definitions'
 import { workflow } from './module'
 
@@ -93,7 +95,10 @@ describe('@looms/workflow module', () => {
         {
           ...createEvent(runId, {
             type: 'runtime.effect.failed',
-            payload: { effectId: `${threadId}:3:0`, error: 'Invalid input: amount: expected number' },
+            payload: {
+              effectId: `${threadId}:3:0`,
+              error: 'Invalid input: amount: expected number',
+            },
             threadId,
             origin: { type: 'system' },
           }),

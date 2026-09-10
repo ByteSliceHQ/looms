@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite'
+
 import {
   createIndexProjector,
   type IndexBackend,

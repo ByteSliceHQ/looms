@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { makeMemoryEventStore } from '@looms/core'
+
 import { Effect } from 'effect'
+
+import { makeMemoryEventStore } from '@looms/core'
+
 import { createEventStreamResponse } from './sse'
 
 describe('createEventStreamResponse', () => {

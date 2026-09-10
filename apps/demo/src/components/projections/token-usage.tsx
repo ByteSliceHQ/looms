@@ -1,6 +1,6 @@
+import { useRun } from '@/hooks/use-run'
 import { tokenUsage } from '@looms/agent'
 import { useProjection } from '@looms/livestore/react'
-import { useRun } from '@/hooks/use-run'
 
 export function TokenUsage({ runId }: { runId: string }) {
   const { store } = useRun(runId)

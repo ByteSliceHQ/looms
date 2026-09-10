@@ -1,6 +1,8 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { JsonValue } from '@looms/core'
 import { Schema } from 'effect'
+
+import type { JsonValue } from '@looms/core'
+
 import { normalizeTools, type AgentToolEntry, type ToolLike } from './definitions'
 import type { LlmToolSpec } from './llm'
 
@@ -16,7 +18,10 @@ interface StandardJsonSchemaHolder {
   }
 }
 
-type SchemaCandidate = StandardSchemaV1<JsonValue, JsonValue> | StandardJsonSchemaHolder | Schema.Codec<JsonValue>
+type SchemaCandidate =
+  | StandardSchemaV1<JsonValue, JsonValue>
+  | StandardJsonSchemaHolder
+  | Schema.Codec<JsonValue>
 
 const EMPTY_OBJECT_SCHEMA: JsonValue = { type: 'object' }
 
@@ -39,7 +44,9 @@ function fromEffectSchema(schema: SchemaCandidate): JsonValue | undefined {
   if (!Schema.isSchema(schema)) return undefined
   try {
     // SAFETY: Effect Schema values used as tool input codecs produce Standard JSON Schema.
-    const standard = Schema.toStandardJSONSchemaV1(schema as Schema.Codec<JsonValue, JsonValue, never, never>)
+    const standard = Schema.toStandardJSONSchemaV1(
+      schema as Schema.Codec<JsonValue, JsonValue, never, never>,
+    )
     return fromStandardJsonSchema(standard)
   } catch {
     return undefined

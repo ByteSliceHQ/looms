@@ -1,5 +1,7 @@
-import type { EventEnvelope, JsonValue } from '@looms/core'
 import { Predicate } from 'effect'
+
+import type { EventEnvelope, JsonValue } from '@looms/core'
+
 import type { Projector } from './projector'
 
 export interface ActorIndexRow {
@@ -92,15 +94,11 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
       return [
         {
           type: 'upsertActor',
-          actorId:
-            readString(payload, 'threadId') ??
-            event.threadId ??
-            event.runId,
+          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
           kind: readString(payload, 'kind') ?? null,
           status: 'running',
           definitionName: readString(payload, 'definitionName') ?? null,
-          parentActorId:
-            readString(payload, 'parentThreadId') ?? null,
+          parentActorId: readString(payload, 'parentThreadId') ?? null,
           updatedAt: event.ts,
         },
       ]

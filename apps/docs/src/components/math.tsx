@@ -1,5 +1,5 @@
-import katex from 'katex'
 import { createMathPlugin } from '@streamdown/math'
+import katex from 'katex'
 import { Streamdown } from 'streamdown'
 
 export const mathPlugin = createMathPlugin({
@@ -18,11 +18,7 @@ export interface MathBlockProps {
 export function MathBlock({ math, className = '' }: MathBlockProps) {
   return (
     <div className={`equation my-7 overflow-x-auto text-center ${className}`.trim()}>
-      <Streamdown
-        mode="static"
-        plugins={{ math: mathPlugin }}
-        parseIncompleteMarkdown={false}
-      >
+      <Streamdown mode="static" plugins={{ math: mathPlugin }} parseIncompleteMarkdown={false}>
         {`$$\n${math}\n$$`}
       </Streamdown>
     </div>
@@ -45,7 +41,7 @@ export function MathInline({ math, className = '' }: MathInlineProps) {
   })
   return (
     <span
-      className={`inline-block align-baseline px-0.5 text-foreground ${className}`.trim()}
+      className={`text-foreground inline-block px-0.5 align-baseline ${className}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

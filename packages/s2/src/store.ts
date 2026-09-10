@@ -1,10 +1,6 @@
-import {
-  AppendInput,
-  AppendRecord,
-  S2,
-  S2Endpoints,
-  S2Error,
-} from '@s2-dev/streamstore'
+import { AppendInput, AppendRecord, S2, S2Endpoints, S2Error } from '@s2-dev/streamstore'
+import { Effect, Layer, Queue, Schema, Stream } from 'effect'
+
 import {
   createKeyedSerializer,
   EventStoreConflictError,
@@ -16,7 +12,7 @@ import {
   type EventStore,
   type EventEnvelope,
 } from '@looms/core'
-import { Effect, Layer, Queue, Schema, Stream } from 'effect'
+
 import { S2ConfigSchema, streamNameForRun, type S2Config } from './config'
 
 function toStoreError(cause: unknown, message: string): EventStoreError {
@@ -152,17 +148,11 @@ export function s2(config: S2Config): EventStore {
               cause.message.toLowerCase().includes('conflict') ||
               cause.message.toLowerCase().includes('match'))
           ) {
-            const tailCheck = yield* Effect.promise(() =>
-              stream.checkTail().catch(() => null),
-            )
+            const tailCheck = yield* Effect.promise(() => stream.checkTail().catch(() => null))
             // S2 tail.seqNum represents the stream tail (count of records, aligned with Looms 1-based tail).
             const actualTail = tailCheck?.tail?.seqNum ?? 0
             return yield* Effect.fail(
-              new EventStoreConflictError(
-                runId,
-                options?.expectedTail ?? 0,
-                actualTail,
-              ),
+              new EventStoreConflictError(runId, options?.expectedTail ?? 0, actualTail),
             )
           }
           return yield* Effect.fail(toStoreError(cause, `Append failed for ${runId}`))

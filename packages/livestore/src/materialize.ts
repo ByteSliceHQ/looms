@@ -1,6 +1,14 @@
 import { Predicate } from 'effect'
+
 import type { EventEnvelope, JsonValue } from '@looms/core'
-import { emptyTables, eventToLogRow, type ThreadRow, type MaterializedTables, type RunRow } from './tables'
+
+import {
+  emptyTables,
+  eventToLogRow,
+  type ThreadRow,
+  type MaterializedTables,
+  type RunRow,
+} from './tables'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) return {}

@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
 import { nitro } from 'nitro/vite'
+import { defineConfig } from 'vite'
 
 // Nitro/Vite honor PORT over server.port; pin docs so a shared PORT (e.g. from demo) cannot collide.
 const port = Number(process.env.DOCS_PORT ?? 8788)

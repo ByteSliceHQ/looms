@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Layer } from 'effect'
+
 import type { EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { ProjectionDefinition } from './projection'
@@ -43,7 +44,9 @@ export interface ModuleServicesContext {
 export interface RuntimeModule<
   TNamespace extends string = string,
   TEvents extends EventCatalog = EventCatalog,
-  TEffects extends { readonly [key: string]: EffectDefinition } = { readonly [key: string]: EffectDefinition },
+  TEffects extends { readonly [key: string]: EffectDefinition } = {
+    readonly [key: string]: EffectDefinition
+  },
   TThreads extends { readonly [key: string]: ThreadDefinition } = {
     readonly [key: string]: ThreadDefinition
   },

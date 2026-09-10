@@ -9,6 +9,7 @@ Security fixes are applied to the latest published `0.x` release line until `1.0
 Please email security concerns to the maintainers via GitHub Security Advisories on this repository (preferred) or open a private report. Do not file public issues for undisclosed vulnerabilities.
 
 Include:
+
 - Affected package and version
 - Reproduction steps or PoC
 - Impact assessment if known

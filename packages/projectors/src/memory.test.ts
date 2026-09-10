@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createEvent } from '@looms/core'
+
 import { memory } from './memory'
 
 describe('memory projector', () => {

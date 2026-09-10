@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+
 import { composeModules, createEvent, foldRun } from '@looms/core'
-import { agent } from './module'
+
 import { defineAgent } from './definitions'
+import { agent } from './module'
 
 describe('@looms/agent module', () => {
   test('started thread requests callLLM', () => {
@@ -185,7 +187,9 @@ describe('@looms/agent module', () => {
       registry,
     )
     // SAFETY: Agent thread state holds lines array.
-    const threadState = state.threads[threadId]?.state as { lines: Array<{ role: string; content: string }> }
+    const threadState = state.threads[threadId]?.state as {
+      lines: Array<{ role: string; content: string }>
+    }
     expect(threadState.lines[0]?.role).toBe('user')
     expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')
   })

@@ -1,3 +1,5 @@
+import { Effect, Schema } from 'effect'
+
 import {
   createRunId,
   EventStoreTag,
@@ -6,7 +8,7 @@ import {
   type EventStore,
   type JsonValue,
 } from '@looms/core'
-import { Effect, Schema } from 'effect'
+
 import { handleLivestoreProxy } from './livestore-proxy'
 import type { LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
@@ -175,7 +177,8 @@ export function createFetchHandler(
         const runId = decodeURIComponent(projectionMatch[1]!)
         const name = decodeURIComponent(projectionMatch[2]!)
         const definition = runtime.registry.projections.get(name)
-        if (!definition) return Response.json({ error: `Unknown projection: ${name}` }, { status: 404 })
+        if (!definition)
+          return Response.json({ error: `Unknown projection: ${name}` }, { status: 404 })
         const value = await run(runtime.project(runId, definition), store)
         return Response.json({ runId, name, value })
       }
@@ -201,8 +204,12 @@ export function createFetchHandler(
 
       if (req.method === 'GET' && eventsMatch) {
         const runId = decodeURIComponent(eventsMatch[1]!)
-        const fromSeq = url.searchParams.get('fromSeq') ? Number(url.searchParams.get('fromSeq')) : undefined
-        const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined
+        const fromSeq = url.searchParams.get('fromSeq')
+          ? Number(url.searchParams.get('fromSeq'))
+          : undefined
+        const limit = url.searchParams.get('limit')
+          ? Number(url.searchParams.get('limit'))
+          : undefined
         const events = await run(runtime.getEvents(runId, { fromSeq, limit }), store)
         return Response.json({ runId, events })
       }

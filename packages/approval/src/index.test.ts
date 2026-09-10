@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { composeModules } from '@looms/core'
+
 import { approval, gate } from './index'
 
 describe('@looms/approval', () => {

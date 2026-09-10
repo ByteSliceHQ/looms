@@ -1,5 +1,6 @@
-import * as React from 'react'
 import { Tooltip as TooltipPrimitive } from 'radix-ui'
+import * as React from 'react'
+
 import { cn } from '@/lib/utils'
 
 function TooltipProvider({
@@ -28,7 +29,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          'z-50 max-w-xs rounded-md bg-foreground px-2 py-1 text-xs text-background',
+          'bg-foreground text-background z-50 max-w-xs rounded-md px-2 py-1 text-xs',
           className,
         )}
         {...props}

@@ -1,3 +1,5 @@
+import { Predicate } from 'effect'
+
 import {
   decodeLoomsEvent,
   project,
@@ -5,10 +7,10 @@ import {
   type EventInput,
   type ProjectionDefinition,
 } from '@looms/core'
-import { Predicate } from 'effect'
-import { emptyTables, type MaterializedTables } from './tables'
+
 import { materializeEvents } from './materialize'
 import { consumeSseStream, delay, eventsFromSseData } from './sse'
+import { emptyTables, type MaterializedTables } from './tables'
 
 export type StoreListener = (tables: MaterializedTables) => void
 

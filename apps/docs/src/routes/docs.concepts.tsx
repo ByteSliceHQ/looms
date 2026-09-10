@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+
 import { CodeBlock } from '../components/code-block'
 
 export const Route = createFileRoute('/docs/concepts')({
@@ -10,15 +11,14 @@ function Concepts() {
     <>
       <h1>Concepts &amp; Execution Model</h1>
       <p>
-        Looms is an <strong>event-sourced execution runtime</strong> designed for
-        durable, long-running agentic systems. A <strong>Run</strong> is the
-        durability boundary. Inside it, <strong>Threads</strong> provide universal
-        units of computation. <strong>Events</strong> are immutable facts. Pure{' '}
-        <strong>Reducers</strong> reconstruct state and request <strong>Effects</strong>,
-        which cross into the outside world and return new events.
+        Looms is an <strong>event-sourced execution runtime</strong> designed for durable,
+        long-running agentic systems. A <strong>Run</strong> is the durability boundary. Inside it,{' '}
+        <strong>Threads</strong> provide universal units of computation. <strong>Events</strong> are
+        immutable facts. Pure <strong>Reducers</strong> reconstruct state and request{' '}
+        <strong>Effects</strong>, which cross into the outside world and return new events.
       </p>
 
-      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
+      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
         <span>Event</span>
         <b>&rarr;</b>
         <span>Pure Reducer</span>
@@ -30,45 +30,45 @@ function Concepts() {
         <span>Event</span>
       </div>
 
-      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
-        <strong>Core Invariant:</strong> The only way logical runtime state changes
-        is by processing an Event.
+      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
+        <strong>Core Invariant:</strong> The only way logical runtime state changes is by processing
+        an Event.
       </div>
 
-      <p className="text-sm text-muted">
-        Looking for the formal algebraic specifications and proofs? See <Link to="/docs/math">Math</Link>.
+      <p className="text-muted text-sm">
+        Looking for the formal algebraic specifications and proofs? See{' '}
+        <Link to="/docs/math">Math</Link>.
       </p>
 
       <h2>Core Vocabulary</h2>
 
       <div className="my-8 mb-14 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Run</h3>
           <p>
-            The durability boundary and event-stream container for one logical operation.
-            All child threads, signals, and events belong to one canonical log identified by{' '}
+            The durability boundary and event-stream container for one logical operation. All child
+            threads, signals, and events belong to one canonical log identified by{' '}
             <code>runId</code>.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Thread</h3>
           <p>
-            The universal runtime unit of computation. Belongs
-            to a Run, owns a state machine, has an optional parent thread, and has a specific
-            thread kind.
+            The universal runtime unit of computation. Belongs to a Run, owns a state machine, has
+            an optional parent thread, and has a specific thread kind.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Thread Kind</h3>
           <p>
-            The behavioral specialization of a thread. Built-in kinds are <code>agent</code>{' '}
-            and <code>workflow</code>; runtime modules can register arbitrary custom kinds.
+            The behavioral specialization of a thread. Built-in kinds are <code>agent</code> and{' '}
+            <code>workflow</code>; runtime modules can register arbitrary custom kinds.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>State</h3>
           <p>
             Durable logical state reconstructed by folding events through reducers. State is a
@@ -76,24 +76,24 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Event</h3>
           <p>
-            An immutable fact appended to the Run log. It describes something that already
-            happened in the past (e.g. <code>approval.decided</code>,{' '}
-            <code>payments.charge.authorized</code>).
+            An immutable fact appended to the Run log. It describes something that already happened
+            in the past (e.g. <code>approval.decided</code>, <code>payments.charge.authorized</code>
+            ).
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Signal</h3>
           <p>
-            An externally originated Event injected into the stream (user messages, human
-            approvals, webhooks) to steer, wake, pause, or resume parked threads.
+            An externally originated Event injected into the stream (user messages, human approvals,
+            webhooks) to steer, wake, pause, or resume parked threads.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Reducer</h3>
           <p>
             Pure, deterministic logic. Behavioral reducers map State + Event to next State +
@@ -101,23 +101,23 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Effect</h3>
           <p>
-            A requested consequence or intent: an instruction to the host to interact with
-            the outside world (call an LLM, charge a card, spawn a thread, or wait).
+            A requested consequence or intent: an instruction to the host to interact with the
+            outside world (call an LLM, charge a card, spawn a thread, or wait).
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Projection</h3>
           <p>
-            A derived read model folded from the event stream: reactive UI views (chat,
-            ledgers, approvals), debugger timelines, and analytics indexes.
+            A derived read model folded from the event stream: reactive UI views (chat, ledgers,
+            approvals), debugger timelines, and analytics indexes.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Thread Tree</h3>
           <p>
             The parent/child invocation hierarchy answering <em>&ldquo;Who spawned whom?&rdquo;</em>{' '}
@@ -125,39 +125,39 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Causation Graph</h3>
           <p>
-            The event relationship answering <em>&ldquo;Why did this happen?&rdquo;</em>,
-            tracked via <code>causationId</code> and <code>effectId</code> metadata.
+            The event relationship answering <em>&ldquo;Why did this happen?&rdquo;</em>, tracked
+            via <code>causationId</code> and <code>effectId</code> metadata.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Durable Wait</h3>
           <p>
-            A parked condition where a thread consumes zero worker or CPU resources until a
-            matching event, child completion, or timer arrives.
+            A parked condition where a thread consumes zero worker or CPU resources until a matching
+            event, child completion, or timer arrives.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Replay</h3>
           <p>
-            Reconstructing thread state or views by re-running pure reducers over historical
-            events without re-executing nondeterministic effects.
+            Reconstructing thread state or views by re-running pure reducers over historical events
+            without re-executing nondeterministic effects.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Snapshot</h3>
           <p>
-            A persisted projection checkpoint that accelerates state reconstruction for long
-            event streams.
+            A persisted projection checkpoint that accelerates state reconstruction for long event
+            streams.
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Runtime Module</h3>
           <p>
             A composable package contributing namespaced events, effect handlers, thread
@@ -166,11 +166,11 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>Projector</h3>
           <p>
-            A background worker that observes the event stream to maintain persistent,
-            cross-run queryable tables (SQLite, Postgres) or fan out to external systems.
+            A background worker that observes the event stream to maintain persistent, cross-run
+            queryable tables (SQLite, Postgres) or fan out to external systems.
           </p>
         </article>
       </div>
@@ -182,62 +182,90 @@ function Concepts() {
       </p>
 
       <div className="my-8 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-14">
-        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
-          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Event: Immutable Fact</span>
+        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
+          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
+            Event: Immutable Fact
+          </span>
           <h3>Something already happened</h3>
           <p>Events are past-tense, durable records written to the log.</p>
           <ul>
-            <li><code>agent.turnStarted</code></li>
-            <li><code>workflow.nodeCompleted</code></li>
-            <li><code>approval.decided</code></li>
-            <li><code>payments.charge.authorized</code></li>
+            <li>
+              <code>agent.turnStarted</code>
+            </li>
+            <li>
+              <code>workflow.nodeCompleted</code>
+            </li>
+            <li>
+              <code>approval.decided</code>
+            </li>
+            <li>
+              <code>payments.charge.authorized</code>
+            </li>
           </ul>
         </div>
 
-        <div className="m-0 p-0 [&_h3]:mb-2 [&_h3]:mt-0 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_p]:text-muted [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed [&_ul]:text-body">
-          <span className="mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase text-muted">Effect: Requested Consequence</span>
+        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
+          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
+            Effect: Requested Consequence
+          </span>
           <h3>Something the runtime should cause</h3>
           <p>Effects are imperative intents returned by pure reducers.</p>
           <ul>
-            <li><code>invoke(&apos;llm.generate&apos;)</code></li>
-            <li><code>spawn(&apos;specialist-agent&apos;)</code></li>
-            <li><code>emit(&apos;payments.charge.requested&apos;)</code></li>
-            <li><code>wait(&#123; on: &#123; type: &apos;approval.decided&apos; &#125; &#125;)</code></li>
+            <li>
+              <code>invoke(&apos;llm.generate&apos;)</code>
+            </li>
+            <li>
+              <code>spawn(&apos;specialist-agent&apos;)</code>
+            </li>
+            <li>
+              <code>emit(&apos;payments.charge.requested&apos;)</code>
+            </li>
+            <li>
+              <code>wait(&#123; on: &#123; type: &apos;approval.decided&apos; &#125; &#125;)</code>
+            </li>
           </ul>
         </div>
       </div>
 
-      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
-        <span>Event</span><b>&rarr;</b><span>Reducer</span><b>&rarr;</b><span>State + Effects</span>
+      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
+        <span>Event</span>
+        <b>&rarr;</b>
+        <span>Reducer</span>
+        <b>&rarr;</b>
+        <span>State + Effects</span>
       </div>
-      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
-        <span>Effect</span><b>&rarr;</b><span>World (IO)</span><b>&rarr;</b><span>Event</span>
+      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
+        <span>Effect</span>
+        <b>&rarr;</b>
+        <span>World (IO)</span>
+        <b>&rarr;</b>
+        <span>Event</span>
       </div>
 
       <p>
-        This boundary is what guarantees <strong>safe replay and crash recovery</strong>.
-        During replay or debugging, reducers re-run over historical events to reconstruct
-        state, but the runtime skips effect dispatch. You never accidentally re-charge a
-        customer or invoke an LLM when recovering from a crash.
+        This boundary is what guarantees <strong>safe replay and crash recovery</strong>. During
+        replay or debugging, reducers re-run over historical events to reconstruct state, but the
+        runtime skips effect dispatch. You never accidentally re-charge a customer or invoke an LLM
+        when recovering from a crash.
       </p>
 
       <h2>The Three Orthogonal Structures</h2>
       <p>
-        A Run coordinates heterogeneous computation by separating three distinct dimensions
-        rather than tangling them into separate silos:
+        A Run coordinates heterogeneous computation by separating three distinct dimensions rather
+        than tangling them into separate silos:
       </p>
 
       <div className="my-8 mb-14 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>1. Thread Tree (Structure)</h3>
           <p>
             <strong>&ldquo;Who belongs to whom?&rdquo;</strong> The parent-child invocation
-            hierarchy stored in thread metadata (e.g., an agent invoking a checkout workflow,
-            which invokes a human approval gate).
+            hierarchy stored in thread metadata (e.g., an agent invoking a checkout workflow, which
+            invokes a human approval gate).
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>2. Run Stream (History)</h3>
           <p>
             <strong>&ldquo;What happened?&rdquo;</strong> The single canonical, append-only
@@ -245,38 +273,38 @@ function Concepts() {
           </p>
         </article>
 
-        <article className="m-0 p-0 [&_h3]:mb-1.5 [&_h3]:mt-0 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-foreground [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <h3>3. Causation Graph (Reason)</h3>
           <p>
-            <strong>&ldquo;Why did it happen?&rdquo;</strong> The causal provenance graph
-            linking each event to the effect and trigger event that produced it via{' '}
-            <code>causationId</code> and <code>effectId</code>.
+            <strong>&ldquo;Why did it happen?&rdquo;</strong> The causal provenance graph linking
+            each event to the effect and trigger event that produced it via <code>causationId</code>{' '}
+            and <code>effectId</code>.
           </p>
         </article>
       </div>
 
       <p>
-        Because structural hierarchy lives in event and thread metadata rather than separate
-        storage files, arbitrary nesting (agents spawning workflows spawning agents) remains
-        unified in one coherent timeline.
+        Because structural hierarchy lives in event and thread metadata rather than separate storage
+        files, arbitrary nesting (agents spawning workflows spawning agents) remains unified in one
+        coherent timeline.
       </p>
 
       <h2>The Effect Instruction Set</h2>
       <p>
-        Rather than introducing an unbounded set of ad-hoc primitives, all high-level module
-        effects lower into a small runtime instruction set:
+        Rather than introducing an unbounded set of ad-hoc primitives, all high-level module effects
+        lower into a small runtime instruction set:
       </p>
 
       <div className="my-7 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
-        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <div className="[&_code]:text-foreground [&_p]:text-muted m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <code>Invoke</code>
           <p>
-            Execute external computation with side-effects in reality (e.g., call an LLM API,
-            fetch an HTTP endpoint, charge a credit card).
+            Execute external computation with side-effects in reality (e.g., call an LLM API, fetch
+            an HTTP endpoint, charge a credit card).
           </p>
         </div>
 
-        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <div className="[&_code]:text-foreground [&_p]:text-muted m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <code>Spawn</code>
           <p>
             Create and start a child Thread (an agent, a DAG workflow, or a custom thread kind)
@@ -284,18 +312,16 @@ function Concepts() {
           </p>
         </div>
 
-        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <div className="[&_code]:text-foreground [&_p]:text-muted m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <code>Emit</code>
-          <p>
-            Communicate outward by appending an event or signal to the Run stream.
-          </p>
+          <p>Communicate outward by appending an event or signal to the Run stream.</p>
         </div>
 
-        <div className="m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_code]:text-foreground [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug [&_p]:text-muted">
+        <div className="[&_code]:text-foreground [&_p]:text-muted m-0 p-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[0.92rem] [&_code]:font-semibold [&_p]:mt-1.5 [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
           <code>Wait</code>
           <p>
-            Suspend thread execution until a matching event, payload pattern, child completion,
-            or timer fires.
+            Suspend thread execution until a matching event, payload pattern, child completion, or
+            timer fires.
           </p>
         </div>
       </div>
@@ -308,10 +334,10 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
 
       <h2>Durable Waiting &amp; Parking</h2>
       <p>
-        In traditional runtimes, waiting for an approval, child job, or webhook ties up an
-        in-memory process or call stack. In Looms:
+        In traditional runtimes, waiting for an approval, child job, or webhook ties up an in-memory
+        process or call stack. In Looms:
       </p>
-      <div className="my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal text-muted [&_b]:px-0.5 [&_b]:font-normal [&_b]:text-muted-light [&_span]:font-medium [&_span]:text-foreground">
+      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
         <span>WAITING</span>
         <b>&rarr;</b>
         <span>persist state to log</span>
@@ -323,16 +349,16 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         <span>RUNNING</span>
       </div>
       <p>
-        When a thread registers a <code>Wait</code>, its state is checkpointed to the log and
-        the host releases all worker resources. Days or weeks later, when someone approves
-        the request or a webhook posts a signal, the runtime re-awakens the thread and resumes
-        execution with complete state fidelity.
+        When a thread registers a <code>Wait</code>, its state is checkpointed to the log and the
+        host releases all worker resources. Days or weeks later, when someone approves the request
+        or a webhook posts a signal, the runtime re-awakens the thread and resumes execution with
+        complete state fidelity.
       </p>
 
       <h2>Mental Model: The React Analogy</h2>
       <p>
-        A helpful mental model for Looms is to think of it as a declarative runtime for
-        agentic execution, analogous to how React structures UI rendering:
+        A helpful mental model for Looms is to think of it as a declarative runtime for agentic
+        execution, analogous to how React structures UI rendering:
       </p>
 
       <table>
@@ -345,52 +371,66 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         <tbody>
           <tr>
             <td>Component</td>
-            <td><strong>Thread</strong> (Agent, Workflow, or Custom Kind)</td>
+            <td>
+              <strong>Thread</strong> (Agent, Workflow, or Custom Kind)
+            </td>
           </tr>
           <tr>
             <td>Props &amp; State</td>
-            <td><strong>Thread Input &amp; Derived State</strong></td>
+            <td>
+              <strong>Thread Input &amp; Derived State</strong>
+            </td>
           </tr>
           <tr>
             <td>Render Function</td>
-            <td><strong>Pure Reducer / Transition Function</strong></td>
+            <td>
+              <strong>Pure Reducer / Transition Function</strong>
+            </td>
           </tr>
           <tr>
-            <td>Side Effects (<code>useEffect</code>)</td>
-            <td><strong>Runtime Effects</strong> (<code>ctx.effects</code>)</td>
+            <td>
+              Side Effects (<code>useEffect</code>)
+            </td>
+            <td>
+              <strong>Runtime Effects</strong> (<code>ctx.effects</code>)
+            </td>
           </tr>
           <tr>
             <td>Renderer (React DOM / Native)</td>
-            <td><strong>Runtime &amp; Adapters</strong> (S2, LiveStore, SQLite)</td>
+            <td>
+              <strong>Runtime &amp; Adapters</strong> (S2, LiveStore, SQLite)
+            </td>
           </tr>
           <tr>
             <td>npm Ecosystem</td>
-            <td><strong>Runtime Modules</strong> (Agent, Workflow, Approval, Stripe)</td>
+            <td>
+              <strong>Runtime Modules</strong> (Agent, Workflow, Approval, Stripe)
+            </td>
           </tr>
         </tbody>
       </table>
 
-      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
-        <strong>The North Star:</strong> User code describes computation declaratively; the
-        runtime controls durability, scheduling, recovery, and replay.
+      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
+        <strong>The North Star:</strong> User code describes computation declaratively; the runtime
+        controls durability, scheduling, recovery, and replay.
       </div>
 
       <h2>Projections &amp; Custom UIs</h2>
       <p>
-        Because all facts exist in the append-only event stream, UIs do not need to poll
-        ad-hoc CRUD endpoints or manage custom WebSocket protocols. Projections fold the
-        event stream directly into reactive UI state in the browser via LiveStore and SSE.
+        Because all facts exist in the append-only event stream, UIs do not need to poll ad-hoc CRUD
+        endpoints or manage custom WebSocket protocols. Projections fold the event stream directly
+        into reactive UI state in the browser via LiveStore and SSE.
       </p>
       <p>
-        Learn how to build real-time reactive interfaces, ledgers, and time-travel debuggers
-        in <Link to="/docs/projectors">Projectors &amp; Custom UIs</Link>.
+        Learn how to build real-time reactive interfaces, ledgers, and time-travel debuggers in{' '}
+        <Link to="/docs/projectors">Projectors &amp; Custom UIs</Link>.
       </p>
 
       <h2>Next steps</h2>
       <p>
-        Explore composable packages in <Link to="/docs/modules">Modules</Link>, study the
-        algebraic foundations in <Link to="/docs/math">Math</Link>, build custom reactive interfaces
-        in <Link to="/docs/projectors">Projectors</Link>, or follow the{' '}
+        Explore composable packages in <Link to="/docs/modules">Modules</Link>, study the algebraic
+        foundations in <Link to="/docs/math">Math</Link>, build custom reactive interfaces in{' '}
+        <Link to="/docs/projectors">Projectors</Link>, or follow the{' '}
         <Link to="/docs/quickstart">Quickstart</Link> to spin up a host in under two minutes.
       </p>
     </>

@@ -1,3 +1,5 @@
+import { Effect, Predicate } from 'effect'
+
 import { agent } from '@looms/agent'
 import { approval } from '@looms/approval'
 import {
@@ -16,7 +18,7 @@ import {
   type RunState,
 } from '@looms/core'
 import { workflow } from '@looms/workflow'
-import { Effect, Predicate } from 'effect'
+
 import { createRuntime, type LoomsRuntime } from './runtime'
 import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
 
@@ -40,9 +42,17 @@ export interface Looms {
   readonly store: Promise<EventStore>
   ready(): Promise<{ store: EventStore; runtime: LoomsRuntime }>
   /** Start a run from a definition object; the input type follows the definition's schema. */
-  start<TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>): Promise<StartResult>
+  start<TDef extends DefinitionRef>(
+    definition: TDef,
+    input?: DefinitionInput<TDef>,
+  ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
-  startRun(args: { kind: string; definitionName: string; input?: JsonValue; runId?: string }): Promise<StartResult>
+  startRun(args: {
+    kind: string
+    definitionName: string
+    input?: JsonValue
+    runId?: string
+  }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
   signal(runId: string, events: ReadonlyArray<EventInput>): Promise<RunState>

@@ -96,9 +96,11 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent p-0 text-muted transition-colors hover:border-muted hover:bg-background-subtle hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line"
+      className="border-line text-muted hover:border-muted hover:bg-background-subtle hover:text-foreground focus-visible:outline-line ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-md border bg-transparent p-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
       onClick={toggleTheme}
-      aria-label={theme ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle theme'}
+      aria-label={
+        theme ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle theme'
+      }
       title={theme ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle theme'}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}

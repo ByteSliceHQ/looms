@@ -1,4 +1,5 @@
 import { Predicate } from 'effect'
+
 import type { AppendableEvent, EventEnvelope, EventOrigin } from './envelope'
 import { createEvent, payloadAsJson } from './envelope'
 import { createEventId } from './ids'
@@ -83,7 +84,10 @@ function readOrigin(raw: { [key: string]: JsonValue } | EventOrigin): EventOrigi
   return { type: 'system' }
 }
 
-export function decodeLoomsEvent(raw: JsonValue | LiveStoreGlobalEncoded, runId: string): EventEnvelope {
+export function decodeLoomsEvent(
+  raw: JsonValue | LiveStoreGlobalEncoded,
+  runId: string,
+): EventEnvelope {
   if (!Predicate.isReadonlyObject(raw)) {
     throw new Error('Invalid event payload: expected object')
   }
@@ -95,11 +99,15 @@ export function decodeLoomsEvent(raw: JsonValue | LiveStoreGlobalEncoded, runId:
     const payload = rawPayload as JsonValue
     const id = 'id' in args && Predicate.isString(args.id) ? args.id : createEventId()
     const ts = 'ts' in args && Predicate.isNumber(args.ts) ? args.ts : Date.now()
-    const ephemeral = 'ephemeral' in args && Predicate.isBoolean(args.ephemeral) ? args.ephemeral : false
+    const ephemeral =
+      'ephemeral' in args && Predicate.isBoolean(args.ephemeral) ? args.ephemeral : false
     const threadId = 'threadId' in args && Predicate.isString(args.threadId) ? args.threadId : null
     const parentThreadId =
-      'parentThreadId' in args && Predicate.isString(args.parentThreadId) ? args.parentThreadId : null
-    const causationId = 'causationId' in args && Predicate.isString(args.causationId) ? args.causationId : null
+      'parentThreadId' in args && Predicate.isString(args.parentThreadId)
+        ? args.parentThreadId
+        : null
+    const causationId =
+      'causationId' in args && Predicate.isString(args.causationId) ? args.causationId : null
     const correlationId =
       'correlationId' in args && Predicate.isString(args.correlationId) ? args.correlationId : null
     const effectId = 'effectId' in args && Predicate.isString(args.effectId) ? args.effectId : null
@@ -135,13 +143,16 @@ export function decodeLoomsEvent(raw: JsonValue | LiveStoreGlobalEncoded, runId:
     const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : createEventId()
     const ts = 'ts' in raw && Predicate.isNumber(raw.ts) ? raw.ts : Date.now()
     const seq = 'seq' in raw && Predicate.isNumber(raw.seq) ? raw.seq : 0
-    const ephemeral = 'ephemeral' in raw && Predicate.isBoolean(raw.ephemeral) ? raw.ephemeral : false
+    const ephemeral =
+      'ephemeral' in raw && Predicate.isBoolean(raw.ephemeral) ? raw.ephemeral : false
     const itemRunId = 'runId' in raw && Predicate.isString(raw.runId) ? raw.runId : runId
     const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : null
     const parentThreadId =
       'parentThreadId' in raw && Predicate.isString(raw.parentThreadId) ? raw.parentThreadId : null
     const origin =
-      'origin' in raw && Predicate.isReadonlyObject(raw.origin) ? readOrigin(raw.origin) : { type: 'system' as const }
+      'origin' in raw && Predicate.isReadonlyObject(raw.origin)
+        ? readOrigin(raw.origin)
+        : { type: 'system' as const }
 
     return createEvent(
       itemRunId,
@@ -152,9 +163,12 @@ export function decodeLoomsEvent(raw: JsonValue | LiveStoreGlobalEncoded, runId:
         payload,
         threadId,
         parentThreadId,
-        causationId: 'causationId' in raw && Predicate.isString(raw.causationId) ? raw.causationId : null,
+        causationId:
+          'causationId' in raw && Predicate.isString(raw.causationId) ? raw.causationId : null,
         correlationId:
-          'correlationId' in raw && Predicate.isString(raw.correlationId) ? raw.correlationId : null,
+          'correlationId' in raw && Predicate.isString(raw.correlationId)
+            ? raw.correlationId
+            : null,
         effectId: 'effectId' in raw && Predicate.isString(raw.effectId) ? raw.effectId : null,
         ephemeral,
         origin,

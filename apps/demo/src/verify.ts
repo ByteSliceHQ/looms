@@ -1,3 +1,6 @@
+import { Effect } from 'effect'
+import { z } from 'zod'
+
 import { agent, asEffectsTool, defineAgent } from '@looms/agent'
 import { decision, gate, pendingApprovals } from '@looms/approval'
 import {
@@ -11,10 +14,9 @@ import {
   toThreadTree,
   treeFromRun,
 } from '@looms/core'
-import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
-import { Effect } from 'effect'
-import { z } from 'zod'
+import { workflow } from '@looms/workflow'
+
 import { assistant, checkout, definitions, echo, orchestrator, pipeline } from './definitions'
 import { demoModules } from './runtime'
 
@@ -33,7 +35,10 @@ const OrchestratorOutputSchema = z.object({
   result: z.string().optional(),
 })
 
-function rootOf(state: { rootThreadId: string | null; threads: { [id: string]: { status: string; output: unknown } } }) {
+function rootOf(state: {
+  rootThreadId: string | null
+  threads: { [id: string]: { status: string; output: unknown } }
+}) {
   return state.rootThreadId ? state.threads[state.rootThreadId] : undefined
 }
 
@@ -42,7 +47,8 @@ export async function verifyDemo(): Promise<void> {
 
   {
     const { state } = await looms.start(echo, { text: 'hello' })
-    if (state.status !== 'completed') throw new Error(`echo expected completed, got ${state.status}`)
+    if (state.status !== 'completed')
+      throw new Error(`echo expected completed, got ${state.status}`)
     const parsed = EchoOutputSchema.safeParse(rootOf(state)?.output)
     if (!parsed.success || parsed.data.text !== 'hello') {
       throw new Error(`echo bad output: ${JSON.stringify(rootOf(state)?.output)}`)
@@ -57,7 +63,9 @@ export async function verifyDemo(): Promise<void> {
     const parsed = PipelineOutputSchema.safeParse(rootOf(state)?.output)
     if (!parsed.success || parsed.data.double !== 42) throw new Error('pipeline double expected 42')
     if (parsed.data.format?.doubled !== 42) {
-      throw new Error(`pipeline format.doubled expected 42, got ${JSON.stringify(parsed.data.format)}`)
+      throw new Error(
+        `pipeline format.doubled expected 42, got ${JSON.stringify(parsed.data.format)}`,
+      )
     }
   }
 
@@ -151,18 +159,29 @@ export async function verifyDemo(): Promise<void> {
   }
 
   {
-    const { runId, state } = await looms.start(assistant, 'ask a specialist to research "number of lakes in minnesota"')
+    const { runId, state } = await looms.start(
+      assistant,
+      'ask a specialist to research "number of lakes in minnesota"',
+    )
     const tree = treeFromRun(state)
     const specialistChild = tree.root?.children.find((c) => c.definitionName === 'specialist')
-    if (!specialistChild) throw new Error('assistant failed to spawn specialist child for research topic')
+    if (!specialistChild)
+      throw new Error('assistant failed to spawn specialist child for research topic')
     const events = await looms.getEvents(runId)
-    const spawnEvent = events.find((e) => e.type === 'agent.spawn.requested' && isJsonObject(e.payload) && e.payload.definitionName === 'specialist')
+    const spawnEvent = events.find(
+      (e) =>
+        e.type === 'agent.spawn.requested' &&
+        isJsonObject(e.payload) &&
+        e.payload.definitionName === 'specialist',
+    )
     const spawnInput = isJsonObject(spawnEvent?.payload) ? spawnEvent?.payload.input : null
     if (!isJsonObject(spawnInput) || !isJsonString(spawnInput.task) || !spawnInput.task) {
       throw new Error(`specialist spawned with invalid input: ${JSON.stringify(spawnInput)}`)
     }
     if (spawnInput.task === 'analyze' || spawnInput.task === 'default') {
-      throw new Error(`specialist received fallback task instead of research topic: ${spawnInput.task}`)
+      throw new Error(
+        `specialist received fallback task instead of research topic: ${spawnInput.task}`,
+      )
     }
   }
 
@@ -171,7 +190,9 @@ export async function verifyDemo(): Promise<void> {
     const tree = treeFromRun(state)
     const specialistChild = tree.root?.children.find((c) => c.definitionName === 'specialist')
     if (!specialistChild) throw new Error('assistant failed to spawn specialist child')
-    const researcherGrandchild = specialistChild.children.find((c) => c.definitionName === 'researcher')
+    const researcherGrandchild = specialistChild.children.find(
+      (c) => c.definitionName === 'researcher',
+    )
     if (!researcherGrandchild) throw new Error('assistant specialist missing researcher grandchild')
   }
 
@@ -192,7 +213,9 @@ export async function verifyDemo(): Promise<void> {
     const treeState = project(threadTree, events)
     const tree = toThreadTree(treeState)
     if (tree.root?.status === 'waiting') {
-      throw new Error('assistant threadTree stuck waiting after checkout approved (sibling wait leak)')
+      throw new Error(
+        'assistant threadTree stuck waiting after checkout approved (sibling wait leak)',
+      )
     }
     const checkoutChild = tree.root?.children.find((c) => c.definitionName === 'checkout')
     if (!checkoutChild || checkoutChild.status !== 'completed') {
@@ -234,11 +257,19 @@ export async function verifyDemo(): Promise<void> {
     if (rootOf(state)?.status !== 'waiting') {
       throw new Error(`checkout_caller expected waiting on approval, got ${rootOf(state)?.status}`)
     }
-    const child = Object.values(state.threads).find((thread) => thread.definitionName === 'checkout')
+    const child = Object.values(state.threads).find(
+      (thread) => thread.definitionName === 'checkout',
+    )
     if (!child) throw new Error('checkout_caller missing checkout child')
     const childInput = z.object({ amount: z.number(), currency: z.string() }).safeParse(child.input)
-    if (!childInput.success || childInput.data.amount !== 150 || childInput.data.currency !== 'USD') {
-      throw new Error(`checkout_caller expected defaulted input, got ${JSON.stringify(child.input)}`)
+    if (
+      !childInput.success ||
+      childInput.data.amount !== 150 ||
+      childInput.data.currency !== 'USD'
+    ) {
+      throw new Error(
+        `checkout_caller expected defaulted input, got ${JSON.stringify(child.input)}`,
+      )
     }
     const pending = await scripted.project(runId, pendingApprovals)
     const approvalId = pending.items.find((item) => item.status === 'pending')?.approvalId
@@ -254,11 +285,15 @@ export async function verifyDemo(): Promise<void> {
     const treeState = project(threadTree, events)
     const tree = toThreadTree(treeState)
     if (tree.root?.status !== 'completed') {
-      throw new Error(`checkout_caller threadTree root expected completed, got ${tree.root?.status}`)
+      throw new Error(
+        `checkout_caller threadTree root expected completed, got ${tree.root?.status}`,
+      )
     }
     const checkoutNode = tree.root.children.find((c) => c.definitionName === 'checkout')
     if (!checkoutNode || checkoutNode.status !== 'completed') {
-      throw new Error(`checkout_caller threadTree checkout expected completed, got ${checkoutNode?.status}`)
+      throw new Error(
+        `checkout_caller threadTree checkout expected completed, got ${checkoutNode?.status}`,
+      )
     }
   }
 

@@ -4,11 +4,11 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 
 ## Built-in
 
-| Package | Use it for | SDK |
-|---|---|---|
-| `@looms/agent` | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools |
-| `@looms/workflow` | DAGs: nodes, deps, sleeps, nested runs | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
-| `@looms/approval` | Human gates from agents or workflows | `gate({ title })` parks the run until `approval.decided` |
+| Package           | Use it for                              | SDK                                                                                |
+| ----------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@looms/agent`    | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
+| `@looms/workflow` | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
+| `@looms/approval` | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 

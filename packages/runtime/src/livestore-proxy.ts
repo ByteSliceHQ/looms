@@ -1,3 +1,5 @@
+import { Effect, Predicate } from 'effect'
+
 import {
   decodeAppendableEvent,
   encodeLoomsEvent,
@@ -6,7 +8,7 @@ import {
   type EventStore,
   type LiveStoreGlobalEncoded,
 } from '@looms/core'
-import { Effect, Predicate } from 'effect'
+
 import type { LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
 
@@ -14,7 +16,10 @@ export { encodeLoomsEvent, type LiveStoreGlobalEncoded }
 
 function readCursor(req: Request, url: URL): number {
   const lastEventId = req.headers.get('last-event-id')
-  const raw = lastEventId !== null && lastEventId !== '' ? lastEventId : (url.searchParams.get('cursor') ?? '0')
+  const raw =
+    lastEventId !== null && lastEventId !== ''
+      ? lastEventId
+      : (url.searchParams.get('cursor') ?? '0')
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
@@ -64,10 +69,11 @@ export async function handleLivestoreProxy(
       (Predicate.isReadonlyObject(body) && Predicate.isString(body.storeId) ? body.storeId : null)
     if (!storeId) return Response.json({ error: 'storeId required' }, { status: 400 })
 
-    const batch =
-      Predicate.isReadonlyObject(body) && Array.isArray(body.batch) ? body.batch : []
+    const batch = Predicate.isReadonlyObject(body) && Array.isArray(body.batch) ? body.batch : []
     const parentSeqNum =
-      Predicate.isReadonlyObject(body) && Predicate.isNumber(body.parentSeqNum) ? body.parentSeqNum : 0
+      Predicate.isReadonlyObject(body) && Predicate.isNumber(body.parentSeqNum)
+        ? body.parentSeqNum
+        : 0
     const tail = await Effect.runPromise(store.tail(storeId))
     if (parentSeqNum !== tail) {
       return Response.json(

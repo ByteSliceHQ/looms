@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { createEvent, makeMemoryEventStore, type EventEnvelope } from '@looms/core'
+
 import { Effect } from 'effect'
+
+import { createEvent, makeMemoryEventStore, type EventEnvelope } from '@looms/core'
+
 import type { Projector } from './projector'
 import { withProjectors } from './with-projectors'
 

@@ -1,8 +1,3 @@
-import { steer as steerEvent } from '@looms/agent'
-import { decision } from '@looms/approval'
-import { createLoomsClient } from '@looms/client'
-import type { JsonValue } from '@looms/core'
-import { createLooms } from '@looms/runtime'
 import {
   Config,
   Console,
@@ -18,6 +13,12 @@ import {
 } from 'effect'
 import { Argument, CliError, Command, Flag } from 'effect/unstable/cli'
 import { ChildProcessSpawner } from 'effect/unstable/process'
+
+import { steer as steerEvent } from '@looms/agent'
+import { decision } from '@looms/approval'
+import { createLoomsClient } from '@looms/client'
+import type { JsonValue } from '@looms/core'
+import { createLooms } from '@looms/runtime'
 
 const VERSION = '0.1.0'
 
@@ -68,7 +69,10 @@ const serve = Command.make(
     yield* Console.log(`Looms runtime listening on http://127.0.0.1:${server?.port ?? port}`)
     return yield* Effect.never
   }),
-).pipe(Command.withDescription('Start the Looms runtime host'), Command.withShortDescription('Start the runtime'))
+).pipe(
+  Command.withDescription('Start the Looms runtime host'),
+  Command.withShortDescription('Start the runtime'),
+)
 
 const loomsBase = Command.make('looms').pipe(
   Command.withDescription('Looms thread runtime'),
@@ -78,7 +82,9 @@ const loomsBase = Command.make('looms').pipe(
 const start = Command.make(
   'start',
   {
-    kind: Argument.string('kind').pipe(Argument.withDescription('Thread kind (e.g. agent, workflow)')),
+    kind: Argument.string('kind').pipe(
+      Argument.withDescription('Thread kind (e.g. agent, workflow)'),
+    ),
     name: Argument.string('name').pipe(Argument.withDescription('Definition name')),
     json: Argument.string('json').pipe(
       Argument.withDescription('Optional JSON input'),
@@ -93,7 +99,9 @@ const start = Command.make(
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
-  Command.withDescription('Start a run from a registered definition: looms start agent echo \'{"text":"hi"}\''),
+  Command.withDescription(
+    'Start a run from a registered definition: looms start agent echo \'{"text":"hi"}\'',
+  ),
   Command.withShortDescription('Start a run'),
 )
 
@@ -107,7 +115,10 @@ const events = Command.make(
     const result = yield* tryClient(() => clientFor(url).getEvents(runId))
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('List events for a run'), Command.withShortDescription('List run events'))
+).pipe(
+  Command.withDescription('List events for a run'),
+  Command.withShortDescription('List run events'),
+)
 
 const state = Command.make(
   'state',
@@ -146,7 +157,9 @@ const approve = Command.make(
     }
     const outcome = accept ? 'approve' : 'reject'
     const { url } = yield* loomsBase
-    const result = yield* tryClient(() => clientFor(url).signal(runId, [decision(approvalId, outcome)]))
+    const result = yield* tryClient(() =>
+      clientFor(url).signal(runId, [decision(approvalId, outcome)]),
+    )
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
@@ -165,7 +178,10 @@ const replay = Command.make(
     const result = yield* tryClient(() => clientFor(url).replayTo(runId, seq))
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('Replay a run to a sequence'), Command.withShortDescription('Replay to seq'))
+).pipe(
+  Command.withDescription('Replay a run to a sequence'),
+  Command.withShortDescription('Replay to seq'),
+)
 
 const signal = Command.make(
   'signal',
@@ -184,7 +200,10 @@ const signal = Command.make(
     )
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
-).pipe(Command.withDescription('Append an external event and wake the run'), Command.withShortDescription('Signal a run'))
+).pipe(
+  Command.withDescription('Append an external event and wake the run'),
+  Command.withShortDescription('Signal a run'),
+)
 
 const steer = Command.make(
   'steer',

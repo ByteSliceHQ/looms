@@ -1,16 +1,18 @@
-import { Schema } from 'effect'
 import { describe, expect, test } from 'bun:test'
+
+import { Schema } from 'effect'
+
 import { defineEventCatalog } from './catalog'
 import { complete, invoke, wait } from './effects'
 import { createEvent } from './envelope'
-import { defineThread } from './thread'
 import { foldRun } from './fold'
+import { createEffectId } from './ids'
+import { composeModules, defineRuntimeModule } from './index'
 import { matchesWait, isSubset } from './match'
+import { foldProjection, threadTree, toThreadTree } from './projection'
 import { replayTo } from './replay'
 import { buildSnapshotEvent, foldFromSnapshots } from './snapshots'
-import { foldProjection, threadTree, toThreadTree } from './projection'
-import { composeModules, defineRuntimeModule } from './index'
-import { createEffectId } from './ids'
+import { defineThread } from './thread'
 
 const counterCatalog = defineEventCatalog('counter', {
   incremented: Schema.Struct({ by: Schema.Number }),
@@ -56,7 +58,12 @@ describe('foldRun', () => {
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.run.started',
-        payload: { rootThreadId: threadId, kind: 'counter', definitionName: 'counter', input: null },
+        payload: {
+          rootThreadId: threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+        },
         threadId: null,
         origin: { type: 'system' },
       }),
@@ -91,7 +98,12 @@ describe('foldRun', () => {
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.run.started',
-        payload: { rootThreadId: threadId, kind: 'counter', definitionName: 'counter', input: null },
+        payload: {
+          rootThreadId: threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+        },
         threadId: null,
         origin: { type: 'system' },
       }),
@@ -312,7 +324,10 @@ describe('foldRun', () => {
       }),
       createEvent(runId, {
         type: 'runtime.effect.failed',
-        payload: { effectId: createEffectId(threadId, 1, 1), error: 'withdrawn: sibling effect x failed' },
+        payload: {
+          effectId: createEffectId(threadId, 1, 1),
+          error: 'withdrawn: sibling effect x failed',
+        },
         threadId,
         effectId: createEffectId(threadId, 1, 1),
         origin: { type: 'system' },
@@ -426,8 +441,12 @@ describe('match', () => {
     })
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'a1' } })).toBe(true)
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'nope' } })).toBe(false)
-    expect(matchesWait(event, { type: ['other.event', 'gate.decided'], match: { gateId: 'a1' } })).toBe(true)
-    expect(matchesWait(event, { type: ['other.event', 'third.event'], match: { gateId: 'a1' } })).toBe(false)
+    expect(
+      matchesWait(event, { type: ['other.event', 'gate.decided'], match: { gateId: 'a1' } }),
+    ).toBe(true)
+    expect(
+      matchesWait(event, { type: ['other.event', 'third.event'], match: { gateId: 'a1' } }),
+    ).toBe(false)
   })
 })
 
@@ -467,7 +486,12 @@ describe('foldFromSnapshots', () => {
     const initialEvents = assignSeq([
       createEvent(runId, {
         type: 'runtime.run.started',
-        payload: { rootThreadId: threadId, kind: 'counter', definitionName: 'counter', input: null },
+        payload: {
+          rootThreadId: threadId,
+          kind: 'counter',
+          definitionName: 'counter',
+          input: null,
+        },
         threadId: null,
         origin: { type: 'system' },
       }),
@@ -531,7 +555,13 @@ describe('threadTree projection', () => {
     })
     const e2 = createEvent(runId, {
       type: 'runtime.thread.started',
-      payload: { threadId, kind: 'agent', definitionName: 'agent', input: null, parentThreadId: null },
+      payload: {
+        threadId,
+        kind: 'agent',
+        definitionName: 'agent',
+        input: null,
+        parentThreadId: null,
+      },
       threadId,
       origin: { type: 'system' },
     })
@@ -570,7 +600,12 @@ describe('threadTree projection', () => {
     const events = [
       createEvent(runId, {
         type: 'runtime.run.started',
-        payload: { rootThreadId: parentId, kind: 'agent', definitionName: 'assistant', input: null },
+        payload: {
+          rootThreadId: parentId,
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+        },
         threadId: null,
         origin: { type: 'system' },
       }),
@@ -651,7 +686,12 @@ describe('threadTree projection', () => {
     let projState = foldProjection(threadTree, [
       createEvent(runId, {
         type: 'runtime.run.started',
-        payload: { rootThreadId: parentId, kind: 'agent', definitionName: 'assistant', input: null },
+        payload: {
+          rootThreadId: parentId,
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+        },
         threadId: null,
         origin: { type: 'system' },
       }),
@@ -719,13 +759,11 @@ describe('threadTree projection', () => {
       input: null,
     })
     expect(initial).toEqual({ count: 0 })
-    const reduced = thread.reduce(
-      initial,
-      createEvent('r1', { type: 'tick', payload: {} }),
-      { runId: 'r1', threadId: 't1', parentThreadId: null },
-    )
+    const reduced = thread.reduce(initial, createEvent('r1', { type: 'tick', payload: {} }), {
+      runId: 'r1',
+      threadId: 't1',
+      parentThreadId: null,
+    })
     expect(reduced.state).toEqual({ count: 1 })
   })
 })
-
-

@@ -6,7 +6,9 @@ Apache-2.0 durable actor runtime for agents and workflows.
 
 ```bash
 bun install
-bun run verify          # turbo run build / check-types / test / verify
+bun run verify          # turbo run build / check-types / test / verify + lint + fmt:check
+bun run fmt             # oxfmt (write)
+bun run fmt:check       # oxfmt --check
 bun run demo            # turbo run dev --filter=@looms/demo (auto-starts s2-lite)
 ```
 
@@ -37,8 +39,8 @@ Without Flox, install the S2 CLI with `bun run setup:s2` (or see https://s2.dev/
 
 ## Layout
 
-| Path | Role |
-|---|---|
-| `packages/*` | Publishable libraries (`@looms/*`) |
-| `apps/*` | Private apps (demo UI) |
+| Path         | Role                                                       |
+| ------------ | ---------------------------------------------------------- |
+| `packages/*` | Publishable libraries (`@looms/*`)                         |
+| `apps/*`     | Private apps (demo UI)                                     |
 | `turbo.json` | Task graph (`build` → `^build`, cached outputs in `dist/`) |

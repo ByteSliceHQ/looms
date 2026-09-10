@@ -1,7 +1,9 @@
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+
 import { vercelLlm } from '@looms/ai-vercel'
 import { createLooms } from '@looms/runtime'
 import { s2, s2ConfigFromEnv, s2Lite } from '@looms/s2'
-import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+
 import { definitions } from './definitions'
 import { demoModules } from './runtime'
 

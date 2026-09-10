@@ -1,5 +1,6 @@
-import { decodeLoomsEvent, type EventEnvelope } from '@looms/core'
 import { Predicate } from 'effect'
+
+import { decodeLoomsEvent, type EventEnvelope } from '@looms/core'
 
 export interface SseFrame {
   id?: string

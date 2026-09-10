@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { createEventId } from './ids'
 import type { JsonValue } from './types'
 
@@ -52,7 +53,10 @@ export type EventEnvelope<TType extends string = string, TPayload extends JsonVa
   ephemeral?: boolean
 }
 
-export type TypedEvent<TType extends string, TPayload extends JsonValue> = EventEnvelope<TType, TPayload>
+export type TypedEvent<TType extends string, TPayload extends JsonValue> = EventEnvelope<
+  TType,
+  TPayload
+>
 
 export type EventInput = {
   type: string
@@ -75,7 +79,11 @@ export function payloadAsJson(payload: JsonValue): JsonValue {
   return JSON.parse(JSON.stringify(payload)) as JsonValue
 }
 
-export function withAssignedSeq(partial: AppendableEvent, runId: string, seq: number): EventEnvelope {
+export function withAssignedSeq(
+  partial: AppendableEvent,
+  runId: string,
+  seq: number,
+): EventEnvelope {
   return { ...partial, runId, seq }
 }
 

@@ -1,11 +1,12 @@
 import { Predicate } from 'effect'
-import { createEffectId } from './ids'
-import type { EventEnvelope } from './envelope'
-import type { ThreadDefinition, ReduceContext } from './thread'
-import { isTerminalStatus } from './thread'
+
 import { isWithdrawnError, type RuntimeEffect } from './effects'
+import type { EventEnvelope } from './envelope'
+import { createEffectId } from './ids'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { emptyRunState } from './state'
+import type { ThreadDefinition, ReduceContext } from './thread'
+import { isTerminalStatus } from './thread'
 import type { JsonValue } from './types'
 
 export interface FoldRegistry {
@@ -250,7 +251,11 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   return appendEffects(next, threadId, event, result.effects ?? [])
 }
 
-function failUnhandledEffect(state: RunState, event: EventEnvelope, effectsBeforeDeliver: number): RunState {
+function failUnhandledEffect(
+  state: RunState,
+  event: EventEnvelope,
+  effectsBeforeDeliver: number,
+): RunState {
   if (event.type !== 'runtime.effect.failed') return state
   const payload = payloadObject(event)
   const error = readString(payload, 'error') ?? 'effect failed'

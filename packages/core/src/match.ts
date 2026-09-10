@@ -1,6 +1,7 @@
 import { Predicate } from 'effect'
-import type { EventEnvelope } from './envelope'
+
 import { isWaitOnEvent, isWaitOnTimer, type WaitCondition } from './effects'
+import type { EventEnvelope } from './envelope'
 import type { JsonValue } from './types'
 
 export function isSubset(match: JsonValue, payload: JsonValue): boolean {

@@ -1,3 +1,5 @@
+import { Effect, Layer, Predicate } from 'effect'
+
 import {
   asJson,
   buildSnapshotEvent,
@@ -34,11 +36,12 @@ import {
   type RunState,
   type RuntimeEffect,
 } from '@looms/core'
-import { Effect, Layer, Predicate } from 'effect'
 
 export type { RegisteredDefinition } from '@looms/core'
 
-export interface CreateRuntimeOptions<TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[]> {
+export interface CreateRuntimeOptions<
+  TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
+> {
   readonly modules: TModules
   readonly store?: EventStore
   readonly definitions?: ReadonlyArray<RegisteredDefinition>
@@ -59,12 +62,12 @@ export interface StartResult {
   state: RunState
 }
 
-export interface LoomsRuntime<TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[]> {
+export interface LoomsRuntime<
+  TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
+> {
   readonly modules: TModules
   readonly registry: ComposedRegistry
-  startRun(
-    args: StartRunArgs,
-  ): Effect.Effect<StartResult, Error | EventStoreError, EventStoreTag>
+  startRun(args: StartRunArgs): Effect.Effect<StartResult, Error | EventStoreError, EventStoreTag>
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
@@ -75,8 +78,14 @@ export interface LoomsRuntime<TModules extends readonly AnyRuntimeModule[] = rea
     runId: string,
     options?: { fromSeq?: number; limit?: number },
   ): Effect.Effect<EventEnvelope[], EventStoreError, EventStoreTag>
-  project<S>(runId: string, definition: ProjectionDefinition<S>): Effect.Effect<S, EventStoreError, EventStoreTag>
-  replayTo(runId: string, seq: number): Effect.Effect<ReplayStep | null, EventStoreError, EventStoreTag>
+  project<S>(
+    runId: string,
+    definition: ProjectionDefinition<S>,
+  ): Effect.Effect<S, EventStoreError, EventStoreTag>
+  replayTo(
+    runId: string,
+    seq: number,
+  ): Effect.Effect<ReplayStep | null, EventStoreError, EventStoreTag>
   cancel(
     runId: string,
     threadId?: string,
@@ -226,7 +235,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 ): LoomsRuntime<TModules> {
   const registry = composeModules(options.modules)
   const registeredDefinitions = options.definitions ?? []
-  const definitions = new Map(registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const))
+  const definitions = new Map(
+    registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const),
+  )
   const services = moduleServices(options.modules, registeredDefinitions)
   const waking = new Set<string>()
   const snapshotEvery = options.snapshotEvery
@@ -270,7 +281,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     startRun: (args) =>
       Effect.gen(function* () {
         if (!definitions.get(`${args.kind}:${args.definitionName}`)) {
-          return yield* Effect.fail(new Error(`Unknown definition ${args.kind}:${args.definitionName}`))
+          return yield* Effect.fail(
+            new Error(`Unknown definition ${args.kind}:${args.definitionName}`),
+          )
         }
         const runId = args.runId ?? createRunId()
         const threadId = args.threadId ?? createThreadId()
@@ -283,7 +296,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         })
         const started = startedEvents[0]
         const startedInput =
-          started && Predicate.isObject(started.payload) ? (started.payload.input ?? null) : (args.input ?? null)
+          started && Predicate.isObject(started.payload)
+            ? (started.payload.input ?? null)
+            : (args.input ?? null)
         const store = yield* EventStoreTag
         const batch = [
           createEvent(runId, {
@@ -387,7 +402,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               groupKeys,
               (groupKey) =>
                 Effect.gen(function* () {
-                  const group = outstanding.filter((item) => `${item.threadId}:${item.causingSeq}` === groupKey)
+                  const group = outstanding.filter(
+                    (item) => `${item.threadId}:${item.causingSeq}` === groupKey,
+                  )
                   const groupProduced: EventEnvelope[] = []
                   let failedEffectId: string | undefined
                   for (const item of group) {
@@ -395,7 +412,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                       groupProduced.push(
                         createEvent(runId, {
                           type: 'runtime.effect.failed',
-                          payload: { effectId: item.effectId, error: withdrawnError(failedEffectId) },
+                          payload: {
+                            effectId: item.effectId,
+                            error: withdrawnError(failedEffectId),
+                          },
                           threadId: item.threadId,
                           effectId: item.effectId,
                           causationId: item.causingEventId,
@@ -415,16 +435,24 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         origin: input.origin ?? { type: 'thread', threadId: item.threadId },
                       })
                       return liveAppends.run(runId, () =>
-                        Effect.runPromise(store.append(runId, stripSeq([ephemeral]))).then(() => undefined),
+                        Effect.runPromise(store.append(runId, stripSeq([ephemeral]))).then(
+                          () => undefined,
+                        ),
                       )
                     }
-                    const outcomes = yield* dispatchEffect(registry, services, definitions, item.effect, {
-                      effectId: item.effectId,
-                      runId,
-                      threadId: item.threadId,
-                      causingEventId: item.causingEventId,
-                      emit: appendLive,
-                    })
+                    const outcomes = yield* dispatchEffect(
+                      registry,
+                      services,
+                      definitions,
+                      item.effect,
+                      {
+                        effectId: item.effectId,
+                        runId,
+                        threadId: item.threadId,
+                        causingEventId: item.causingEventId,
+                        emit: appendLive,
+                      },
+                    )
                     const before = groupProduced.length
                     if (outcomes.length === 0) {
                       groupProduced.push(
@@ -488,7 +516,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           }
 
           const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
-          if (root && (root.status === 'completed' || root.status === 'failed' || root.status === 'cancelled') && !isRunTerminal(state)) {
+          if (
+            root &&
+            (root.status === 'completed' ||
+              root.status === 'failed' ||
+              root.status === 'cancelled') &&
+            !isRunTerminal(state)
+          ) {
             yield* store.append(runId, [
               createEvent(runId, {
                 type: 'runtime.run.completed',
@@ -530,7 +564,7 @@ function dispatchEffect(
   ctx: EffectContext,
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
   const currentThreadId = ctx.threadId
-  
+
   if (isPrimitiveEffect(effect)) {
     switch (effect.type) {
       case 'runtime.spawn': {
@@ -617,7 +651,10 @@ function dispatchEffect(
       Effect.succeed([
         {
           type: 'runtime.effect.failed',
-          payload: { effectId: ctx.effectId, error: err instanceof Error ? err.message : String(err) },
+          payload: {
+            effectId: ctx.effectId,
+            error: err instanceof Error ? err.message : String(err),
+          },
           threadId: currentThreadId,
         },
       ]),

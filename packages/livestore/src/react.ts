@@ -7,7 +7,9 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
+
 import { project, type ProjectionDefinition } from '@looms/core'
+
 import { createLoomsStore, type LoomsClientStore } from './store'
 
 export interface LoomsLiveStoreProviderProps {
@@ -77,10 +79,7 @@ function releaseStore(runId: string, endpoint: string): void {
 }
 
 /** Root provider that supplies the Looms host endpoint to run stores. */
-export function LoomsLiveStoreProvider({
-  children,
-  endpoint = '',
-}: LoomsLiveStoreProviderProps) {
+export function LoomsLiveStoreProvider({ children, endpoint = '' }: LoomsLiveStoreProviderProps) {
   return createElement(EndpointContext.Provider, { value: endpoint, children })
 }
 
@@ -102,7 +101,10 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
     return () => releaseStore(runId, endpoint)
   }, [runId, endpoint, reconnectDelayMs])
 
-  const subscribe = useCallback((onChange: () => void) => store.subscribe(() => onChange()), [store])
+  const subscribe = useCallback(
+    (onChange: () => void) => store.subscribe(() => onChange()),
+    [store],
+  )
   const getSnapshot = useCallback(() => store.getState(), [store])
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 

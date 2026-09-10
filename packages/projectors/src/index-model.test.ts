@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createEvent } from '@looms/core'
+
 import { indexOpsFor } from './index-model'
 
 describe('indexOpsFor', () => {

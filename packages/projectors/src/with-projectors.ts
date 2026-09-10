@@ -1,5 +1,7 @@
-import { EventStoreTag, type EventStore, type EventEnvelope } from '@looms/core'
 import { Effect, Layer } from 'effect'
+
+import { EventStoreTag, type EventStore, type EventEnvelope } from '@looms/core'
+
 import type { Projector, ProjectorErrorHandler } from './projector'
 
 export interface WithProjectorsOptions {
@@ -36,7 +38,11 @@ export function withProjectors(
               try {
                 await projector.project(written)
               } catch (cause) {
-                onError(cause instanceof Error ? cause : new Error(String(cause)), projector, written)
+                onError(
+                  cause instanceof Error ? cause : new Error(String(cause)),
+                  projector,
+                  written,
+                )
               }
             }
           })

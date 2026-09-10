@@ -1,10 +1,12 @@
-import { Schema } from 'effect'
 import { describe, expect, test } from 'bun:test'
+
+import { Schema } from 'effect'
+
 import { defineEventCatalog } from './catalog'
-import { defineEffect } from './effects'
-import { defineThread } from './thread'
 import { composeModules, ModuleCompositionError } from './compose'
+import { defineEffect } from './effects'
 import { defineRuntimeModule } from './module'
+import { defineThread } from './thread'
 
 const ping = defineThread({
   kind: 'ping',

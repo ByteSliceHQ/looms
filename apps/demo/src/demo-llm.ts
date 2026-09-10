@@ -23,7 +23,9 @@ function hasTool(tools: LlmCompleteArgs['tools'], name: string): boolean {
   return tools.some((tool) => tool.name === name)
 }
 
-function toolResults(messages: LlmCompleteArgs['messages']): Array<{ name?: string; content: string }> {
+function toolResults(
+  messages: LlmCompleteArgs['messages'],
+): Array<{ name?: string; content: string }> {
   const results: Array<{ name?: string; content: string }> = []
   for (const msg of messages) {
     if (msg.role === 'tool') {
@@ -53,7 +55,13 @@ export const demoLlm: LlmAdapter = {
             toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
           }
         }
-        if ((lower.includes('checkout') || lower.includes('pay') || lower.includes('charge') || lower.includes('facilitate')) && hasTool(args.tools, 'checkout')) {
+        if (
+          (lower.includes('checkout') ||
+            lower.includes('pay') ||
+            lower.includes('charge') ||
+            lower.includes('facilitate')) &&
+          hasTool(args.tools, 'checkout')
+        ) {
           const amountMatch = lower.match(/\b(\d+(?:\.\d+)?)\b/)
           const amount = amountMatch ? Number(amountMatch[1]) : 150
           await args.onTextDelta?.(`Starting checkout for ${amount} USD…`)
@@ -61,20 +69,39 @@ export const demoLlm: LlmAdapter = {
             message: {
               role: 'assistant',
               content: '',
-              toolCalls: [{ id: 'tc_checkout', name: 'checkout', arguments: { amount, currency: 'USD' } }],
+              toolCalls: [
+                { id: 'tc_checkout', name: 'checkout', arguments: { amount, currency: 'USD' } },
+              ],
             },
-            toolCalls: [{ id: 'tc_checkout', name: 'checkout', arguments: { amount, currency: 'USD' } }],
+            toolCalls: [
+              { id: 'tc_checkout', name: 'checkout', arguments: { amount, currency: 'USD' } },
+            ],
           }
         }
-        if ((lower.includes('approval') || lower.includes('approve')) && hasTool(args.tools, 'ask_approval')) {
+        if (
+          (lower.includes('approval') || lower.includes('approve')) &&
+          hasTool(args.tools, 'ask_approval')
+        ) {
           await args.onTextDelta?.('Requesting human approval…')
           return {
             message: {
               role: 'assistant',
               content: '',
-              toolCalls: [{ id: 'tc_approval', name: 'ask_approval', arguments: { title: 'Approve demo action?' } }],
+              toolCalls: [
+                {
+                  id: 'tc_approval',
+                  name: 'ask_approval',
+                  arguments: { title: 'Approve demo action?' },
+                },
+              ],
             },
-            toolCalls: [{ id: 'tc_approval', name: 'ask_approval', arguments: { title: 'Approve demo action?' } }],
+            toolCalls: [
+              {
+                id: 'tc_approval',
+                name: 'ask_approval',
+                arguments: { title: 'Approve demo action?' },
+              },
+            ],
           }
         }
         // Default for assistant: delegate to the specialist agent to demonstrate hierarchical trees
@@ -93,7 +120,12 @@ export const demoLlm: LlmAdapter = {
       const details = results.map((r) => r.content).join('\n')
       const checkoutLike = results.some((r) => {
         const c = r.content.toLowerCase()
-        return c.includes('gate') || c.includes('charge') || c.includes('approve') || c.includes('reject')
+        return (
+          c.includes('gate') ||
+          c.includes('charge') ||
+          c.includes('approve') ||
+          c.includes('reject')
+        )
       })
       const reply = checkoutLike
         ? `Checkout finished. Outcome:\n${details}`
@@ -109,19 +141,29 @@ export const demoLlm: LlmAdapter = {
     // 2. Specialist Agent (has researcher, pipeline, calculate)
     if (hasTool(args.tools, 'researcher')) {
       if (results.length === 0) {
-        await args.onTextDelta?.('Specialist coordinating sub-agents: launching researcher and computing metrics…')
+        await args.onTextDelta?.(
+          'Specialist coordinating sub-agents: launching researcher and computing metrics…',
+        )
         return {
           message: {
             role: 'assistant',
             content: '',
             toolCalls: [
               { id: 'tc_res', name: 'researcher', arguments: { topic: taskOrTopic } },
-              { id: 'tc_calc', name: 'calculate', arguments: { operation: 'average', values: [12.4, 15.8, 14.2] } },
+              {
+                id: 'tc_calc',
+                name: 'calculate',
+                arguments: { operation: 'average', values: [12.4, 15.8, 14.2] },
+              },
             ],
           },
           toolCalls: [
             { id: 'tc_res', name: 'researcher', arguments: { topic: taskOrTopic } },
-            { id: 'tc_calc', name: 'calculate', arguments: { operation: 'average', values: [12.4, 15.8, 14.2] } },
+            {
+              id: 'tc_calc',
+              name: 'calculate',
+              arguments: { operation: 'average', values: [12.4, 15.8, 14.2] },
+            },
           ],
         }
       }

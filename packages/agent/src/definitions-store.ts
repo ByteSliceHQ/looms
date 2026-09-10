@@ -1,13 +1,15 @@
 import { Context, Layer } from 'effect'
+
 import type { AgentDefinition } from './definitions'
 
 export interface AgentDefinitionStore {
   get(name: string): AgentDefinition | undefined
 }
 
-export class AgentDefinitionsTag extends Context.Service<AgentDefinitionsTag, AgentDefinitionStore>()(
-  'looms/AgentDefinitions',
-) {}
+export class AgentDefinitionsTag extends Context.Service<
+  AgentDefinitionsTag,
+  AgentDefinitionStore
+>()('looms/AgentDefinitions') {}
 
 export function makeAgentDefinitionStore(
   definitions: ReadonlyArray<AgentDefinition>,

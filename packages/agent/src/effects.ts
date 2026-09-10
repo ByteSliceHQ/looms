@@ -1,16 +1,12 @@
-import {
-  asJson,
-  createThreadId,
-  defineEffect,
-  type EventInput,
-  type JsonValue,
-} from '@looms/core'
 import { Effect, Predicate, Schema } from 'effect'
-import { AgentDefinitionsTag } from './definitions-store'
+
+import { asJson, createThreadId, defineEffect, type EventInput, type JsonValue } from '@looms/core'
+import { validateInput } from '@looms/core'
+
 import { normalizeTools, type ToolLike } from './definitions'
+import { AgentDefinitionsTag } from './definitions-store'
 import { LlmTag } from './llm'
 import { toolSpecs } from './tool-schema'
-import { validateInput } from '@looms/core'
 import { MessageSchema, ToolCallSchema, type ToolCall } from './types'
 
 const CallLlmInput = Schema.Struct({

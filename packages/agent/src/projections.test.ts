@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createEvent, project } from '@looms/core'
+
 import { conversation, tokenUsage } from './projections'
 import { ConversationSchema, TokenUsageSchema } from './types'
 

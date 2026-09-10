@@ -1,4 +1,5 @@
 import { ClientOnly, createFileRoute } from '@tanstack/react-router'
+
 import { Shell } from '../components/ide/shell'
 import { parseSearch, type DemoSearch } from '../lib/search'
 
@@ -11,7 +12,7 @@ export const Route = createFileRoute('/')({
 
 function Home() {
   return (
-    <ClientOnly fallback={<p className="p-3 text-sm text-muted-foreground">Loading…</p>}>
+    <ClientOnly fallback={<p className="text-muted-foreground p-3 text-sm">Loading…</p>}>
       <Shell />
     </ClientOnly>
   )

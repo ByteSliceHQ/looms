@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
+
 import { createEvent, type EventEnvelope, type EventInput, type TypedEvent } from './envelope'
 import { asJson, type JsonValue } from './types'
 
@@ -23,13 +24,14 @@ export type CatalogEntry = CatalogEventSpec | Schema.Top | StandardSchemaV1
 
 export type CatalogEntries = { readonly [key: string]: CatalogEntry }
 
-export type InferPayload<T> = T extends CatalogEventSpec<infer P>
-  ? P
-  : T extends Schema.Top
-    ? Schema.Schema.Type<T>
-    : T extends StandardSchemaV1<infer _In, infer Out>
-      ? Out
-      : T
+export type InferPayload<T> =
+  T extends CatalogEventSpec<infer P>
+    ? P
+    : T extends Schema.Top
+      ? Schema.Schema.Type<T>
+      : T extends StandardSchemaV1<infer _In, infer Out>
+        ? Out
+        : T
 
 type CatalogPayload<T> = InferPayload<T> extends JsonValue ? InferPayload<T> : JsonValue
 
@@ -50,7 +52,8 @@ export type CatalogEvent<TNamespace extends string, TEntries extends CatalogEntr
   [K in keyof TEntries & string]: TypedEvent<`${TNamespace}.${K}`, CatalogPayload<TEntries[K]>>
 }[keyof TEntries & string]
 
-export type EventsOfCatalog<T> = T extends EventCatalog<infer N, infer E> ? CatalogEvent<N, E> : never
+export type EventsOfCatalog<T> =
+  T extends EventCatalog<infer N, infer E> ? CatalogEvent<N, E> : never
 
 export function eventType<TNamespace extends string, K extends string>(
   namespace: TNamespace,

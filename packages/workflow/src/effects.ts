@@ -1,3 +1,5 @@
+import { Effect, Predicate, Schema } from 'effect'
+
 import {
   createThreadId,
   createWaitId,
@@ -5,7 +7,7 @@ import {
   type EventInput,
   type JsonValue,
 } from '@looms/core'
-import { Effect, Predicate, Schema } from 'effect'
+
 import { readyNodes, type NodeResult, type WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
 import { NodeStateSchema } from './thread'
@@ -49,7 +51,11 @@ export const scheduleEffect = defineEffect({
         if (!nodes[node.id]) nodes[node.id] = { status: 'pending', result: null }
       }
       // SAFETY: Workflow input is validated and serialized as JsonValue.
-      return scheduleEvents(definition, { nodes, input: (input.input as JsonValue) ?? null }, threadId)
+      return scheduleEvents(
+        definition,
+        { nodes, input: (input.input as JsonValue) ?? null },
+        threadId,
+      )
     }),
 })
 
@@ -185,7 +191,9 @@ function runNode(
         },
       ]
     }
-    const result: NodeResult = isNodeResult(raw.value) ? raw.value : { type: 'value', value: raw.value }
+    const result: NodeResult = isNodeResult(raw.value)
+      ? raw.value
+      : { type: 'value', value: raw.value }
     switch (result.type) {
       case 'value':
         return [

@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import { Schema } from 'effect'
+
 import { createEvent, JsonValueSchema, type EventEnvelope } from './envelope'
 import { foldRun, type FoldRegistry } from './fold'
 import { emptyRunState, type RunState } from './state'

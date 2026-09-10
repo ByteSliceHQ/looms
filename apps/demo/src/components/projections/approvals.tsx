@@ -1,9 +1,10 @@
-import { pendingApprovals, decision } from '@looms/approval'
-import { useProjection } from '@looms/livestore/react'
-import { Button } from '../ui/button'
-import { StatusDot } from '../status-dot'
 import { useRun } from '@/hooks/use-run'
 import { statusClass } from '@/lib/status'
+import { pendingApprovals, decision } from '@looms/approval'
+import { useProjection } from '@looms/livestore/react'
+
+import { StatusDot } from '../status-dot'
+import { Button } from '../ui/button'
 
 export function Approvals({ runId }: { runId: string }) {
   const { store } = useRun(runId)
@@ -14,7 +15,7 @@ export function Approvals({ runId }: { runId: string }) {
   }
 
   if (approvals.items.length === 0) {
-    return <p className="text-xs text-muted-foreground">None</p>
+    return <p className="text-muted-foreground text-xs">None</p>
   }
 
   return (

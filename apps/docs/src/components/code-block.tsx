@@ -1,5 +1,6 @@
 import { Predicate } from 'effect'
 import { type ReactNode } from 'react'
+
 import { highlightCode } from './code-highlight'
 
 export interface CodeBlockProps {

@@ -3,8 +3,8 @@ import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
 import type { AnyRuntimeModule, RuntimeModule } from './module'
-import { protocolCatalog } from './protocol'
 import type { ProjectionDefinition } from './projection'
+import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
 
 export class ModuleCompositionError extends Error {

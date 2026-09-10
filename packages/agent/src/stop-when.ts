@@ -1,5 +1,5 @@
-import type { Message, ToolCall } from './types'
 import type { AgentTurnResult } from './definitions'
+import type { Message, ToolCall } from './types'
 
 export interface StopWhenContext {
   readonly turn: number

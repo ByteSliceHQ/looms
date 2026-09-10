@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+
 import { generateText, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
+
 import { toModelMessages } from './messages'
 import { vercelLlm } from './vercel-llm'
 

@@ -8,5 +8,10 @@
 
   // Bun workspace — avoid Cursor's npm script scanner (known false "failed to parse").
   "npm.packageManager": "bun",
-  "npm.autoDetect": "off"
+  "npm.autoDetect": "off",
+
+  // Oxc formatter (oxfmt) — requires oxc.oxc-vscode (see extensions.json).
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file"
 }

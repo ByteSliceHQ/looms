@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createEvent, project } from '@looms/core'
+
 import { nodes, NodesProjectionSchema } from './projections'
 
 function assignSeq<T extends { seq: number }>(events: T[]): T[] {

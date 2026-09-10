@@ -1,12 +1,8 @@
+import { Outlet, createRootRoute, HeadContent, Scripts, Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import {
-  Outlet,
-  createRootRoute,
-  HeadContent,
-  Scripts,
-  Link,
-} from '@tanstack/react-router'
+
 import { ThemeToggle } from '../components/theme-toggle'
+
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -26,7 +22,7 @@ export const Route = createRootRoute({
   }),
   component: RootComponent,
   notFoundComponent: () => (
-    <p className="mx-auto max-w-[42rem] px-5 py-14 text-muted md:px-8 md:pt-24 md:pb-20">
+    <p className="text-muted mx-auto max-w-[42rem] px-5 py-14 md:px-8 md:pt-24 md:pb-20">
       Not found.
     </p>
   ),
@@ -35,18 +31,15 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <RootDocument>
-      <header className="mx-auto flex max-w-[68rem] items-center gap-8 border-b border-line-subtle px-8 py-5">
+      <header className="border-line-subtle mx-auto flex max-w-[68rem] items-center gap-8 border-b px-8 py-5">
         <Link
           to="/"
-          className="text-[1.1rem] font-semibold tracking-tight text-foreground no-underline"
+          className="text-foreground text-[1.1rem] font-semibold tracking-tight no-underline"
         >
           Looms
         </Link>
         <nav className="flex gap-5">
-          <Link
-            to="/docs"
-            className="text-sm text-muted no-underline hover:text-foreground"
-          >
+          <Link to="/docs" className="text-muted hover:text-foreground text-sm no-underline">
             Docs
           </Link>
         </nav>

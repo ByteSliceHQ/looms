@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
-import { conversation, userMessage } from '@looms/agent'
-import { createRunId } from '@looms/core'
-import { useProjection } from '@looms/livestore/react'
-import { Button } from '../ui/button'
-import { Textarea } from '../ui/textarea'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
-import type { AgentRunType } from '../../catalog'
+
 import { rememberRun } from '@/hooks/use-recent-runs'
 import { useRun } from '@/hooks/use-run'
 import { loomsClient } from '@/lib/looms-client'
 import { cn, compactJson } from '@/lib/utils'
+import { conversation, userMessage } from '@looms/agent'
+import { createRunId } from '@looms/core'
+import { useProjection } from '@looms/livestore/react'
+
+import type { AgentRunType } from '../../catalog'
 import type { DemoEvents } from '../../runtime'
+import { Button } from '../ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
+import { Textarea } from '../ui/textarea'
 
 function streamingText(events: DemoEvents[]): string | null {
   let lastMessage = -1
@@ -37,17 +39,17 @@ function Transcript({ runId }: { runId: string }) {
     <div className="space-y-2">
       {convo.lines.map((line, index) => (
         <div key={`${line.role}-${index}`} className="grid grid-cols-[4.5rem_1fr] gap-2 text-sm">
-          <div className="pt-0.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+          <div className="text-muted-foreground pt-0.5 font-mono text-[10px] tracking-wide uppercase">
             {line.role}
           </div>
           <div className="min-w-0">
             {line.role === 'tool' ? (
               <Collapsible>
-                <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground">
+                <CollapsibleTrigger className="text-muted-foreground hover:text-foreground text-[11px]">
                   {line.name ?? 'result'}
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap text-muted-foreground">
+                  <pre className="text-muted-foreground mt-1 font-mono text-[11px] whitespace-pre-wrap">
                     {line.content}
                   </pre>
                 </CollapsibleContent>
@@ -56,7 +58,7 @@ function Transcript({ runId }: { runId: string }) {
               <>
                 {line.content ? <div className="whitespace-pre-wrap">{line.content}</div> : null}
                 {line.toolCalls?.map((call) => (
-                  <div key={call.id} className="mt-1 font-mono text-[11px] text-muted-foreground">
+                  <div key={call.id} className="text-muted-foreground mt-1 font-mono text-[11px]">
                     {call.name}({compactJson(call.arguments)})
                   </div>
                 ))}
@@ -67,10 +69,12 @@ function Transcript({ runId }: { runId: string }) {
       ))}
       {stream !== null ? (
         <div className="grid grid-cols-[4.5rem_1fr] gap-2 text-sm">
-          <div className="pt-0.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+          <div className="text-muted-foreground pt-0.5 font-mono text-[10px] tracking-wide uppercase">
             assistant
           </div>
-          <div className={cn('whitespace-pre-wrap', stream.length === 0 && 'text-muted-foreground')}>
+          <div
+            className={cn('whitespace-pre-wrap', stream.length === 0 && 'text-muted-foreground')}
+          >
             {stream.length === 0 ? '…' : stream}
           </div>
         </div>
@@ -164,7 +168,9 @@ function FollowUpComposer({
       pending={pending}
       disabled={!canFollowUp}
       canSend={canSend}
-      placeholder={canFollowUp ? type.placeholder : 'Single-turn run. Start a new run to send again.'}
+      placeholder={
+        canFollowUp ? type.placeholder : 'Single-turn run. Start a new run to send again.'
+      }
       submitLabel="Send"
       onDraft={setDraft}
       onSubmit={() => void send()}
@@ -217,18 +223,18 @@ export function AgentChat({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-3 py-2">
+      <div className="border-border border-b px-3 py-2">
         <h2 className="text-sm font-medium">{type.label}</h2>
-        <p className="text-xs text-muted-foreground">{type.description}</p>
+        <p className="text-muted-foreground text-xs">{type.description}</p>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
         {runId ? (
           <Transcript runId={runId} />
         ) : (
-          <p className="text-xs text-muted-foreground">Send a message to start a run.</p>
+          <p className="text-muted-foreground text-xs">Send a message to start a run.</p>
         )}
       </div>
-      <div className="border-t border-border p-3">
+      <div className="border-border border-t p-3">
         {runId ? (
           <FollowUpComposer
             runId={runId}
@@ -255,13 +261,13 @@ export function AgentChat({
         {runId && !type.conversational ? (
           <button
             type="button"
-            className="mt-2 text-[11px] text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground mt-2 text-[11px]"
             onClick={onReset}
           >
             Start a new run
           </button>
         ) : null}
-        {error ? <p className="mt-2 text-xs text-status-failed">{error}</p> : null}
+        {error ? <p className="text-status-failed mt-2 text-xs">{error}</p> : null}
       </div>
     </div>
   )

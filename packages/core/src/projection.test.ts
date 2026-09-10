@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Schema } from 'effect'
+
 import { createEvent } from './envelope'
 import { defineProjection, foldProjection, project } from './projection'
 import type { JsonValue } from './types'
@@ -144,9 +146,7 @@ describe('defineProjection', () => {
     })
 
     expect(custom.shape).toBeUndefined()
-    const result = project(custom, [
-      createEvent('run_c', { type: 'tag.added', payload: 'first' }),
-    ])
+    const result = project(custom, [createEvent('run_c', { type: 'tag.added', payload: 'first' })])
     expect(result.tags).toEqual(['first'])
   })
 

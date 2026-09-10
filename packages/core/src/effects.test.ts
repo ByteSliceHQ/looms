@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Effect, Schema } from 'effect'
+
 import { defineEffect, type EffectContext } from './effects'
 
 const ctx: EffectContext = {
@@ -53,9 +55,7 @@ describe('defineEffect', () => {
     const effect = defineEffect({
       type: 'demo.charge',
       input: Schema.Struct({ amount: Schema.Number }),
-      execute: (input) => [
-        { type: 'demo.charged', payload: { amount: input.amount } },
-      ],
+      execute: (input) => [{ type: 'demo.charged', payload: { amount: input.amount } }],
     })
     expect(effect.input).toBeDefined()
 

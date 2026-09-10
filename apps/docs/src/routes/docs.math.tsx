@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+
 import { MathBlock, MathInline } from '../components/math'
 
 export const Route = createFileRoute('/docs/math')({
@@ -10,9 +11,9 @@ function MathDocs() {
     <>
       <h1>Mathematical Formalism</h1>
       <p>
-        Underneath its developer-friendly TypeScript API, Looms is grounded in a
-        formal mathematical model. This page details the algebraic specifications for
-        runs, thread universes, state transitions, projections, and causal ordering.
+        Underneath its developer-friendly TypeScript API, Looms is grounded in a formal mathematical
+        model. This page details the algebraic specifications for runs, thread universes, state
+        transitions, projections, and causal ordering.
       </p>
 
       <h2>1. The Canonical Run Log</h2>
@@ -23,8 +24,8 @@ function MathDocs() {
       </p>
       <MathBlock math="R = (r, L), \quad L = \langle e_1, e_2, \dots, e_n \rangle" />
       <p>
-        Every agent, DAG workflow, child thread, external signal, and observable
-        effect outcome participates in this single, canonical event stream.
+        Every agent, DAG workflow, child thread, external signal, and observable effect outcome
+        participates in this single, canonical event stream.
       </p>
 
       <h2>2. Thread Universe &amp; Parent Relation</h2>
@@ -36,14 +37,14 @@ function MathDocs() {
       <MathBlock math="\text{parent} : X_R \rightharpoonup X_R" />
       <p>
         The root thread <MathInline math="x_0" /> has{' '}
-        <MathInline math="\text{parent}(x_0) = \bot" />. Every child thread
-        references its parent, inducing a strict tree hierarchy over threads within the run.
+        <MathInline math="\text{parent}(x_0) = \bot" />. Every child thread references its parent,
+        inducing a strict tree hierarchy over threads within the run.
       </p>
 
       <h2>3. State Transition Function</h2>
       <p>
-        Each thread kind <MathInline math="k" /> (e.g. <code>agent</code>, <code>workflow</code>, or a
-        custom module kind) defines a pure, deterministic state transition function:
+        Each thread kind <MathInline math="k" /> (e.g. <code>agent</code>, <code>workflow</code>, or
+        a custom module kind) defines a pure, deterministic state transition function:
       </p>
       <MathBlock math="\delta_k : S_k \times E \to S_k \times F^*" />
       <MathBlock math="(s_{t+1}^x, \Phi_t^x) = \delta_k(s_t^x, e_t)" />
@@ -56,8 +57,8 @@ function MathDocs() {
 
       <h2>4. Projections as Folds</h2>
       <p>
-        State and read models are not primary truths—they are pure derivations
-        folded from the event log:
+        State and read models are not primary truths—they are pure derivations folded from the event
+        log:
       </p>
       <MathBlock math="P(L_{0 \dots n}) = \text{fold}(\text{reduce}, S_0, \langle e_1, \dots, e_n \rangle)" />
       <p>
@@ -68,31 +69,32 @@ function MathDocs() {
 
       <h2>5. Causal Ordering vs. Structural Hierarchy</h2>
       <p>
-        While events have a linear physical order in the log, causal provenance is
-        explicitly decoupled from execution hierarchy:
+        While events have a linear physical order in the log, causal provenance is explicitly
+        decoupled from execution hierarchy:
       </p>
       <MathBlock math="e_i \prec_c e_j \iff \text{causationId}(e_j) = \text{id}(e_i)" />
       <p>
-        This decoupling allows concurrent branches within a single Run to record events
-        interleaved in physical time while preserving unambiguous causal ancestry.
+        This decoupling allows concurrent branches within a single Run to record events interleaved
+        in physical time while preserving unambiguous causal ancestry.
       </p>
 
       <h2>6. Replay &amp; Durability Invariant</h2>
       <p>
-        Let <MathInline math="\pi_x(L)" /> denote the projection filtering events relevant
-        to thread <MathInline math="x" />. The state at logical step <MathInline math="t" /> is
+        Let <MathInline math="\pi_x(L)" /> denote the projection filtering events relevant to thread{' '}
+        <MathInline math="x" />. The state at logical step <MathInline math="t" /> is
         unconditionally reproducible:
       </p>
       <MathBlock math="s_t^x = \text{fold}(\delta_k^{\text{state}}, s_0^x, \pi_x(L_{\le t}))" />
       <p>
-        During replay or recovery, the effect stream <MathInline math="\Phi" /> is ignored by
-        the runtime kernel. Only recorded events produce state transitions, guaranteeing that
-        historical analysis and crash recovery never cause duplicate side effects.
+        During replay or recovery, the effect stream <MathInline math="\Phi" /> is ignored by the
+        runtime kernel. Only recorded events produce state transitions, guaranteeing that historical
+        analysis and crash recovery never cause duplicate side effects.
       </p>
 
-      <div className="my-8 border-l-2 border-line py-1 pl-5 text-[0.95rem] leading-relaxed text-body [&_strong]:font-semibold [&_strong]:text-foreground">
-        <strong>Return to conceptual overview:</strong> See <Link to="/docs/concepts">Concepts</Link> for
-        architectural principles, core vocabulary, and the event/effect boundary.
+      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
+        <strong>Return to conceptual overview:</strong> See{' '}
+        <Link to="/docs/concepts">Concepts</Link> for architectural principles, core vocabulary, and
+        the event/effect boundary.
       </div>
     </>
   )

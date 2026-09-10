@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { defineEventCatalog, defineRuntimeModule, payload } from '@looms/core'
+
 import { assertReplayDeterministic, createTestRuntime, moduleConformance } from './index'
 
 const sample = defineRuntimeModule({

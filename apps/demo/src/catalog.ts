@@ -1,7 +1,17 @@
 import type { AgentDefinition } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
 import type { WorkflowDefinition } from '@looms/workflow'
-import { assistant, checkout, echo, greeter, orchestrator, pipeline, researcher, specialist } from './definitions'
+
+import {
+  assistant,
+  checkout,
+  echo,
+  greeter,
+  orchestrator,
+  pipeline,
+  researcher,
+  specialist,
+} from './definitions'
 
 export type CatalogField = {
   name: string

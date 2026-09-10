@@ -1,3 +1,5 @@
+import { Predicate } from 'effect'
+
 import {
   asJson,
   createWaitId,
@@ -12,7 +14,7 @@ import {
   type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
-import { Predicate } from 'effect'
+
 import type { AgentState, Message, ToolCall } from './types'
 
 function asObject(payload: JsonValue): { [key: string]: JsonValue } {
@@ -187,7 +189,10 @@ export const agentThread = defineThread<AgentState>({
         const toolCallId = readString(payload, 'toolCallId') ?? ''
         const pendingToolCalls = state.pendingToolCalls.filter((item) => item.id !== toolCallId)
         const error = payload.error
-        const content = Predicate.isString(error) && error.length > 0 ? error : JSON.stringify(payload.result ?? null)
+        const content =
+          Predicate.isString(error) && error.length > 0
+            ? error
+            : JSON.stringify(payload.result ?? null)
         const next: AgentState = {
           ...state,
           pendingToolCalls,
@@ -318,7 +323,9 @@ export const agentThread = defineThread<AgentState>({
         if (!toolCallId) return { state }
         const embedded = payload.event
         const embeddedObj =
-          Predicate.isObject(embedded) && Predicate.isObject(embedded.payload) ? embedded.payload : {}
+          Predicate.isObject(embedded) && Predicate.isObject(embedded.payload)
+            ? embedded.payload
+            : {}
         const threadId = ctx.threadId
         return {
           state,
@@ -329,7 +336,10 @@ export const agentThread = defineThread<AgentState>({
                 turn: state.turn,
                 toolCallId,
                 name: readString(tag, 'name') ?? 'child',
-                result: embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
+                result:
+                  embeddedObj.output ??
+                  (Predicate.isObject(embedded) ? embedded.payload : null) ??
+                  null,
                 error: readString(embeddedObj, 'error') ?? null,
               },
               threadId,
@@ -350,7 +360,8 @@ export function satisfiedToToolResult(event: EventEnvelope): RuntimeEffect | nul
   const toolCallId = readString(tag, 'toolCallId')
   if (!toolCallId) return null
   const embedded = payload.event
-  const embeddedPayload = Predicate.isObject(embedded) && Predicate.isObject(embedded.payload) ? embedded.payload : {}
+  const embeddedPayload =
+    Predicate.isObject(embedded) && Predicate.isObject(embedded.payload) ? embedded.payload : {}
   const threadId = event.threadId ?? null
   return emit({
     type: 'agent.tool.result',
@@ -358,7 +369,8 @@ export function satisfiedToToolResult(event: EventEnvelope): RuntimeEffect | nul
       turn: 0,
       toolCallId,
       name: readString(tag, 'name') ?? 'child',
-      result: embeddedPayload.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
+      result:
+        embeddedPayload.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
       error: readString(embeddedPayload, 'error') ?? null,
     },
     threadId,

@@ -87,20 +87,20 @@ Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules,
 
 ## Packages
 
-| Package | Import when you need |
-|---|---|
-| `@looms/runtime` | `createLooms`, HTTP host |
-| `@looms/agent` | `defineAgent`, tools, `conversation` |
-| `@looms/workflow` | `defineWorkflow` |
-| `@looms/approval` | `gate`, `pendingApprovals` |
-| `@looms/core` | Custom modules: `defineRuntimeModule`, `defineEffect` |
-| `@looms/client` | HTTP client |
-| `@looms/livestore` | `useRunStore` / `useProjection` |
-| `@looms/s2` | Durable event log |
-| `@looms/ai-vercel` | Vercel AI SDK models |
-| `@looms/projectors` | Cross-run indexes |
-| `@looms/testing` | `createTestRuntime`, replay checks |
-| `@looms/cli` | Inspect and approve runs from a terminal |
+| Package             | Import when you need                                  |
+| ------------------- | ----------------------------------------------------- |
+| `@looms/runtime`    | `createLooms`, HTTP host                              |
+| `@looms/agent`      | `defineAgent`, tools, `conversation`                  |
+| `@looms/workflow`   | `defineWorkflow`                                      |
+| `@looms/approval`   | `gate`, `pendingApprovals`                            |
+| `@looms/core`       | Custom modules: `defineRuntimeModule`, `defineEffect` |
+| `@looms/client`     | HTTP client                                           |
+| `@looms/livestore`  | `useRunStore` / `useProjection`                       |
+| `@looms/s2`         | Durable event log                                     |
+| `@looms/ai-vercel`  | Vercel AI SDK models                                  |
+| `@looms/projectors` | Cross-run indexes                                     |
+| `@looms/testing`    | `createTestRuntime`, replay checks                    |
+| `@looms/cli`        | Inspect and approve runs from a terminal              |
 
 ## License
 

@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
 import { Effect } from 'effect'
+
 import type { EventInput } from './envelope'
 import { validateInput } from './schema'
 import type { JsonValue } from './types'
@@ -121,10 +122,7 @@ export type EffectHandlerResult<R = never> =
 export interface EffectDefinition<TInput extends JsonValue = JsonValue> {
   readonly type: string
   readonly input?: EffectInputSchema<TInput>
-  execute(
-    input: TInput,
-    ctx: EffectContext,
-  ): Effect.Effect<ReadonlyArray<EventInput>, Error>
+  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<EventInput>, Error>
 }
 
 function liftHandlerResult<R>(

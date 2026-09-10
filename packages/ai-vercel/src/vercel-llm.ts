@@ -1,6 +1,8 @@
+import { generateText, jsonSchema, streamText, tool, type LanguageModel } from 'ai'
+
 import type { AgentTurnResult, LlmAdapter, LlmToolSpec } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
-import { generateText, jsonSchema, streamText, tool, type LanguageModel } from 'ai'
+
 import { toLoomsToolCalls, toModelMessages } from './messages'
 
 function toAiTools(specs: ReadonlyArray<LlmToolSpec>) {
@@ -34,7 +36,8 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
   return {
     async complete(args): Promise<AgentTurnResult> {
       const messages = toModelMessages(args.messages)
-      const tools = args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined
+      const tools =
+        args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined
       const shouldStream = streamEnabled && args.onTextDelta !== undefined
 
       if (shouldStream) {

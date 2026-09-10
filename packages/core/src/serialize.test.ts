@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+
 import { createKeyedSerializer } from './serialize'
 
 describe('createKeyedSerializer', () => {

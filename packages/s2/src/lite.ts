@@ -3,7 +3,9 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
+
 import type { EventStore } from '@looms/core'
+
 import { s2 } from './store'
 
 export interface S2LiteOptions {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Predicate } from 'effect'
+
 import { createLoomsClient } from './client'
 
 function hrefOf(input: RequestInfo | URL): string {

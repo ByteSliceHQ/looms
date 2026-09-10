@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+
+import { Effect, Predicate, Schema } from 'effect'
+
 import { agent, asEffectsTool, defineAgent } from '@looms/agent'
 import { defineEffect, defineRuntimeModule, invoke, wait, type JsonValue } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
-import { Effect, Predicate, Schema } from 'effect'
+
 import { createLooms } from './looms'
 
 describe('createLooms', () => {
@@ -92,7 +95,9 @@ describe('createLooms', () => {
     const looms = createLooms({ definitions: [child, parent] })
     const { runId, state } = await looms.start(parent, {})
     expect(state.status).toBe('completed')
-    const childThread = Object.values(state.threads).find((thread) => thread.definitionName === 'defaults')
+    const childThread = Object.values(state.threads).find(
+      (thread) => thread.definitionName === 'defaults',
+    )
     expect(childThread?.input).toEqual({ n: 7 })
     const events = await looms.getEvents(runId)
     const started = events.find(
@@ -101,7 +106,9 @@ describe('createLooms', () => {
         Predicate.isObject(event.payload) &&
         event.payload.definitionName === 'defaults',
     )
-    expect(started && Predicate.isObject(started.payload) ? started.payload.input : null).toEqual({ n: 7 })
+    expect(started && Predicate.isObject(started.payload) ? started.payload.input : null).toEqual({
+      n: 7,
+    })
   })
 
   test('invalid spawn input fails the child and unblocks the parent', async () => {
@@ -123,7 +130,9 @@ describe('createLooms', () => {
     const looms = createLooms({ definitions: [child, parent] })
     const { state } = await looms.start(parent, {})
     expect(state.status).toBe('failed')
-    const childThread = Object.values(state.threads).find((thread) => thread.definitionName === 'needs_n')
+    const childThread = Object.values(state.threads).find(
+      (thread) => thread.definitionName === 'needs_n',
+    )
     expect(childThread?.status).toBe('failed')
     expect(childThread?.error).toBeTruthy()
     const parentThread = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
@@ -162,7 +171,9 @@ describe('createLooms', () => {
     const looms = createLooms({ definitions: [child, caller] })
     const { runId, state } = await looms.start(caller, 'go')
     expect(state.status).toBe('completed')
-    expect(Object.values(state.threads).some((thread) => thread.definitionName === 'needs_n')).toBe(false)
+    expect(Object.values(state.threads).some((thread) => thread.definitionName === 'needs_n')).toBe(
+      false,
+    )
     const events = await looms.getEvents(runId)
     const toolResult = events.find((event) => event.type === 'agent.tool.result')
     expect(toolResult).toBeDefined()
@@ -227,7 +238,9 @@ describe('createLooms', () => {
     expect(types).toContain('agent.tool.result')
     const toolResult = events.find((event) => event.type === 'agent.tool.result')
     expect(
-      toolResult && Predicate.isObject(toolResult.payload) && Predicate.isString(toolResult.payload.error)
+      toolResult &&
+        Predicate.isObject(toolResult.payload) &&
+        Predicate.isString(toolResult.payload.error)
         ? toolResult.payload.error
         : '',
     ).toContain('boom handler down')

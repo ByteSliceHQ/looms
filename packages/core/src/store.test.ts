@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Effect } from 'effect'
+
 import { createEvent } from './envelope'
 import { makeMemoryEventStore } from './store'
 

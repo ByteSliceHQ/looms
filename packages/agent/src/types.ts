@@ -1,5 +1,6 @@
-import type { JsonValue } from '@looms/core'
 import { Schema } from 'effect'
+
+import type { JsonValue } from '@looms/core'
 
 export const ToolCallSchema = Schema.Struct({
   id: Schema.String,

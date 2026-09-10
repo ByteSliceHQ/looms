@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Effect, Exit } from 'effect'
 import { TestConsole } from 'effect/testing'
+
 import { cliTestLayer, runCli } from './commands'
 
 const run = (argv: ReadonlyArray<string>) =>

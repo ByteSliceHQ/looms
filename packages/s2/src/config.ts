@@ -37,7 +37,7 @@ export function s2ConfigFromEnv(env: Record<string, string | undefined>): S2Conf
   const endpoint =
     env.LOOMS_S2_ENDPOINT ??
     env.S2_ENDPOINT ??
-    (env.LOOMS_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT
+    ((env.LOOMS_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT)
       ? `http://127.0.0.1:${env.LOOMS_S2_PORT ?? env.S2_PORT ?? env.S2_LITE_PORT}`
       : undefined)
 

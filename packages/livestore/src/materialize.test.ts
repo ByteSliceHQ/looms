@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test'
+
 import type { EventEnvelope } from '@looms/core'
+
 import { materializeEvents } from './materialize'
 
-const event = (partial: Partial<EventEnvelope> & Pick<EventEnvelope, 'type' | 'payload'>): EventEnvelope => ({
+const event = (
+  partial: Partial<EventEnvelope> & Pick<EventEnvelope, 'type' | 'payload'>,
+): EventEnvelope => ({
   id: partial.id ?? 'evt',
   runId: partial.runId ?? 'run_1',
   seq: partial.seq ?? 1,
@@ -18,7 +22,12 @@ describe('materializeEvents', () => {
     const tables = materializeEvents([
       event({
         type: 'runtime.run.started',
-        payload: { rootThreadId: 'thr_1', kind: 'workflow', definitionName: 'checkout', input: null },
+        payload: {
+          rootThreadId: 'thr_1',
+          kind: 'workflow',
+          definitionName: 'checkout',
+          input: null,
+        },
       }),
       event({
         seq: 2,

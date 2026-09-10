@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+
 import { encodeLoomsEvent, type EventEnvelope, type JsonValue } from '@looms/core'
+
 import { createLoomsStore } from './store'
 
 function event(seq: number, type: string): EventEnvelope {
@@ -49,7 +51,9 @@ describe('createLoomsStore', () => {
           }
           liveRequests += 1
           const lastEventId = req.headers.get('last-event-id')
-          const cursor = lastEventId ? Number(lastEventId) : Number(url.searchParams.get('cursor') ?? '0')
+          const cursor = lastEventId
+            ? Number(lastEventId)
+            : Number(url.searchParams.get('cursor') ?? '0')
           const pending = events.filter((item) => item.seq > cursor)
           const stream = new ReadableStream({
             start(controller) {
@@ -115,7 +119,10 @@ describe('createLoomsStore', () => {
 
 describe('createLoomsStore reconnect', () => {
   test('resumes from Last-Event-ID after the stream closes', async () => {
-    const log: EventEnvelope[] = [event(1, 'runtime.run.started'), event(2, 'runtime.thread.started')]
+    const log: EventEnvelope[] = [
+      event(1, 'runtime.run.started'),
+      event(2, 'runtime.thread.started'),
+    ]
     let connections = 0
     const seenLastEventIds: string[] = []
 
@@ -124,13 +131,18 @@ describe('createLoomsStore reconnect', () => {
       async fetch(req) {
         const url = new URL(req.url)
         if (url.pathname !== '/api/livestore') return new Response('Not Found', { status: 404 })
-        if (url.searchParams.get('live') !== 'true' && !(req.headers.get('accept') ?? '').includes('text/event-stream')) {
+        if (
+          url.searchParams.get('live') !== 'true' &&
+          !(req.headers.get('accept') ?? '').includes('text/event-stream')
+        ) {
           return Response.json({ batch: [], head: 0 })
         }
         connections += 1
         const lastEventId = req.headers.get('last-event-id')
         if (lastEventId) seenLastEventIds.push(lastEventId)
-        const cursor = lastEventId ? Number(lastEventId) : Number(url.searchParams.get('cursor') ?? '0')
+        const cursor = lastEventId
+          ? Number(lastEventId)
+          : Number(url.searchParams.get('cursor') ?? '0')
         const pending = log.filter((item) => item.seq > cursor)
         const first = pending[0]
         const stream = new ReadableStream({

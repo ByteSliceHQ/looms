@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Predicate, Schema } from 'effect'
+
 import type { JsonValue } from './types'
 
 export class InvalidInputError extends Error {
@@ -12,10 +13,7 @@ export class InvalidInputError extends Error {
   }
 }
 
-export type SchemaInput =
-  | StandardSchemaV1<any, any>
-  | Schema.Schema<any>
-  | { _output: any }
+export type SchemaInput = StandardSchemaV1<any, any> | Schema.Schema<any> | { _output: any }
 
 export type InferSchemaOutput<T> =
   T extends StandardSchemaV1<any, infer Out>
@@ -49,16 +47,17 @@ type SchemaCandidate<TInput> =
   | null
   | undefined
 
-function toStandard<TInput>(candidate: SchemaCandidate<TInput>): StandardSchemaV1<JsonValue, TInput> | undefined {
+function toStandard<TInput>(
+  candidate: SchemaCandidate<TInput>,
+): StandardSchemaV1<JsonValue, TInput> | undefined {
   if (!candidate) {
     return undefined
   }
   if (Schema.isSchema(candidate)) {
     // SAFETY: Effect Schema converts to StandardSchemaV1 via official helper.
-    return Schema.toStandardSchemaV1(candidate as Schema.Codec<TInput, TInput, never, never>) as StandardSchemaV1<
-      JsonValue,
-      TInput
-    >
+    return Schema.toStandardSchemaV1(
+      candidate as Schema.Codec<TInput, TInput, never, never>,
+    ) as StandardSchemaV1<JsonValue, TInput>
   }
   if (Predicate.isObject(candidate) && '~standard' in candidate) {
     // SAFETY: verified '~standard' property exists on object.
@@ -72,7 +71,10 @@ function toStandard<TInput>(candidate: SchemaCandidate<TInput>): StandardSchemaV
       const zodSchema = candidate as {
         safeParse: (raw: any) =>
           | { success: true; data: TInput }
-          | { success: false; error: { issues: Array<{ message: string; path: (string | number)[] }> } }
+          | {
+              success: false
+              error: { issues: Array<{ message: string; path: (string | number)[] }> }
+            }
       }
       return {
         '~standard': {
@@ -97,13 +99,17 @@ function toStandard<TInput>(candidate: SchemaCandidate<TInput>): StandardSchemaV
   return undefined
 }
 
-function extractSchema<TInput>(schemaOrDef: SchemaCandidate<TInput>): StandardSchemaV1<JsonValue, TInput> | undefined {
+function extractSchema<TInput>(
+  schemaOrDef: SchemaCandidate<TInput>,
+): StandardSchemaV1<JsonValue, TInput> | undefined {
   const direct = toStandard<TInput>(schemaOrDef)
   if (direct) return direct
   if (schemaOrDef && Predicate.isObject(schemaOrDef)) {
     if ('schema' in schemaOrDef) {
       // SAFETY: verified schemaOrDef has schema property.
-      const fromSchema = toStandard<TInput>((schemaOrDef as { schema?: SchemaCandidate<TInput> }).schema)
+      const fromSchema = toStandard<TInput>(
+        (schemaOrDef as { schema?: SchemaCandidate<TInput> }).schema,
+      )
       if (fromSchema) return fromSchema
     }
     if ('input' in schemaOrDef) {
