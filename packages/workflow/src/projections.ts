@@ -5,7 +5,10 @@ import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/cor
 import { NodeStateSchema } from './threads'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) return {}
+  if (!Predicate.isObject(event.payload)) {
+    return {}
+  }
+
   return event.payload
 }
 
@@ -21,12 +24,17 @@ export const nodes = defineProjection({
   reduce(state, event) {
     const payload = payloadObject(event)
     const nodeId = Predicate.isString(payload.nodeId) ? payload.nodeId : undefined
-    if (!nodeId) return state
+
+    if (!nodeId) {
+      return state
+    }
+
     switch (event.type) {
       case 'workflow.node.started':
         return {
           nodes: { ...state.nodes, [nodeId]: { status: 'running', result: null, error: null } },
         }
+
       case 'workflow.node.finished': {
         const error = payload.error
         const failed = Predicate.isString(error) && error.length > 0
@@ -41,6 +49,7 @@ export const nodes = defineProjection({
           },
         }
       }
+
       case 'workflow.node.skipped':
         return {
           nodes: { ...state.nodes, [nodeId]: { status: 'skipped', result: null, error: null } },

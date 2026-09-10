@@ -34,7 +34,11 @@ function registryKey(endpoint: string, runId: string): string {
 
 function disposeEntry(key: string): void {
   const entry = registry.get(key)
-  if (!entry || entry.refs > 0) return
+
+  if (!entry || entry.refs > 0) {
+    return
+  }
+
   entry.store.dispose()
   registry.delete(key)
 }
@@ -42,17 +46,23 @@ function disposeEntry(key: string): void {
 function peekStore(runId: string, endpoint: string, pollIntervalMs?: number): LoomsClientStore {
   const key = registryKey(endpoint, runId)
   const existing = registry.get(key)
-  if (existing) return existing.store
+
+  if (existing) {
+    return existing.store
+  }
+
   const store = createLoomsStore({
     storeId: runId,
     endpoint,
     pollIntervalMs,
   })
+
   registry.set(key, {
     store,
     refs: 0,
     timer: setTimeout(() => disposeEntry(key), GRACE_MS),
   })
+
   return store
 }
 
@@ -60,8 +70,13 @@ function retainStore(runId: string, endpoint: string, pollIntervalMs?: number): 
   const key = registryKey(endpoint, runId)
   peekStore(runId, endpoint, pollIntervalMs)
   const entry = registry.get(key)
-  if (!entry) return
+
+  if (!entry) {
+    return
+  }
+
   entry.refs += 1
+
   if (entry.timer !== undefined) {
     clearTimeout(entry.timer)
     entry.timer = undefined
@@ -71,8 +86,13 @@ function retainStore(runId: string, endpoint: string, pollIntervalMs?: number): 
 function releaseStore(runId: string, endpoint: string): void {
   const key = registryKey(endpoint, runId)
   const entry = registry.get(key)
-  if (!entry) return
+
+  if (!entry) {
+    return
+  }
+
   entry.refs = Math.max(0, entry.refs - 1)
+
   if (entry.refs === 0 && entry.timer === undefined) {
     entry.timer = setTimeout(() => disposeEntry(key), GRACE_MS)
   }
@@ -105,6 +125,7 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
     (onChange: () => void) => store.subscribe(() => onChange()),
     [store],
   )
+
   const getSnapshot = useCallback(() => store.getState(), [store])
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 

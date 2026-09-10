@@ -72,6 +72,7 @@ describe('defineProjection', () => {
               history: [...state.history, { step: 'Order Created', timestamp: event.ts }],
             }
           }
+
           default:
             return state
         }
@@ -82,6 +83,7 @@ describe('defineProjection', () => {
     expect(orderTracker.shape).toBe(orderSchema)
 
     const runId = 'run_1'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'order.created',
@@ -111,6 +113,7 @@ describe('defineProjection', () => {
         if (event.type === 'counter.increment') {
           return { ...state, count: state.count + 1 }
         }
+
         return state
       },
     })
@@ -141,6 +144,7 @@ describe('defineProjection', () => {
           // SAFETY: payload is string in test event.
           return { ...state, tags: [...state.tags, event.payload as string] }
         }
+
         return state
       },
     })
@@ -158,6 +162,7 @@ describe('defineProjection', () => {
         if (event.type === 'inc') {
           return { count: state.count + 1 }
         }
+
         return state
       },
     })

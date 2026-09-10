@@ -9,7 +9,11 @@ export function RecentRuns({
   onSelect: (run: RecentRun) => void
 }) {
   const runs = useRecentRuns()
-  if (runs.length === 0) return null
+
+  if (runs.length === 0) {
+    return null
+  }
+
   return (
     <div>
       <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">

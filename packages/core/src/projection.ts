@@ -25,6 +25,7 @@ export function defineProjection<S = unknown>(def: {
   readonly initialState: S
   reduce(state: S, event: EventEnvelope): S
 }): ProjectionDefinition<S>
+
 export function defineProjection(def: {
   readonly name: string
   readonly shape?: unknown
@@ -40,9 +41,11 @@ export function foldProjection<S>(
   initial?: S,
 ): S {
   let state = initial !== undefined ? initial : projection.initialState
+
   for (const event of events) {
     state = projection.reduce(state, event)
   }
+
   return state
 }
 
@@ -53,10 +56,15 @@ export function project<S>(
   from?: S,
 ): S {
   let state = from ?? definition.initialState
+
   for (const event of events) {
-    if (event.ephemeral) continue
+    if (event.ephemeral) {
+      continue
+    }
+
     state = definition.reduce(state, event)
   }
+
   return state
 }
 
@@ -87,7 +95,10 @@ export interface TreeBuildState {
 export const TreeBuildStateSchema = Schema.Unknown as Schema.Schema<TreeBuildState>
 
 function readPayload(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) return {}
+  if (!Predicate.isObject(event.payload)) {
+    return {}
+  }
+
   return event.payload
 }
 
@@ -102,6 +113,7 @@ export const threadTree = defineProjection({
   initialState: { runId: '', records: {}, rootThreadId: null } satisfies TreeBuildState,
   reduce(state: TreeBuildState, event): TreeBuildState {
     const payload = readPayload(event)
+
     switch (event.type) {
       case 'runtime.run.started': {
         const rootThreadId = readString(payload, 'rootThreadId') ?? state.rootThreadId
@@ -111,13 +123,19 @@ export const threadTree = defineProjection({
           rootThreadId,
         }
       }
+
       case 'runtime.thread.started': {
         const threadId = readString(payload, 'threadId') ?? event.threadId
         const kind = readString(payload, 'kind')
         const definitionName = readString(payload, 'definitionName')
-        if (!threadId || !kind || !definitionName) return { ...state, runId: event.runId }
+
+        if (!threadId || !kind || !definitionName) {
+          return { ...state, runId: event.runId }
+        }
+
         const parent = payload.parentThreadId
         const parentThreadId = parent === null || Predicate.isString(parent) ? parent : null
+
         const record: ThreadRecord = {
           threadId,
           kind,
@@ -129,6 +147,7 @@ export const threadTree = defineProjection({
           error: null,
           state: {},
         }
+
         const rootThreadId = state.rootThreadId ?? threadId
         return {
           ...state,
@@ -137,19 +156,30 @@ export const threadTree = defineProjection({
           records: { ...state.records, [threadId]: record },
         }
       }
+
       case 'runtime.thread.completed':
       case 'runtime.thread.failed':
+
       case 'runtime.thread.cancelled': {
         const threadId = readString(payload, 'threadId') ?? event.threadId
-        if (!threadId) return { ...state, runId: event.runId }
+
+        if (!threadId) {
+          return { ...state, runId: event.runId }
+        }
+
         const existing = state.records[threadId]
-        if (!existing) return { ...state, runId: event.runId }
+
+        if (!existing) {
+          return { ...state, runId: event.runId }
+        }
+
         const status: ThreadStatus =
           event.type === 'runtime.thread.completed'
             ? 'completed'
             : event.type === 'runtime.thread.failed'
               ? 'failed'
               : 'cancelled'
+
         return {
           ...state,
           runId: event.runId,
@@ -164,12 +194,21 @@ export const threadTree = defineProjection({
           },
         }
       }
+
       case 'runtime.wait.registered': {
         const threadId = event.threadId ?? readString(payload, 'threadId')
         const waitId = readString(payload, 'waitId')
-        if (!threadId || !waitId) return { ...state, runId: event.runId }
+
+        if (!threadId || !waitId) {
+          return { ...state, runId: event.runId }
+        }
+
         const existing = state.records[threadId]
-        if (!existing || isTerminalStatus(existing.status)) return { ...state, runId: event.runId }
+
+        if (!existing || isTerminalStatus(existing.status)) {
+          return { ...state, runId: event.runId }
+        }
+
         const currentWaits = state.activeWaits?.[threadId] ?? []
         const nextWaits = currentWaits.includes(waitId) ? currentWaits : [...currentWaits, waitId]
         return {
@@ -185,16 +224,25 @@ export const threadTree = defineProjection({
           },
         }
       }
+
       case 'runtime.wait.satisfied': {
         const threadId = event.threadId ?? readString(payload, 'threadId')
         const waitId = readString(payload, 'waitId')
-        if (!threadId) return { ...state, runId: event.runId }
+
+        if (!threadId) {
+          return { ...state, runId: event.runId }
+        }
+
         const existing = state.records[threadId]
-        if (!existing || isTerminalStatus(existing.status)) return { ...state, runId: event.runId }
+
+        if (!existing || isTerminalStatus(existing.status)) {
+          return { ...state, runId: event.runId }
+        }
 
         const currentWaits = waitId
           ? (state.activeWaits?.[threadId] ?? []).filter((id) => id !== waitId)
           : []
+
         const nextStatus: ThreadStatus = currentWaits.length > 0 ? 'waiting' : 'running'
         return {
           ...state,
@@ -209,6 +257,7 @@ export const threadTree = defineProjection({
           },
         }
       }
+
       default:
         return state.runId === event.runId ? state : { ...state, runId: event.runId }
     }
@@ -231,16 +280,19 @@ export function treeFromRun(state: RunState): ThreadTree {
   const records = Object.values(state.threads)
   const waitingThreadIds = new Set(Object.values(state.waits).map((w) => w.threadId))
   const byParent = new Map<string | null, ThreadRecord[]>()
+
   for (const record of records) {
     const key = record.parentThreadId
     const list = byParent.get(key) ?? []
     list.push(record)
     byParent.set(key, list)
   }
+
   const toNode = (record: ThreadRecord): ThreadNode => {
     const isWaiting =
       !isTerminalStatus(record.status) &&
       (record.status === 'waiting' || waitingThreadIds.has(record.threadId))
+
     return {
       threadId: record.threadId,
       kind: record.kind,
@@ -250,9 +302,11 @@ export function treeFromRun(state: RunState): ThreadTree {
       children: (byParent.get(record.threadId) ?? []).map(toNode),
     }
   }
+
   const rootRecord = state.rootThreadId
     ? state.threads[state.rootThreadId]
     : records.find((r) => r.parentThreadId === null)
+
   return {
     runId: state.runId,
     root: rootRecord ? toNode(rootRecord) : null,

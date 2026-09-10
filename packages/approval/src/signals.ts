@@ -19,10 +19,12 @@ export function gate(args: {
   schema?: JsonValue
 }): RuntimeEffect[] {
   const approvalId = args.approvalId ?? createWaitId('approval')
+
   const actions = args.actions ?? [
     { id: 'approve', label: 'Approve', outcome: 'approve' as const },
     { id: 'reject', label: 'Reject', outcome: 'reject' as const },
   ]
+
   return [
     invoke(
       'approval.request',
@@ -56,5 +58,6 @@ export function decision(approvalId: string, choice: ApprovalChoice): EventInput
   const decided: ApprovalDecided = isJsonString(choice)
     ? { approvalId, actionId: choice, outcome: choice }
     : { approvalId, actionId: choice.actionId, outcome: choice.outcome, payload: choice.payload }
+
   return { type: 'approval.decided', payload: asJson(decided) }
 }

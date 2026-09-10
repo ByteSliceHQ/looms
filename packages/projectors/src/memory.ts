@@ -23,9 +23,12 @@ function applyOp(
         parentActorId: op.parentActorId,
         updatedAt: op.updatedAt,
       })
+
       return
+
     case 'setActorStatus': {
       const existing = actors.get(op.actorId)
+
       actors.set(op.actorId, {
         actorId: op.actorId,
         kind: existing?.kind ?? null,
@@ -34,10 +37,13 @@ function applyOp(
         parentActorId: existing?.parentActorId ?? null,
         updatedAt: op.updatedAt,
       })
+
       return
     }
+
     case 'upsertReview': {
       const existing = reviews.get(op.reviewId)
+
       reviews.set(op.reviewId, {
         reviewId: op.reviewId,
         actorId: op.actorId,
@@ -45,15 +51,20 @@ function applyOp(
         title: existing?.title ?? op.title,
         updatedAt: op.updatedAt,
       })
+
       return
     }
+
     case 'setReviewStatus': {
       const existing = reviews.get(op.reviewId)
+
       if (existing) {
         reviews.set(op.reviewId, { ...existing, status: op.status, updatedAt: op.updatedAt })
       }
+
       return
     }
+
     default: {
       const exhaustiveCheck: never = op
       return exhaustiveCheck
@@ -67,7 +78,9 @@ export function memory(): IndexProjector {
 
   const backend: IndexBackend = {
     applyOps: async (ops) => {
-      for (const op of ops) applyOp(actors, reviews, op)
+      for (const op of ops) {
+        applyOp(actors, reviews, op)
+      }
     },
     getActor: async (actorId) => actors.get(actorId) ?? null,
     listReviews: async (actorId) => {

@@ -44,7 +44,11 @@ const outcomes = new Map<string, 'authorized' | 'declined'>()
 
 function decideOutcome(effectId: string, input: ChargeInput): 'authorized' | 'declined' {
   const cached = outcomes.get(effectId)
-  if (cached) return cached
+
+  if (cached) {
+    return cached
+  }
+
   const next = input.force === 'decline' || input.amount === 13 ? 'declined' : 'authorized'
   outcomes.set(effectId, next)
   return next
@@ -103,15 +107,21 @@ export const ledger = defineProjection({
   reduce(state, event) {
     const payload = payloadObject(event)
     const chargeId = isJsonString(payload.chargeId) ? payload.chargeId : undefined
-    if (!chargeId) return state
+
+    if (!chargeId) {
+      return state
+    }
+
     const amount = isJsonNumber(payload.amount) ? payload.amount : 0
     const currency = isJsonString(payload.currency) ? payload.currency : 'USD'
+
     const upsert = (status: LedgerEntry['status']) => ({
       entries: [
         ...state.entries.filter((entry) => entry.chargeId !== chargeId),
         { chargeId, amount, currency, status },
       ],
     })
+
     switch (event.type) {
       case 'payments.charge.requested':
         return upsert('requested')

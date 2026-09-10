@@ -37,16 +37,19 @@ describe('workflow projections with Effect schemas', () => {
     ])
 
     const result = project(nodes, events)
+
     expect(result.nodes.step_1).toEqual({
       status: 'completed',
       result: { done: true },
       error: null,
     })
+
     expect(result.nodes.step_2).toEqual({
       status: 'failed',
       result: null,
       error: 'boom',
     })
+
     expect(result.nodes.step_3).toEqual({
       status: 'skipped',
       result: null,

@@ -77,10 +77,12 @@ function readOrigin(raw: { [key: string]: JsonValue } | EventOrigin): EventOrigi
     const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : ''
     return { type: 'thread', threadId }
   }
+
   if ('type' in raw && raw.type === 'external') {
     const actorId = 'actorId' in raw && Predicate.isString(raw.actorId) ? raw.actorId : undefined
     return actorId ? { type: 'external', actorId } : { type: 'external' }
   }
+
   return { type: 'system' }
 }
 
@@ -96,22 +98,29 @@ export function decodeLoomsEvent(
     const args = 'args' in raw && Predicate.isReadonlyObject(raw.args) ? raw.args : {}
     const rawPayload = 'payload' in args ? args.payload : {}
     // SAFETY: payload is JSON-compatible.
-    const payload = rawPayload as JsonValue
+    const payload = rawPayload
     const id = 'id' in args && Predicate.isString(args.id) ? args.id : createEventId()
     const ts = 'ts' in args && Predicate.isNumber(args.ts) ? args.ts : Date.now()
+
     const ephemeral =
       'ephemeral' in args && Predicate.isBoolean(args.ephemeral) ? args.ephemeral : false
+
     const threadId = 'threadId' in args && Predicate.isString(args.threadId) ? args.threadId : null
+
     const parentThreadId =
       'parentThreadId' in args && Predicate.isString(args.parentThreadId)
         ? args.parentThreadId
         : null
+
     const causationId =
       'causationId' in args && Predicate.isString(args.causationId) ? args.causationId : null
+
     const correlationId =
       'correlationId' in args && Predicate.isString(args.correlationId) ? args.correlationId : null
+
     const effectId = 'effectId' in args && Predicate.isString(args.effectId) ? args.effectId : null
     const seq = 'seqNum' in raw && Predicate.isNumber(raw.seqNum) ? raw.seqNum : 0
+
     const origin =
       'origin' in args && Predicate.isReadonlyObject(args.origin)
         ? readOrigin(args.origin)
@@ -139,16 +148,20 @@ export function decodeLoomsEvent(
   if ('type' in raw && Predicate.isString(raw.type)) {
     const rawPayload = 'payload' in raw ? raw.payload : {}
     // SAFETY: payload is JSON-compatible.
-    const payload = rawPayload as JsonValue
+    const payload = rawPayload
     const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : createEventId()
     const ts = 'ts' in raw && Predicate.isNumber(raw.ts) ? raw.ts : Date.now()
     const seq = 'seq' in raw && Predicate.isNumber(raw.seq) ? raw.seq : 0
+
     const ephemeral =
       'ephemeral' in raw && Predicate.isBoolean(raw.ephemeral) ? raw.ephemeral : false
+
     const itemRunId = 'runId' in raw && Predicate.isString(raw.runId) ? raw.runId : runId
     const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : null
+
     const parentThreadId =
       'parentThreadId' in raw && Predicate.isString(raw.parentThreadId) ? raw.parentThreadId : null
+
     const origin =
       'origin' in raw && Predicate.isReadonlyObject(raw.origin)
         ? readOrigin(raw.origin)

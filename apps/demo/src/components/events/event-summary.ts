@@ -11,11 +11,26 @@ export type EventSummary = {
 }
 
 export function eventFamily(type: string): EventFamily {
-  if (type.startsWith('agent.')) return 'agent'
-  if (type.startsWith('workflow.')) return 'workflow'
-  if (type.startsWith('approval.')) return 'approval'
-  if (type.startsWith('payments.')) return 'payments'
-  if (type.startsWith('runtime.wait')) return 'wait'
+  if (type.startsWith('agent.')) {
+    return 'agent'
+  }
+
+  if (type.startsWith('workflow.')) {
+    return 'workflow'
+  }
+
+  if (type.startsWith('approval.')) {
+    return 'approval'
+  }
+
+  if (type.startsWith('payments.')) {
+    return 'payments'
+  }
+
+  if (type.startsWith('runtime.wait')) {
+    return 'wait'
+  }
+
   return 'runtime'
 }
 
@@ -33,6 +48,7 @@ export function familyClass(family: EventFamily): string {
       return 'bg-family-wait'
     case 'runtime':
       return 'bg-family-runtime'
+
     default: {
       const _exhaustive: never = family
       return _exhaustive
@@ -50,7 +66,11 @@ function text(value: JsonValue | undefined): string | undefined {
 
 function messageContent(payload: JsonValue | null): string | undefined {
   const message = obj(payload ?? null).message
-  if (!isJsonObject(message)) return undefined
+
+  if (!isJsonObject(message)) {
+    return undefined
+  }
+
   return isJsonString(message.content) ? message.content : undefined
 }
 
@@ -61,7 +81,11 @@ type ToolCallSummary = {
 
 function toolCallSummary(payload: JsonValue | null): ToolCallSummary {
   const call = obj(payload ?? null).toolCall
-  if (!isJsonObject(call)) return { name: 'tool', args: null }
+
+  if (!isJsonObject(call)) {
+    return { name: 'tool', args: null }
+  }
+
   return {
     name: isJsonString(call.name) ? call.name : 'tool',
     args: call.arguments ?? null,
@@ -91,16 +115,20 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       return { title: 'thread failed', detail: event.payload.error }
     case 'runtime.thread.cancelled':
       return { title: 'thread cancelled', detail: event.payload.reason }
+
     case 'runtime.wait.registered': {
       const on = event.payload.on
+
       const detail =
         'type' in on
           ? isJsonString(on.type)
             ? on.type
             : on.type.join(', ')
           : `timer ${on.timerAt}`
+
       return { title: 'wait registered', detail }
     }
+
     case 'runtime.wait.satisfied':
       return { title: 'wait satisfied', detail: event.payload.event.type }
     case 'runtime.timer.set':
@@ -121,10 +149,12 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       return { title: 'text delta', detail: event.payload.delta }
     case 'agent.message':
       return { title: 'agent message', detail: messageContent(event.payload) }
+
     case 'agent.tool_call.requested': {
       const call = toolCallSummary(event.payload)
       return { title: `tool ${call.name}`, detail: compactJson(call.args) }
     }
+
     case 'agent.tool.result':
       return {
         title: event.payload.error
@@ -181,6 +211,7 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
         title: 'charge declined',
         detail: `${event.payload.amount} ${event.payload.currency} · ${event.payload.reason}`,
       }
+
     default: {
       const _exhaustive: never = event
       return { title: 'event', detail: compactJson(obj(_exhaustive)) }

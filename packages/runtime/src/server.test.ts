@@ -7,6 +7,7 @@ import { createLooms } from './looms'
 describe('server HTTP idempotency', () => {
   test('POST /runs accepts idempotencyKey in body and deduplicates', async () => {
     let runCount = 0
+
     const flow = defineWorkflow({
       name: 'flow-body-idempotent',
       nodes: [
@@ -76,6 +77,7 @@ describe('server HTTP idempotency', () => {
 
   test('POST /runs reads Idempotency-Key and x-idempotency-key headers', async () => {
     let runCount = 0
+
     const flow = defineWorkflow({
       name: 'flow-header-idempotent',
       nodes: [

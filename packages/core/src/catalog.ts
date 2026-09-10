@@ -82,7 +82,7 @@ export function defineEventCatalog<TNamespace extends string, TEntries extends C
 
 export function isCatalogEvent<TNamespace extends string>(
   event: EventEnvelope,
-  catalog: EventCatalog<TNamespace, CatalogEntries>,
+  catalog: EventCatalog<TNamespace>,
 ): event is EventEnvelope<`${TNamespace}.${string}`> {
   return event.type.startsWith(`${catalog.namespace}.`)
 }

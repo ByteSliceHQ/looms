@@ -27,6 +27,7 @@ export class EventStoreConflictError extends EventStoreError {
         conflict: true,
       },
     )
+
     this.name = 'EventStoreConflictError'
     this.expectedTail = expectedTail
     this.actualTail = actualTail
@@ -74,7 +75,11 @@ export const makeMemoryEventStore = Effect.gen(function* () {
 
   const getOrCreate = (map: Map<string, RunLog>, runId: string): RunLog => {
     const existing = map.get(runId)
-    if (existing) return existing
+
+    if (existing) {
+      return existing
+    }
+
     const created: RunLog = { events: [], waiters: [] }
     map.set(runId, created)
     return created
@@ -84,27 +89,37 @@ export const makeMemoryEventStore = Effect.gen(function* () {
     append: (runId, events, options) =>
       Effect.gen(function* () {
         const sequences: number[] = []
+
         yield* Ref.update(logs, (map) => {
           const next = new Map(map)
           const log = getOrCreate(next, runId)
+
           if (options?.expectedTail !== undefined && log.events.length !== options.expectedTail) {
             throw new EventStoreConflictError(runId, options.expectedTail, log.events.length)
           }
+
           const appended: EventEnvelope[] = []
+
           for (const partial of events) {
             const seq = log.events.length + appended.length + 1
             const event = withAssignedSeq(partial, runId, seq)
             appended.push(event)
             sequences.push(seq)
           }
+
           const updated: RunLog = {
             events: [...log.events, ...appended],
             waiters: log.waiters,
           }
+
           next.set(runId, updated)
+
           for (const event of appended) {
-            for (const waiter of log.waiters) waiter(event)
+            for (const waiter of log.waiters) {
+              waiter(event)
+            }
           }
+
           return next
         }).pipe(
           Effect.catchDefect((cause) =>
@@ -115,6 +130,7 @@ export const makeMemoryEventStore = Effect.gen(function* () {
             ),
           ),
         )
+
         const tail = yield* service.tail(runId)
         return { sequences, tail }
       }),
@@ -123,7 +139,11 @@ export const makeMemoryEventStore = Effect.gen(function* () {
       Effect.gen(function* () {
         const map = yield* Ref.get(logs)
         const log = map.get(runId)
-        if (!log) return []
+
+        if (!log) {
+          return []
+        }
+
         const fromSeq = options?.fromSeq ?? 1
         const sliced = log.events.filter((e) => e.seq >= fromSeq)
         return options?.limit !== undefined ? sliced.slice(0, options.limit) : sliced
@@ -141,22 +161,38 @@ export const makeMemoryEventStore = Effect.gen(function* () {
           const fromSeq = options?.fromSeq ?? 1
           const map = yield* Ref.get(logs)
           const log = getOrCreate(map, runId)
+
           yield* Ref.update(logs, (m) => {
             const n = new Map(m)
-            if (!n.has(runId)) n.set(runId, log)
+
+            if (!n.has(runId)) {
+              n.set(runId, log)
+            }
+
             return n
           })
+
           for (const event of log.events) {
-            if (event.seq >= fromSeq) Queue.offerUnsafe(queue, event)
+            if (event.seq >= fromSeq) {
+              Queue.offerUnsafe(queue, event)
+            }
           }
+
           const waiter = (event: EventEnvelope) => {
-            if (event.seq >= fromSeq) Queue.offerUnsafe(queue, event)
+            if (event.seq >= fromSeq) {
+              Queue.offerUnsafe(queue, event)
+            }
           }
+
           log.waiters.push(waiter)
+
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
               const idx = log.waiters.indexOf(waiter)
-              if (idx >= 0) log.waiters.splice(idx, 1)
+
+              if (idx >= 0) {
+                log.waiters.splice(idx, 1)
+              }
             }),
           )
         }),

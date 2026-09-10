@@ -148,6 +148,7 @@ export function highlightCode(code: string, lang = 'tsx') {
       dark: 'looms-dark',
     },
   })
+
   // Remove the extraneous newlines between line spans that cause double-spaced vertical gaps in <pre>
   return html.replace(/<\/span>\n(?=<span class="line">)/g, '</span>')
 }

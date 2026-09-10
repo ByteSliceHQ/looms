@@ -24,9 +24,14 @@ export interface S2LiteOptions {
 export function findS2Binary(env: Record<string, string | undefined>): string | undefined {
   // 1. Check PATH
   const pathDirs = (env.PATH ?? '').split(path.delimiter)
+
   for (const dir of pathDirs) {
-    if (!dir) continue
+    if (!dir) {
+      continue
+    }
+
     const candidate = path.join(dir, 's2')
+
     try {
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
         return candidate
@@ -39,6 +44,7 @@ export function findS2Binary(env: Record<string, string | undefined>): string | 
   // 2. Check FLOX_ENV_CACHE
   if (env.FLOX_ENV_CACHE) {
     const floxCandidate = path.join(env.FLOX_ENV_CACHE, 's2', 'bin', 's2')
+
     if (fs.existsSync(floxCandidate)) {
       return floxCandidate
     }
@@ -47,6 +53,7 @@ export function findS2Binary(env: Record<string, string | undefined>): string | 
   // 3. Check S2_INSTALL_PREFIX
   if (env.S2_INSTALL_PREFIX) {
     const prefixCandidate = path.join(env.S2_INSTALL_PREFIX, 'bin', 's2')
+
     if (fs.existsSync(prefixCandidate)) {
       return prefixCandidate
     }
@@ -54,12 +61,14 @@ export function findS2Binary(env: Record<string, string | undefined>): string | 
 
   // 4. Check ~/.s2/bin/s2
   const homeCandidate = path.join(os.homedir(), '.s2', 'bin', 's2')
+
   if (fs.existsSync(homeCandidate)) {
     return homeCandidate
   }
 
   // 5. Check local ./.s2/bin/s2
   const localCandidate = path.join(process.cwd(), '.s2', 'bin', 's2')
+
   if (fs.existsSync(localCandidate)) {
     return localCandidate
   }
@@ -71,18 +80,22 @@ export function isPortOpen(port: number, host = '127.0.0.1'): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket()
     socket.setTimeout(200)
+
     socket.once('connect', () => {
       socket.destroy()
       resolve(true)
     })
+
     socket.once('timeout', () => {
       socket.destroy()
       resolve(false)
     })
+
     socket.once('error', () => {
       socket.destroy()
       resolve(false)
     })
+
     socket.connect(port, host)
   })
 }
@@ -109,6 +122,7 @@ export async function startS2Lite(options: S2LiteOptions = {}): Promise<StartedS
 
   // 1. Check if an s2-lite instance is already responding on this port.
   const alreadyRunning = await isPortOpen(port)
+
   if (alreadyRunning) {
     return {
       port,
@@ -121,6 +135,7 @@ export async function startS2Lite(options: S2LiteOptions = {}): Promise<StartedS
 
   // 2. Locate the s2 binary.
   const binaryPath = options.binaryPath ?? findS2Binary(options.env ?? {})
+
   if (!binaryPath) {
     throw new Error(
       `s2 CLI binary not found on PATH or in standard locations.
@@ -144,6 +159,7 @@ To install s2-lite for local development:
     if (activeProcess === child) {
       activeProcess = null
     }
+
     try {
       child.kill('SIGTERM')
     } catch {
@@ -156,19 +172,23 @@ To install s2-lite for local development:
   process.once('SIGTERM', cleanup)
 
   let stderrOutput = ''
+
   child.stderr?.on('data', (chunk) => {
     stderrOutput += chunk.toString()
   })
 
   // 4. Poll until the port responds or the process exits unexpectedly.
   const deadline = Date.now() + 5000
+
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(
         `s2 lite process exited with code ${child.exitCode} before becoming ready: ${stderrOutput}`,
       )
     }
+
     const ready = await isPortOpen(port)
+
     if (ready) {
       return {
         port,
@@ -176,6 +196,7 @@ To install s2-lite for local development:
         stop: cleanup,
       }
     }
+
     await new Promise((r) => setTimeout(r, 50))
   }
 

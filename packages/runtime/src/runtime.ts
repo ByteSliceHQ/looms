@@ -104,24 +104,34 @@ function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[] {
 function moduleServices(
   modules: readonly AnyRuntimeModule[],
   definitions: ReadonlyArray<RegisteredDefinition>,
-): Layer.Layer<any, never, never> {
+): Layer.Layer<any> {
   // SAFETY: Layer.empty has empty requirements and error channel
-  let merged: Layer.Layer<any, never, never> = Layer.empty as Layer.Layer<any, never, never>
+  let merged: Layer.Layer<any> = Layer.empty as Layer.Layer<any>
+
   for (const module of modules) {
-    if (module.services) merged = Layer.merge(merged, module.services({ definitions }))
+    if (module.services) {
+      merged = Layer.merge(merged, module.services({ definitions }))
+    }
   }
+
   return merged
 }
 
 function groupOutstanding(items: readonly { threadId: string; causingSeq: number }[]): string[] {
   const keys: string[] = []
   const seen = new Set<string>()
+
   for (const item of items) {
     const key = `${item.threadId}:${item.causingSeq}`
-    if (seen.has(key)) continue
+
+    if (seen.has(key)) {
+      continue
+    }
+
     seen.add(key)
     keys.push(key)
   }
+
   return keys
 }
 
@@ -146,6 +156,7 @@ function threadStartedEvents(
     const raw = args.input ?? null
     let startedInput = raw
     let validationError: string | undefined
+
     if (def?.input) {
       const validated = yield* Effect.tryPromise({
         try: () => {
@@ -157,12 +168,14 @@ function threadStartedEvents(
         Effect.map((value) => ({ ok: true as const, value })),
         Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
       )
+
       if (validated.ok) {
         startedInput = validated.value
       } else {
         validationError = validated.error
       }
     }
+
     const started: EventInput = {
       type: 'runtime.thread.started',
       payload: {
@@ -175,7 +188,11 @@ function threadStartedEvents(
       threadId: args.threadId,
       parentThreadId: args.parentThreadId,
     }
-    if (!validationError) return [started]
+
+    if (!validationError) {
+      return [started]
+    }
+
     return [
       started,
       {
@@ -193,31 +210,55 @@ function synthesizedThreadFailed(
   written: readonly EventEnvelope[],
 ): EventInput[] {
   const out: EventInput[] = []
+
   for (const [threadId, thread] of Object.entries(after.threads)) {
-    if (thread.status !== 'failed') continue
+    if (thread.status !== 'failed') {
+      continue
+    }
+
     const prev = before.threads[threadId]
-    if (prev?.status === 'failed') continue
+
+    if (prev?.status === 'failed') {
+      continue
+    }
+
     const already = written.some((event) => {
-      if (event.type !== 'runtime.thread.failed') return false
-      if (event.threadId === threadId) return true
+      if (event.type !== 'runtime.thread.failed') {
+        return false
+      }
+
+      if (event.threadId === threadId) {
+        return true
+      }
+
       return Predicate.isObject(event.payload) && event.payload.threadId === threadId
     })
-    if (already) continue
+
+    if (already) {
+      continue
+    }
+
     out.push({
       type: 'runtime.thread.failed',
       payload: { threadId, error: thread.error ?? 'failed' },
       threadId,
     })
   }
+
   return out
 }
 
 function waitSatisfiedEvents(state: RunState, events: readonly EventEnvelope[]): EventInput[] {
   const produced: EventInput[] = []
   const remaining = { ...state.waits }
+
   for (const event of events) {
-    if (event.ephemeral || event.type === 'runtime.wait.satisfied') continue
+    if (event.ephemeral || event.type === 'runtime.wait.satisfied') {
+      continue
+    }
+
     const matches = matchingWaits(event, Object.values(remaining))
+
     for (const record of matches) {
       produced.push({
         type: 'runtime.wait.satisfied',
@@ -229,9 +270,11 @@ function waitSatisfiedEvents(state: RunState, events: readonly EventEnvelope[]):
         threadId: record.threadId,
         causationId: event.id,
       })
+
       delete remaining[record.waitId]
     }
   }
+
   return produced
 }
 
@@ -240,9 +283,11 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 ): LoomsRuntime<TModules> {
   const registry = composeModules(options.modules)
   const registeredDefinitions = options.definitions ?? []
+
   const definitions = new Map(
     registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const),
   )
+
   const services = moduleServices(options.modules, registeredDefinitions)
   const waking = new Set<string>()
   const snapshotEvery = options.snapshotEvery
@@ -251,6 +296,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
   const clearScheduledTimer = (runId: string) => {
     const existing = scheduledTimers.get(runId)
+
     if (existing) {
       clearTimeout(existing)
       scheduledTimers.delete(runId)
@@ -260,8 +306,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const scheduleTimerWake = (runId: string, timerAt: number) => {
     clearScheduledTimer(runId)
     const delay = Math.max(0, timerAt - Date.now() + 5)
+
     const handle = setTimeout(() => {
       scheduledTimers.delete(runId)
+
       if (options.store) {
         Effect.runPromise(
           Effect.provideService(runtime.wake(runId), EventStoreTag, options.store),
@@ -270,6 +318,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         })
       }
     }, delay)
+
     scheduledTimers.set(runId, handle)
   }
 
@@ -313,10 +362,16 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         const store = yield* EventStoreTag
         const runIds = yield* store.listRuns()
         let count = 0
+
         for (const runId of runIds) {
           const runState = yield* runtime.getRun(runId)
-          if (isRunTerminal(runState)) continue
+
+          if (isRunTerminal(runState)) {
+            continue
+          }
+
           let earliestTimerAt: number | null = null
+
           for (const waitRecord of Object.values(runState.waits)) {
             if (isWaitOnTimer(waitRecord.on)) {
               if (earliestTimerAt === null || waitRecord.on.timerAt < earliestTimerAt) {
@@ -324,11 +379,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               }
             }
           }
+
           if (earliestTimerAt !== null) {
             scheduleTimerWake(runId, earliestTimerAt)
             count += 1
           }
         }
+
         return count
       }),
 
@@ -339,13 +396,16 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             new Error(`Unknown definition ${args.kind}:${args.definitionName}`),
           )
         }
+
         const store = yield* EventStoreTag
         const runId = args.runId ?? createRunId()
 
         // Idempotency check if run already has events
         const existingEvents = yield* store.read(runId)
+
         if (existingEvents.length > 0) {
           const existingState = foldFromSnapshots(existingEvents, registry, { runId })
+
           if (
             (args.idempotencyKey &&
               existingState.processedIdempotencyKeys?.includes(args.idempotencyKey)) ||
@@ -360,6 +420,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         }
 
         const threadId = args.threadId ?? createThreadId()
+
         const startedEvents = yield* threadStartedEvents(definitions, {
           kind: args.kind,
           definitionName: args.definitionName,
@@ -367,11 +428,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           threadId,
           parentThreadId: null,
         })
+
         const started = startedEvents[0]
+
         const startedInput =
           started && Predicate.isObject(started.payload)
             ? (started.payload.input ?? null)
             : (args.input ?? null)
+
         const batch = [
           createEvent(runId, {
             type: 'runtime.run.started',
@@ -392,6 +456,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             }),
           ),
         ]
+
         yield* store.append(runId, stripSeq(batch))
         const state = yield* runtime.wake(runId)
         return { runId, threadId, state }
@@ -414,6 +479,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           const key = input.idempotencyKey ?? signalOpts?.idempotencyKey
           return !key || !currentState.processedIdempotencyKeys?.includes(key)
         })
+
         if (filteredEvents.length === 0) {
           return currentState
         }
@@ -425,6 +491,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             idempotencyKey: input.idempotencyKey ?? signalOpts?.idempotencyKey,
           }),
         )
+
         const folded = foldRun(batch, registry, { runId, initial: currentState })
         const satisfied = waitSatisfiedEvents(folded, batch)
         const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
@@ -447,7 +514,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         if (waking.has(runId)) {
           return yield* runtime.getRun(runId)
         }
+
         waking.add(runId)
+
         try {
           const store = yield* EventStoreTag
           let events = yield* store.read(runId)
@@ -458,13 +527,19 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             guard += 1
 
             const now = Date.now()
+
             const due = Object.values(state.waits).filter(
               (record) => isWaitOnTimer(record.on) && record.on.timerAt <= now + 5,
             )
+
             if (due.length > 0) {
               const batch: EventEnvelope[] = []
+
               for (const record of due) {
-                if (!isWaitOnTimer(record.on)) continue
+                if (!isWaitOnTimer(record.on)) {
+                  continue
+                }
+
                 batch.push(
                   createEvent(runId, {
                     type: 'runtime.timer.fired',
@@ -474,6 +549,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                   }),
                 )
               }
+
               const stateAfterFired = foldRun(batch, registry, { runId, initial: state })
               const satisfied = waitSatisfiedEvents(stateAfterFired, batch)
               const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
@@ -485,9 +561,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             }
 
             const outstanding = state.outstandingEffects
-            if (outstanding.length === 0) break
+
+            if (outstanding.length === 0) {
+              break
+            }
 
             const groupKeys = groupOutstanding(outstanding)
+
             const groupResults = yield* Effect.forEach(
               groupKeys,
               (groupKey) =>
@@ -495,8 +575,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                   const group = outstanding.filter(
                     (item) => `${item.threadId}:${item.causingSeq}` === groupKey,
                   )
+
                   const groupProduced: EventEnvelope[] = []
                   let failedEffectId: string | undefined
+
                   for (const item of group) {
                     if (failedEffectId && item.effect.type === 'runtime.wait') {
                       groupProduced.push(
@@ -512,10 +594,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                           origin: { type: 'system' },
                         }),
                       )
+
                       continue
                     }
+
                     const appendLive = (input: EventInput) => {
                       const targetThreadId = input.threadId ?? item.threadId
+
                       const ephemeral = createEvent(runId, {
                         ...input,
                         effectId: item.effectId,
@@ -524,12 +609,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         ephemeral: input.ephemeral ?? true,
                         origin: input.origin ?? { type: 'thread', threadId: item.threadId },
                       })
+
                       return liveAppends.run(runId, () =>
                         Effect.runPromise(store.append(runId, stripSeq([ephemeral]))).then(
                           () => undefined,
                         ),
                       )
                     }
+
                     const outcomes = yield* dispatchEffect(
                       registry,
                       services,
@@ -543,7 +630,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         emit: appendLive,
                       },
                     )
+
                     const before = groupProduced.length
+
                     if (outcomes.length === 0) {
                       groupProduced.push(
                         createEvent(runId, {
@@ -556,8 +645,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         }),
                       )
                     }
+
                     for (const input of outcomes) {
                       const targetThreadId = input.threadId ?? item.threadId
+
                       groupProduced.push(
                         createEvent(runId, {
                           ...input,
@@ -570,7 +661,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         }),
                       )
                     }
+
                     const groupOutcomes = groupProduced.slice(before)
+
                     if (
                       item.effect.type !== 'runtime.wait' &&
                       groupOutcomes.some((event) => event.type === 'runtime.effect.failed')
@@ -578,6 +671,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                       failedEffectId = item.effectId
                     }
                   }
+
                   return groupProduced
                 }),
               { concurrency: 'unbounded' },
@@ -585,16 +679,21 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
             const produced = groupResults.flat()
 
-            if (produced.length === 0) break
+            if (produced.length === 0) {
+              break
+            }
+
             yield* Effect.promise(() => liveAppends.drain(runId))
             const beforeFold = state
             const intermediateState = foldRun(produced, registry, { runId, initial: beforeFold })
             const synthesized = synthesizedThreadFailed(beforeFold, intermediateState, produced)
             const synthesizedEvents = synthesized.map((input) => createEvent(runId, input))
+
             const stateAfterSynth =
               synthesizedEvents.length > 0
                 ? foldRun(synthesizedEvents, registry, { runId, initial: intermediateState })
                 : intermediateState
+
             const allNewEvents = [...produced, ...synthesizedEvents]
             const satisfied = waitSatisfiedEvents(stateAfterSynth, allNewEvents)
             const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
@@ -606,6 +705,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           }
 
           const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
+
           if (
             root &&
             (root.status === 'completed' ||
@@ -624,6 +724,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 origin: { type: 'system' },
               }),
             ])
+
             events = yield* store.read(runId)
             state = foldFromSnapshots(events, registry, { runId })
           }
@@ -638,11 +739,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           const pendingTimers = Object.values(state.waits).filter(
             (record) => isWaitOnTimer(record.on) && record.on.timerAt > Date.now(),
           )
+
           if (pendingTimers.length > 0 && !isRunTerminal(state)) {
             // SAFETY: pendingTimers elements are already filtered with isWaitOnTimer(record.on)
             const earliestTimerAt = Math.min(
               ...pendingTimers.map((r) => (r.on as WaitOnTimer).timerAt),
             )
+
             scheduleTimerWake(runId, earliestTimerAt)
           } else {
             clearScheduledTimer(runId)
@@ -659,6 +762,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       for (const handle of scheduledTimers.values()) {
         clearTimeout(handle)
       }
+
       scheduledTimers.clear()
     },
   }
@@ -668,7 +772,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
 function dispatchEffect(
   registry: ComposedRegistry,
-  services: Layer.Layer<any, never, never>,
+  services: Layer.Layer<any>,
   definitions: ReadonlyMap<string, RegisteredDefinition>,
   effect: RuntimeEffect,
   ctx: EffectContext,
@@ -691,6 +795,7 @@ function dispatchEffect(
             parentThreadId: currentThreadId,
           })
         }
+
         case 'runtime.wait': {
           const events: EventInput[] = [
             {
@@ -704,6 +809,7 @@ function dispatchEffect(
               threadId: currentThreadId,
             },
           ]
+
           if (isWaitOnTimer(eff.on)) {
             events.push({
               type: 'runtime.timer.set',
@@ -711,8 +817,10 @@ function dispatchEffect(
               threadId: currentThreadId,
             })
           }
+
           return Effect.succeed(events)
         }
+
         case 'runtime.emit':
           return Effect.succeed([eff.event])
         case 'runtime.complete':
@@ -731,6 +839,7 @@ function dispatchEffect(
               threadId: currentThreadId,
             },
           ])
+
         case 'runtime.cancel': {
           const targetThreadId = eff.threadId ?? ''
           return Effect.succeed([
@@ -741,6 +850,7 @@ function dispatchEffect(
             },
           ])
         }
+
         default: {
           const exhaustiveCheck: never = eff
           return exhaustiveCheck
@@ -749,6 +859,7 @@ function dispatchEffect(
     }
 
     const handler = registry.effects.get(eff.type)
+
     if (!handler) {
       return Effect.succeed([
         {
@@ -758,7 +869,9 @@ function dispatchEffect(
         },
       ])
     }
+
     const input = 'input' in eff ? eff.input : {}
+
     let execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = handler
       .execute(input, effCtx)
       .pipe(Effect.provide(services))
@@ -766,6 +879,7 @@ function dispatchEffect(
     if (handler.retry && handler.retry.maxAttempts > 1) {
       const retryPolicy = handler.retry
       const backoff = retryPolicy.backoffMs ?? 100
+
       execution = execution.pipe(
         Effect.retry({
           times: retryPolicy.maxAttempts - 1,
@@ -794,6 +908,7 @@ function dispatchEffect(
     const pipeline = registry.middleware.reduceRight<
       (e: RuntimeEffect, c: EffectContext) => Effect.Effect<ReadonlyArray<EventInput>, Error>
     >((next, mw) => (e, c) => mw(e, c, next), baseDispatch)
+
     return pipeline(effect, ctx)
   }
 

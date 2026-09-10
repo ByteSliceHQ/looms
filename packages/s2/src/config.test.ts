@@ -25,6 +25,7 @@ describe('@looms/s2 config', () => {
       basin: 'looms-dev',
       accessToken: 'tok_test',
     })
+
     expect(cfg.basin).toBe('looms-dev')
     expect(cfg.accessToken).toBe('tok_test')
   })
@@ -35,6 +36,7 @@ describe('@looms/s2 config', () => {
       accessToken: 'tok',
       endpoint: 'http://127.0.0.1:8080',
     })
+
     expect(cfg.endpoint).toBe('http://127.0.0.1:8080')
   })
 
@@ -44,6 +46,7 @@ describe('@looms/s2 config', () => {
       LOOMS_S2_ACCESS_TOKEN: 'secret-token',
       LOOMS_S2_ENDPOINT: 'http://localhost:9090',
     })
+
     expect(cfg.basin).toBe('my-basin')
     expect(cfg.accessToken).toBe('secret-token')
     expect(cfg.endpoint).toBe('http://localhost:9090')
@@ -53,6 +56,7 @@ describe('@looms/s2 config', () => {
     const cfg = s2ConfigFromEnv({
       S2_PORT: '8081',
     })
+
     expect(cfg.basin).toBe('looms-demo')
     expect(cfg.accessToken).toBe('s2_local')
     expect(cfg.endpoint).toBe('http://127.0.0.1:8081')
@@ -64,6 +68,7 @@ describe('@looms/s2 config', () => {
       accessToken: 'tok_test',
       endpoint: 'http://127.0.0.1:8080',
     })
+
     expect(Predicate.isFunction(store.append)).toBe(true)
     expect(Predicate.isFunction(store.read)).toBe(true)
     expect(Predicate.isFunction(store.tail)).toBe(true)
@@ -85,10 +90,12 @@ describe('@looms/s2 config', () => {
     const server = net.createServer((socket) => socket.end())
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
     const address = server.address()
+
     if (!address || Predicate.isString(address)) {
       server.close()
       return
     }
+
     const port = address.port
 
     try {

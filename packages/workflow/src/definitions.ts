@@ -39,7 +39,7 @@ export interface WorkflowDefinition<
   output?(ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }): TOutput
 }
 
-export type AnyWorkflowDefinition = WorkflowDefinition<string, JsonValue, JsonValue>
+export type AnyWorkflowDefinition = WorkflowDefinition<string>
 
 export function defineWorkflow<
   TName extends string,
@@ -75,7 +75,11 @@ export function readyNodes(
   return workflow.nodes
     .filter((node) => {
       const state = nodeStates[node.id]
-      if (state && state.status !== 'pending') return false
+
+      if (state && state.status !== 'pending') {
+        return false
+      }
+
       const deps = node.deps ?? []
       return deps.every((depId) => {
         const dep = nodeStates[depId]

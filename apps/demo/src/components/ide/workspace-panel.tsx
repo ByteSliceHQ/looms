@@ -16,9 +16,11 @@ export function WorkspacePanel({
   if (!type) {
     return <p className="text-muted-foreground p-3 text-xs">Select a run type.</p>
   }
+
   if (type.kind === 'workflow') {
     return <WorkflowForm key={type.name} type={type} runId={runId} onStarted={onStarted} />
   }
+
   return (
     <AgentChat key={type.name} type={type} runId={runId} onStarted={onStarted} onReset={onReset} />
   )

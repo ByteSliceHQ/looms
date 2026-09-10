@@ -4,18 +4,30 @@ import { isJsonObject, isJsonString } from '@looms/core'
 function extractText(messages: LlmCompleteArgs['messages']): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const item = messages[i]
+
     if (item?.role === 'user' && item.content) {
       try {
         const parsed: unknown = JSON.parse(item.content)
-        if (isJsonObject(parsed) && isJsonString(parsed.task)) return parsed.task
-        if (isJsonObject(parsed) && isJsonString(parsed.topic)) return parsed.topic
-        if (isJsonObject(parsed) && isJsonString(parsed.text)) return parsed.text
+
+        if (isJsonObject(parsed) && isJsonString(parsed.task)) {
+          return parsed.task
+        }
+
+        if (isJsonObject(parsed) && isJsonString(parsed.topic)) {
+          return parsed.topic
+        }
+
+        if (isJsonObject(parsed) && isJsonString(parsed.text)) {
+          return parsed.text
+        }
       } catch {
         // use raw content
       }
+
       return item.content
     }
   }
+
   return 'telemetry analysis'
 }
 
@@ -27,11 +39,13 @@ function toolResults(
   messages: LlmCompleteArgs['messages'],
 ): Array<{ name?: string; content: string }> {
   const results: Array<{ name?: string; content: string }> = []
+
   for (const msg of messages) {
     if (msg.role === 'tool') {
       results.push({ name: msg.name, content: msg.content })
     }
   }
+
   return results
 }
 
@@ -44,6 +58,7 @@ export const demoLlm: LlmAdapter = {
     if (hasTool(args.tools, 'specialist')) {
       if (results.length === 0) {
         const lower = taskOrTopic.toLowerCase()
+
         if (lower.includes('greet') && hasTool(args.tools, 'greet')) {
           await args.onTextDelta?.('Calling the greeting tool…')
           return {
@@ -55,6 +70,7 @@ export const demoLlm: LlmAdapter = {
             toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
           }
         }
+
         if (
           (lower.includes('checkout') ||
             lower.includes('pay') ||
@@ -78,6 +94,7 @@ export const demoLlm: LlmAdapter = {
             ],
           }
         }
+
         if (
           (lower.includes('approval') || lower.includes('approve')) &&
           hasTool(args.tools, 'ask_approval')
@@ -104,6 +121,7 @@ export const demoLlm: LlmAdapter = {
             ],
           }
         }
+
         // Default for assistant: delegate to the specialist agent to demonstrate hierarchical trees
         await args.onTextDelta?.('Delegating to the specialist child agent for deep analysis…')
         return {
@@ -118,6 +136,7 @@ export const demoLlm: LlmAdapter = {
 
       // Assistant Turn 2+: Synthesize completed findings
       const details = results.map((r) => r.content).join('\n')
+
       const checkoutLike = results.some((r) => {
         const c = r.content.toLowerCase()
         return (
@@ -127,9 +146,11 @@ export const demoLlm: LlmAdapter = {
           c.includes('reject')
         )
       })
+
       const reply = checkoutLike
         ? `Checkout finished. Outcome:\n${details}`
         : `Done. Tool results:\n${details}`
+
       await args.onTextDelta?.(reply)
       return {
         message: { role: 'assistant', content: reply },
@@ -144,6 +165,7 @@ export const demoLlm: LlmAdapter = {
         await args.onTextDelta?.(
           'Specialist coordinating sub-agents: launching researcher and computing metrics…',
         )
+
         return {
           message: {
             role: 'assistant',

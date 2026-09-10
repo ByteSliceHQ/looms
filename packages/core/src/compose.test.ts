@@ -20,6 +20,7 @@ describe('composeModules', () => {
       namespace: 'dup',
       protocolVersion: '1.0.0',
     })
+
     expect(() => composeModules([a, a])).toThrow(ModuleCompositionError)
   })
 
@@ -27,11 +28,13 @@ describe('composeModules', () => {
     const catalog = defineEventCatalog('demo', {
       done: Schema.Struct({ ok: Schema.Boolean }),
     })
+
     const effect = defineEffect({
       type: 'demo.work',
       input: Schema.Struct({ n: Schema.Number }),
       execute: () => [],
     })
+
     const module = defineRuntimeModule({
       namespace: 'demo',
       protocolVersion: '1.0.0',
@@ -39,6 +42,7 @@ describe('composeModules', () => {
       threads: { ping },
       effects: { work: effect },
     })
+
     const composed = composeModules([module])
     expect(composed.threads.get('ping')).toBe(ping)
     expect(composed.effects.get('demo.work')).toBe(effect)

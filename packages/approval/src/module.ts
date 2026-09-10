@@ -1,7 +1,7 @@
 import { defineRuntimeModule } from '@looms/core'
 
-import { approvalCatalog } from './events'
 import { requestApprovalEffect } from './effects'
+import { approvalCatalog } from './events'
 import { pendingApprovals } from './projections'
 
 export function approval() {

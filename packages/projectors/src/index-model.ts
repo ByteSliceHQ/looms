@@ -66,7 +66,10 @@ export interface IndexProjector extends Projector {
 }
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) return {}
+  if (!Predicate.isObject(event.payload)) {
+    return {}
+  }
+
   return event.payload
 }
 
@@ -77,6 +80,7 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
 
 export function indexOpsFor(event: EventEnvelope): IndexOp[] {
   const payload = payloadObject(event)
+
   switch (event.type) {
     case 'runtime.run.started':
       return [
@@ -173,7 +177,11 @@ export function createIndexProjector(name: string, backend: IndexBackend): Index
     dispose: backend.dispose,
     project: async (events) => {
       const ops = events.flatMap(indexOpsFor)
-      if (ops.length === 0) return
+
+      if (ops.length === 0) {
+        return
+      }
+
       await backend.applyOps(ops)
     },
     getActor: (actorId) => backend.getActor(actorId),

@@ -98,6 +98,7 @@ function streamStartRun(
           }),
           store,
         )
+
         write(`event: done\ndata: ${JSON.stringify(result)}\n\n`)
       } catch (cause: unknown) {
         const error = cause instanceof Error ? cause.message : String(cause)
@@ -130,13 +131,21 @@ export function createFetchHandler(
   return async (req: Request): Promise<Response | null> => {
     const url = new URL(req.url)
     const path = url.pathname
-    if (!isLoomsApiPath(path)) return null
+
+    if (!isLoomsApiPath(path)) {
+      return null
+    }
+
     const accept = req.headers.get('accept') ?? ''
+
     if (req.method === 'GET' && accept.includes('text/html') && !path.startsWith('/api/')) {
       return null
     }
 
-    if (path === '/health') return Response.json({ ok: true })
+    if (path === '/health') {
+      return Response.json({ ok: true })
+    }
+
     if (path.startsWith('/api/livestore')) {
       return handleLivestoreProxy(req, runtime, store)
     }
@@ -151,11 +160,14 @@ export function createFetchHandler(
         const body = Schema.decodeUnknownSync(StartRunBodySchema)(await readJson(req))
         const definitionName = body.definitionName ?? body.name
         const kind = body.kind
+
         if (!definitionName || !kind) {
           return Response.json({ error: 'kind and definitionName required' }, { status: 400 })
         }
+
         const runId = body.runId ?? createRunId()
         const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
+
         if (wantsRunStream(req, url)) {
           return streamStartRun(req, runtime, store, {
             kind,
@@ -165,6 +177,7 @@ export function createFetchHandler(
             idempotencyKey,
           })
         }
+
         try {
           const result = await run(
             runtime.startRun({
@@ -176,16 +189,19 @@ export function createFetchHandler(
             }),
             store,
           )
+
           return Response.json(result)
         } catch (err) {
           if (err instanceof InvalidInputError) {
             return Response.json({ error: err.message, issues: err.issues }, { status: 400 })
           }
+
           throw err
         }
       }
 
       const replayMatch = path.match(/^\/runs\/([^/]+)\/replay$/)
+
       if (req.method === 'GET' && replayMatch) {
         const runId = decodeURIComponent(replayMatch[1]!)
         const seq = Number(url.searchParams.get('seq') ?? '0')
@@ -194,20 +210,26 @@ export function createFetchHandler(
       }
 
       const projectionMatch = path.match(/^\/runs\/([^/]+)\/projections\/([^/]+)$/)
+
       if (req.method === 'GET' && projectionMatch) {
         const runId = decodeURIComponent(projectionMatch[1]!)
         const name = decodeURIComponent(projectionMatch[2]!)
         const definition = runtime.registry.projections.get(name)
-        if (!definition)
+
+        if (!definition) {
           return Response.json({ error: `Unknown projection: ${name}` }, { status: 404 })
+        }
+
         const value = await run(runtime.project(runId, definition), store)
         return Response.json({ runId, name, value })
       }
 
       const eventsMatch = path.match(/^\/runs\/([^/]+)\/events$/)
+
       if (req.method === 'POST' && eventsMatch) {
         const runId = decodeURIComponent(eventsMatch[1]!)
         const body = Schema.decodeUnknownSync(SignalBodySchema)(await readJson(req))
+
         const events =
           body.events ??
           (body.type
@@ -219,6 +241,7 @@ export function createFetchHandler(
                 },
               ]
             : [])
+
         const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
         const state = await run(runtime.signal(runId, events, { idempotencyKey }), store)
         return Response.json({ runId, state })
@@ -226,17 +249,21 @@ export function createFetchHandler(
 
       if (req.method === 'GET' && eventsMatch) {
         const runId = decodeURIComponent(eventsMatch[1]!)
+
         const fromSeq = url.searchParams.get('fromSeq')
           ? Number(url.searchParams.get('fromSeq'))
           : undefined
+
         const limit = url.searchParams.get('limit')
           ? Number(url.searchParams.get('limit'))
           : undefined
+
         const events = await run(runtime.getEvents(runId, { fromSeq, limit }), store)
         return Response.json({ runId, events })
       }
 
       const threadsMatch = path.match(/^\/runs\/([^/]+)\/(threads)$/)
+
       if (req.method === 'GET' && threadsMatch) {
         const runId = decodeURIComponent(threadsMatch[1]!)
         const state = await run(runtime.getRun(runId), store)
@@ -244,6 +271,7 @@ export function createFetchHandler(
       }
 
       const wakeMatch = path.match(/^\/runs\/([^/]+)\/wake$/)
+
       if (req.method === 'POST' && wakeMatch) {
         const runId = decodeURIComponent(wakeMatch[1]!)
         const state = await run(runtime.wake(runId), store)
@@ -251,6 +279,7 @@ export function createFetchHandler(
       }
 
       const runMatch = path.match(/^\/runs\/([^/]+)$/)
+
       if (req.method === 'GET' && runMatch) {
         const runId = decodeURIComponent(runMatch[1]!)
         const state = await run(runtime.getRun(runId), store)
@@ -271,6 +300,7 @@ export function serveHttp(
 ): RunningServer {
   const port = options?.port ?? 8787
   const hostname = options?.hostname ?? '0.0.0.0'
+
   const server = Bun.serve({
     port,
     hostname,
@@ -278,10 +308,15 @@ export function serveHttp(
     async fetch(req, srv) {
       srv.timeout(req, 0)
       const result = await fetchHandler(req)
-      if (result === null) return new Response('Not Found', { status: 404 })
+
+      if (result === null) {
+        return new Response('Not Found', { status: 404 })
+      }
+
       return result
     },
   })
+
   return {
     port: server.port ?? port,
     stop: () => server.stop(true),

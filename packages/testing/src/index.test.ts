@@ -25,6 +25,7 @@ describe('moduleConformance', () => {
         ping: payload<{ n: number }>(),
       }),
     })
+
     expect(moduleConformance(broken).some((msg) => msg.includes('catalog namespace'))).toBe(true)
   })
 })

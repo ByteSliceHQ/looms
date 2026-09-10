@@ -107,8 +107,12 @@ function SyncType({
   onName: (name: string) => void
 }) {
   const { definitionName } = useRun(runId)
+
   useEffect(() => {
-    if (definitionName && definitionName !== current) onName(definitionName)
+    if (definitionName && definitionName !== current) {
+      onName(definitionName)
+    }
   }, [definitionName, current, onName])
+
   return null
 }

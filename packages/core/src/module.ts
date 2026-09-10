@@ -3,8 +3,8 @@ import type { Effect, Layer } from 'effect'
 import type { EventCatalog } from './catalog'
 import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
 import type { EventInput } from './envelope'
-import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ProjectionDefinition } from './projection'
+import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
@@ -73,7 +73,7 @@ export interface RuntimeModule<
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
-  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<any, never, never>
+  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<any>
 }
 
 export function defineRuntimeModule<

@@ -13,19 +13,24 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
       case 'user':
         converted.push({ role: 'user', content: message.content })
         break
+
       case 'assistant': {
         const toolCalls = message.toolCalls ?? []
+
         if (toolCalls.length === 0) {
           converted.push({ role: 'assistant', content: message.content })
           break
         }
+
         const content: Array<
           | { type: 'text'; text: string }
           | { type: 'tool-call'; toolCallId: string; toolName: string; input: JsonValue }
         > = []
+
         if (message.content) {
           content.push({ type: 'text', text: message.content })
         }
+
         for (const toolCall of toolCalls) {
           content.push({
             type: 'tool-call',
@@ -34,9 +39,11 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
             input: toolCall.arguments,
           })
         }
+
         converted.push({ role: 'assistant', content })
         break
       }
+
       case 'tool':
         converted.push({
           role: 'tool',
@@ -49,7 +56,9 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
             },
           ],
         })
+
         break
+
       default: {
         const exhaustiveCheck: never = message.role
         return exhaustiveCheck

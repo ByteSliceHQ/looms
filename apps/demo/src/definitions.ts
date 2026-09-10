@@ -8,8 +8,12 @@ import { defineWorkflow } from '@looms/workflow'
 function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg?.role === 'tool') return msg
+
+    if (msg?.role === 'tool') {
+      return msg
+    }
   }
+
   return undefined
 }
 
@@ -34,7 +38,11 @@ export const calculate = defineTool({
   }),
   handler: (args) => {
     const { operation, values } = args
-    if (values.length === 0) return { result: 0 }
+
+    if (values.length === 0) {
+      return { result: 0 }
+    }
+
     switch (operation) {
       case 'multiply':
         return { result: values.reduce((acc, v) => acc * v, 1) }
@@ -42,6 +50,7 @@ export const calculate = defineTool({
         return { result: values.reduce((acc, v) => acc + v, 0) }
       case 'average':
         return { result: values.reduce((acc, v) => acc + v, 0) / values.length }
+
       case 'percentage': {
         const first = values[0]
         const second = values[1]
@@ -52,6 +61,7 @@ export const calculate = defineTool({
               : 0,
         }
       }
+
       default: {
         const exhaustiveCheck: never = operation
         return exhaustiveCheck
@@ -196,8 +206,10 @@ export const orchestrator = defineAgent({
         toolCalls: [{ id: 'tc_spec', name: 'specialist', arguments: { task } }],
       }
     }
+
     const toolMsg = findLastToolMessage(messages)
     let output: JsonValue = null
+
     if (toolMsg) {
       try {
         // SAFETY: JSON.parse output is JsonValue when parsing structured JSON
@@ -206,14 +218,17 @@ export const orchestrator = defineAgent({
         output = toolMsg.content
       }
     }
+
     const strParsed = z.string().safeParse(output)
     const content = strParsed.success ? strParsed.data : JSON.stringify(output)
+
     const resultText =
       isJsonObject(output) && isJsonString(output.result)
         ? output.result
         : isJsonObject(output) && isJsonString(output.text)
           ? output.text
           : content
+
     return {
       message: { role: 'assistant', content },
       done: true,
@@ -249,8 +264,10 @@ export const greeter = defineAgent({
         toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name } }],
       }
     }
+
     const toolMsg = findLastToolMessage(messages)
     let output: JsonValue = null
+
     if (toolMsg) {
       try {
         // SAFETY: JSON.parse output is JsonValue when parsing structured JSON
@@ -259,6 +276,7 @@ export const greeter = defineAgent({
         output = toolMsg.content
       }
     }
+
     return {
       message: { role: 'assistant', content: toolMsg?.content ?? 'done' },
       done: true,
@@ -283,7 +301,10 @@ export const checkout = defineWorkflow({
     {
       id: 'gate',
       run: (ctx) => {
-        if (ctx.input.amount < 100) return { skipped: true, reason: 'below-threshold' }
+        if (ctx.input.amount < 100) {
+          return { skipped: true, reason: 'below-threshold' }
+        }
+
         return ctx.effects(
           gate({ title: `Approve charge of ${ctx.input.amount} ${ctx.input.currency}?` }),
         )
@@ -293,7 +314,10 @@ export const checkout = defineWorkflow({
       id: 'charge',
       deps: ['gate'],
       run: (ctx) => {
-        if (isRejected(ctx.results.gate ?? null)) return { charged: false, reason: 'rejected' }
+        if (isRejected(ctx.results.gate ?? null)) {
+          return { charged: false, reason: 'rejected' }
+        }
+
         return ctx.effects([
           invoke(
             'payments.charge',
@@ -350,6 +374,7 @@ const askApproval = asEffectsTool({
   effects: (input) => {
     const title =
       isJsonObject(input) && isJsonString(input.title) ? input.title : 'Approve this request?'
+
     return gate({ title })
   },
   waitOn: { type: 'approval.decided' },
@@ -379,8 +404,15 @@ export const assistant = defineAgent({
       input: SpecialistInputSchema,
       mapInput: (input) => {
         const parsed = SpecialistInputSchema.safeParse(input)
-        if (parsed.success && parsed.data.task) return { task: parsed.data.task }
-        if (isJsonString(input)) return { task: input }
+
+        if (parsed.success && parsed.data.task) {
+          return { task: parsed.data.task }
+        }
+
+        if (isJsonString(input)) {
+          return { task: input }
+        }
+
         return { task: 'analyze' }
       },
     }),

@@ -12,21 +12,30 @@ export function createKeyedSerializer() {
     const prev = tails.get(key) ?? Promise.resolve()
     let cleanup: Promise<unknown>
     const next = prev.then(task, task)
+
     cleanup = next.then(
       () => {
-        if (tails.get(key) === cleanup) tails.delete(key)
+        if (tails.get(key) === cleanup) {
+          tails.delete(key)
+        }
       },
       () => {
-        if (tails.get(key) === cleanup) tails.delete(key)
+        if (tails.get(key) === cleanup) {
+          tails.delete(key)
+        }
       },
     )
+
     tails.set(key, cleanup)
     return next
   }
 
   const drain = async (key: string): Promise<void> => {
     const pending = tails.get(key)
-    if (pending) await pending
+
+    if (pending) {
+      await pending
+    }
   }
 
   const clear = (key?: string): void => {

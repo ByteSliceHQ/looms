@@ -18,6 +18,7 @@ function disableBunTimeout(req: Request, server: BunServerLike | undefined): voi
   try {
     // SAFETY: Bun.serve passes server as second arg; srvx attaches runtime.bun.server to Request.
     const srv = server ?? (req as RequestWithBunRuntime).runtime?.bun?.server
+
     if (srv) {
       srv.timeout?.(req, 0)
     }

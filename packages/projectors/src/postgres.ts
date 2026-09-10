@@ -49,6 +49,7 @@ async function applyOp(
           parent_actor_id = EXCLUDED.parent_actor_id,
           updated_at = EXCLUDED.updated_at
       `
+
       return
     case 'setActorStatus':
       await sql`
@@ -58,6 +59,7 @@ async function applyOp(
           status = EXCLUDED.status,
           updated_at = EXCLUDED.updated_at
       `
+
       return
     case 'upsertReview':
       await sql`
@@ -67,13 +69,16 @@ async function applyOp(
           status = EXCLUDED.status,
           updated_at = EXCLUDED.updated_at
       `
+
       return
     case 'setReviewStatus':
       await sql`
         UPDATE looms_reviews SET status = ${op.status}, updated_at = ${new Date(op.updatedAt)}
         WHERE review_id = ${op.reviewId}
       `
+
       return
+
     default: {
       const exhaustiveCheck: never = op
       return exhaustiveCheck
@@ -101,8 +106,13 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
         SELECT actor_id, kind, status, definition_name, parent_actor_id, updated_at
         FROM looms_actors WHERE actor_id = ${actorId}
       `
+
       const row = rows[0]
-      if (!row) return null
+
+      if (!row) {
+        return null
+      }
+
       return {
         actorId: row.actor_id,
         kind: row.kind,
@@ -121,6 +131,7 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
         : await sql<PostgresReviewRow[]>`
             SELECT review_id, actor_id, status, title, updated_at FROM looms_reviews
           `
+
       return rows.map((row) => ({
         reviewId: row.review_id,
         actorId: row.actor_id,

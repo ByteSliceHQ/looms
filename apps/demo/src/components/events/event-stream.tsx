@@ -41,9 +41,18 @@ export function EventStream({
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return events.filter((event) => {
-      if (threadId && event.threadId !== threadId) return false
-      if (!families.has(eventFamily(event.type))) return false
-      if (q && !searchText(event).includes(q)) return false
+      if (threadId && event.threadId !== threadId) {
+        return false
+      }
+
+      if (!families.has(eventFamily(event.type))) {
+        return false
+      }
+
+      if (q && !searchText(event).includes(q)) {
+        return false
+      }
+
       return true
     })
   }, [events, families, query, threadId])
@@ -59,29 +68,50 @@ export function EventStream({
   })
 
   useEffect(() => {
-    if (!follow || visible.length === 0) return
+    if (!follow || visible.length === 0) {
+      return
+    }
+
     followLock.current = true
     virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
+
     const timer = setTimeout(() => {
       followLock.current = false
     }, 80)
+
     return () => clearTimeout(timer)
   }, [follow, visible.length, virtualizer])
 
   function onScroll() {
-    if (followLock.current) return
+    if (followLock.current) {
+      return
+    }
+
     const el = parentRef.current
-    if (!el) return
+
+    if (!el) {
+      return
+    }
+
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD
-    if (follow && !atBottom) setFollow(false)
-    else if (!follow && atBottom) setFollow(true)
+
+    if (follow && !atBottom) {
+      setFollow(false)
+    } else if (!follow && atBottom) {
+      setFollow(true)
+    }
   }
 
   function toggleFamily(family: EventFamily) {
     setFamilies((prev) => {
       const next = new Set(prev)
-      if (next.has(family)) next.delete(family)
-      else next.add(family)
+
+      if (next.has(family)) {
+        next.delete(family)
+      } else {
+        next.add(family)
+      }
+
       return next
     })
   }
@@ -131,7 +161,11 @@ export function EventStream({
         <div className="relative w-full px-1" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => {
             const event = visible[row.index]
-            if (!event) return null
+
+            if (!event) {
+              return null
+            }
+
             return (
               <div
                 key={event.id}

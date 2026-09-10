@@ -60,6 +60,7 @@ describe('createKeyedSerializer', () => {
   test('drain waits for all pending tasks for a key', async () => {
     const serializer = createKeyedSerializer()
     let finished = false
+
     void serializer.run('k1', async () => {
       await new Promise((resolve) => setTimeout(resolve, 20))
       finished = true

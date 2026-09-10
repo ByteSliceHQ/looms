@@ -39,6 +39,7 @@ export function MathInline({ math, className = '' }: MathInlineProps) {
     displayMode: false,
     throwOnError: false,
   })
+
   return (
     <span
       className={`text-foreground inline-block px-0.5 align-baseline ${className}`.trim()}

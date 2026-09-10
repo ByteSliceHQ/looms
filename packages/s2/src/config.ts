@@ -28,12 +28,14 @@ export function streamNameForRun(runId: string): string {
 
 export function s2ConfigFromEnv(env: Record<string, string | undefined>): S2Config {
   const basin = env.LOOMS_S2_BASIN ?? env.S2_BASIN ?? 'looms-demo'
+
   const accessToken =
     env.LOOMS_S2_ACCESS_TOKEN ??
     env.LOOMS_S2_AUTH_TOKEN ??
     env.S2_ACCESS_TOKEN ??
     env.S2_AUTH_TOKEN ??
     's2_local'
+
   const endpoint =
     env.LOOMS_S2_ENDPOINT ??
     env.S2_ENDPOINT ??
@@ -45,6 +47,7 @@ export function s2ConfigFromEnv(env: Record<string, string | undefined>): S2Conf
     basin,
     accessToken,
   }
+
   if (endpoint !== undefined) {
     return {
       basin,
@@ -52,5 +55,6 @@ export function s2ConfigFromEnv(env: Record<string, string | undefined>): S2Conf
       endpoint,
     }
   }
+
   return config
 }

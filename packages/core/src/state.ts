@@ -57,10 +57,20 @@ export function isRunTerminal(state: RunState): boolean {
 }
 
 export function isRunParked(state: RunState): boolean {
-  if (isRunTerminal(state)) return true
-  if (state.outstandingEffects.length > 0) return false
+  if (isRunTerminal(state)) {
+    return true
+  }
+
+  if (state.outstandingEffects.length > 0) {
+    return false
+  }
+
   const records = Object.values(state.threads)
-  if (records.length === 0) return false
+
+  if (records.length === 0) {
+    return false
+  }
+
   return records.every(
     (record) =>
       record.status === 'waiting' ||

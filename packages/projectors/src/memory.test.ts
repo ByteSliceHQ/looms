@@ -8,6 +8,7 @@ describe('memory projector', () => {
   test('indexes a started run', async () => {
     const projector = memory()
     await projector.init?.()
+
     await projector.project([
       createEvent('run_1', {
         type: 'runtime.run.started',
@@ -16,6 +17,7 @@ describe('memory projector', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const row = await projector.getActor('run_1')
     expect(row?.kind).toBe('agent')
     await projector.dispose?.()

@@ -46,6 +46,7 @@ describe('materializeEvents', () => {
         payload: { threadId: 'thr_1', output: { ok: true } },
       }),
     ])
+
     expect(tables.runs.get('run_1')?.definitionName).toBe('checkout')
     expect(tables.threads.get('thr_1')?.status).toBe('completed')
     expect(tables.events_log).toHaveLength(3)

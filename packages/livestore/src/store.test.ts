@@ -23,8 +23,12 @@ function sseFrame(envelope: EventEnvelope): string {
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const start = Date.now()
+
   while (!predicate()) {
-    if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for store update')
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('timed out waiting for store update')
+    }
+
     await Bun.sleep(10)
   }
 }
@@ -40,25 +44,40 @@ describe('createLoomsStore', () => {
       port: 0,
       async fetch(req) {
         const url = new URL(req.url)
+
         if (url.pathname === '/api/livestore') {
           const storeId = url.searchParams.get('storeId')
-          if (storeId !== 'run_1') return new Response('Not Found', { status: 404 })
+
+          if (storeId !== 'run_1') {
+            return new Response('Not Found', { status: 404 })
+          }
+
           const accept = req.headers.get('accept') ?? ''
+
           const isLive =
             url.searchParams.get('live') === 'true' || accept.includes('text/event-stream')
+
           if (!isLive) {
             return Response.json({ batch: events.map(encodeLoomsEvent), head: events.length })
           }
+
           liveRequests += 1
           const lastEventId = req.headers.get('last-event-id')
+
           const cursor = lastEventId
             ? Number(lastEventId)
             : Number(url.searchParams.get('cursor') ?? '0')
+
           const pending = events.filter((item) => item.seq > cursor)
+
           const stream = new ReadableStream({
             start(controller) {
               const encoder = new TextEncoder()
-              for (const item of pending) controller.enqueue(encoder.encode(sseFrame(item)))
+
+              for (const item of pending) {
+                controller.enqueue(encoder.encode(sseFrame(item)))
+              }
+
               req.signal.addEventListener('abort', () => {
                 try {
                   controller.close()
@@ -68,16 +87,20 @@ describe('createLoomsStore', () => {
               })
             },
           })
+
           return new Response(stream, {
             headers: { 'content-type': 'text/event-stream' },
           })
         }
+
         if (url.pathname === '/runs/run_1/events' && req.method === 'POST') {
           return Response.json({ ok: true })
         }
+
         return new Response('Not Found', { status: 404 })
       },
     })
+
     endpoint = `http://127.0.0.1:${server.port}`
   })
 
@@ -123,6 +146,7 @@ describe('createLoomsStore reconnect', () => {
       event(1, 'runtime.run.started'),
       event(2, 'runtime.thread.started'),
     ]
+
     let connections = 0
     const seenLastEventIds: string[] = []
 
@@ -130,28 +154,44 @@ describe('createLoomsStore reconnect', () => {
       port: 0,
       async fetch(req) {
         const url = new URL(req.url)
-        if (url.pathname !== '/api/livestore') return new Response('Not Found', { status: 404 })
+
+        if (url.pathname !== '/api/livestore') {
+          return new Response('Not Found', { status: 404 })
+        }
+
         if (
           url.searchParams.get('live') !== 'true' &&
           !(req.headers.get('accept') ?? '').includes('text/event-stream')
         ) {
           return Response.json({ batch: [], head: 0 })
         }
+
         connections += 1
         const lastEventId = req.headers.get('last-event-id')
-        if (lastEventId) seenLastEventIds.push(lastEventId)
+
+        if (lastEventId) {
+          seenLastEventIds.push(lastEventId)
+        }
+
         const cursor = lastEventId
           ? Number(lastEventId)
           : Number(url.searchParams.get('cursor') ?? '0')
+
         const pending = log.filter((item) => item.seq > cursor)
         const first = pending[0]
+
         const stream = new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder()
-            if (first) controller.enqueue(encoder.encode(sseFrame(first)))
+
+            if (first) {
+              controller.enqueue(encoder.encode(sseFrame(first)))
+            }
+
             controller.close()
           },
         })
+
         return new Response(stream, { headers: { 'content-type': 'text/event-stream' } })
       },
     })
@@ -162,6 +202,7 @@ describe('createLoomsStore reconnect', () => {
       reconnectDelayMs: 20,
       fetch,
     })
+
     await waitFor(() => store.events().length === 2)
     expect(store.events().map((item) => item.seq)).toEqual([1, 2])
     expect(seenLastEventIds).toContain('1')
@@ -199,7 +240,9 @@ describe('createLoomsStore reconnect', () => {
       }
 
       dispatch(name: string, payload?: JsonValue) {
-        for (const fn of this.listeners.get(name) ?? []) fn(payload)
+        for (const fn of this.listeners.get(name) ?? []) {
+          fn(payload)
+        }
       }
 
       close() {
@@ -221,9 +264,11 @@ describe('createLoomsStore reconnect', () => {
 
       expect(instances.length).toBe(1)
       instances[0]?.dispatch('open')
+
       instances[0]?.dispatch('message', {
         data: JSON.stringify({ batch: [encodeLoomsEvent(event(1, 'runtime.run.started'))] }),
       })
+
       expect(store.events().length).toBe(1)
 
       // Simulate unexpected server error or socket close that transitions EventSource to CLOSED

@@ -20,17 +20,21 @@ function fieldValue(
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : Number(fallback)
   }
+
   return value || String(fallback)
 }
 
 function WorkflowResult({ runId }: { runId: string }) {
   const { status, tree, events } = useRun(runId)
+
   const completed = events.find(
     (event) => event.type === 'runtime.thread.completed' && event.threadId === tree.root?.threadId,
   )
+
   const failed = events.find(
     (event) => event.type === 'runtime.thread.failed' && event.threadId === tree.root?.threadId,
   )
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs">
@@ -60,12 +64,14 @@ export function WorkflowForm({
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(type.fields.map((field) => [field.name, String(field.default)])),
   )
+
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function start() {
     setPending(true)
     setError(null)
+
     try {
       const input = Object.fromEntries(
         type.fields.map((field) => [
@@ -73,13 +79,16 @@ export function WorkflowForm({
           fieldValue(values[field.name] ?? '', field.type, field.default),
         ]),
       )
+
       const result = await loomsClient.start(type.def, input)
+
       rememberRun({
         runId: result.runId,
         definitionName: type.name,
         kind: type.kind,
         startedAt: Date.now(),
       })
+
       onStarted(result.runId)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

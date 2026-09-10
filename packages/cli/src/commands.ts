@@ -30,7 +30,10 @@ const urlFlag = Flag.string('url').pipe(
 )
 
 function parseJsonArg(raw: Option.Option<string>): JsonValue {
-  if (Option.isNone(raw) || raw.value === '') return null
+  if (Option.isNone(raw) || raw.value === '') {
+    return null
+  }
+
   try {
     // SAFETY: CLI JSON args decode to JsonValue; parse failures fall back to the raw string
     return JSON.parse(raw.value) as JsonValue
@@ -93,9 +96,11 @@ const start = Command.make(
   },
   Effect.fn('start')(function* ({ kind, name, json }) {
     const { url } = yield* loomsBase
+
     const result = yield* tryClient(() =>
       clientFor(url).startRun({ kind, definitionName: name, input: parseJsonArg(json) }),
     )
+
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
@@ -155,11 +160,14 @@ const approve = Command.make(
         userMessage: 'Specify exactly one of --approve or --reject',
       })
     }
+
     const outcome = accept ? 'approve' : 'reject'
     const { url } = yield* loomsBase
+
     const result = yield* tryClient(() =>
       clientFor(url).signal(runId, [decision(approvalId, outcome)]),
     )
+
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
@@ -195,9 +203,11 @@ const signal = Command.make(
   },
   Effect.fn('signal')(function* ({ runId, type, json }) {
     const { url } = yield* loomsBase
+
     const result = yield* tryClient(() =>
       clientFor(url).signal(runId, [{ type, payload: parseJsonArg(json) }]),
     )
+
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
@@ -220,9 +230,11 @@ const steer = Command.make(
   },
   Effect.fn('steer')(function* ({ runId, message, interrupt }) {
     const { url } = yield* loomsBase
+
     const result = yield* tryClient(() =>
       clientFor(url).signal(runId, [steerEvent(message.join(' '), { interrupt })]),
     )
+
     yield* Console.log(JSON.stringify(result, null, 2))
   }),
 ).pipe(
@@ -240,9 +252,11 @@ const tail = Command.make(
     const client = clientFor(url)
 
     yield* Console.log(`Tailing ${runId} (ctrl-c to stop)`)
+
     yield* Effect.scoped(
       Effect.gen(function* () {
         const queue = yield* Queue.unbounded<string>()
+
         yield* Effect.acquireRelease(
           Effect.sync(() =>
             client.subscribeEvents(runId, (event) => {
@@ -251,6 +265,7 @@ const tail = Command.make(
           ),
           (stop) => Effect.sync(() => stop()),
         )
+
         yield* Stream.fromQueue(queue).pipe(Stream.runForEach((line) => Console.log(line)))
       }),
     )

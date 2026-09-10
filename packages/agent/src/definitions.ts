@@ -95,7 +95,7 @@ export interface AgentDefinition<
   ): Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
 }
 
-export type AnyAgentDefinition = AgentDefinition<string, JsonValue, JsonValue>
+export type AnyAgentDefinition = AgentDefinition<string>
 
 export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolLike[] {
   return tools.map((entry) => {
@@ -103,6 +103,7 @@ export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolL
       // SAFETY: kind discriminant matches ToolLike.
       return entry as ToolLike
     }
+
     return asThreadTool({
       child: { kind: entry.kind, name: entry.name },
       description:

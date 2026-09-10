@@ -38,7 +38,11 @@ export const pendingApprovals = defineProjection({
   reduce(state, event) {
     const data = payloadObject(event)
     const approvalId = isJsonString(data.approvalId) ? data.approvalId : undefined
-    if (!approvalId) return state
+
+    if (!approvalId) {
+      return state
+    }
+
     switch (event.type) {
       case 'approval.requested': {
         const threadId = event.threadId ?? null
@@ -55,6 +59,7 @@ export const pendingApprovals = defineProjection({
           ],
         }
       }
+
       case 'approval.decided': {
         const outcome = data.outcome === 'reject' ? 'rejected' : 'approved'
         return {
@@ -63,6 +68,7 @@ export const pendingApprovals = defineProjection({
           ),
         }
       }
+
       case 'approval.timed_out':
         return {
           items: state.items.map((item) =>

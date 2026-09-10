@@ -47,6 +47,7 @@ function applyOp(db: Database, op: IndexOp): void {
            updated_at = excluded.updated_at`,
         [op.actorId, op.kind, op.status, op.definitionName, op.parentActorId, op.updatedAt],
       )
+
       return
     case 'setActorStatus':
       db.run(
@@ -57,6 +58,7 @@ function applyOp(db: Database, op: IndexOp): void {
            updated_at = excluded.updated_at`,
         [op.actorId, op.status, op.updatedAt],
       )
+
       return
     case 'upsertReview':
       db.run(
@@ -67,6 +69,7 @@ function applyOp(db: Database, op: IndexOp): void {
            updated_at = excluded.updated_at`,
         [op.reviewId, op.actorId, op.status, op.title, op.updatedAt],
       )
+
       return
     case 'setReviewStatus':
       db.run(`UPDATE looms_reviews SET status = ?, updated_at = ? WHERE review_id = ?`, [
@@ -74,7 +77,9 @@ function applyOp(db: Database, op: IndexOp): void {
         op.updatedAt,
         op.reviewId,
       ])
+
       return
+
     default: {
       const exhaustiveCheck: never = op
       return exhaustiveCheck
@@ -92,8 +97,11 @@ export function sqlite(options: SqliteProjectorOptions = {}): IndexProjector {
     },
     applyOps: async (ops) => {
       const apply = db.transaction((batch: ReadonlyArray<IndexOp>) => {
-        for (const op of batch) applyOp(db, op)
+        for (const op of batch) {
+          applyOp(db, op)
+        }
       })
+
       apply(ops)
     },
     getActor: async (actorId) => {
@@ -103,7 +111,11 @@ export function sqlite(options: SqliteProjectorOptions = {}): IndexProjector {
            FROM looms_actors WHERE actor_id = ?`,
         )
         .get(actorId)
-      if (!row) return null
+
+      if (!row) {
+        return null
+      }
+
       return {
         actorId: row.actor_id,
         kind: row.kind,
@@ -126,6 +138,7 @@ export function sqlite(options: SqliteProjectorOptions = {}): IndexProjector {
               `SELECT review_id, actor_id, status, title, updated_at FROM looms_reviews`,
             )
             .all()
+
       return rows.map((row) => ({
         reviewId: row.review_id,
         actorId: row.actor_id,
@@ -135,7 +148,9 @@ export function sqlite(options: SqliteProjectorOptions = {}): IndexProjector {
       }))
     },
     dispose: async () => {
-      if (createdDb) db.close()
+      if (createdDb) {
+        db.close()
+      }
     },
   }
 

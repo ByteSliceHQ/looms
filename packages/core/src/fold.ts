@@ -14,10 +14,15 @@ export interface FoldRegistry {
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   const payload = event.payload
-  if (payload === null || Array.isArray(payload)) return {}
+
+  if (payload === null || Array.isArray(payload)) {
+    return {}
+  }
+
   if (Predicate.isReadonlyObject(payload)) {
     return payload
   }
+
   return {}
 }
 
@@ -75,9 +80,13 @@ function threadWaits(state: RunState, threadId: string): WaitRecord[] {
 
 function dropThreadWork(state: RunState, threadId: string): RunState {
   const waits: RunState['waits'] = {}
+
   for (const [waitId, record] of Object.entries(state.waits)) {
-    if (record.threadId !== threadId) waits[waitId] = record
+    if (record.threadId !== threadId) {
+      waits[waitId] = record
+    }
   }
+
   return {
     ...state,
     waits,
@@ -87,25 +96,33 @@ function dropThreadWork(state: RunState, threadId: string): RunState {
 
 function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
   const payload = payloadObject(event)
+
   switch (event.type) {
     case 'runtime.run.started': {
       const rootThreadId = readString(payload, 'rootThreadId') ?? null
       return { ...state, runId: event.runId, rootThreadId, status: 'running' }
     }
+
     case 'runtime.run.completed': {
       const error = payload.error
       const status = Predicate.isString(error) && error.length > 0 ? 'failed' : 'completed'
       return { ...state, status }
     }
+
     case 'runtime.thread.started': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
       const kind = readString(payload, 'kind')
       const definitionName = readString(payload, 'definitionName')
-      if (!threadId || !kind || !definitionName) return state
+
+      if (!threadId || !kind || !definitionName) {
+        return state
+      }
+
       const parent = payload.parentThreadId
       const parentThreadId = parent === null || Predicate.isString(parent) ? parent : null
       const input = payload.input ?? null
       const definition = registry.threads.get(kind)
+
       const initial = definition
         ? definition.initialState({
             runId: event.runId,
@@ -115,6 +132,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             input,
           })
         : {}
+
       const record: ThreadRecord = {
         threadId,
         kind,
@@ -126,17 +144,29 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         error: null,
         state: initial,
       }
+
       let next = putThread(state, record)
+
       if (!next.rootThreadId) {
         next = { ...next, rootThreadId: threadId }
       }
+
       return next
     }
+
     case 'runtime.thread.completed': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
-      if (!threadId) return state
+
+      if (!threadId) {
+        return state
+      }
+
       const existing = state.threads[threadId]
-      if (!existing) return state
+
+      if (!existing) {
+        return state
+      }
+
       return putThread(state, {
         ...existing,
         status: 'completed',
@@ -144,11 +174,20 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         error: null,
       })
     }
+
     case 'runtime.thread.failed': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
-      if (!threadId) return state
+
+      if (!threadId) {
+        return state
+      }
+
       const existing = state.threads[threadId]
-      if (!existing) return state
+
+      if (!existing) {
+        return state
+      }
+
       return dropThreadWork(
         putThread(state, {
           ...existing,
@@ -158,11 +197,20 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         threadId,
       )
     }
+
     case 'runtime.thread.cancelled': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
-      if (!threadId) return state
+
+      if (!threadId) {
+        return state
+      }
+
       const existing = state.threads[threadId]
-      if (!existing) return state
+
+      if (!existing) {
+        return state
+      }
+
       return dropThreadWork(
         putThread(state, {
           ...existing,
@@ -172,42 +220,61 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         threadId,
       )
     }
+
     case 'runtime.wait.registered': {
       const waitId = readString(payload, 'waitId')
       const threadId = readString(payload, 'threadId') ?? event.threadId
       const on = payload.on
+
       if (!waitId || !threadId || !on || !Predicate.isObject(on)) {
         return state
       }
+
       // SAFETY: wait.registered payload.on is a WaitCondition written by the runtime.
       const record: WaitRecord = {
         waitId,
         threadId,
         on: on as WaitRecord['on'],
       }
+
       if (payload.tag !== undefined) {
         record.tag = payload.tag
       }
+
       let next = addWait(state, record)
       const existing = next.threads[threadId]
+
       if (existing && !isTerminalStatus(existing.status)) {
         next = putThread(next, { ...existing, status: 'waiting' })
       }
+
       return next
     }
+
     case 'runtime.wait.satisfied': {
       const waitId = readString(payload, 'waitId')
-      if (!waitId) return state
+
+      if (!waitId) {
+        return state
+      }
+
       const existingWait = state.waits[waitId]
       let next = removeWait(state, waitId)
       const threadId = existingWait?.threadId ?? event.threadId
-      if (!threadId) return next
+
+      if (!threadId) {
+        return next
+      }
+
       const existing = next.threads[threadId]
+
       if (existing && existing.status === 'waiting' && threadWaits(next, threadId).length === 0) {
         next = putThread(next, { ...existing, status: 'running' })
       }
+
       return next
     }
+
     case 'runtime.snapshot.taken':
     case 'runtime.timer.set':
     case 'runtime.timer.fired':
@@ -229,15 +296,19 @@ function deriveEffectId(
   if ('tag' in effect && Predicate.isString(effect.tag)) {
     return createEffectId(threadId, effect.tag)
   }
+
   if ('waitId' in effect && Predicate.isString(effect.waitId)) {
     return createEffectId(threadId, effect.waitId)
   }
+
   if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
     return createEffectId(threadId, `spawn_${effect.childThreadId}`)
   }
+
   if (existingId) {
     return existingId
   }
+
   return createEffectId(threadId, causingSeq, index)
 }
 
@@ -255,14 +326,18 @@ function mapEffects(
         if ('tag' in effect && Predicate.isString(effect.tag)) {
           return item.effectId === createEffectId(threadId, effect.tag)
         }
+
         if ('waitId' in effect && Predicate.isString(effect.waitId)) {
           return item.effectId === createEffectId(threadId, effect.waitId)
         }
+
         if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
           return item.effectId === createEffectId(threadId, `spawn_${effect.childThreadId}`)
         }
+
         return item.effect.type === effect.type
       })
+
       const existing = matchIndex >= 0 ? remainingExisting.splice(matchIndex, 1)[0] : undefined
       const effectId = deriveEffectId(threadId, event.seq, index, effect, existing?.effectId)
       return (
@@ -286,6 +361,7 @@ function reconcileOutputEffects(
   effects: RuntimeEffect[],
 ): RunState {
   const record = state.threads[threadId]
+
   if (record && isTerminalStatus(record.status)) {
     return {
       ...state,
@@ -306,11 +382,23 @@ function reconcileOutputEffects(
 
 function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
   const threadId = event.threadId
-  if (!threadId) return state
+
+  if (!threadId) {
+    return state
+  }
+
   const record = state.threads[threadId]
-  if (!record) return state
+
+  if (!record) {
+    return state
+  }
+
   const definition = registry.threads.get(record.kind)
-  if (!definition) return state
+
+  if (!definition) {
+    return state
+  }
+
   const ctx: ThreadContext = {
     runId: state.runId,
     threadId,
@@ -330,18 +418,37 @@ function failUnhandledEffect(
   event: EventEnvelope,
   effectIdsBeforeDeliver: ReadonlySet<string>,
 ): RunState {
-  if (event.type !== 'runtime.effect.failed') return state
+  if (event.type !== 'runtime.effect.failed') {
+    return state
+  }
+
   const payload = payloadObject(event)
   const error = readString(payload, 'error') ?? 'effect failed'
-  if (isWithdrawnError(error)) return state
+
+  if (isWithdrawnError(error)) {
+    return state
+  }
+
   const handled = state.outstandingEffects.some(
     (item) => !effectIdsBeforeDeliver.has(item.effectId),
   )
-  if (handled) return state
+
+  if (handled) {
+    return state
+  }
+
   const threadId = event.threadId
-  if (!threadId) return state
+
+  if (!threadId) {
+    return state
+  }
+
   const existing = state.threads[threadId]
-  if (!existing || isTerminalStatus(existing.status)) return state
+
+  if (!existing || isTerminalStatus(existing.status)) {
+    return state
+  }
+
   return dropThreadWork(
     putThread(state, {
       ...existing,
@@ -353,20 +460,28 @@ function failUnhandledEffect(
 }
 
 export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
-  if (event.ephemeral) return state
+  if (event.ephemeral) {
+    return state
+  }
+
   let next = cloneState(state)
+
   if (event.runId && next.runId !== event.runId) {
     next = { ...next, runId: event.runId }
   }
+
   if (event.effectId) {
     next = completeEffect(next, event.effectId)
   }
+
   if (event.idempotencyKey) {
     const keys = next.processedIdempotencyKeys ?? []
+
     if (!keys.includes(event.idempotencyKey)) {
       next = { ...next, processedIdempotencyKeys: [...keys, event.idempotencyKey] }
     }
   }
+
   next = applyProtocol(next, event, registry)
   const effectIdsBeforeDeliver = new Set(next.outstandingEffects.map((item) => item.effectId))
   next = deliver(next, event, registry)

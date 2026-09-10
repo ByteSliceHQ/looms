@@ -12,11 +12,16 @@ export function EventInspector({ runId, event }: { runId: string; event: DemoEve
 
   useEffect(() => {
     let cancelled = false
+
     void loomsClient.replayTo(runId, event.seq).then((res) => {
-      if (cancelled) return
+      if (cancelled) {
+        return
+      }
+
       // SAFETY: host replay payload is ReplayStep | null.
       setStep(res.step as ReplayStep | null)
     })
+
     return () => {
       cancelled = true
     }

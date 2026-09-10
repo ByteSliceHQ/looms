@@ -9,6 +9,7 @@ describe('memory EventStore', () => {
   test('appends and reads by runId', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
     const runId = 'run_store'
+
     await Effect.runPromise(
       store.append(runId, [
         createEvent(runId, {
@@ -19,6 +20,7 @@ describe('memory EventStore', () => {
         }),
       ]),
     )
+
     const events = await Effect.runPromise(store.read(runId))
     expect(events).toHaveLength(1)
     expect(events[0]?.seq).toBe(1)

@@ -16,14 +16,21 @@ import {
 import { S2ConfigSchema, streamNameForRun, type S2Config } from './config'
 
 function toStoreError(cause: unknown, message: string): EventStoreError {
-  if (cause instanceof EventStoreError) return cause
+  if (cause instanceof EventStoreError) {
+    return cause
+  }
+
   const detail = cause instanceof Error ? cause.message : String(cause)
   return new EventStoreError(`${message}: ${detail}`, cause)
 }
 
 function isUnsatisfiableRead(err: EventStoreError): boolean {
   const cause = err.cause
-  if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) return true
+
+  if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) {
+    return true
+  }
+
   const text = `${err.message} ${cause instanceof Error ? cause.message : ''}`
   return text.includes('out of range') || text.includes('Range not satisfiable')
 }
@@ -44,12 +51,14 @@ function createClient(config: S2Config): S2 {
       }),
     })
   }
+
   if (config.endpoint) {
     return new S2({
       accessToken: config.accessToken,
       endpoints: new S2Endpoints(config.endpoint),
     })
   }
+
   return new S2({ accessToken: config.accessToken })
 }
 
@@ -67,9 +76,13 @@ export function s2(config: S2Config): EventStore {
   const appends = createKeyedSerializer()
 
   let basinEnsured = false
+
   const ensureBasin = Effect.tryPromise({
     try: async () => {
-      if (basinEnsured) return
+      if (basinEnsured) {
+        return
+      }
+
       try {
         await client.basins.create({ basin: parsed.basin })
       } catch (err) {
@@ -78,6 +91,7 @@ export function s2(config: S2Config): EventStore {
           throw err
         }
       }
+
       basinEnsured = true
     },
     catch: (cause) => toStoreError(cause, `Failed to ensure basin ${parsed.basin}`),
@@ -89,7 +103,11 @@ export function s2(config: S2Config): EventStore {
       return yield* Effect.tryPromise({
         try: async () => {
           const name = streamNameForRun(runId)
-          if (ensured.has(name)) return basin.stream(name)
+
+          if (ensured.has(name)) {
+            return basin.stream(name)
+          }
+
           try {
             await basin.streams.create({ stream: name })
           } catch (err) {
@@ -101,6 +119,7 @@ export function s2(config: S2Config): EventStore {
               }
             }
           }
+
           ensured.add(name)
           return basin.stream(name)
         },
@@ -115,21 +134,26 @@ export function s2(config: S2Config): EventStore {
           const tail = yield* service.tail(runId)
           return { sequences: [], tail } satisfies AppendResult
         }
+
         const stream = yield* ensureStream(runId)
+
         const records = events.map((partial) => {
           const body = JSON.stringify({
             ...partial,
             runId,
             seq: partial.seq ?? 0,
           })
+
           return AppendRecord.string({
             body,
             headers: [['content-type', 'application/json']],
           })
         })
+
         const input = AppendInput.create(records, {
           matchSeqNum: options?.expectedTail,
         })
+
         const appendResult = yield* Effect.promise(() =>
           appends.run(runId, () =>
             stream.append(input).then(
@@ -141,6 +165,7 @@ export function s2(config: S2Config): EventStore {
 
         if (!appendResult.ok) {
           const cause = appendResult.err
+
           if (
             cause instanceof S2Error &&
             (cause.status === 409 ||
@@ -155,14 +180,17 @@ export function s2(config: S2Config): EventStore {
               new EventStoreConflictError(runId, options?.expectedTail ?? 0, actualTail),
             )
           }
+
           return yield* Effect.fail(toStoreError(cause, `Append failed for ${runId}`))
         }
 
         const ack = appendResult.ack
         const sequences: number[] = []
+
         for (let i = 0; i < events.length; i++) {
           sequences.push(ack.start.seqNum + i + 1)
         }
+
         return { sequences, tail: ack.tail.seqNum }
       }),
 
@@ -172,6 +200,7 @@ export function s2(config: S2Config): EventStore {
         const fromSeq = options?.fromSeq ?? 1
         const s2From = Math.max(0, fromSeq - 1)
         const limit = options?.limit ?? 1000
+
         const batch = yield* Effect.tryPromise({
           try: () =>
             stream.read({
@@ -184,7 +213,11 @@ export function s2(config: S2Config): EventStore {
             isUnsatisfiableRead(err) ? Effect.succeed(null) : Effect.fail(err),
           ),
         )
-        if (!batch) return []
+
+        if (!batch) {
+          return []
+        }
+
         return batch.records
           .filter((r) => r.seqNum >= s2From)
           .map((r) => parseEvent(r.body, r.seqNum))
@@ -193,6 +226,7 @@ export function s2(config: S2Config): EventStore {
     tail: (runId) =>
       Effect.gen(function* () {
         const stream = yield* ensureStream(runId)
+
         const res = yield* Effect.tryPromise({
           try: () => stream.checkTail(),
           catch: (cause) => toStoreError(cause, `Tail failed for ${runId}`),
@@ -203,6 +237,7 @@ export function s2(config: S2Config): EventStore {
               : Effect.fail(err),
           ),
         )
+
         return res.tail.seqNum
       }),
 
@@ -212,26 +247,38 @@ export function s2(config: S2Config): EventStore {
           const fromSeq = options?.fromSeq ?? 1
           const s2From = Math.max(0, fromSeq - 1)
           let stopped = false
+
           const run = async () => {
             try {
               const stream = await Effect.runPromise(ensureStream(runId))
+
               const session = await stream.readSession({
                 start: { from: { seqNum: s2From }, clamp: true },
               })
+
               for await (const record of session) {
-                if (stopped) break
-                if (record.seqNum < s2From) continue
+                if (stopped) {
+                  break
+                }
+
+                if (record.seqNum < s2From) {
+                  continue
+                }
+
                 Queue.offerUnsafe(queue, parseEvent(record.body, record.seqNum))
               }
+
               Queue.endUnsafe(queue)
               resume(Effect.void)
             } catch (cause) {
               await Effect.runPromise(
                 Queue.fail(queue, toStoreError(cause, `Subscribe failed for ${runId}`)),
               )
+
               resume(Effect.void)
             }
           }
+
           void run()
           return Effect.sync(() => {
             stopped = true

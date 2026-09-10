@@ -25,11 +25,15 @@ interface RequestWithBunRuntime extends Request {
 }
 
 function disableBunSocketTimeout(request?: Request): void {
-  if (!request) return
+  if (!request) {
+    return
+  }
+
   try {
     // SAFETY: Bun.serve attaches runtime.bun.server to Request in srvx and Bun handlers.
     const reqWithBun = request as RequestWithBunRuntime
     const bunServer = reqWithBun.runtime?.bun?.server
+
     if (bunServer) {
       bunServer.timeout?.(request, 0)
     }
@@ -52,10 +56,20 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
   let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
 
   const close = () => {
-    if (closed) return
+    if (closed) {
+      return
+    }
+
     closed = true
-    if (heartbeat !== undefined) clearInterval(heartbeat)
-    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+
+    if (heartbeat !== undefined) {
+      clearInterval(heartbeat)
+    }
+
+    if (fiber) {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
+
     try {
       streamController?.close()
     } catch {
@@ -69,7 +83,10 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
       const encoder = new TextEncoder()
 
       const write = (text: string) => {
-        if (closed) return
+        if (closed) {
+          return
+        }
+
         try {
           controller.enqueue(encoder.encode(text))
         } catch {
@@ -108,6 +125,7 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
         close()
         return
       }
+
       signal.addEventListener('abort', close)
     },
     cancel() {

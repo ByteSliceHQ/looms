@@ -8,6 +8,7 @@ import { workflow } from './module'
 describe('@looms/workflow module', () => {
   test('started thread requests schedule', () => {
     const registry = composeModules([workflow()])
+
     const state = foldRun(
       [
         {
@@ -28,6 +29,7 @@ describe('@looms/workflow module', () => {
       ],
       registry,
     )
+
     expect(state.outstandingEffects[0]?.effect.type).toBe('workflow.schedule')
   })
 
@@ -36,6 +38,7 @@ describe('@looms/workflow module', () => {
       name: 'pipe',
       nodes: [{ id: 'a', run: () => 1 }],
     })
+
     expect(def.kind).toBe('workflow')
   })
 
@@ -48,6 +51,7 @@ describe('@looms/workflow module', () => {
         validate: (raw: JsonValue) => ({ value: raw as { target: string } }),
       },
     }
+
     const def = defineWorkflow({
       name: 'pipe_shaped',
       input: schema,
@@ -58,6 +62,7 @@ describe('@looms/workflow module', () => {
         },
       ],
     })
+
     expect(def.kind).toBe('workflow')
     expect(def.input).toBe(schema)
   })
@@ -66,6 +71,7 @@ describe('@looms/workflow module', () => {
     const registry = composeModules([workflow()])
     const runId = 'run_wf_fail'
     const threadId = 'thr_wf_fail'
+
     const state = foldRun(
       [
         {
@@ -107,6 +113,7 @@ describe('@looms/workflow module', () => {
       ],
       registry,
     )
+
     const threadState = state.threads[threadId]?.state
     expect(JSON.stringify(threadState)).toContain('"status":"failed"')
     const emitted = state.outstandingEffects.find((item) => item.effect.type === 'runtime.emit')

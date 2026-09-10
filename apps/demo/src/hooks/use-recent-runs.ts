@@ -18,14 +18,23 @@ let cachedRaw: string | null = null
 let cached: RecentRun[] = EMPTY
 
 function read(): RecentRun[] {
-  if (typeof localStorage === 'undefined') return cached
+  if (typeof localStorage === 'undefined') {
+    return cached
+  }
+
   const raw = localStorage.getItem(KEY)
-  if (raw === cachedRaw) return cached
+
+  if (raw === cachedRaw) {
+    return cached
+  }
+
   cachedRaw = raw
+
   if (!raw) {
     cached = EMPTY
     return cached
   }
+
   const parsed = z.array(RecentRunSchema).safeParse(JSON.parse(raw))
   cached = parsed.success ? parsed.data : EMPTY
   return cached
@@ -42,6 +51,7 @@ function write(runs: RecentRun[]) {
 function subscribe(onStoreChange: () => void) {
   window.addEventListener('storage', onStoreChange)
   window.addEventListener(KEY, onStoreChange)
+
   return () => {
     window.removeEventListener('storage', onStoreChange)
     window.removeEventListener(KEY, onStoreChange)

@@ -31,8 +31,13 @@ describe('tool schema', () => {
         input: CheckoutInput,
       },
     ])
+
     expect(tools[0]?.kind).toBe('thread')
-    if (tools[0]?.kind !== 'thread') return
+
+    if (tools[0]?.kind !== 'thread') {
+      return
+    }
+
     expect(tools[0].input).toBe(CheckoutInput)
     expect(tools[0].childKind).toBe('workflow')
     expect(tools[0].childName).toBe('checkout')
@@ -47,6 +52,7 @@ describe('tool schema', () => {
         input: TaskInput,
       },
     })
+
     expect(tool.input).toBe(TaskInput)
     const schema = toolJsonSchema(tool)
     expect(JSON.stringify(schema)).toContain('task')
@@ -54,6 +60,7 @@ describe('tool schema', () => {
 
   test('asAgentTool respects explicit input override', () => {
     const OverrideInput = Schema.Struct({ topic: Schema.String })
+
     const tool = asAgentTool({
       agent: {
         kind: 'agent',
@@ -63,6 +70,7 @@ describe('tool schema', () => {
       },
       input: OverrideInput,
     })
+
     expect(tool.input).toBe(OverrideInput)
     const schema = toolJsonSchema(tool)
     expect(JSON.stringify(schema)).toContain('topic')
@@ -76,6 +84,7 @@ describe('tool schema', () => {
         input: CheckoutInput,
       },
     })
+
     expect(tool.input).toBe(CheckoutInput)
     const schema = toolJsonSchema(tool)
     expect(JSON.stringify(schema)).toContain('amount')
@@ -83,12 +92,14 @@ describe('tool schema', () => {
 
   test('asEffectsTool exposes input schema in toolSpecs', () => {
     const ApprovalInput = Schema.Struct({ title: Schema.String })
+
     const tool = asEffectsTool({
       name: 'ask_approval',
       description: 'Ask for approval',
       input: ApprovalInput,
       effects: () => [],
     })
+
     const specs = toolSpecs([tool])
     expect(specs[0]?.name).toBe('ask_approval')
     expect(JSON.stringify(specs[0]?.inputJsonSchema)).toContain('title')
@@ -103,6 +114,7 @@ describe('tool schema', () => {
         input: CheckoutInput,
       },
     ])
+
     expect(specs[0]?.name).toBe('checkout')
     const schema = specs[0]?.inputJsonSchema
     expect(schema).toBeDefined()
@@ -123,6 +135,7 @@ describe('tool schema', () => {
       input: TaskInput,
       handler: (input) => ({ echo: input.task }),
     })
+
     expect(tool.input).toBe(TaskInput)
 
     const agent = defineAgent({
@@ -130,6 +143,7 @@ describe('tool schema', () => {
       instructions: 'Echo',
       input: TaskInput,
     })
+
     expect(agent.input).toBe(TaskInput)
   })
 })

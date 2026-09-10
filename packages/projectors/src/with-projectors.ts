@@ -28,11 +28,13 @@ export function withProjectors(
       Effect.gen(function* () {
         const result = yield* store.append(runId, events, appendOptions)
         const fromSeq = result.sequences[0]
+
         if (fromSeq !== undefined && projectors.length > 0) {
           const written = yield* store.read(runId, {
             fromSeq,
             limit: result.sequences.length,
           })
+
           yield* Effect.promise(async () => {
             for (const projector of projectors) {
               try {
@@ -47,6 +49,7 @@ export function withProjectors(
             }
           })
         }
+
         return result
       }),
     read: (runId, readOptions) => store.read(runId, readOptions),

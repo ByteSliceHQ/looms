@@ -12,10 +12,12 @@ describe('createEventStreamResponse', () => {
     const abort = new AbortController()
 
     let timeoutCalledWith: [unknown, number] | undefined
+
     // SAFETY: Mocking Bun request with runtime.bun.server for testing.
     const mockReq = new Request('http://test/stream') as Request & {
       runtime: { bun: { server: { timeout: (r: Request, s: number) => void } } }
     }
+
     mockReq.runtime = {
       bun: {
         server: {
@@ -40,7 +42,10 @@ describe('createEventStreamResponse', () => {
     expect(timeoutCalledWith).toEqual([mockReq, 0])
 
     const reader = res.body?.getReader()
-    if (!reader) throw new Error('missing stream body')
+
+    if (!reader) {
+      throw new Error('missing stream body')
+    }
 
     // First chunk must be the immediate keepalive
     const { value } = await reader.read()

@@ -20,6 +20,7 @@ describe('defineEffect', () => {
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
       ],
     })
+
     const events = await Effect.runPromise(effect.execute({}, ctx))
     expect(events).toEqual([{ type: 'demo.pong', payload: { effectId: 'eff_1' } }])
   })
@@ -31,6 +32,7 @@ describe('defineEffect', () => {
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
       ],
     })
+
     const events = await Effect.runPromise(effect.execute({}, ctx))
     expect(events).toEqual([{ type: 'demo.pong', payload: { effectId: 'eff_1' } }])
   })
@@ -41,12 +43,15 @@ describe('defineEffect', () => {
       input: Schema.Struct({ amount: Schema.Number }),
       execute: () => [],
     })
+
     let message = ''
+
     try {
       await Effect.runPromise(effect.execute({}, ctx))
     } catch (err) {
       message = err instanceof Error ? err.message : String(err)
     }
+
     expect(message).toContain('amount')
     expect(message).not.toContain('An error occurred in Effect.tryPromise')
   })
@@ -57,6 +62,7 @@ describe('defineEffect', () => {
       input: Schema.Struct({ amount: Schema.Number }),
       execute: (input) => [{ type: 'demo.charged', payload: { amount: input.amount } }],
     })
+
     expect(effect.input).toBeDefined()
 
     const events = await Effect.runPromise(effect.execute({ amount: 99 }, ctx))

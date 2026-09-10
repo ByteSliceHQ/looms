@@ -27,9 +27,16 @@ function isStandardJsonSchemaHolder(value: SchemaCandidate): value is StandardJs
 }
 
 function fromStandardJsonSchema(schema: SchemaCandidate): JsonValue | undefined {
-  if (!isStandardJsonSchemaHolder(schema)) return undefined
+  if (!isStandardJsonSchemaHolder(schema)) {
+    return undefined
+  }
+
   const input = schema['~standard'].jsonSchema?.input
-  if (!input) return undefined
+
+  if (!input) {
+    return undefined
+  }
+
   try {
     return input({ target: 'draft-2020-12' })
   } catch {
@@ -38,12 +45,14 @@ function fromStandardJsonSchema(schema: SchemaCandidate): JsonValue | undefined 
 }
 
 function fromEffectSchema(schema: SchemaCandidate): JsonValue | undefined {
-  if (!Schema.isSchema(schema)) return undefined
+  if (!Schema.isSchema(schema)) {
+    return undefined
+  }
+
   try {
     // SAFETY: Effect Schema values used as tool input codecs produce Standard JSON Schema.
-    const standard = Schema.toStandardJSONSchemaV1(
-      schema as Schema.Codec<JsonValue, JsonValue, never, never>,
-    )
+    const standard = Schema.toStandardJSONSchemaV1(schema as Schema.Codec<JsonValue, JsonValue>)
+
     return fromStandardJsonSchema(standard)
   } catch {
     return undefined
@@ -51,7 +60,10 @@ function fromEffectSchema(schema: SchemaCandidate): JsonValue | undefined {
 }
 
 function fromInputCandidate(input: SchemaCandidate | undefined): JsonValue | undefined {
-  if (!input) return undefined
+  if (!input) {
+    return undefined
+  }
+
   return fromStandardJsonSchema(input) ?? fromEffectSchema(input)
 }
 
@@ -63,6 +75,7 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
       return tool.input
     case 'effects':
       return tool.input
+
     default: {
       const exhaustiveCheck: never = tool
       return exhaustiveCheck

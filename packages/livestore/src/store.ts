@@ -48,7 +48,10 @@ export interface LoomsClientStore {
 }
 
 function eventSourceCtor(): typeof EventSource | undefined {
-  if (typeof EventSource === 'undefined') return undefined
+  if (typeof EventSource === 'undefined') {
+    return undefined
+  }
+
   return EventSource
 }
 
@@ -74,20 +77,34 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let syncing: Promise<void> | null = null
 
   const notify = () => {
-    for (const listener of listeners) listener(tables)
+    for (const listener of listeners) {
+      listener(tables)
+    }
   }
 
   const applyBatch = (batch: EventEnvelope[]) => {
     const fresh: EventEnvelope[] = []
+
     for (const event of batch) {
-      if (event.seq < fromSeq || seenIds.has(event.id)) continue
+      if (event.seq < fromSeq || seenIds.has(event.id)) {
+        continue
+      }
+
       seenIds.add(event.id)
       fresh.push(event)
       fromSeq = Math.max(fromSeq, event.seq + 1)
     }
-    if (fresh.length === 0) return
+
+    if (fresh.length === 0) {
+      return
+    }
+
     tables = materializeEvents(fresh, tables)
-    for (const event of fresh) events.push(event)
+
+    for (const event of fresh) {
+      events.push(event)
+    }
+
     notify()
   }
 
@@ -105,15 +122,29 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       const cursor = Math.max(0, fromSeq - 1)
       const url = `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
       const res = await fetchFn(url)
+
       if (!res.ok) {
-        if (res.status === 404 || res.status === 416) return
+        if (res.status === 404 || res.status === 416) {
+          return
+        }
+
         const text = await res.text()
-        if (text.includes('out of range') || text.includes('Range not satisfiable')) return
+
+        if (text.includes('out of range') || text.includes('Range not satisfiable')) {
+          return
+        }
+
         throw new Error(`livestore pull failed: ${res.status}`)
       }
+
       const body: unknown = await res.json()
-      if (!Predicate.isReadonlyObject(body)) return
+
+      if (!Predicate.isReadonlyObject(body)) {
+        return
+      }
+
       const batch = 'batch' in body && Array.isArray(body.batch) ? body.batch : []
+
       applyBatch(
         batch.map((raw) =>
           decodeLoomsEvent(
@@ -123,10 +154,17 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
           ),
         ),
       )
+
       const head = 'head' in body && Predicate.isNumber(body.head) ? body.head : undefined
-      if (head !== undefined) fromSeq = Math.max(fromSeq, head + 1)
+
+      if (head !== undefined) {
+        fromSeq = Math.max(fromSeq, head + 1)
+      }
     } catch (err) {
-      if (disposed) return
+      if (disposed) {
+        return
+      }
+
       // When offline or host is restarting, suppress connection refused/fetch errors during sync
       if (
         err instanceof Error &&
@@ -136,13 +174,20 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       ) {
         return
       }
+
       throw err
     }
   }
 
   const sync = async () => {
-    if (disposed) return
-    if (syncing) return syncing
+    if (disposed) {
+      return
+    }
+
+    if (syncing) {
+      return syncing
+    }
+
     syncing = (async () => {
       try {
         await pull()
@@ -150,14 +195,22 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         syncing = null
       }
     })()
+
     return syncing
   }
 
   const scheduleReconnect = (Ctor: typeof EventSource) => {
-    if (disposed || !liveStarted || reconnectTimer !== undefined) return
+    if (disposed || !liveStarted || reconnectTimer !== undefined) {
+      return
+    }
+
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined
-      if (disposed || !liveStarted) return
+
+      if (disposed || !liveStarted) {
+        return
+      }
+
       void sync()
         .catch(() => {})
         .finally(() => {
@@ -169,23 +222,34 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const startEventSource = (Ctor: typeof EventSource) => {
-    if (disposed || !liveStarted) return
+    if (disposed || !liveStarted) {
+      return
+    }
+
     const es = new Ctor(liveUrl())
     eventSource = es
+
     es.addEventListener('open', () => {
       live = true
     })
+
     es.addEventListener('message', (msg) => {
       applyEncoded(msg.data)
     })
+
     es.addEventListener('error', () => {
       live = es.readyState === Ctor.OPEN
+
       if (es.readyState === Ctor.CLOSED && !disposed && liveStarted) {
         // EventSource entered CLOSED state (e.g. server error or socket closed abruptly).
         // Standard EventSource will NOT automatically reconnect on CLOSED, so we must
         // clean up the dead instance and re-establish the connection.
         es.close()
-        if (eventSource === es) eventSource = undefined
+
+        if (eventSource === es) {
+          eventSource = undefined
+        }
+
         scheduleReconnect(Ctor)
       }
     })
@@ -193,17 +257,33 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
   const startFetchStream = async () => {
     while (true) {
-      if (disposed) break
+      if (disposed) {
+        break
+      }
+
       const controller = new AbortController()
       liveAbort = controller
+
       try {
         const headers = new Headers({ accept: 'text/event-stream' })
         const cursor = Math.max(0, fromSeq - 1)
-        if (cursor > 0) headers.set('last-event-id', String(cursor))
+
+        if (cursor > 0) {
+          headers.set('last-event-id', String(cursor))
+        }
+
         const res = await fetchFn(liveUrl(), { headers, signal: controller.signal })
-        if (!res.ok) throw new Error(`livestore sse failed: ${res.status}`)
-        if (!res.body) throw new Error('livestore sse missing body')
+
+        if (!res.ok) {
+          throw new Error(`livestore sse failed: ${res.status}`)
+        }
+
+        if (!res.body) {
+          throw new Error('livestore sse missing body')
+        }
+
         live = true
+
         await consumeSseStream(
           res.body,
           (frame) => {
@@ -213,30 +293,47 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         )
       } catch {
         live = false
-        if (disposed) return
+
+        if (disposed) {
+          return
+        }
       }
+
       live = false
-      if (disposed) return
+
+      if (disposed) {
+        return
+      }
+
       await delay(reconnectDelayMs, controller.signal)
     }
   }
 
   const startLive = () => {
-    if (liveStarted && !disposed) return
+    if (liveStarted && !disposed) {
+      return
+    }
+
     liveStarted = true
     disposed = false
     const ctor = options.fetch === undefined ? eventSourceCtor() : undefined
-    if (ctor) startEventSource(ctor)
-    else void startFetchStream()
+
+    if (ctor) {
+      startEventSource(ctor)
+    } else {
+      void startFetchStream()
+    }
   }
 
   const stopLive = () => {
     liveStarted = false
     live = false
+
     if (reconnectTimer !== undefined) {
       clearTimeout(reconnectTimer)
       reconnectTimer = undefined
     }
+
     eventSource?.close()
     eventSource = undefined
     liveAbort?.abort()
@@ -257,7 +354,11 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     subscribe: (listener) => {
       listeners.add(listener)
       listener(tables)
-      if (disposed) startLive()
+
+      if (disposed) {
+        startLive()
+      }
+
       return () => {
         listeners.delete(listener)
       }
@@ -270,11 +371,15 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(event),
       })
+
       if (!res.ok) {
         const text = await res.text()
         throw new Error(`run signal failed: ${res.status} ${text}`)
       }
-      if (!live) await sync()
+
+      if (!live) {
+        await sync()
+      }
     },
     dispose: () => {
       disposed = true

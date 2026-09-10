@@ -17,10 +17,12 @@ export function useRun(runId: string) {
 
   const counts = useMemo(() => {
     const map = new Map<string, number>()
+
     for (const event of events) {
       const key = event.threadId ?? 'run'
       map.set(key, (map.get(key) ?? 0) + 1)
     }
+
     return map
   }, [events])
 

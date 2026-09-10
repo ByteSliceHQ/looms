@@ -36,8 +36,10 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
   return {
     async complete(args): Promise<AgentTurnResult> {
       const messages = toModelMessages(args.messages)
+
       const tools =
         args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined
+
       const shouldStream = streamEnabled && args.onTextDelta !== undefined
 
       if (shouldStream) {
@@ -48,7 +50,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
               messages,
               abortSignal: args.signal,
               // SAFETY: VercelAiTool values are `tool()` instances from the AI SDK.
-              tools: tools as Parameters<typeof streamText>[0]['tools'],
+              tools: tools,
             })
           : streamText({
               model: options.model,
@@ -60,12 +62,16 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
         for await (const part of result.fullStream) {
           if (part.type === 'text-delta') {
             const delta = 'text' in part ? part.text : ''
-            if (delta) await args.onTextDelta?.(delta)
+
+            if (delta) {
+              await args.onTextDelta?.(delta)
+            }
           }
         }
 
         try {
           const [text, rawToolCalls] = await Promise.all([result.text, result.toolCalls])
+
           const toolCalls = toLoomsToolCalls(
             rawToolCalls.map((call) => ({
               toolCallId: call.toolCallId,
@@ -73,6 +79,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
               input: toolCallInput(call),
             })),
           )
+
           return {
             message: { role: 'assistant', content: text, toolCalls },
             toolCalls,
@@ -92,7 +99,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
             messages,
             abortSignal: args.signal,
             // SAFETY: VercelAiTool values are `tool()` instances from the AI SDK.
-            tools: tools as Parameters<typeof generateText>[0]['tools'],
+            tools: tools,
           })
         : await generateText({
             model: options.model,
@@ -100,6 +107,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
             messages,
             abortSignal: args.signal,
           })
+
       const toolCalls = toLoomsToolCalls(
         result.toolCalls.map((call) => ({
           toolCallId: call.toolCallId,
@@ -107,6 +115,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
           input: toolCallInput(call),
         })),
       )
+
       return {
         message: { role: 'assistant', content: result.text, toolCalls },
         toolCalls,

@@ -30,6 +30,7 @@ const counter = defineThread({
         const by = Schema.decodeUnknownSync(Schema.Struct({ by: Schema.Number }))(event.payload).by
         return { count: state.count + by }
       }
+
       default:
         return state
     }
@@ -38,6 +39,7 @@ const counter = defineThread({
     if (state.count >= 2) {
       return { effects: [complete({ count: state.count })] }
     }
+
     return { effects: [invoke('counter.tick', { by: 1 })] }
   },
 })
@@ -58,6 +60,7 @@ describe('foldRun', () => {
     const registry = composeModules([counterModule])
     const runId = 'run_1'
     const threadId = 'thr_1'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.run.started',
@@ -98,6 +101,7 @@ describe('foldRun', () => {
     const runId = 'run_2'
     const threadId = 'thr_2'
     const effectId = createEffectId(threadId, 2, 0)
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.run.started',
@@ -146,15 +150,18 @@ describe('foldRun', () => {
         if (event.type === 'runtime.wait.satisfied') {
           return { ready: true }
         }
+
         return state
       },
       output(state) {
         if (state.ready) {
           return { effects: [complete({ ready: true })] }
         }
+
         return { effects: [wait({ waitId: 'w1', on: { type: 'counter.incremented' } })] }
       },
     })
+
     const registry = composeModules([
       defineRuntimeModule({
         namespace: 'waiter',
@@ -162,8 +169,10 @@ describe('foldRun', () => {
         threads: { waiter },
       }),
     ])
+
     const runId = 'run_3'
     const threadId = 'thr_3'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -220,8 +229,10 @@ describe('foldRun', () => {
         },
       }),
     ])
+
     const runId = 'run_multi_wait_fold'
     const threadId = 'thr_parent'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -274,6 +285,7 @@ describe('foldRun', () => {
     const runId = 'run_fail'
     const threadId = 'thr_fail'
     const effectId = createEffectId(threadId, 2, 0)
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -305,6 +317,7 @@ describe('foldRun', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const state = foldRun(events, registry)
     expect(state.threads[threadId]?.status).toBe('failed')
     expect(state.threads[threadId]?.error).toBe('Invalid input: amount: expected number')
@@ -316,6 +329,7 @@ describe('foldRun', () => {
     const registry = composeModules([counterModule])
     const runId = 'run_withdrawn'
     const threadId = 'thr_withdrawn'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -340,6 +354,7 @@ describe('foldRun', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const state = foldRun(events, registry)
     expect(state.threads[threadId]?.status).toBe('running')
     expect(state.outstandingEffects[0]?.effect.type).toBe('counter.tick')
@@ -354,15 +369,18 @@ describe('foldRun', () => {
         if (event.type === 'runtime.effect.failed') {
           return { saw: true }
         }
+
         return state
       },
       output(state) {
         if (state.saw) {
           return { effects: [invoke('handler.recover', {}, 'recover')] }
         }
+
         return { effects: [] }
       },
     })
+
     const registry = composeModules([
       defineRuntimeModule({
         namespace: 'handler',
@@ -370,8 +388,10 @@ describe('foldRun', () => {
         threads: { handler },
       }),
     ])
+
     const runId = 'run_handled'
     const threadId = 'thr_handled'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -393,6 +413,7 @@ describe('foldRun', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const state = foldRun(events, registry)
     expect(state.threads[threadId]?.status).toBe('running')
     expect(state.threads[threadId]?.state).toEqual({ saw: true })
@@ -403,6 +424,7 @@ describe('foldRun', () => {
     const registry = composeModules([counterModule])
     const runId = 'run_clear'
     const threadId = 'thr_clear'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -433,6 +455,7 @@ describe('foldRun', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const state = foldRun(events, registry)
     expect(state.threads[threadId]?.status).toBe('failed')
     expect(state.waits).toEqual({})
@@ -453,11 +476,14 @@ describe('match', () => {
       threadId: null,
       origin: { type: 'external' },
     })
+
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'a1' } })).toBe(true)
     expect(matchesWait(event, { type: 'gate.decided', match: { gateId: 'nope' } })).toBe(false)
+
     expect(
       matchesWait(event, { type: ['other.event', 'gate.decided'], match: { gateId: 'a1' } }),
     ).toBe(true)
+
     expect(
       matchesWait(event, { type: ['other.event', 'third.event'], match: { gateId: 'a1' } }),
     ).toBe(false)
@@ -469,6 +495,7 @@ describe('replayTo', () => {
     const registry = composeModules([counterModule])
     const runId = 'run_4'
     const threadId = 'thr_4'
+
     const events = assignSeq([
       createEvent(runId, {
         type: 'runtime.thread.started',
@@ -483,6 +510,7 @@ describe('replayTo', () => {
         origin: { type: 'system' },
       }),
     ])
+
     const step = replayTo(events, registry, 1)
     expect(step).not.toBeNull()
     expect(step?.before.threads[threadId]).toBeUndefined()
@@ -567,6 +595,7 @@ describe('threadTree projection', () => {
       threadId: null,
       origin: { type: 'system' },
     })
+
     const e2 = createEvent(runId, {
       type: 'runtime.thread.started',
       payload: {
@@ -590,6 +619,7 @@ describe('threadTree projection', () => {
       threadId,
       origin: { type: 'system' },
     })
+
     projState = foldProjection(threadTree, [e3], projState)
     tree = toThreadTree(projState)
     expect(tree.root?.status).toBe('waiting')
@@ -600,6 +630,7 @@ describe('threadTree projection', () => {
       threadId,
       origin: { type: 'system' },
     })
+
     projState = foldProjection(threadTree, [e4], projState)
     tree = toThreadTree(projState)
     expect(tree.root?.status).toBe('running')
@@ -728,6 +759,7 @@ describe('threadTree projection', () => {
         origin: { type: 'system' },
       }),
     ])
+
     expect(projState.activeWaits?.[parentId]).toEqual(['wait_1'])
 
     projState = foldProjection(
@@ -755,6 +787,7 @@ describe('threadTree projection', () => {
 
   test('defineThread with shape infers state type', () => {
     const threadShape = Schema.Struct({ count: Schema.Number })
+
     const thread = defineThread({
       kind: 'shaped_counter',
       shape: threadShape,
@@ -763,8 +796,10 @@ describe('threadTree projection', () => {
         return { count: state.count + 1 }
       },
     })
+
     expect(thread.kind).toBe('shaped_counter')
     expect(thread.shape).toBe(threadShape)
+
     const initial = thread.initialState({
       runId: 'r1',
       threadId: 't1',
@@ -772,12 +807,15 @@ describe('threadTree projection', () => {
       definitionName: 'test',
       input: null,
     })
+
     expect(initial).toEqual({ count: 0 })
+
     const stepped = thread.step(initial, createEvent('r1', { type: 'tick', payload: {} }), {
       runId: 'r1',
       threadId: 't1',
       parentThreadId: null,
     })
+
     expect(stepped).toEqual({ count: 1 })
   })
 
@@ -790,25 +828,35 @@ describe('threadTree projection', () => {
       ]),
       ticks: Schema.Number,
     })
+
     const trafficLight = defineThread({
       kind: 'traffic_light',
       shape: LightState,
       initialState: () => ({ phase: 'green' as const, ticks: 0 }),
       step(state, event) {
         if (event.type === 'tick') {
-          if (state.phase === 'green') return { phase: 'yellow', ticks: state.ticks + 1 }
-          if (state.phase === 'yellow') return { phase: 'red', ticks: state.ticks + 1 }
+          if (state.phase === 'green') {
+            return { phase: 'yellow', ticks: state.ticks + 1 }
+          }
+
+          if (state.phase === 'yellow') {
+            return { phase: 'red', ticks: state.ticks + 1 }
+          }
+
           return { phase: 'green', ticks: state.ticks + 1 }
         }
+
         return state
       },
       output(state) {
         if (state.phase === 'green') {
           return { effects: [invoke('drive', { speed: 30 }, 'drive-now')] }
         }
+
         if (state.phase === 'yellow') {
           return { effects: [invoke('slow', { speed: 10 }, 'slow-now')] }
         }
+
         return { effects: [invoke('stop', {}, 'stop-now')] }
       },
     })
@@ -823,6 +871,7 @@ describe('threadTree projection', () => {
 
     const runId = 'run_tl'
     const threadId = 'thr_tl'
+
     const startEvent = createEvent(runId, {
       type: 'runtime.thread.started',
       payload: {
@@ -848,6 +897,7 @@ describe('threadTree projection', () => {
       threadId,
       origin: { type: 'system' },
     })
+
     const state2 = foldRun([startEvent, tickEvent], registry)
     expect(state2.threads[threadId]?.state).toEqual({ phase: 'yellow', ticks: 1 })
     expect(state2.outstandingEffects).toHaveLength(1)
@@ -861,6 +911,7 @@ describe('threadTree projection', () => {
       effectId: createEffectId(threadId, 'slow-now'),
       origin: { type: 'system' },
     })
+
     const state3 = foldRun([startEvent, tickEvent, outcomeEvent], registry)
     expect(state3.threads[threadId]?.state).toEqual({ phase: 'yellow', ticks: 1 })
     expect(state3.outstandingEffects).toHaveLength(0)

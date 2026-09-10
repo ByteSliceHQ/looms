@@ -97,6 +97,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     if (!initPromise) {
       initPromise = (async () => {
         let store: EventStore
+
         if (!options.store) {
           store = await Effect.runPromise(makeMemoryEventStore)
         } else if (Predicate.isFunction(options.store)) {
@@ -104,21 +105,25 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         } else {
           store = await options.store
         }
+
         const runtime = createRuntime({
           modules,
           store,
           definitions: toRegistered(definitions),
         })
+
         // Automatically rescan pending timers from existing runs in the store
         await Effect.runPromise(
           Effect.provideService(runtime.rescanTimers(), EventStoreTag, store),
         ).catch((err) => {
           console.error('[rescan timers error]', err)
         })
+
         const fetchHandler = createFetchHandler({ runtime, store })
         return { runtime, store, fetchHandler }
       })()
     }
+
     return initPromise
   }
 
@@ -147,7 +152,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           kind: definition.kind,
           definitionName: definition.name,
           // SAFETY: input is validated against the definition's schema inside startRun.
-          input: input as JsonValue | undefined,
+          input: input,
           runId: startOpts?.runId,
           threadId: startOpts?.threadId,
           idempotencyKey: startOpts?.idempotencyKey,
@@ -162,12 +167,18 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     fetch: async (req) => {
-      if (!isLoomsApiPath(new URL(req.url).pathname)) return null
+      if (!isLoomsApiPath(new URL(req.url).pathname)) {
+        return null
+      }
+
       const { fetchHandler } = await getInit()
       return fetchHandler(req)
     },
     serve: (serveOpts) => {
-      if (runningServer) return runningServer
+      if (runningServer) {
+        return runningServer
+      }
+
       runningServer = serveHttp((req) => looms.fetch(req), serveOpts)
       return runningServer
     },
@@ -176,6 +187,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         runningServer.stop()
         runningServer = undefined
       }
+
       if (initPromise) {
         const init = await initPromise
         init.runtime.dispose()

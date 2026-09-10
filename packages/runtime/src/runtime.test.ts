@@ -28,12 +28,15 @@ describe('createLooms', () => {
         output: input,
       }),
     })
+
     const looms = createLooms({ definitions: [echo] })
     const result = await looms.start(echo, { text: 'hi' })
     expect(result.state.status).toBe('completed')
+
     const root = result.state.rootThreadId
       ? result.state.threads[result.state.rootThreadId]
       : undefined
+
     expect(root?.status).toBe('completed')
     expect(root?.output).toEqual({ text: 'hi' })
   })
@@ -53,6 +56,7 @@ describe('createLooms', () => {
         },
       ],
     })
+
     const looms = createLooms({ definitions: [boom] })
     const { runId, state } = await looms.start(boom, {})
     expect(state.status).toBe('failed')
@@ -61,6 +65,7 @@ describe('createLooms', () => {
     expect(Object.keys(state.waits)).toEqual([])
     const events = await looms.getEvents(runId)
     expect(events.some((event) => event.type === 'runtime.wait.registered')).toBe(false)
+
     expect(
       events.some(
         (event) =>
@@ -80,18 +85,22 @@ describe('createLooms', () => {
         validate(value: JsonValue) {
           const obj = Predicate.isObject(value) ? value : {}
           const n = obj.n
+
           if (n !== undefined && !Predicate.isNumber(n)) {
             return { issues: [{ message: 'expected number' }] }
           }
+
           return { value: { n: Predicate.isNumber(n) ? n : 7 } }
         },
       },
     }
+
     const child = defineWorkflow({
       name: 'defaults',
       input: DefaultN,
       nodes: [{ id: 'out', run: (ctx) => ctx.input }],
     })
+
     const parent = defineWorkflow({
       name: 'spawner',
       nodes: [
@@ -101,20 +110,25 @@ describe('createLooms', () => {
         },
       ],
     })
+
     const looms = createLooms({ definitions: [child, parent] })
     const { runId, state } = await looms.start(parent, {})
     expect(state.status).toBe('completed')
+
     const childThread = Object.values(state.threads).find(
       (thread) => thread.definitionName === 'defaults',
     )
+
     expect(childThread?.input).toEqual({ n: 7 })
     const events = await looms.getEvents(runId)
+
     const started = events.find(
       (event) =>
         event.type === 'runtime.thread.started' &&
         Predicate.isObject(event.payload) &&
         event.payload.definitionName === 'defaults',
     )
+
     expect(started && Predicate.isObject(started.payload) ? started.payload.input : null).toEqual({
       n: 7,
     })
@@ -122,11 +136,13 @@ describe('createLooms', () => {
 
   test('invalid spawn input fails the child and unblocks the parent', async () => {
     const RequiredN = Schema.Struct({ n: Schema.Number })
+
     const child = defineWorkflow({
       name: 'needs_n',
       input: RequiredN,
       nodes: [{ id: 'out', run: (ctx) => ctx.input }],
     })
+
     const parent = defineWorkflow({
       name: 'bad_spawner',
       nodes: [
@@ -136,12 +152,15 @@ describe('createLooms', () => {
         },
       ],
     })
+
     const looms = createLooms({ definitions: [child, parent] })
     const { state } = await looms.start(parent, {})
     expect(state.status).toBe('failed')
+
     const childThread = Object.values(state.threads).find(
       (thread) => thread.definitionName === 'needs_n',
     )
+
     expect(childThread?.status).toBe('failed')
     expect(childThread?.error).toBeTruthy()
     const parentThread = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
@@ -150,11 +169,13 @@ describe('createLooms', () => {
 
   test('invalid thread-tool args return a tool error without spawning', async () => {
     const RequiredN = Schema.Struct({ n: Schema.Number })
+
     const child = defineWorkflow({
       name: 'needs_n',
       input: RequiredN,
       nodes: [{ id: 'out', run: (ctx) => ctx.input }],
     })
+
     const caller = defineAgent({
       name: 'caller',
       instructions: 'call',
@@ -170,6 +191,7 @@ describe('createLooms', () => {
             toolCalls: [{ id: 't1', name: 'needs_n', arguments: { n: 'nope' } }],
           }
         }
+
         return {
           message: { role: 'assistant', content: 'handled' },
           done: true,
@@ -177,15 +199,19 @@ describe('createLooms', () => {
         }
       },
     })
+
     const looms = createLooms({ definitions: [child, caller] })
     const { runId, state } = await looms.start(caller, 'go')
     expect(state.status).toBe('completed')
+
     expect(Object.values(state.threads).some((thread) => thread.definitionName === 'needs_n')).toBe(
       false,
     )
+
     const events = await looms.getEvents(runId)
     const toolResult = events.find((event) => event.type === 'agent.tool.result')
     expect(toolResult).toBeDefined()
+
     expect(
       toolResult && Predicate.isObject(toolResult.payload) ? toolResult.payload.error : null,
     ).toBeTruthy()
@@ -202,6 +228,7 @@ describe('createLooms', () => {
         }),
       },
     })
+
     const asker = defineAgent({
       name: 'asker',
       instructions: 'ask',
@@ -227,6 +254,7 @@ describe('createLooms', () => {
             toolCalls: [{ id: 't1', name: 'explode', arguments: {} }],
           }
         }
+
         return {
           message: { role: 'assistant', content: 'recovered' },
           done: true,
@@ -234,10 +262,12 @@ describe('createLooms', () => {
         }
       },
     })
+
     const looms = createLooms({
       definitions: [asker],
       modules: [agent(), workflow(), failing],
     })
+
     const { runId, state } = await looms.start(asker, 'go')
     const events = await looms.getEvents(runId)
     const types = events.map((event) => event.type)
@@ -246,6 +276,7 @@ describe('createLooms', () => {
     expect(types.some((type) => type === 'runtime.wait.registered')).toBe(false)
     expect(types).toContain('agent.tool.result')
     const toolResult = events.find((event) => event.type === 'agent.tool.result')
+
     expect(
       toolResult &&
         Predicate.isObject(toolResult.payload) &&
@@ -267,20 +298,25 @@ describe('createLooms', () => {
         }
       },
     }
+
     const bot = defineAgent({
       name: 'streamer',
       instructions: 'stream',
     })
+
     const looms = createLooms({
       definitions: [bot],
       modules: [agent({ llm })],
     })
+
     const { runId } = await looms.start(bot, 'hi')
     const events = await looms.getEvents(runId)
     const deltas = events.filter((event) => event.type === 'agent.turn.text_delta')
+
     expect(
       deltas.map((event) => (Predicate.isObject(event.payload) ? event.payload.delta : '')),
     ).toEqual(['hel', 'lo'])
+
     const firstDelta = events.findIndex((event) => event.type === 'agent.turn.text_delta')
     const message = events.findIndex((event) => event.type === 'agent.message')
     expect(firstDelta).toBeGreaterThan(-1)
@@ -290,6 +326,7 @@ describe('createLooms', () => {
 
   test('middleware intercepts effects across modules', async () => {
     const intercepted: string[] = []
+
     const auditModule = defineRuntimeModule({
       namespace: 'audit',
       protocolVersion: '1.0.0',
@@ -323,14 +360,17 @@ describe('createLooms', () => {
 
   test('retries transient effect failures according to retry policy', async () => {
     let attempts = 0
+
     const flakyEffect = defineEffect({
       type: 'test.flaky',
       retry: { maxAttempts: 3, backoffMs: 5 },
       execute: () => {
         attempts += 1
+
         if (attempts < 3) {
           return Effect.fail(new Error('transient network glitch'))
         }
+
         return Effect.succeed([{ type: 'test.flaky.succeeded', payload: { attempts } }])
       },
     })
@@ -368,6 +408,7 @@ describe('createLooms', () => {
 
   test('automatically wakes sleeping workflows when timer expires', async () => {
     let wokeUp = false
+
     const sleeper = defineWorkflow({
       name: 'sleeper',
       nodes: [
@@ -407,6 +448,7 @@ describe('createLooms', () => {
 
   test('rescans and schedules pending timers across process restart', async () => {
     let wokeUp = false
+
     const sleeper = defineWorkflow({
       name: 'sleeping-restart-workflow',
       nodes: [
@@ -461,6 +503,7 @@ describe('createLooms', () => {
 
   test('idempotent start returns existing run without duplicate start events', async () => {
     let runCount = 0
+
     const workflowDef = defineWorkflow({
       name: 'idempotent-flow',
       nodes: [
@@ -520,6 +563,7 @@ describe('createLooms', () => {
 
     // Send signal with idempotencyKey
     const idempotencyKey = 'sig_key_456'
+
     await looms.signal(runId, [{ type: 'test.signal', payload: { data: 1 }, threadId: null }], {
       idempotencyKey,
     })

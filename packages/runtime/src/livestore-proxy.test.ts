@@ -8,20 +8,33 @@ import { createLooms } from './looms'
 
 async function readSseFrames(res: Response, count: number): Promise<string[]> {
   const reader = res.body?.getReader()
-  if (!reader) throw new Error('missing SSE body')
+
+  if (!reader) {
+    throw new Error('missing SSE body')
+  }
+
   const decoder = new TextDecoder()
   let buffer = ''
   const frames: string[] = []
+
   while (frames.length < count) {
     const { done, value } = await reader.read()
-    if (done) break
+
+    if (done) {
+      break
+    }
+
     buffer += decoder.decode(value, { stream: true })
     const parts = buffer.split('\n\n')
     buffer = parts.pop() ?? ''
+
     for (const part of parts) {
-      if (part.includes('data:')) frames.push(part)
+      if (part.includes('data:')) {
+        frames.push(part)
+      }
     }
   }
+
   await reader.cancel()
   return frames
 }
@@ -37,11 +50,14 @@ describe('handleLivestoreProxy SSE', () => {
         output: input,
       }),
     })
+
     const looms = createLooms({ definitions: [echo], modules: [agent()] })
     const { runId } = await looms.start(echo, { text: 'hi' })
+
     const res = await looms.fetch(
       new Request(`http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`),
     )
+
     expect(res).not.toBeNull()
     expect(res!.headers.get('content-type')).toBe('text/event-stream')
     expect(res!.headers.get('cache-control')).toBe('no-cache, no-transform')
@@ -61,10 +77,12 @@ describe('handleLivestoreProxy SSE', () => {
         output: input,
       }),
     })
+
     const looms = createLooms({ definitions: [echo], modules: [agent()] })
     const { runId } = await looms.start(echo, { text: 'hi' })
     const events = await looms.getEvents(runId)
     expect(events.length).toBeGreaterThan(1)
+
     const res = await looms.fetch(
       new Request(
         `http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`,
@@ -73,6 +91,7 @@ describe('handleLivestoreProxy SSE', () => {
         },
       ),
     )
+
     expect(res).not.toBeNull()
     const frames = await readSseFrames(res!, 1)
     expect(frames[0]).toContain('id: 2')
@@ -89,15 +108,22 @@ describe('handleLivestoreProxy SSE', () => {
         output: input,
       }),
     })
+
     const looms = createLooms({ definitions: [echo], modules: [agent()] })
     const { runId } = await looms.start(echo, { text: 'hi' })
+
     const res = await looms.fetch(
       new Request(`http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&cursor=0`),
     )
+
     expect(res).not.toBeNull()
     const body: unknown = await res!.json()
     expect(Predicate.isReadonlyObject(body)).toBe(true)
-    if (!Predicate.isReadonlyObject(body)) return
+
+    if (!Predicate.isReadonlyObject(body)) {
+      return
+    }
+
     expect(Array.isArray(body.batch)).toBe(true)
     expect(Predicate.isNumber(body.head)).toBe(true)
   })
@@ -112,7 +138,9 @@ describe('handleLivestoreProxy SSE', () => {
         output: input,
       }),
     })
+
     const looms = createLooms({ definitions: [echo], modules: [agent()] })
+
     const res = await looms.fetch(
       new Request('http://looms.test/runs?stream=true', {
         method: 'POST',
@@ -124,10 +152,12 @@ describe('handleLivestoreProxy SSE', () => {
         }),
       }),
     )
+
     expect(res).not.toBeNull()
     expect(res!.headers.get('content-type')).toBe('text/event-stream')
     const frames = await readSseFrames(res!, 2)
     expect(frames.length).toBeGreaterThanOrEqual(1)
+
     expect(
       frames.some(
         (frame) => frame.includes('runtime.run.started') || frame.includes('event: done'),

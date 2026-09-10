@@ -225,9 +225,11 @@ export function payments() {
           network hiccups.
         </li>
         <li>
-          <strong>Inferred <code>define*</code> types:</strong> Pass <code>input</code> or{' '}
-          <code>shape</code> (a Standard Schema or Effect Schema). The factory infers handler and
-          state types — do not pass generics.
+          <strong>
+            Inferred <code>define*</code> types:
+          </strong>{' '}
+          Pass <code>input</code> or <code>shape</code> (a Standard Schema or Effect Schema). The
+          factory infers handler and state types — do not pass generics.
         </li>
       </ul>
     </>

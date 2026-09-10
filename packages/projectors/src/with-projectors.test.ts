@@ -10,14 +10,17 @@ import { withProjectors } from './with-projectors'
 describe('withProjectors', () => {
   test('forwards appends to projectors', async () => {
     const seen: EventEnvelope[][] = []
+
     const projector: Projector = {
       name: 'test',
       project: async (events) => {
         seen.push([...events])
       },
     }
+
     const base = await Effect.runPromise(makeMemoryEventStore)
     const store = withProjectors(base, [projector])
+
     await Effect.runPromise(
       store.append('run_1', [
         createEvent('run_1', {
@@ -28,6 +31,7 @@ describe('withProjectors', () => {
         }),
       ]),
     )
+
     expect(seen.length).toBe(1)
   })
 })

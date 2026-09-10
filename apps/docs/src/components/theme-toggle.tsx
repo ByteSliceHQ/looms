@@ -52,6 +52,7 @@ export function ThemeToggle() {
     setTheme(isDark ? 'dark' : 'light')
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
     const handleChange = (e: MediaQueryListEvent) => {
       try {
         if (!localStorage.getItem('theme')) {

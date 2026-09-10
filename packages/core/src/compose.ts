@@ -35,12 +35,14 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     if (namespaces.has(module.namespace)) {
       throw new ModuleCompositionError(`Duplicate module namespace: ${module.namespace}`)
     }
+
     namespaces.add(module.namespace)
 
     if (module.dependencies) {
       for (const dep of module.dependencies) {
         if (!namespaces.has(dep.namespace) && dep.namespace !== 'runtime') {
           const present = modules.some((item) => item.namespace === dep.namespace)
+
           if (!present) {
             throw new ModuleCompositionError(
               `Module ${module.namespace} depends on missing module ${dep.namespace}`,
@@ -55,11 +57,13 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     }
 
     const moduleThreads = module.threads
+
     if (moduleThreads) {
       for (const [kind, definition] of Object.entries(moduleThreads)) {
         if (threads.has(kind)) {
           throw new ModuleCompositionError(`Duplicate thread kind: ${kind}`)
         }
+
         threads.set(kind, definition)
       }
     }
@@ -69,6 +73,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
         if (effects.has(definition.type)) {
           throw new ModuleCompositionError(`Duplicate effect type: ${definition.type}`)
         }
+
         effects.set(definition.type, definition)
       }
     }
@@ -82,6 +87,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
         if (projections.has(definition.name)) {
           throw new ModuleCompositionError(`Duplicate projection: ${definition.name}`)
         }
+
         projections.set(definition.name, definition)
       }
     }

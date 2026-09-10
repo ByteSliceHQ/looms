@@ -32,24 +32,29 @@ describe('Property-based testing for Looms core invariants', () => {
               Predicate.isObject(event.payload) && Predicate.isNumber(event.payload.step)
                 ? event.payload.step
                 : 1
+
             return {
               count: state.count + step,
               history: [...state.history, `+${step}`],
             }
           }
+
           if (event.type === 'counter.decrement') {
             const step =
               Predicate.isObject(event.payload) && Predicate.isNumber(event.payload.step)
                 ? event.payload.step
                 : 1
+
             return {
               count: state.count - step,
               history: [...state.history, `-${step}`],
             }
           }
+
           if (event.type === 'counter.reset') {
             return { count: 0, history: [...state.history, 'reset'] }
           }
+
           return state
         },
       }),
@@ -93,6 +98,7 @@ describe('Property-based testing for Looms core invariants', () => {
     ]
 
     let seq = 3
+
     for (const action of actions) {
       events.push(
         createEvent(
@@ -108,6 +114,7 @@ describe('Property-based testing for Looms core invariants', () => {
         ),
       )
     }
+
     return events
   }
 
@@ -138,6 +145,7 @@ describe('Property-based testing for Looms core invariants', () => {
           const trailingEvents = events.slice(snapshotIndex + 1)
 
           const snapshot = buildSnapshotEvent(runId, prefixEvents, registry, { includeState: true })
+
           const restoredState = foldFromSnapshots([snapshot, ...trailingEvents], registry, {
             runId,
           })
@@ -147,6 +155,7 @@ describe('Property-based testing for Looms core invariants', () => {
             count: number
             history: string[]
           }
+
           // SAFETY: counter thread state schema is { count: number; history: string[] }
           const restoredThread = restoredState.threads[threadId]?.state as {
             count: number

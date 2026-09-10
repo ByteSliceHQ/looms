@@ -12,6 +12,7 @@ describe('indexOpsFor', () => {
       threadId: null,
       origin: { type: 'system' },
     })
+
     expect(indexOpsFor(event)[0]?.type).toBe('upsertActor')
   })
 
@@ -22,6 +23,7 @@ describe('indexOpsFor', () => {
       threadId: 'thr_1',
       origin: { type: 'system' },
     })
+
     expect(indexOpsFor(event)[0]).toMatchObject({ type: 'upsertReview', reviewId: 'a1' })
   })
 })

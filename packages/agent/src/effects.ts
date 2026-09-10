@@ -56,6 +56,7 @@ function runCallLlm(args: {
     const agents = yield* AgentDefinitionsTag
     const llm = yield* LlmTag
     const definition = definitionName ? agents.get(definitionName) : undefined
+
     if (!definition) {
       return [
         {
@@ -65,6 +66,7 @@ function runCallLlm(args: {
         },
       ]
     }
+
     if (turn > (definition.maxTurns ?? 20)) {
       return [
         {
@@ -76,6 +78,7 @@ function runCallLlm(args: {
     }
 
     const tools = normalizeTools(definition.tools)
+
     const events: EventInput[] = [
       {
         type: 'agent.turn.started',
@@ -115,6 +118,7 @@ function runCallLlm(args: {
         })
 
     const toolCalls = result.toolCalls ?? result.message.toolCalls ?? []
+
     const shouldStop = definition.stopWhen?.({
       turn,
       maxTurns: definition.maxTurns ?? 20,
@@ -141,6 +145,7 @@ function runCallLlm(args: {
           threadId,
         })
       }
+
       return events
     }
 
@@ -175,6 +180,7 @@ export const executeToolEffect = defineEffect({
       const threadId = ctx.threadId
       const agents = yield* AgentDefinitionsTag
       const definition = input.definitionName ? agents.get(input.definitionName) : undefined
+
       if (!definition) {
         return [
           {
@@ -190,8 +196,10 @@ export const executeToolEffect = defineEffect({
           },
         ]
       }
+
       const tools = normalizeTools(definition.tools)
       const tool = findTool(tools, input.toolCall.name)
+
       if (!tool) {
         return [
           {
@@ -207,6 +215,7 @@ export const executeToolEffect = defineEffect({
           },
         ]
       }
+
       switch (tool.kind) {
         case 'function': {
           const validated = yield* Effect.tryPromise({
@@ -216,6 +225,7 @@ export const executeToolEffect = defineEffect({
             Effect.map((value) => ({ ok: true as const, value })),
             Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
           )
+
           if (!validated.ok) {
             return [
               {
@@ -231,6 +241,7 @@ export const executeToolEffect = defineEffect({
               },
             ]
           }
+
           const result = yield* Effect.tryPromise({
             try: () =>
               Promise.resolve(
@@ -244,6 +255,7 @@ export const executeToolEffect = defineEffect({
             Effect.map((value) => ({ ok: true as const, value })),
             Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
           )
+
           return [
             {
               type: 'agent.tool.result',
@@ -258,6 +270,7 @@ export const executeToolEffect = defineEffect({
             },
           ]
         }
+
         case 'thread': {
           const validated = tool.input
             ? yield* Effect.tryPromise({
@@ -284,6 +297,7 @@ export const executeToolEffect = defineEffect({
               },
             ]
           }
+
           const childInput = tool.mapInput ? tool.mapInput(validated.value) : validated.value
           const childThreadId = createThreadId()
           return [
@@ -300,6 +314,7 @@ export const executeToolEffect = defineEffect({
             },
           ]
         }
+
         case 'effects': {
           const validated = tool.input
             ? yield* Effect.tryPromise({
@@ -326,6 +341,7 @@ export const executeToolEffect = defineEffect({
               },
             ]
           }
+
           const effects = tool.effects(validated.value)
           return [
             {
@@ -339,6 +355,7 @@ export const executeToolEffect = defineEffect({
             },
           ]
         }
+
         default: {
           const exhaustiveCheck: never = tool
           return exhaustiveCheck
@@ -348,7 +365,13 @@ export const executeToolEffect = defineEffect({
 })
 
 export function readToolCall(value: JsonValue): ToolCall | null {
-  if (!Predicate.isObject(value)) return null
-  if (!Predicate.isString(value.id) || !Predicate.isString(value.name)) return null
+  if (!Predicate.isObject(value)) {
+    return null
+  }
+
+  if (!Predicate.isString(value.id) || !Predicate.isString(value.name)) {
+    return null
+  }
+
   return { id: value.id, name: value.name, arguments: value.arguments ?? null }
 }

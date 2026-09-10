@@ -17,13 +17,16 @@ describe('toModelMessages', () => {
       },
       { role: 'tool', content: '{"greeting":"Hello, Ada!"}', toolCallId: 'tc1', name: 'greet' },
     ])
+
     expect(messages[0]).toEqual({ role: 'user', content: 'hi' })
+
     expect(messages[1]).toEqual({
       role: 'assistant',
       content: [
         { type: 'tool-call', toolCallId: 'tc1', toolName: 'greet', input: { name: 'Ada' } },
       ],
     })
+
     expect(messages[2]).toEqual({
       role: 'tool',
       content: [
@@ -51,7 +54,9 @@ describe('vercelLlm', () => {
         warnings: [],
       }),
     })
+
     const adapter = vercelLlm({ model, stream: false })
+
     const result = await adapter.complete({
       instructions: 'help',
       messages: [{ role: 'user', content: 'greet Ada' }],
@@ -67,6 +72,7 @@ describe('vercelLlm', () => {
         },
       ],
     })
+
     expect(result.toolCalls).toEqual([{ id: 'tc1', name: 'greet', arguments: { name: 'Ada' } }])
     expect(result.message.role).toBe('assistant')
   })
@@ -91,8 +97,10 @@ describe('vercelLlm', () => {
         }),
       }),
     })
+
     const adapter = vercelLlm({ model, stream: true })
     const deltas: string[] = []
+
     const result = await adapter.complete({
       instructions: 'help',
       messages: [{ role: 'user', content: 'hi' }],
@@ -101,6 +109,7 @@ describe('vercelLlm', () => {
         deltas.push(delta)
       },
     })
+
     expect(deltas).toEqual(['hel', 'lo'])
     expect(result.message.content).toBe('hello')
     expect(result.toolCalls).toEqual([])
@@ -115,6 +124,7 @@ describe('vercelLlm', () => {
         warnings: [],
       }),
     })
+
     const { text } = await generateText({ model, prompt: 'hi' })
     expect(text).toBe('ok')
   })

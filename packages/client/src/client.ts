@@ -33,12 +33,18 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers)
-    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
+
+    if (!headers.has('content-type')) {
+      headers.set('content-type', 'application/json')
+    }
+
     const res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers })
+
     if (!res.ok) {
       const body = await res.text()
       throw new Error(body || `HTTP ${res.status}`)
     }
+
     // SAFETY: host JSON responses match the generic requested by each route helper.
     return (await res.json()) as T
   }
@@ -56,13 +62,20 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         try {
           const cursor = Math.max(0, fromSeq - 1)
           const headers = new Headers({ accept: 'text/event-stream' })
-          if (cursor > 0) headers.set('last-event-id', String(cursor))
+
+          if (cursor > 0) {
+            headers.set('last-event-id', String(cursor))
+          }
+
           const res = await fetchImpl(
             `${baseUrl}/api/livestore?storeId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
             { headers, signal: controller.signal },
           )
-          if (!res.ok || !res.body)
+
+          if (!res.ok || !res.body) {
             throw new Error(res.ok ? 'livestore sse missing body' : `HTTP ${res.status}`)
+          }
+
           await consumeSseStream(
             res.body,
             (frame) => {
@@ -74,14 +87,21 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
             controller.signal,
           )
         } catch {
-          if (controller.signal.aborted) return
+          if (controller.signal.aborted) {
+            return
+          }
         }
-        if (controller.signal.aborted) return
+
+        if (controller.signal.aborted) {
+          return
+        }
+
         await delay(reconnectDelayMs, controller.signal)
       }
     }
 
     void run()
+
     return () => {
       controller.abort()
     }
@@ -105,6 +125,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       runId,
       async *[Symbol.asyncIterator]() {
         const controller = new AbortController()
+
         const res = await fetchImpl(`${baseUrl}/runs`, {
           method: 'POST',
           headers: {
@@ -114,6 +135,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
           body: JSON.stringify({ ...args, runId }),
           signal: controller.signal,
         })
+
         if (!res.ok || !res.body) {
           throw new Error(res.ok ? 'SSE stream missing body' : `HTTP ${res.status}`)
         }
@@ -129,24 +151,30 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
             if (frame.event === 'error') {
               try {
                 const parsed: unknown = JSON.parse(frame.data)
+
                 const message =
                   Predicate.isReadonlyObject(parsed) && Predicate.isString(parsed.error)
                     ? parsed.error
                     : frame.data
+
                 streamError = new Error(message)
               } catch {
                 streamError = new Error(frame.data)
               }
+
               return
             }
+
             if (frame.event === 'done') {
               finished = true
               notify?.()
               return
             }
+
             for (const event of eventsFromSseData(frame.data, runId)) {
               pending.push(event)
             }
+
             notify?.()
           },
           controller.signal,
@@ -162,17 +190,29 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         try {
           while (true) {
             if (pending.length === 0) {
-              if (finished) break
+              if (finished) {
+                break
+              }
+
               await new Promise<void>((resolve) => {
                 notify = resolve
               })
+
               continue
             }
+
             const event = pending.shift()
-            if (event) yield event
+
+            if (event) {
+              yield event
+            }
           }
+
           await consume
-          if (streamError) throw streamError
+
+          if (streamError) {
+            throw streamError
+          }
         } finally {
           controller.abort()
         }
@@ -193,8 +233,15 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     getState: (runId: string) => request<{ runId: string; state: RunState }>(`/runs/${runId}`),
     getEvents: (runId: string, opts?: { fromSeq?: number; limit?: number }) => {
       const params = new URLSearchParams()
-      if (opts?.fromSeq !== undefined) params.set('fromSeq', String(opts.fromSeq))
-      if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+
+      if (opts?.fromSeq !== undefined) {
+        params.set('fromSeq', String(opts.fromSeq))
+      }
+
+      if (opts?.limit !== undefined) {
+        params.set('limit', String(opts.limit))
+      }
+
       const q = params.toString()
       return request<{ runId: string; events: EventEnvelope[] }>(
         `/runs/${runId}/events${q ? `?${q}` : ''}`,

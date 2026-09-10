@@ -125,6 +125,9 @@ export const catalog: readonly RunType[] = [
 ]
 
 export function findRunType(name: string | undefined): RunType | undefined {
-  if (!name) return undefined
+  if (!name) {
+    return undefined
+  }
+
   return catalog.find((item) => item.name === name)
 }

@@ -10,9 +10,11 @@ export function WorkflowNodes({ runId }: { runId: string }) {
   const { store } = useRun(runId)
   const projected = useProjection(store, nodes)
   const entries = Object.entries(projected.nodes)
+
   if (entries.length === 0) {
     return <p className="text-muted-foreground text-xs">No nodes</p>
   }
+
   return (
     <ul className="space-y-2">
       {entries.map(([id, node]) => (

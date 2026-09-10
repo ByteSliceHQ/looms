@@ -30,15 +30,22 @@ export function shouldTakeSnapshot(
   every: number = DEFAULT_SNAPSHOT_EVERY,
 ): boolean {
   const durable = events.filter((e) => !e.ephemeral && e.type !== 'runtime.snapshot.taken')
-  if (durable.length === 0) return false
+
+  if (durable.length === 0) {
+    return false
+  }
+
   let lastSnap: EventEnvelope | undefined
+
   for (let i = events.length - 1; i >= 0; i--) {
     const candidate = events[i]
+
     if (candidate?.type === 'runtime.snapshot.taken') {
       lastSnap = candidate
       break
     }
   }
+
   const since = lastSnap ? durable.filter((e) => e.seq > lastSnap.seq).length : durable.length
   return since >= every
 }
@@ -51,9 +58,11 @@ export function buildSnapshotEvent(
 ): EventEnvelope {
   const state = foldRun(events, registry, { runId })
   const last = events[events.length - 1]
+
   const payload = options?.includeState
     ? asJson({ seq: last?.seq ?? 0, stateHash: hashRunState(state), state: runStateToJson(state) })
     : asJson({ seq: last?.seq ?? 0, stateHash: hashRunState(state) })
+
   return createEvent(runId, {
     type: 'runtime.snapshot.taken',
     payload,
@@ -69,27 +78,34 @@ export function foldFromSnapshots(
 ): RunState {
   const runId = options?.runId ?? events[0]?.runId ?? 'unknown'
   let latestSnapIdx = -1
+
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i]?.type === 'runtime.snapshot.taken') {
       latestSnapIdx = i
       break
     }
   }
+
   if (latestSnapIdx < 0) {
     return foldRun(events, registry, { runId })
   }
+
   const snap = events[latestSnapIdx]!
   const decoded = Schema.decodeUnknownSync(SnapshotTakenPayloadSchema)(snap.payload)
+
   if (decoded.state !== undefined) {
     const trailing = events.filter((e) => e.seq > decoded.seq)
+
     if (trailing.length === 0) {
       return fromJsonStruct<RunState>(decoded.state)
     }
+
     return foldRun(trailing, registry, {
       runId,
       initial: fromJsonStruct<RunState>(decoded.state),
     })
   }
+
   return foldRun(events, registry, { runId })
 }
 

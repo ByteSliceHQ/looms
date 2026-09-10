@@ -1,11 +1,7 @@
 import { Effect } from 'effect'
 
 import type { EventInput } from './envelope'
-import {
-  validateInput,
-  type InferDefinedSchema,
-  type SchemaInput,
-} from './schema'
+import { validateInput, type InferDefinedSchema, type SchemaInput } from './schema'
 import type { JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -136,16 +132,22 @@ function liftHandlerResult<R>(
   if (Effect.isEffect(result)) {
     return result
   }
+
   if (result instanceof Promise) {
     return Effect.tryPromise({
       try: () => result,
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     })
   }
+
   return Effect.succeed(result)
 }
 
-export function defineEffect<TSchema = undefined, TInput = InferDefinedSchema<TSchema>, R = never>(def: {
+export function defineEffect<
+  TSchema = undefined,
+  TInput = InferDefinedSchema<TSchema>,
+  R = never,
+>(def: {
   type: string
   input?: TSchema
   retry?: RetryPolicy
@@ -164,6 +166,7 @@ export function defineEffect<TSchema = undefined, TInput = InferDefinedSchema<TS
               catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
             })
           : raw
+
         // SAFETY: input has been validated against schema or is unconstrained raw input
         return yield* liftHandlerResult(def.execute(input as TInput, ctx))
       }),
@@ -192,9 +195,11 @@ export function wait(args: { waitId: string; on: WaitCondition; tag?: JsonValue 
     waitId: args.waitId,
     on: args.on,
   }
+
   if (args.tag !== undefined) {
     effect.tag = args.tag
   }
+
   return effect
 }
 

@@ -56,6 +56,7 @@ export function defineThread<
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
   output?(state: S, ctx: ThreadContext): ThreadOutput
 }): ThreadDefinition<S>
+
 export function defineThread(def: {
   readonly kind: string
   readonly shape?: unknown
@@ -63,7 +64,7 @@ export function defineThread(def: {
   initialState(ctx: StartContext): any
   step(state: any, event: EventEnvelope, ctx: ThreadContext): any
   output?(state: any, ctx: ThreadContext): ThreadOutput
-}): ThreadDefinition<any> {
+}): ThreadDefinition {
   return {
     kind: def.kind,
     shape: def.shape,

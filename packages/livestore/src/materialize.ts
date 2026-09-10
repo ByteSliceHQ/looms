@@ -11,7 +11,10 @@ import {
 } from './tables'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) return {}
+  if (!Predicate.isObject(event.payload)) {
+    return {}
+  }
+
   return event.payload
 }
 
@@ -33,10 +36,12 @@ export function materializeEvents(
   for (const event of events) {
     tables.events_log.push(eventToLogRow(event))
     const payload = payloadObject(event)
+
     switch (event.type) {
       case 'runtime.run.started': {
         const existing = tables.runs.get(event.runId)
         const rootThreadId = readString(payload, 'rootThreadId') ?? existing?.rootThreadId ?? null
+
         const next: RunRow = {
           runId: event.runId,
           status: 'running',
@@ -44,11 +49,14 @@ export function materializeEvents(
           kind: readString(payload, 'kind') ?? existing?.kind ?? null,
           definitionName: readString(payload, 'definitionName') ?? existing?.definitionName ?? null,
         }
+
         tables.runs.set(event.runId, next)
         break
       }
+
       case 'runtime.run.completed': {
         const existing = tables.runs.get(event.runId)
+
         tables.runs.set(event.runId, {
           runId: event.runId,
           status: readString(payload, 'error') ? 'failed' : 'completed',
@@ -56,15 +64,22 @@ export function materializeEvents(
           kind: existing?.kind ?? null,
           definitionName: existing?.definitionName ?? null,
         })
+
         break
       }
+
       case 'runtime.thread.started': {
         const threadId = readString(payload, 'threadId') ?? event.threadId
         const kind = readString(payload, 'kind')
         const definitionName = readString(payload, 'definitionName')
-        if (!threadId || !kind || !definitionName) break
+
+        if (!threadId || !kind || !definitionName) {
+          break
+        }
+
         const parent = payload.parentThreadId
         const parentThreadId = parent === null || Predicate.isString(parent) ? parent : null
+
         const row: ThreadRow = {
           threadId,
           runId: event.runId,
@@ -73,25 +88,38 @@ export function materializeEvents(
           parentThreadId,
           status: 'running',
         }
+
         tables.threads.set(threadId, row)
         break
       }
+
       case 'runtime.thread.completed':
       case 'runtime.thread.failed':
+
       case 'runtime.thread.cancelled': {
         const threadId = readString(payload, 'threadId') ?? event.threadId
-        if (!threadId) break
+
+        if (!threadId) {
+          break
+        }
+
         const existing = tables.threads.get(threadId)
-        if (!existing) break
+
+        if (!existing) {
+          break
+        }
+
         const status =
           event.type === 'runtime.thread.completed'
             ? 'completed'
             : event.type === 'runtime.thread.failed'
               ? 'failed'
               : 'cancelled'
+
         tables.threads.set(threadId, { ...existing, status })
         break
       }
+
       default:
         break
     }

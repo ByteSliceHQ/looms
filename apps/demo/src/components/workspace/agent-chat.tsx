@@ -16,17 +16,34 @@ import { Textarea } from '../ui/textarea'
 
 function streamingText(events: DemoEvents[]): string | null {
   let lastMessage = -1
+
   for (const event of events) {
-    if (event.type === 'agent.message') lastMessage = event.seq
+    if (event.type === 'agent.message') {
+      lastMessage = event.seq
+    }
   }
+
   const deltas: string[] = []
   let turnStarted = false
+
   for (const event of events) {
-    if (event.seq <= lastMessage) continue
-    if (event.type === 'agent.turn.started') turnStarted = true
-    if (event.type === 'agent.turn.text_delta') deltas.push(event.payload.delta)
+    if (event.seq <= lastMessage) {
+      continue
+    }
+
+    if (event.type === 'agent.turn.started') {
+      turnStarted = true
+    }
+
+    if (event.type === 'agent.turn.text_delta') {
+      deltas.push(event.payload.delta)
+    }
   }
-  if (deltas.length > 0) return deltas.join('')
+
+  if (deltas.length > 0) {
+    return deltas.join('')
+  }
+
   return turnStarted ? '' : null
 }
 
@@ -113,7 +130,10 @@ function Composer({
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault()
-            if (canSend) onSubmit()
+
+            if (canSend) {
+              onSubmit()
+            }
           }
         }}
       />
@@ -149,9 +169,14 @@ function FollowUpComposer({
 
   async function send() {
     const content = draft.trim()
-    if (!content || !rootThreadId) return
+
+    if (!content || !rootThreadId) {
+      return
+    }
+
     setPending(true)
     onError(null)
+
     try {
       await store.commit(userMessage(content, { threadId: rootThreadId }))
       onSent()
@@ -195,18 +220,25 @@ export function AgentChat({
 
   async function start() {
     const content = draft.trim()
-    if (!content) return
+
+    if (!content) {
+      return
+    }
+
     setPending(true)
     setError(null)
     const nextRunId = createRunId()
+
     rememberRun({
       runId: nextRunId,
       definitionName: type.name,
       kind: type.kind,
       startedAt: Date.now(),
     })
+
     setDraft('')
     onStarted(nextRunId)
+
     try {
       await loomsClient.startRun({
         kind: type.kind,

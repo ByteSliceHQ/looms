@@ -10,6 +10,7 @@ describe('@looms/agent module', () => {
     const registry = composeModules([agent()])
     const runId = 'run_a'
     const threadId = 'thr_a'
+
     const state = foldRun(
       [
         {
@@ -30,6 +31,7 @@ describe('@looms/agent module', () => {
       ],
       registry,
     )
+
     expect(state.outstandingEffects[0]?.effect.type).toBe('agent.callLLM')
     expect(state.threads[threadId]?.kind).toBe('agent')
   })
@@ -38,6 +40,7 @@ describe('@looms/agent module', () => {
     const registry = composeModules([agent()])
     const runId = 'run_b'
     const threadId = 'thr_b'
+
     const state = foldRun(
       [
         {
@@ -86,6 +89,7 @@ describe('@looms/agent module', () => {
       ],
       registry,
     )
+
     const lines = state.threads[threadId]?.state
     expect(JSON.stringify(lines)).toContain('"name":"greet"')
   })
@@ -100,6 +104,7 @@ describe('@looms/agent module', () => {
     const registry = composeModules([agent()])
     const runId = 'run_fx'
     const threadId = 'thr_fx'
+
     const state = foldRun(
       [
         {
@@ -155,6 +160,7 @@ describe('@looms/agent module', () => {
       ],
       registry,
     )
+
     expect(state.threads[threadId]?.status).toBe('running')
     const emitted = state.outstandingEffects.find((item) => item.effect.type === 'runtime.emit')
     expect(emitted).toBeDefined()
@@ -166,6 +172,7 @@ describe('@looms/agent module', () => {
     const registry = composeModules([agent()])
     const runId = 'run_task'
     const threadId = 'thr_task'
+
     const state = foldRun(
       [
         {
@@ -186,10 +193,12 @@ describe('@looms/agent module', () => {
       ],
       registry,
     )
+
     // SAFETY: Agent thread state holds lines array.
     const threadState = state.threads[threadId]?.state as {
       lines: Array<{ role: string; content: string }>
     }
+
     expect(threadState.lines[0]?.role).toBe('user')
     expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')
   })

@@ -8,9 +8,11 @@ import { StatusDot } from '../status-dot'
 export function Ledger({ runId }: { runId: string }) {
   const { store } = useRun(runId)
   const charges = useProjection(store, ledger)
+
   if (charges.entries.length === 0) {
     return <p className="text-muted-foreground text-xs">No charges</p>
   }
+
   return (
     <ul className="space-y-1">
       {charges.entries.map((entry) => (
