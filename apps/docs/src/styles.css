@@ -118,7 +118,7 @@ pre {
   background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 0.8rem 1.15rem;
+  padding: 0.8rem 0;
   margin: 1.5rem 0 2rem;
   font-family: var(--mono);
   font-size: 0.76rem;
