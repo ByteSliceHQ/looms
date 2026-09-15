@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { Schema } from 'effect'
+
+import { defineEventCatalog, defineModule } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
@@ -203,6 +206,56 @@ describe('server HTTP idempotency', () => {
     const customSignals = events.filter((e) => e.type === 'custom.signal')
     expect(customSignals).toHaveLength(1)
     expect(customSignals[0]?.idempotencyKey).toBe(signalKey)
+    await looms.stop()
+  })
+
+  test('POST /runs/:id/events returns 400 when event payload fails catalog schema', async () => {
+    const catalog = defineEventCatalog('billing', {
+      invoice: Schema.Struct({
+        amount: Schema.Number,
+      }),
+    })
+
+    const billingModule = defineModule({
+      namespace: 'billing',
+      protocolVersion: '1.0.0',
+      events: catalog,
+    })
+
+    const flow = defineWorkflow({
+      name: 'billing-flow',
+      nodes: [
+        {
+          id: 'step1',
+          run: () => ({ ok: true }),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [flow],
+      modules: [workflow(), billingModule.build({})],
+    })
+
+    const { runId } = await looms.start(flow, {})
+
+    const req = new Request(`http://looms.test/runs/${runId}/events`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'billing.invoice',
+        payload: { amount: 'not-a-number' },
+      }),
+    })
+
+    const res = await looms.fetch(req)
+    expect(res?.status).toBe(400)
+    // SAFETY: HTTP 400 validation response body is parsed into an error payload.
+    const json = (await res?.json()) as { error: string; issues: unknown[] }
+    expect(json.error).toContain('Invalid payload for event "billing.invoice"')
+    expect(json.issues.length).toBeGreaterThan(0)
     await looms.stop()
   })
 })

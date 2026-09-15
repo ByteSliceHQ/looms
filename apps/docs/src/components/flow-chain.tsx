@@ -1,3 +1,4 @@
+import { Predicate } from 'effect'
 import type { ReactNode } from 'react'
 
 type FlowChainProps = {
@@ -14,7 +15,7 @@ export function FlowChain({ steps, className = '' }: FlowChainProps) {
       {steps.map((step, index) => (
         <span key={index} className="contents">
           {index > 0 ? <b>&rarr;</b> : null}
-          {typeof step === 'string' || typeof step === 'number' ? <span>{step}</span> : step}
+          {Predicate.isString(step) || Predicate.isNumber(step) ? <span>{step}</span> : step}
         </span>
       ))}
     </div>

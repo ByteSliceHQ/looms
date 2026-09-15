@@ -6,6 +6,8 @@ import { agent, asEffectsTool, defineAgent } from '@looms/agent'
 import { approval, decision, gate } from '@looms/approval'
 import {
   defineEffect,
+  defineEventCatalog,
+  defineModule,
   defineRuntimeModule,
   defineThread,
   EventStoreTrimmedError,
@@ -13,6 +15,7 @@ import {
   snapshotStoreOf,
   complete,
   invoke,
+  InvalidEventError,
   makeMemoryEventStore,
   makeMemorySnapshotStore,
   wait,
@@ -1488,6 +1491,123 @@ describe('createLooms', () => {
 
     await looms.cancel(runId)
     expect(cancelled).toContain(runId)
+
+    await looms.stop()
+  })
+
+  test('validates incoming signal events against catalog schemas and rejects invalid payloads', async () => {
+    const testCatalog = defineEventCatalog('testmod', {
+      ping: Schema.Struct({
+        code: Schema.Number,
+      }),
+    })
+
+    const testMod = defineModule({
+      namespace: 'testmod',
+      protocolVersion: '1.0.0',
+      events: testCatalog,
+    })
+
+    const echo = defineAgent({
+      name: 'echo-test',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: 'done' },
+        done: true,
+        output: input,
+      }),
+    })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [testMod.build({})],
+    })
+
+    const { runId } = await looms.start(echo, {})
+
+    // Valid signal should succeed
+    await looms.signal(runId, [
+      {
+        type: 'testmod.ping',
+        payload: { code: 123 },
+      },
+    ])
+
+    // Invalid signal should reject with InvalidEventError
+    let threw = false
+
+    try {
+      await looms.signal(runId, [
+        {
+          type: 'testmod.ping',
+          // @ts-expect-error deliberately passing invalid payload to verify runtime schema rejection
+          payload: { code: 'not-a-number' },
+        },
+      ])
+    } catch (err) {
+      threw = true
+      expect(err).toBeInstanceOf(InvalidEventError)
+    }
+
+    expect(threw).toBe(true)
+
+    await looms.stop()
+  })
+
+  test('effect handler producing invalid event output becomes runtime.effect.failed', async () => {
+    const schemaCatalog = defineEventCatalog('schematest', {
+      validated: Schema.Struct({
+        score: Schema.Number,
+      }),
+    })
+
+    const badOutputEffect = defineEffect({
+      type: 'schematest.produceBad',
+      execute: () => [
+        {
+          type: 'schematest.validated',
+          // @ts-expect-error deliberately producing invalid payload to verify runtime error conversion
+          payload: { score: 'not-a-number' },
+        },
+      ],
+    })
+
+    const mod = defineRuntimeModule({
+      namespace: 'schematest',
+      protocolVersion: '1.0.0',
+      events: schemaCatalog,
+      effects: { produceBad: badOutputEffect },
+    })
+
+    const worker = defineWorkflow({
+      name: 'bad-effect-worker',
+      nodes: [
+        {
+          id: 'step1',
+          run: (ctx) => ctx.effects([invoke(badOutputEffect, {})]),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [worker],
+      modules: [workflow(), mod],
+    })
+
+    const { runId } = await looms.start(worker, {})
+    const events = await looms.getEvents(runId)
+    const effectFailed = events.find((e) => e.type === 'runtime.effect.failed')
+    expect(effectFailed).toBeDefined()
+    expect(Predicate.isObject(effectFailed?.payload)).toBe(true)
+
+    if (
+      Predicate.isObject(effectFailed?.payload) &&
+      Predicate.isString(effectFailed.payload.error)
+    ) {
+      expect(effectFailed.payload.error).toContain(
+        'Invalid payload for event "schematest.validated"',
+      )
+    }
 
     await looms.stop()
   })

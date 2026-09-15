@@ -1,28 +1,27 @@
 import { Effect, Predicate, Schema } from 'effect'
 
-import {
-  createThreadId,
-  createWaitId,
-  defineEffect,
-  type EventInput,
-  type JsonValue,
-} from '@looms/core'
+import { createThreadId, createWaitId, type EventInputOf, type JsonValue } from '@looms/core'
 
-import { readyNodes, type NodeResult, type WorkflowDefinition } from './definitions'
+import {
+  NodeStateSchema,
+  readyNodes,
+  type NodeResult,
+  type WorkflowDefinition,
+} from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
-import { NodeStateSchema } from './threads'
+import { workflowModule, type WorkflowEvent } from './scope'
 
 const ScheduleInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
   nodes: Schema.optional(Schema.Record(Schema.String, NodeStateSchema)),
-  input: Schema.optional(Schema.MutableJson),
+  input: Schema.optional(Schema.Json),
 })
 
 const RunNodeInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
   nodeId: Schema.String,
-  input: Schema.optional(Schema.MutableJson),
-  results: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(Schema.MutableJson))),
+  input: Schema.optional(Schema.Json),
+  results: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(Schema.Json))),
 })
 
 function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
@@ -35,7 +34,7 @@ function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
   )
 }
 
-export const scheduleEffect = defineEffect({
+export const scheduleEffect = workflowModule.effect({
   type: 'workflow.schedule',
   input: ScheduleInput,
   execute: (input, ctx) =>
@@ -78,11 +77,11 @@ export function scheduleEvents(
     input: JsonValue
   },
   threadId: string,
-): EventInput[] {
+): EventInputOf<WorkflowEvent>[] {
   const running = Object.values(binding.nodes).filter((n) => n.status === 'running').length
   const slots = Math.max(0, (definition.concurrency ?? 8) - running)
   const ready = readyNodes(definition, binding.nodes).slice(0, slots)
-  const events: EventInput[] = []
+  const events: EventInputOf<WorkflowEvent>[] = []
 
   for (const nodeId of ready) {
     events.push({
@@ -132,7 +131,7 @@ export function scheduleEvents(
   ]
 }
 
-export const runNodeEffect = defineEffect({
+export const runNodeEffect = workflowModule.effect({
   type: 'workflow.runNode',
   input: RunNodeInput,
   execute: (input, ctx) =>
@@ -177,7 +176,7 @@ function runNode(
   },
   nodeId: string,
   threadId: string,
-): Effect.Effect<ReadonlyArray<EventInput>, Error> {
+): Effect.Effect<ReadonlyArray<EventInputOf<WorkflowEvent>>, Error> {
   return Effect.gen(function* () {
     const nodeDef = definition.nodes.find((node) => node.id === nodeId)
 
@@ -231,7 +230,7 @@ function runNode(
         return [
           {
             type: 'workflow.node.finished',
-            payload: { nodeId, result: result.value, error: null },
+            payload: { nodeId, result: result.value ?? null, error: null },
             threadId,
           },
         ]
@@ -246,7 +245,7 @@ function runNode(
               childThreadId,
               kind: result.kind,
               definitionName: result.name,
-              input: result.input,
+              input: result.input ?? null,
             },
             threadId,
           },
@@ -271,8 +270,7 @@ function runNode(
             type: 'workflow.effects.requested',
             payload: {
               nodeId,
-              // SAFETY: node effect lists are JSON-serializable RuntimeEffect values.
-              effects: result.effects,
+              effects: result.effects ?? [],
             },
             threadId,
           },

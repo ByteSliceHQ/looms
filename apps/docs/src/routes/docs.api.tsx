@@ -29,7 +29,8 @@ function Api() {
           <code>routeToDurableObject</code>
         </li>
         <li>
-          <code>@looms/actor</code> — <code>createLocalActorHost</code>, <code>createActorCell</code>
+          <code>@looms/actor</code> — <code>createLocalActorHost</code>,{' '}
+          <code>createActorCell</code>
         </li>
         <li>
           <code>@looms/core/bun-sqlite</code> — per-run SQLite <code>EventStore</code> for local
@@ -227,8 +228,10 @@ const looms = createLooms({
               <code>@looms/core</code>
             </td>
             <td>
-              <code>defineRuntimeModule</code>, <code>defineEffect</code>, <code>invoke</code>,{' '}
-              <code>wait</code>; <code>@looms/core/bun-sqlite</code> for local execution stores
+              <code>defineModule</code>, <code>defineEventCatalog</code>, <code>defineEffect</code>,{' '}
+              <code>invoke</code>, <code>wait</code>, <code>defineThread</code>,{' '}
+              <code>defineProjection</code>, <code>defineRuntimeModule</code>;{' '}
+              <code>@looms/core/bun-sqlite</code> for local execution stores
             </td>
           </tr>
           <tr>
@@ -251,8 +254,7 @@ const looms = createLooms({
             </td>
             <td>
               <code>s2Projector</code> — replicates committed events to a global S2 stream lake for
-              centralized auditing and analytics. See{' '}
-              <Link to="/docs/durability">Durability</Link>.
+              centralized auditing and analytics. See <Link to="/docs/durability">Durability</Link>.
             </td>
           </tr>
           <tr>
@@ -282,6 +284,87 @@ const looms = createLooms({
               <code>@looms/cli</code>
             </td>
             <td>Inspect and approve runs from a terminal</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>
+        Core Module SDK (<code>@looms/core</code>)
+      </h2>
+      <p>
+        Building blocks for authoring strongly typed runtime modules. See{' '}
+        <Link to="/docs/modules">Modules</Link> for comprehensive guides.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>API</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>defineModule(options)</code>
+            </td>
+            <td>
+              Create a typed module scope weaving a catalog into threads, projections, effects, and
+              input/emit builders.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>defineEventCatalog(namespace, entries)</code>
+            </td>
+            <td>
+              Declare a namespaced event catalog backed by schemas (Zod, Effect Schema) or{' '}
+              <code>payload&lt;T&gt;()</code> markers.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>scope.effect(def)</code> / <code>defineEffect(def)</code>
+            </td>
+            <td>
+              Define a host-side effect handler with input validation, idempotency key (
+              <code>ctx.effectId</code>), retry policies, and typed returns/emit.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>invoke(effectDef, input, tag?)</code>
+            </td>
+            <td>
+              Request an effect invocation from a reducer or workflow. Statically verifies input
+              against the effect&apos;s schema.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>scope.thread(def)</code> / <code>defineThread(def)</code>
+            </td>
+            <td>
+              Define a state machine thread kind. Narrow events and infer state across the module
+              event universe.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>scope.projection(def)</code> / <code>defineProjection(def)</code>
+            </td>
+            <td>
+              Define a derived read model folded from the event stream. Narrow events automatically
+              without manual type casting.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>scope.input(key, payload)</code> / <code>scope.emit(key, payload)</code>
+            </td>
+            <td>
+              Construct typed <code>EventInput</code> or <code>EmitEffect</code> instances matching
+              catalog keys and payload schemas.
+            </td>
           </tr>
         </tbody>
       </table>

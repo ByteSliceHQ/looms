@@ -1,7 +1,23 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Schema } from 'effect'
+import { Schema } from 'effect'
 
 import type { InferDefinedSchema, JsonValue, RuntimeEffect } from '@looms/core'
+
+export const NodeStatusSchema = Schema.Union([
+  Schema.Literal('pending'),
+  Schema.Literal('running'),
+  Schema.Literal('completed'),
+  Schema.Literal('failed'),
+  Schema.Literal('skipped'),
+])
+export type NodeStatus = Schema.Schema.Type<typeof NodeStatusSchema>
+
+export const NodeStateSchema = Schema.Struct({
+  status: NodeStatusSchema,
+  result: Schema.NullOr(Schema.Json),
+  error: Schema.NullOr(Schema.String),
+})
+export type NodeState = Schema.Schema.Type<typeof NodeStateSchema>
 
 export interface WorkflowNodeContext<TInput = JsonValue> {
   readonly threadId: string

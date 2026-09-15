@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { createEventId } from './ids'
 import type { JsonValue } from './types'
 
-export const JsonValueSchema = Schema.MutableJson
+export const JsonValueSchema = Schema.Json
 
 export const EventOriginSchema = Schema.Union([
   Schema.Struct({
@@ -38,7 +38,7 @@ export const EventEnvelopeSchema = Schema.Struct({
   idempotencyKey: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
-export type EventEnvelope<TType extends string = string, TPayload extends JsonValue = JsonValue> = {
+export type EventEnvelope<TType extends string = string, TPayload = JsonValue> = {
   id: string
   runId: string
   seq: number
@@ -55,14 +55,11 @@ export type EventEnvelope<TType extends string = string, TPayload extends JsonVa
   idempotencyKey?: string | null
 }
 
-export type TypedEvent<TType extends string, TPayload extends JsonValue> = EventEnvelope<
-  TType,
-  TPayload
->
+export type TypedEvent<TType extends string, TPayload = JsonValue> = EventEnvelope<TType, TPayload>
 
-export type EventInput = {
-  type: string
-  payload: JsonValue
+export type EventInput<TType extends string = string, TPayload = JsonValue> = {
+  type: TType
+  payload: TPayload
   threadId?: string | null
   parentThreadId?: string | null
   causationId?: string | null

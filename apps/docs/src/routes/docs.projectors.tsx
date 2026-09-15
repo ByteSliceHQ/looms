@@ -18,14 +18,12 @@ function Projectors() {
         place; it is <strong>projected</strong>.
       </p>
       <p>
-        That is the bridge between execution and UI: the same events that wake a parked workflow also
-        fold into React via LiveStore, and into SQLite or Postgres via projectors. No per-feature
-        sync protocol. No second source of truth that drifts.
+        That is the bridge between execution and UI: the same events that wake a parked workflow
+        also fold into React via LiveStore, and into SQLite or Postgres via projectors. No
+        per-feature sync protocol. No second source of truth that drifts.
       </p>
 
-      <FlowChain
-        steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']}
-      />
+      <FlowChain steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']} />
 
       <h2>Two Different Reducer Contracts</h2>
       <p>Looms cleanly separates behavioral execution from observational views:</p>
@@ -80,12 +78,15 @@ function Projectors() {
 
       <h3>Step 1: Define your domain projection</h3>
       <p>
-        Define a pure read model with <code>defineProjection</code> from <code>@looms/core</code>.
-        You can provide a Zod (or Standard Schema) <code>shape</code> to infer the state type
-        automatically without an explicit generic. Export it so both server and client can use it.
+        Define a pure read model using <code>ordersModule.projection</code> from your module&apos;s
+        scope (or standalone <code>defineProjection</code> from <code>@looms/core</code>). With{' '}
+        <code>scope.projection</code>, event types and payloads are automatically narrowed per case
+        based on the module&apos;s registered catalogs. Providing a Zod (or Standard Schema){' '}
+        <code>shape</code> infers the state type automatically without an explicit generic. Export
+        it so both server and client can use it.
       </p>
-      <CodeBlock lang="ts">{`import { defineProjection, type EventEnvelope } from '@looms/core'
-import { z } from 'zod'
+      <CodeBlock lang="ts">{`import { z } from 'zod'
+import { ordersModule } from './scope'
 
 export const OrderSchema = z.object({
   orderId: z.string().nullable(),
@@ -99,7 +100,7 @@ export const OrderSchema = z.object({
 
 export type OrderState = z.infer<typeof OrderSchema>
 
-export const orderTracker = defineProjection({
+export const orderTracker = ordersModule.projection({
   name: 'orderTracker',
   shape: OrderSchema,
   initialState: {
@@ -111,9 +112,10 @@ export const orderTracker = defineProjection({
     paymentId: null,
     history: [],
   },
-  reduce(state, event: EventEnvelope) {
+  reduce(state, event) {
+    // state is inferred from shape; event is narrowed per case by scope
     switch (event.type) {
-      case 'order.created':
+      case 'orders.created':
         return {
           ...state,
           orderId: event.payload.orderId,
@@ -132,8 +134,8 @@ export const orderTracker = defineProjection({
       case 'approval.decided':
         return {
           ...state,
-          status: event.payload.decision === 'approve' ? 'processing' : 'failed',
-          history: [...state.history, { step: \`Approval \${event.payload.decision}d\`, timestamp: event.ts }],
+          status: event.payload.outcome === 'approve' ? 'processing' : 'failed',
+          history: [...state.history, { step: \`Approval \${event.payload.outcome}d\`, timestamp: event.ts }],
         }
       case 'payments.charge.authorized':
         return {
@@ -302,9 +304,10 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
   },
 })`}</CodeBlock>
       <p>
-        On Cloudflare Durable Objects, supply projectors via <code>configure().projectors</code> (see{' '}
-        <Link to="/docs/durability">Durability</Link>). Projectors can populate relational databases,
-        emit webhooks, or replicate events to a centralized data lake via <code>s2Projector</code>.
+        On Cloudflare Durable Objects, supply projectors via <code>configure().projectors</code>{' '}
+        (see <Link to="/docs/durability">Durability</Link>). Projectors can populate relational
+        databases, emit webhooks, or replicate events to a centralized data lake via{' '}
+        <code>s2Projector</code>.
       </p>
 
       <h3>Built-in index helpers</h3>

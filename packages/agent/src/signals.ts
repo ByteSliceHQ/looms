@@ -1,4 +1,6 @@
-import { asJson, type EventInput } from '@looms/core'
+import type { EventInput } from '@looms/core'
+
+import { agentModule } from './scope'
 
 export interface AgentSignalOptions {
   /** Target thread. Defaults to the run's root thread when omitted. */
@@ -10,11 +12,11 @@ export interface AgentSignalOptions {
  * Send it with `looms.signal(runId, [userMessage('Also greet Maya')])`.
  */
 export function userMessage(content: string, options: AgentSignalOptions = {}): EventInput {
-  return {
-    type: 'agent.message.received',
-    payload: asJson({ message: { role: 'user', content } }),
-    threadId: options.threadId,
-  }
+  return agentModule.input(
+    'message.received',
+    { message: { role: 'user', content } },
+    { threadId: options.threadId },
+  )
 }
 
 /**
@@ -25,13 +27,13 @@ export function steer(
   content: string,
   options: AgentSignalOptions & { readonly interrupt?: boolean } = {},
 ): EventInput {
-  return {
-    type: 'agent.steered',
-    payload: asJson({
+  return agentModule.input(
+    'steered',
+    {
       turn: 0,
       interrupt: options.interrupt ?? true,
       message: { role: 'user', content },
-    }),
-    threadId: options.threadId,
-  }
+    },
+    { threadId: options.threadId },
+  )
 }

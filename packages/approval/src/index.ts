@@ -1,4 +1,5 @@
 export * from './events'
+export * from './scope'
 export * from './effects'
 export * from './projections'
 export * from './signals'

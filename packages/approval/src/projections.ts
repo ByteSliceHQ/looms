@@ -1,12 +1,6 @@
 import { Schema } from 'effect'
 
-import {
-  defineProjection,
-  isJsonObject,
-  isJsonString,
-  type EventEnvelope,
-  type JsonValue,
-} from '@looms/core'
+import { approvalModule } from './scope'
 
 export const PendingApprovalSchema = Schema.Struct({
   approvalId: Schema.String,
@@ -27,32 +21,22 @@ export const PendingApprovalsSchema = Schema.Struct({
 })
 export type PendingApprovalsState = Schema.Schema.Type<typeof PendingApprovalsSchema>
 
-function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  return isJsonObject(event.payload) ? event.payload : {}
-}
-
-export const pendingApprovals = defineProjection({
+export const pendingApprovals = approvalModule.projection({
   name: 'pendingApprovals',
   shape: PendingApprovalsSchema,
   initialState: { items: [] },
   reduce(state, event) {
-    const data = payloadObject(event)
-    const approvalId = isJsonString(data.approvalId) ? data.approvalId : undefined
-
-    if (!approvalId) {
-      return state
-    }
-
     switch (event.type) {
       case 'approval.requested': {
+        const { approvalId, title, description } = event.payload
         const threadId = event.threadId ?? null
         return {
           items: [
             ...state.items.filter((item) => item.approvalId !== approvalId),
             {
               approvalId,
-              title: isJsonString(data.title) ? data.title : 'Approval',
-              description: isJsonString(data.description) ? data.description : undefined,
+              title: title || 'Approval',
+              description: description || undefined,
               status: 'pending',
               threadId,
             },
@@ -61,20 +45,24 @@ export const pendingApprovals = defineProjection({
       }
 
       case 'approval.decided': {
-        const outcome = data.outcome === 'reject' ? 'rejected' : 'approved'
+        const { approvalId, outcome } = event.payload
+        const status = outcome === 'reject' ? 'rejected' : 'approved'
         return {
           items: state.items.map((item) =>
-            item.approvalId === approvalId ? { ...item, status: outcome } : item,
+            item.approvalId === approvalId ? { ...item, status } : item,
           ),
         }
       }
 
-      case 'approval.timed_out':
+      case 'approval.timed_out': {
+        const { approvalId } = event.payload
         return {
           items: state.items.map((item) =>
             item.approvalId === approvalId ? { ...item, status: 'timed_out' } : item,
           ),
         }
+      }
+
       default:
         return state
     }

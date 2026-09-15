@@ -1,7 +1,15 @@
 export type * from './types'
-export { asJson, fromJsonStruct, isJsonNumber, isJsonObject, isJsonString } from './types'
+export {
+  asJson,
+  cleanUndefined,
+  fromJsonStruct,
+  isJsonNumber,
+  isJsonObject,
+  isJsonString,
+} from './types'
 export * from './ids'
 export * from './schema'
+export * from './validate-event'
 export * from './envelope'
 export * from './catalog'
 export * from './effects'
@@ -13,6 +21,7 @@ export * from './fold'
 export * from './replay'
 export * from './projection'
 export * from './module'
+export * from './module-scope'
 export * from './compose'
 export * from './store'
 export * from './cursor'

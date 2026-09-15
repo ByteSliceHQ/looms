@@ -1,9 +1,7 @@
-import { Option, Predicate, Schema } from 'effect'
+import { Predicate } from 'effect'
 
 import {
-  asJson,
   createWaitId,
-  defineThread,
   emit,
   invoke,
   isWithdrawnError,
@@ -15,29 +13,9 @@ import {
   type RuntimeEffect,
 } from '@looms/core'
 
-import {
-  AgentEffectsRequestedPayloadSchema,
-  AgentMessagePayloadSchema,
-  AgentSpawnRequestedPayloadSchema,
-  AgentSteeredPayloadSchema,
-  AgentToolCallRequestedPayloadSchema,
-  AgentToolResultPayloadSchema,
-  AgentTurnStartedPayloadSchema,
-  MessageSchema,
-  AgentStateSchema,
-  type AgentState,
-  type Message,
-  type ToolCall,
-} from './types'
-
-const decodeMessagePayload = Schema.decodeUnknownOption(AgentMessagePayloadSchema)
-const decodeMessageDirect = Schema.decodeUnknownOption(MessageSchema)
-const decodeTurnStarted = Schema.decodeUnknownOption(AgentTurnStartedPayloadSchema)
-const decodeToolCallRequested = Schema.decodeUnknownOption(AgentToolCallRequestedPayloadSchema)
-const decodeToolResult = Schema.decodeUnknownOption(AgentToolResultPayloadSchema)
-const decodeSteered = Schema.decodeUnknownOption(AgentSteeredPayloadSchema)
-const decodeSpawnRequested = Schema.decodeUnknownOption(AgentSpawnRequestedPayloadSchema)
-const decodeEffectsRequested = Schema.decodeUnknownOption(AgentEffectsRequestedPayloadSchema)
+import { callLlmEffect, executeToolEffect } from './effects'
+import { agentModule } from './scope'
+import { AgentStateSchema, type AgentState, type Message, type ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
   if (input === null) {
@@ -69,25 +47,6 @@ function inputToLine(input: JsonValue): Message | null {
   return { role: 'user', content: JSON.stringify(input) }
 }
 
-function extractMessage(payload: JsonValue): Message {
-  const asMsgPayload = decodeMessagePayload(payload)
-
-  if (Option.isSome(asMsgPayload)) {
-    return asMsgPayload.value.message
-  }
-
-  if (Predicate.isObject(payload)) {
-    const raw = payload.message ?? payload
-    const decoded = decodeMessageDirect(raw)
-
-    if (Option.isSome(decoded)) {
-      return decoded.value
-    }
-  }
-
-  return { role: 'user', content: '' }
-}
-
 function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[] {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]
@@ -110,7 +69,7 @@ function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[
   return [...lines]
 }
 
-export const agentThread = defineThread({
+export const agentThread = agentModule.thread({
   kind: 'agent',
   shape: AgentStateSchema,
   initialState: (ctx): AgentState => ({
@@ -129,14 +88,11 @@ export const agentThread = defineThread({
     output: null,
     pendingEffectTools: {},
   }),
-  step(state: AgentState, event, ctx): AgentState {
+  step(state, event, ctx) {
     switch (event.type) {
       case 'runtime.thread.started': {
-        const payload = Predicate.isObject(event.payload) ? event.payload : {}
-
-        const defName = Predicate.isString(payload.definitionName)
-          ? payload.definitionName
-          : state.definitionName
+        const payload = event.payload
+        const defName = payload.definitionName || state.definitionName
 
         // SAFETY: event payload input is JSON
         const input = payload.input !== undefined ? payload.input : state.input
@@ -152,23 +108,16 @@ export const agentThread = defineThread({
       }
 
       case 'agent.turn.started': {
-        const decoded = decodeTurnStarted(event.payload)
-
-        const turn =
-          Option.isSome(decoded) && decoded.value.turn !== undefined
-            ? decoded.value.turn
-            : state.turn + 1
-
         return {
           ...state,
-          turn,
+          turn: event.payload.turn,
           needsLlmCall: false,
           pendingSteer: null,
         }
       }
 
       case 'agent.message.received': {
-        const message = extractMessage(event.payload)
+        const message = event.payload.message
         const lines = [...state.lines, message]
         const needsLlmCall = state.pendingToolCalls.length === 0
         return {
@@ -179,17 +128,11 @@ export const agentThread = defineThread({
       }
 
       case 'agent.message': {
-        return { ...state, lines: [...state.lines, extractMessage(event.payload)] }
+        return { ...state, lines: [...state.lines, event.payload.message] }
       }
 
       case 'agent.tool_call.requested': {
-        const decoded = decodeToolCallRequested(event.payload)
-
-        if (Option.isNone(decoded)) {
-          return state
-        }
-
-        const { toolCall } = decoded.value
+        const { toolCall } = event.payload
         return {
           ...state,
           lines: attachToolCall(state.lines, toolCall),
@@ -200,13 +143,7 @@ export const agentThread = defineThread({
       }
 
       case 'agent.tool.result': {
-        const decoded = decodeToolResult(event.payload)
-
-        if (Option.isNone(decoded)) {
-          return state
-        }
-
-        const { toolCallId, name, result, error } = decoded.value
+        const { toolCallId, name, result, error } = event.payload
         const pendingToolCalls = state.pendingToolCalls.filter((item) => item.id !== toolCallId)
         const executingToolCalls = state.executingToolCalls.filter((item) => item.id !== toolCallId)
         const pendingSpawns = state.pendingSpawns.filter((item) => item.toolCallId !== toolCallId)
@@ -240,15 +177,10 @@ export const agentThread = defineThread({
       }
 
       case 'agent.steered': {
-        const decoded = decodeSteered(event.payload)
+        const message = event.payload.message
+        const interrupt = event.payload.interrupt ?? false
 
-        const message = Option.isSome(decoded)
-          ? decoded.value.message
-          : extractMessage(event.payload)
-
-        const interrupt = Option.isSome(decoded) ? decoded.value.interrupt : false
-
-        if (interrupt === true) {
+        if (interrupt) {
           return {
             ...state,
             lines: [...state.lines, message],
@@ -270,13 +202,7 @@ export const agentThread = defineThread({
       }
 
       case 'agent.spawn.requested': {
-        const decoded = decodeSpawnRequested(event.payload)
-
-        if (Option.isNone(decoded)) {
-          return state
-        }
-
-        const { childThreadId, kind, definitionName, toolCallId, input } = decoded.value
+        const { childThreadId, kind, definitionName, toolCallId, input } = event.payload
         return {
           ...state,
           executingToolCalls: state.executingToolCalls.filter((item) => item.id !== toolCallId),
@@ -288,20 +214,14 @@ export const agentThread = defineThread({
               definitionName,
               toolCallId,
               // SAFETY: schema-decoded input is JSON
-              input: (input as JsonValue) ?? null,
+              input: input ?? null,
             },
           ],
         }
       }
 
       case 'agent.effects.requested': {
-        const decoded = decodeEffectsRequested(event.payload)
-
-        if (Option.isNone(decoded)) {
-          return state
-        }
-
-        const { toolCallId, effects: rawEffects, waitOn } = decoded.value
+        const { toolCallId, effects: rawEffects, waitOn } = event.payload
 
         // SAFETY: handler serialized RuntimeEffect values into the event payload.
         const effects: RuntimeEffect[] = Array.isArray(rawEffects)
@@ -354,8 +274,8 @@ export const agentThread = defineThread({
       }
 
       case 'runtime.effect.failed': {
-        const payload = Predicate.isObject(event.payload) ? event.payload : {}
-        const error = Predicate.isString(payload.error) ? payload.error : 'effect failed'
+        const payload = event.payload
+        const error = payload.error || 'effect failed'
 
         if (isWithdrawnError(error)) {
           return state
@@ -447,7 +367,7 @@ export const agentThread = defineThread({
         // SAFETY: embedded output/payload is JSON
         const result =
           (embeddedObj.output as JsonValue) ??
-          (Predicate.isObject(embedded) ? (embedded.payload as JsonValue) : null) ??
+          (Predicate.isObject(embedded) ? embedded.payload : null) ??
           null
 
         return {
@@ -478,19 +398,19 @@ export const agentThread = defineThread({
         return state
     }
   },
-  effects(state: AgentState, ctx) {
+  effects(state, ctx) {
     const effects: RuntimeEffect[] = []
 
     if (state.needsLlmCall) {
       effects.push(
         invoke(
-          'agent.callLLM',
-          asJson({
+          callLlmEffect,
+          {
             turn: state.turn + 1,
             definitionName: state.definitionName,
             messages: state.lines,
             input: state.input,
-          }),
+          },
           `llm_turn_${state.turn + 1}`,
         ),
       )
@@ -499,12 +419,12 @@ export const agentThread = defineThread({
     for (const toolCall of state.executingToolCalls) {
       effects.push(
         invoke(
-          'agent.executeTool',
-          asJson({
+          executeToolEffect,
+          {
             turn: state.turn,
             definitionName: state.definitionName,
             toolCall,
-          }),
+          },
           `tool_${toolCall.id}`,
         ),
       )

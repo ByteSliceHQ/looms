@@ -1,59 +1,48 @@
 import { Predicate, Schema } from 'effect'
 
-import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
-
-import { NodeStateSchema } from './threads'
-
-function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) {
-    return {}
-  }
-
-  return event.payload
-}
+import { NodeStateSchema } from './definitions'
+import { workflowModule } from './scope'
 
 export const NodesProjectionSchema = Schema.Struct({
   nodes: Schema.Record(Schema.String, NodeStateSchema),
 })
 export type NodesProjectionState = Schema.Schema.Type<typeof NodesProjectionSchema>
 
-export const nodes = defineProjection({
+export const nodes = workflowModule.projection({
   name: 'nodes',
   shape: NodesProjectionSchema,
   initialState: { nodes: {} },
   reduce(state, event) {
-    const payload = payloadObject(event)
-    const nodeId = Predicate.isString(payload.nodeId) ? payload.nodeId : undefined
-
-    if (!nodeId) {
-      return state
-    }
-
     switch (event.type) {
-      case 'workflow.node.started':
+      case 'workflow.node.started': {
+        const { nodeId } = event.payload
         return {
           nodes: { ...state.nodes, [nodeId]: { status: 'running', result: null, error: null } },
         }
+      }
 
       case 'workflow.node.finished': {
-        const error = payload.error
+        const { nodeId, result, error } = event.payload
         const failed = Predicate.isString(error) && error.length > 0
         return {
           nodes: {
             ...state.nodes,
             [nodeId]: {
               status: failed ? 'failed' : 'completed',
-              result: payload.result ?? null,
+              result: result ?? null,
               error: failed ? error : null,
             },
           },
         }
       }
 
-      case 'workflow.node.skipped':
+      case 'workflow.node.skipped': {
+        const { nodeId } = event.payload
         return {
           nodes: { ...state.nodes, [nodeId]: { status: 'skipped', result: null, error: null } },
         }
+      }
+
       default:
         return state
     }

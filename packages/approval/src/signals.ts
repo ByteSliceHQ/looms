@@ -1,5 +1,4 @@
 import {
-  asJson,
   createWaitId,
   invoke,
   isJsonString,
@@ -9,7 +8,9 @@ import {
   type RuntimeEffect,
 } from '@looms/core'
 
+import { requestApprovalEffect } from './effects'
 import type { ApprovalAction, ApprovalDecided } from './events'
+import { approvalModule } from './scope'
 
 export function gate(args: {
   title: string
@@ -27,14 +28,14 @@ export function gate(args: {
 
   return [
     invoke(
-      'approval.request',
-      asJson({
+      requestApprovalEffect,
+      {
         approvalId,
         title: args.title,
         description: args.description,
         actions,
         schema: args.schema,
-      }),
+      },
       `request_${approvalId}`,
     ),
     wait({
@@ -59,5 +60,5 @@ export function decision(approvalId: string, choice: ApprovalChoice): EventInput
     ? { approvalId, actionId: choice, outcome: choice }
     : { approvalId, actionId: choice.actionId, outcome: choice.outcome, payload: choice.payload }
 
-  return { type: 'approval.decided', payload: asJson(decided) }
+  return approvalModule.input('decided', decided)
 }

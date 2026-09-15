@@ -12,13 +12,22 @@ function Durability() {
     <>
       <h1>Durability &amp; Hosting</h1>
       <p>
-        Looms achieves durable execution through a <strong>single-writer virtual actor model</strong>.
-        Every run is identified by a unique <code>runId</code> and owned by exactly one isolated
-        actor cell at a time. Within that cell, events append directly to a fast local store (such
-        as embedded SQLite), timers schedule durable wakes, and snapshots bound memory.
+        Looms achieves durable execution through a{' '}
+        <strong>single-writer virtual actor model</strong>. Every run is identified by a unique{' '}
+        <code>runId</code> and owned by exactly one isolated actor cell at a time. Within that cell,
+        events append directly to a fast local store (such as embedded SQLite), timers schedule
+        durable wakes, and snapshots bound memory.
       </p>
 
-      <FlowChain steps={['Incoming Request', 'Route by runId', 'Actor Cell', 'Local SQLite Log', 'Wake & Reduce']} />
+      <FlowChain
+        steps={[
+          'Incoming Request',
+          'Route by runId',
+          'Actor Cell',
+          'Local SQLite Log',
+          'Wake & Reduce',
+        ]}
+      />
 
       <p>
         Because only one writer ever processes a run, Looms avoids distributed locking, heartbeats,
@@ -52,7 +61,9 @@ function Durability() {
             <td>
               <code>@looms/cloudflare</code>
             </td>
-            <td>Per-run SQLite via <code>ctx.storage.sql</code> + durable alarms</td>
+            <td>
+              Per-run SQLite via <code>ctx.storage.sql</code> + durable alarms
+            </td>
             <td>Production serverless and edge deployments (recommended)</td>
           </tr>
           <tr>
@@ -72,7 +83,9 @@ function Durability() {
             <td>
               <code>@looms/actor</code> + <code>@looms/core/bun-sqlite</code>
             </td>
-            <td>Per-run SQLite files (e.g. <code>.looms/runs/&lt;id&gt;.sqlite</code>)</td>
+            <td>
+              Per-run SQLite files (e.g. <code>.looms/runs/&lt;id&gt;.sqlite</code>)
+            </td>
             <td>Local development and standalone server apps</td>
           </tr>
           <tr>
@@ -212,7 +225,11 @@ export default {
       <p>
         You can embed Looms into existing infrastructure (Kubernetes StatefulSets, Nomad, hash-ring
         clusters, or custom server frameworks). Any host architecture works as long as it upholds
-        one invariant: <strong>exactly one process drives a given <code>runId</code> at a time</strong>.
+        one invariant:{' '}
+        <strong>
+          exactly one process drives a given <code>runId</code> at a time
+        </strong>
+        .
       </p>
       <p>
         The fundamental primitive is <code>createActorCell</code> from <code>@looms/actor</code>:

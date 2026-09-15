@@ -1,6 +1,7 @@
 export * from './definitions'
 export * from './definitions-store'
 export * from './events'
+export * from './scope'
 export * from './threads'
 export * from './effects'
 export * from './projections'

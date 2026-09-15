@@ -1,13 +1,13 @@
 import { Layer } from 'effect'
 
-import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
+import type { ModuleServicesContext } from '@looms/core'
 
 import type { AgentDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
 import { callLlmEffect, executeToolEffect } from './effects'
-import { agentCatalog } from './events'
 import { llmFromAdapter, LlmTag, StubLlmLive, type LlmAdapter, type StubLlmPolicy } from './llm'
 import { conversation, tokenUsage } from './projections'
+import { agentModule } from './scope'
 import { agentThread } from './threads'
 
 export interface AgentModuleOptions {
@@ -36,10 +36,7 @@ export function agent(options: AgentModuleOptions = {}) {
     ? Layer.succeed(LlmTag, llmFromAdapter(options.llm))
     : StubLlmLive(options.llmPolicy)
 
-  return defineRuntimeModule({
-    namespace: 'agent',
-    protocolVersion: '1.0.0',
-    events: agentCatalog,
+  return agentModule.build({
     threads: { agent: agentThread },
     effects: {
       callLLM: callLlmEffect,

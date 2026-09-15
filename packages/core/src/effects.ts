@@ -1,8 +1,8 @@
-import { Effect } from 'effect'
+import { Effect, Predicate } from 'effect'
 
 import type { EventInput } from './envelope'
 import { validateInputEffect, type InferDefinedSchema, type SchemaInput } from './schema'
-import type { JsonValue } from './types'
+import { asJson, type JsonValue } from './types'
 
 export type WaitOnEvent = {
   type: string | readonly string[]
@@ -30,9 +30,9 @@ export type WaitEffect = {
   tag?: JsonValue
 }
 
-export type EmitEffect = {
+export type EmitEffect<E extends EventInput = EventInput> = {
   type: 'runtime.emit'
-  event: EventInput
+  event: E
 }
 
 export type CompleteEffect = {
@@ -112,23 +112,31 @@ export interface EffectContext {
   emit(event: EventInput): Promise<void>
 }
 
+export interface ScopedEffectContext<E extends EventInput = EventInput> {
+  readonly effectId: string
+  readonly runId: string
+  readonly threadId: string
+  readonly causingEventId: string
+  emit(event: E): Promise<void>
+}
+
 export type EffectInputSchema = SchemaInput
 
-export type EffectHandlerResult<R = never> =
-  | ReadonlyArray<EventInput>
-  | Promise<ReadonlyArray<EventInput>>
-  | Effect.Effect<ReadonlyArray<EventInput>, Error, R>
+export type EffectHandlerResult<R = never, E extends EventInput = EventInput> =
+  | ReadonlyArray<E>
+  | Promise<ReadonlyArray<E>>
+  | Effect.Effect<ReadonlyArray<E>, Error, R>
 
-export interface EffectDefinition<TInput = JsonValue, R = any> {
+export interface EffectDefinition<TInput = JsonValue, R = any, E extends EventInput = EventInput> {
   readonly type: string
   readonly input?: SchemaInput
   readonly retry?: RetryPolicy
-  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<EventInput>, Error, R>
+  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<E>, Error, R>
 }
 
-function liftHandlerResult<R>(
-  result: EffectHandlerResult<R>,
-): Effect.Effect<ReadonlyArray<EventInput>, Error, R> {
+function liftHandlerResult<R, E extends EventInput = EventInput>(
+  result: EffectHandlerResult<R, E>,
+): Effect.Effect<ReadonlyArray<E>, Error, R> {
   if (Effect.isEffect(result)) {
     return result
   }
@@ -153,12 +161,13 @@ export function defineEffect<
   TSchema = undefined,
   TInput = InferDefinedSchema<TSchema>,
   R = never,
+  E extends EventInput = EventInput,
 >(def: {
   type: string
   input?: TSchema
   retry?: RetryPolicy
-  execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R>
-}): EffectDefinition<TInput, R> {
+  execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R, E>
+}): EffectDefinition<TInput, R, E> {
   const schema = def.input
   // SAFETY: execute validates raw JsonValue against the optional schema before the typed handler.
   return {
@@ -172,7 +181,7 @@ export function defineEffect<
         // SAFETY: input has been validated against schema or is unconstrained raw input
         return yield* liftHandlerResult(def.execute(input as TInput, ctx))
       }),
-  } as EffectDefinition<TInput, R>
+  } as EffectDefinition<TInput, R, E>
 }
 
 export function spawn(args: {
@@ -205,7 +214,7 @@ export function wait(args: { waitId: string; on: WaitCondition; tag?: JsonValue 
   return effect
 }
 
-export function emit(event: EventInput): EmitEffect {
+export function emit<E extends EventInput = EventInput>(event: E): EmitEffect<E> {
   return { type: 'runtime.emit', event }
 }
 
@@ -221,6 +230,21 @@ export function cancel(threadId: string): CancelEffect {
   return { type: 'runtime.cancel', threadId }
 }
 
-export function invoke(type: string, input: JsonValue, tag?: string): InvokeEffect {
-  return tag !== undefined ? { type, input, tag } : { type, input }
+export function invoke<TInput>(
+  definition: EffectDefinition<TInput, any, any>,
+  input: TInput,
+  tag?: string,
+): InvokeEffect
+
+export function invoke(type: string, input: JsonValue, tag?: string): InvokeEffect
+
+export function invoke(
+  typeOrDef: string | EffectDefinition<any, any, any>,
+  input: JsonValue,
+  tag?: string,
+): InvokeEffect {
+  const type = Predicate.isString(typeOrDef) ? typeOrDef : typeOrDef.type
+  const jsonInput = asJson(input)
+
+  return tag !== undefined ? { type, input: jsonInput, tag } : { type, input: jsonInput }
 }

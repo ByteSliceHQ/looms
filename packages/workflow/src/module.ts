@@ -1,10 +1,10 @@
-import { defineRuntimeModule, type ModuleServicesContext } from '@looms/core'
+import type { ModuleServicesContext } from '@looms/core'
 
 import type { WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsLive } from './definitions-store'
 import { runNodeEffect, scheduleEffect } from './effects'
-import { workflowCatalog } from './events'
 import { nodes } from './projections'
+import { workflowModule } from './scope'
 import { workflowThread } from './threads'
 
 function workflowDefinitions(ctx: ModuleServicesContext): WorkflowDefinition[] {
@@ -23,10 +23,7 @@ function workflowDefinitions(ctx: ModuleServicesContext): WorkflowDefinition[] {
 }
 
 export function workflow() {
-  return defineRuntimeModule({
-    namespace: 'workflow',
-    protocolVersion: '1.0.0',
-    events: workflowCatalog,
+  return workflowModule.build({
     threads: { workflow: workflowThread },
     effects: {
       schedule: scheduleEffect,

@@ -63,17 +63,19 @@ export interface RuntimeModule<
   TProjections extends { readonly [key: string]: ProjectionDefinition } = {
     readonly [key: string]: ProjectionDefinition
   },
+  TServices = any,
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
   readonly events?: TEvents
+  readonly observes?: readonly EventCatalog[]
   readonly threads?: TThreads
   readonly effects?: TEffects
   readonly projections?: TProjections
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
-  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<any>
+  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<TServices>
 }
 
 export function defineRuntimeModule<
@@ -82,9 +84,10 @@ export function defineRuntimeModule<
   TEffects extends { readonly [key: string]: EffectDefinition },
   TThreads extends { readonly [key: string]: ThreadDefinition },
   TProjections extends { readonly [key: string]: ProjectionDefinition },
+  TServices = any,
 >(
-  module: RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections>,
-): RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections> {
+  module: RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices>,
+): RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices> {
   return module
 }
 

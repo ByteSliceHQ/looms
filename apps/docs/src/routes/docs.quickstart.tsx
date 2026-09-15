@@ -11,8 +11,8 @@ function Quickstart() {
     <>
       <h1>Quickstart</h1>
       <p>
-        Three paths: run the Bun demo (local SQLite actors), run the Cloudflare Durable Object
-        demo, or embed Looms in-process for scripts and tests. All share the same loop — start a
+        Three paths: run the Bun demo (local SQLite actors), run the Cloudflare Durable Object demo,
+        or embed Looms in-process for scripts and tests. All share the same loop — start a
         definition, signal events, read projections.
       </p>
 
@@ -39,7 +39,8 @@ bun run demo
 # UI :8787 → worker/DOs :8788`}</CodeBlock>
       <p>
         The same Workers bundle can run on <Link to="/docs/durability">celld</Link> for self-hosted
-        virtual actors. Full hosting guide: <Link to="/docs/durability">Durability &amp; Hosting</Link>.
+        virtual actors. Full hosting guide:{' '}
+        <Link to="/docs/durability">Durability &amp; Hosting</Link>.
       </p>
 
       <h2>Embed in-process</h2>

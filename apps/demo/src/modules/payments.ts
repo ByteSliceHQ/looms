@@ -1,17 +1,6 @@
 import { z } from 'zod'
 
-import {
-  asJson,
-  defineEffect,
-  defineEventCatalog,
-  defineProjection,
-  defineRuntimeModule,
-  isJsonNumber,
-  isJsonObject,
-  isJsonString,
-  type EventEnvelope,
-  type JsonValue,
-} from '@looms/core'
+import { defineEventCatalog, defineModule, type EventOf } from '@looms/core'
 
 const ChargeRequested = z.object({
   chargeId: z.string(),
@@ -30,6 +19,14 @@ export const paymentsCatalog = defineEventCatalog('payments', {
   'charge.authorized': ChargeAuthorized,
   'charge.declined': ChargeDeclined,
 })
+
+export const paymentsModule = defineModule({
+  namespace: 'payments',
+  protocolVersion: '1.0.0',
+  events: paymentsCatalog,
+})
+
+export type PaymentsEvent = EventOf<typeof paymentsModule>
 
 const ChargeInput = z.object({
   chargeId: z.string().optional(),
@@ -54,7 +51,7 @@ function decideOutcome(effectId: string, input: ChargeInput): 'authorized' | 'de
   return next
 }
 
-export const chargeEffect = defineEffect({
+export const chargeEffect = paymentsModule.effect({
   type: 'payments.charge',
   input: ChargeInput,
   execute: (input, ctx) => {
@@ -65,18 +62,18 @@ export const chargeEffect = defineEffect({
     return [
       {
         type: 'payments.charge.requested',
-        payload: asJson({ chargeId, amount: input.amount, currency }),
+        payload: { chargeId, amount: input.amount, currency },
         threadId: ctx.threadId,
       },
       outcome === 'authorized'
         ? {
             type: 'payments.charge.authorized',
-            payload: asJson({ chargeId, amount: input.amount, currency }),
+            payload: { chargeId, amount: input.amount, currency },
             threadId: ctx.threadId,
           }
         : {
             type: 'payments.charge.declined',
-            payload: asJson({ chargeId, amount: input.amount, currency, reason: 'card_declined' }),
+            payload: { chargeId, amount: input.amount, currency, reason: 'card_declined' },
             threadId: ctx.threadId,
           },
     ]
@@ -96,39 +93,42 @@ const LedgerSchema = z.object({
 
 export type LedgerEntry = z.infer<typeof LedgerEntrySchema>
 
-function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  return isJsonObject(event.payload) ? event.payload : {}
-}
-
-export const ledger = defineProjection({
+export const ledger = paymentsModule.projection({
   name: 'ledger',
   shape: LedgerSchema,
   initialState: { entries: [] },
   reduce(state, event) {
-    const payload = payloadObject(event)
-    const chargeId = isJsonString(payload.chargeId) ? payload.chargeId : undefined
-
-    if (!chargeId) {
-      return state
-    }
-
-    const amount = isJsonNumber(payload.amount) ? payload.amount : 0
-    const currency = isJsonString(payload.currency) ? payload.currency : 'USD'
-
-    const upsert = (status: LedgerEntry['status']) => ({
-      entries: [
-        ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-        { chargeId, amount, currency, status },
-      ],
-    })
-
     switch (event.type) {
-      case 'payments.charge.requested':
-        return upsert('requested')
-      case 'payments.charge.authorized':
-        return upsert('authorized')
-      case 'payments.charge.declined':
-        return upsert('declined')
+      case 'payments.charge.requested': {
+        const { chargeId, amount, currency } = event.payload
+        return {
+          entries: [
+            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+            { chargeId, amount, currency, status: 'requested' },
+          ],
+        }
+      }
+
+      case 'payments.charge.authorized': {
+        const { chargeId, amount, currency } = event.payload
+        return {
+          entries: [
+            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+            { chargeId, amount, currency, status: 'authorized' },
+          ],
+        }
+      }
+
+      case 'payments.charge.declined': {
+        const { chargeId, amount, currency } = event.payload
+        return {
+          entries: [
+            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+            { chargeId, amount, currency, status: 'declined' },
+          ],
+        }
+      }
+
       default:
         return state
     }
@@ -136,10 +136,7 @@ export const ledger = defineProjection({
 })
 
 export function payments() {
-  return defineRuntimeModule({
-    namespace: 'payments',
-    protocolVersion: '1.0.0',
-    events: paymentsCatalog,
+  return paymentsModule.build({
     effects: { charge: chargeEffect },
     projections: { ledger },
   })

@@ -2,16 +2,22 @@ import { Effect, Layer, Predicate } from 'effect'
 
 import {
   asJson,
+  createEvent,
   makeMemorySnapshotStore,
   matchingWaits,
   snapshotStoreOf,
+  validateEventInput,
+  validateEventsEffect,
   validateInput,
   withSnapshotStore,
   type AnyRuntimeModule,
   type AppendableEvent,
+  type EventCatalog,
   type EventEnvelope,
   type EventInput,
+  type EventOrigin,
   type EventStore,
+  type InvalidEventError,
   type JsonValue,
   type RegisteredDefinition,
   type RunCursor,
@@ -94,7 +100,7 @@ export function moduleServices(
   modules: readonly AnyRuntimeModule[],
   definitions: ReadonlyArray<RegisteredDefinition>,
 ): Layer.Layer<any> {
-  // SAFETY: Layer.empty has empty requirements and error channel
+  // SAFETY: Empty layer serves as seed; module service layers are merged in.
   let merged: Layer.Layer<any> = Layer.empty as Layer.Layer<any>
 
   for (const module of modules) {
@@ -270,4 +276,85 @@ export function waitSatisfiedEvents(
   }
 
   return produced
+}
+
+export function createEffectFailedEvent(
+  runId: string,
+  item: { effectId: string; causingEventId: string; threadId: string },
+  error: string,
+): EventEnvelope {
+  return createEvent(runId, {
+    type: 'runtime.effect.failed',
+    payload: {
+      effectId: item.effectId,
+      error,
+    },
+    threadId: item.threadId,
+    effectId: item.effectId,
+    causationId: item.causingEventId,
+    origin: { type: 'system' },
+  })
+}
+
+export function materializeEffectOutcome(
+  catalogs: readonly EventCatalog[],
+  runId: string,
+  item: { effectId: string; causingEventId: string; threadId: string },
+  input: EventInput,
+): Effect.Effect<EventEnvelope> {
+  return validateEventInput(catalogs, input).pipe(
+    Effect.map((validated) =>
+      createEvent(runId, {
+        ...validated,
+        effectId: validated.effectId ?? item.effectId,
+        causationId: validated.causationId ?? item.causingEventId,
+        threadId: validated.threadId ?? item.threadId,
+        origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
+        id: validated.id,
+        ts: validated.ts,
+      }),
+    ),
+    Effect.catchTag('InvalidEventError', (err) =>
+      Effect.succeed(createEffectFailedEvent(runId, item, err.message)),
+    ),
+  )
+}
+
+export function createLiveEvent(
+  runId: string,
+  item: { effectId: string; causingEventId: string; threadId: string },
+  validated: EventInput,
+): AppendableEvent | undefined {
+  const targetThreadId = validated.threadId ?? item.threadId
+
+  const ephemeral = createEvent(runId, {
+    ...validated,
+    effectId: item.effectId,
+    causationId: item.causingEventId,
+    threadId: targetThreadId,
+    ephemeral: validated.ephemeral ?? true,
+    origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
+  })
+
+  const [liveEvent] = stripSeq([ephemeral])
+  return liveEvent
+}
+
+export function validateAndCreateEvents(
+  catalogs: readonly EventCatalog[],
+  runId: string,
+  events: readonly EventInput[],
+  defaults: { origin: EventOrigin; threadId?: string | null },
+): Effect.Effect<EventEnvelope[], InvalidEventError> {
+  return validateEventsEffect(catalogs, events).pipe(
+    Effect.map((validated) =>
+      validated.map((input) =>
+        createEvent(runId, {
+          ...input,
+          threadId: input.threadId !== undefined ? input.threadId : (defaults.threadId ?? null),
+          origin: input.origin ?? defaults.origin,
+        }),
+      ),
+    ),
+  )
 }

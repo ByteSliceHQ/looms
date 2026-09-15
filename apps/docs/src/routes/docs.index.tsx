@@ -151,12 +151,12 @@ const looms = createLooms({
           indexes.
         </li>
         <li>
-          <Link to="/docs/quickstart">Quickstart</Link> and <Link to="/docs/examples">Examples</Link>{' '}
-          — run the demo, then copy patterns into an app.
+          <Link to="/docs/quickstart">Quickstart</Link> and{' '}
+          <Link to="/docs/examples">Examples</Link> — run the demo, then copy patterns into an app.
         </li>
         <li>
-          <Link to="/docs/api">API / SDK</Link> and <Link to="/docs/math">Math</Link> — reference and
-          formalism when you need them.
+          <Link to="/docs/api">API / SDK</Link> and <Link to="/docs/math">Math</Link> — reference
+          and formalism when you need them.
         </li>
       </ol>
     </>

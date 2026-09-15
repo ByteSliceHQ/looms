@@ -3,6 +3,7 @@ import { Effect, Schema } from 'effect'
 import {
   createRunId,
   EventStoreTag,
+  InvalidEventError,
   InvalidInputError,
   JsonValueSchema,
   type EventStore,
@@ -123,6 +124,14 @@ export function isLoomsApiPath(path: string): boolean {
   return path === '/health' || path.startsWith('/api/livestore') || path.startsWith('/runs')
 }
 
+function toErrorResponse(err: Error): Response {
+  if (err instanceof InvalidInputError || err instanceof InvalidEventError) {
+    return Response.json({ error: err.message, issues: err.issues }, { status: 400 })
+  }
+
+  return Response.json({ error: err.message }, { status: 500 })
+}
+
 export function createFetchHandler(
   options: FetchHandlerOptions,
 ): (req: Request) => Promise<Response | null> {
@@ -178,26 +187,18 @@ export function createFetchHandler(
           })
         }
 
-        try {
-          const result = await run(
-            runtime.startRun({
-              kind,
-              definitionName,
-              input: body.input ?? null,
-              runId,
-              idempotencyKey,
-            }),
-            store,
-          )
+        const result = await run(
+          runtime.startRun({
+            kind,
+            definitionName,
+            input: body.input ?? null,
+            runId,
+            idempotencyKey,
+          }),
+          store,
+        )
 
-          return Response.json(result)
-        } catch (err) {
-          if (err instanceof InvalidInputError) {
-            return Response.json({ error: err.message, issues: err.issues }, { status: 400 })
-          }
-
-          throw err
-        }
+        return Response.json(result)
       }
 
       const replayMatch = path.match(/^\/runs\/([^/]+)\/replay$/)
@@ -287,9 +288,9 @@ export function createFetchHandler(
       }
 
       return new Response('Not Found', { status: 404 })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return Response.json({ error: message }, { status: 500 })
+    } catch (rawErr) {
+      const err = rawErr instanceof Error ? rawErr : new Error(String(rawErr))
+      return toErrorResponse(err)
     }
   }
 }

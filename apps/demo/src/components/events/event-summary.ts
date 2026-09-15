@@ -117,7 +117,7 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
         title: event.payload.error
           ? `tool error ${event.payload.name}`
           : `tool result ${event.payload.name}`,
-        detail: event.payload.error ?? compactJson(event.payload.result),
+        detail: event.payload.error ?? compactJson(event.payload.result ?? null),
       }
     case 'agent.steered':
       return { title: 'steered', detail: messageContent(event.payload) }

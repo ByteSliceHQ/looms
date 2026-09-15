@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { defineEventCatalog, type EventsOfCatalog } from './catalog'
+import { defineEventCatalog, type EventInputOf, type EventsOfCatalog } from './catalog'
 import type { WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
 
@@ -84,6 +84,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
 })
 
 export type ProtocolEvent = EventsOfCatalog<typeof protocolCatalog>
+export type ProtocolEventInput = EventInputOf<typeof protocolCatalog>
 
 export const PROTOCOL_TYPES = [
   'runtime.run.started',

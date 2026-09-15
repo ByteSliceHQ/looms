@@ -55,8 +55,16 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
       }
     }
 
-    if (module.events) {
+    if (module.events && !catalogs.some((c) => c.namespace === module.events!.namespace)) {
       catalogs.push(module.events)
+    }
+
+    if (module.observes) {
+      for (const obs of module.observes) {
+        if (!catalogs.some((c) => c.namespace === obs.namespace)) {
+          catalogs.push(obs)
+        }
+      }
     }
 
     const moduleThreads = module.threads

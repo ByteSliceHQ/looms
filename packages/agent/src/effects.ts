@@ -1,11 +1,11 @@
 import { Effect, Predicate, Schema } from 'effect'
 
-import { asJson, createThreadId, defineEffect, type EventInput, type JsonValue } from '@looms/core'
-import { validateInput } from '@looms/core'
+import { createThreadId, validateInput, type EventInputOf, type JsonValue } from '@looms/core'
 
 import { normalizeTools, type ToolLike } from './definitions'
 import { AgentDefinitionsTag } from './definitions-store'
 import { LlmTag } from './llm'
+import { agentModule, type AgentEvent } from './scope'
 import { toolSpecs } from './tool-schema'
 import { MessageSchema, ToolCallSchema, type Message, type ToolCall } from './types'
 
@@ -26,7 +26,7 @@ function findTool(tools: ToolLike[], name: string): ToolLike | undefined {
   return tools.find((tool) => tool.name === name)
 }
 
-export const callLlmEffect = defineEffect({
+export const callLlmEffect = agentModule.effect({
   type: 'agent.callLLM',
   input: CallLlmInput,
   execute: (input, ctx) =>
@@ -49,8 +49,8 @@ function runCallLlm(args: {
   input: JsonValue
   runId: string
   threadId: string
-  emit: (event: EventInput) => Promise<void>
-}): Effect.Effect<ReadonlyArray<EventInput>, Error, LlmTag | AgentDefinitionsTag> {
+  emit: (event: EventInputOf<AgentEvent>) => Promise<void>
+}): Effect.Effect<ReadonlyArray<EventInputOf<AgentEvent>>, Error, LlmTag | AgentDefinitionsTag> {
   return Effect.gen(function* () {
     const { turn, threadId, emit, definitionName, messages, input } = args
     const agents = yield* AgentDefinitionsTag
@@ -79,7 +79,7 @@ function runCallLlm(args: {
 
     const tools = normalizeTools(definition.tools)
 
-    const events: EventInput[] = [
+    const events: EventInputOf<AgentEvent>[] = [
       {
         type: 'agent.turn.started',
         payload: { turn },
@@ -129,11 +129,11 @@ function runCallLlm(args: {
 
     events.push({
       type: 'agent.message',
-      payload: asJson({
+      payload: {
         turn,
         message: result.message,
-        usage: result.usage ?? null,
-      }),
+        usage: result.usage,
+      },
       threadId,
     })
 
@@ -152,7 +152,7 @@ function runCallLlm(args: {
     for (const toolCall of toolCalls) {
       events.push({
         type: 'agent.tool_call.requested',
-        payload: asJson({ turn, toolCall }),
+        payload: { turn, toolCall },
         threadId,
       })
     }
@@ -172,7 +172,7 @@ function runCallLlm(args: {
   })
 }
 
-export const executeToolEffect = defineEffect({
+export const executeToolEffect = agentModule.effect({
   type: 'agent.executeTool',
   input: ExecuteToolInput,
   execute: (input, ctx) =>
@@ -346,11 +346,16 @@ export const executeToolEffect = defineEffect({
           return [
             {
               type: 'agent.effects.requested',
-              payload: asJson({
+              payload: {
                 toolCallId: input.toolCall.id,
                 effects,
-                waitOn: tool.waitOn ?? null,
-              }),
+                waitOn: tool.waitOn
+                  ? {
+                      type: tool.waitOn.type,
+                      match: tool.waitOn.match,
+                    }
+                  : undefined,
+              },
               threadId,
             },
           ]

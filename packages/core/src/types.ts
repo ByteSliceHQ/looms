@@ -11,10 +11,37 @@ export interface JsonPayload {
   readonly [key: string]: JsonValue | JsonPayload | readonly (JsonValue | JsonPayload)[] | undefined
 }
 
-/** Mark a JSON-serializable struct as a log payload. */
+/**
+ * Recursively remove keys with `undefined` values from an object,
+ * matching wire JSON serialization behavior where undefined properties drop.
+ */
+export function cleanUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    // SAFETY: Mapping recursively over an array preserves array structure.
+    return value.map(cleanUndefined) as T
+  }
+
+  if (value === null || !Predicate.isObject(value)) {
+    return value
+  }
+
+  const result: { [key: string]: JsonValue } = {}
+
+  for (const [k, v] of Object.entries(value)) {
+    if (v !== undefined) {
+      // SAFETY: cleanUndefined produces JSON-compatible values from JSON-like inputs.
+      result[k] = cleanUndefined(v) as JsonValue
+    }
+  }
+
+  // SAFETY: Rebuilding an object without undefined keys preserves its record shape.
+  return result as T
+}
+
+/** Mark a JSON-serializable struct as a log payload, stripping undefined fields. */
 export function asJson<T>(payload: T): JsonValue {
-  // SAFETY: callers pass JSON-serializable structs; undefined keys drop on the wire.
-  return payload as JsonValue
+  // SAFETY: cleanUndefined ensures undefined keys drop as they would across the wire.
+  return cleanUndefined(payload as JsonValue)
 }
 
 /** Recover a typed struct previously written as JSON. */

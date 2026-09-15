@@ -284,7 +284,9 @@ function Concepts() {
           <code>Invoke</code>
           <p>
             Execute external computation with side-effects in reality (e.g., call an LLM API, fetch
-            an HTTP endpoint, charge a credit card).
+            an HTTP endpoint, charge a credit card). See{' '}
+            <Link to="/docs/modules">Defining Effects</Link> for authoring handlers, retries, and
+            services.
           </p>
         </div>
 
@@ -322,7 +324,13 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         process or call stack. In Looms:
       </p>
       <FlowChain
-        steps={['WAITING', 'persist state to log', '0 compute / no worker held', 'matching event arrives', 'RUNNING']}
+        steps={[
+          'WAITING',
+          'persist state to log',
+          '0 compute / no worker held',
+          'matching event arrives',
+          'RUNNING',
+        ]}
       />
       <p>
         When a thread registers a <code>Wait</code>, its state is checkpointed to the log and the

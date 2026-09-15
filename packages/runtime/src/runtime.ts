@@ -19,6 +19,7 @@ import {
   isWaitOnTimer,
   project,
   replayTo,
+  validateEventInput,
   withdrawnError,
   type AnyRuntimeModule,
   type AppendableEvent,
@@ -39,13 +40,17 @@ import {
 
 import { dispatchEffect } from './dispatch-effect'
 import {
+  createEffectFailedEvent,
+  createLiveEvent,
   groupOutstanding,
+  materializeEffectOutcome,
   moduleServices,
   resolveSnapshotStore,
   RunCursorCache,
   stripSeq,
   synthesizedThreadFailed,
   threadStartedEvents,
+  validateAndCreateEvents,
   waitSatisfiedEvents,
 } from './runtime-helpers'
 import { createTimeoutScheduler, toEffectVoid, type WakeScheduler } from './wake-scheduler'
@@ -579,26 +584,25 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             ? (started.payload.input ?? null)
             : (args.input ?? null)
 
-        const batch = [
-          createEvent(runId, {
-            type: 'runtime.run.started',
-            payload: {
-              rootThreadId: threadId,
-              kind: args.kind,
-              definitionName: args.definitionName,
-              input: startedInput,
+        const batch = yield* validateAndCreateEvents(
+          registry.catalogs,
+          runId,
+          [
+            {
+              type: 'runtime.run.started',
+              payload: {
+                rootThreadId: threadId,
+                kind: args.kind,
+                definitionName: args.definitionName,
+                input: startedInput,
+              },
+              threadId: null,
+              idempotencyKey: args.idempotencyKey,
             },
-            threadId: null,
-            origin: { type: 'system' },
-            idempotencyKey: args.idempotencyKey,
-          }),
-          ...startedEvents.map((input) =>
-            createEvent(runId, {
-              ...input,
-              origin: { type: 'system' },
-            }),
-          ),
-        ]
+            ...startedEvents,
+          ],
+          { origin: { type: 'system' } },
+        )
 
         yield* store.append(runId, stripSeq(batch))
         const state = yield* runtime.wake(runId)
@@ -627,12 +631,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           return currentState
         }
 
-        const batch = filteredEvents.map((input) =>
-          createEvent(runId, {
+        const batch = yield* validateAndCreateEvents(
+          registry.catalogs,
+          runId,
+          filteredEvents.map((input) => ({
             ...input,
-            origin: input.origin ?? { type: 'external' },
             idempotencyKey: input.idempotencyKey ?? signalOpts?.idempotencyKey,
-          }),
+          })),
+          { origin: { type: 'external' } },
         )
 
         const folded = foldRun(batch, registry, { runId, initial: currentState })
@@ -769,41 +775,22 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                     for (const item of group) {
                       if (failedEffectId && item.effect.type === 'runtime.wait') {
                         groupProduced.push(
-                          createEvent(runId, {
-                            type: 'runtime.effect.failed',
-                            payload: {
-                              effectId: item.effectId,
-                              error: withdrawnError(failedEffectId),
-                            },
-                            threadId: item.threadId,
-                            effectId: item.effectId,
-                            causationId: item.causingEventId,
-                            origin: { type: 'system' },
-                          }),
+                          createEffectFailedEvent(runId, item, withdrawnError(failedEffectId)),
                         )
 
                         continue
                       }
 
-                      const appendLive = (input: EventInput) => {
-                        const targetThreadId = input.threadId ?? item.threadId
+                      const appendLive = async (input: EventInput) => {
+                        const validated = await Effect.runPromise(
+                          validateEventInput(registry.catalogs, input),
+                        )
 
-                        const ephemeral = createEvent(runId, {
-                          ...input,
-                          effectId: item.effectId,
-                          causationId: item.causingEventId,
-                          threadId: targetThreadId,
-                          ephemeral: input.ephemeral ?? true,
-                          origin: input.origin ?? { type: 'thread', threadId: item.threadId },
-                        })
+                        const liveEvent = createLiveEvent(runId, item, validated)
 
-                        const [liveEvent] = stripSeq([ephemeral])
-
-                        if (!liveEvent) {
-                          return Promise.resolve()
+                        if (liveEvent) {
+                          await Effect.runPromise(liveAppends.push(runId, liveEvent))
                         }
-
-                        return Effect.runPromise(liveAppends.push(runId, liveEvent))
                       }
 
                       const outcomes = yield* dispatchEffect(
@@ -823,31 +810,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                       const before = groupProduced.length
 
                       if (outcomes.length === 0) {
-                        groupProduced.push(
-                          createEvent(runId, {
-                            type: 'runtime.effect.failed',
-                            payload: { effectId: item.effectId, error: 'empty-outcome' },
-                            threadId: item.threadId,
-                            effectId: item.effectId,
-                            causationId: item.causingEventId,
-                            origin: { type: 'system' },
-                          }),
-                        )
+                        groupProduced.push(createEffectFailedEvent(runId, item, 'empty-outcome'))
                       }
 
                       for (const input of outcomes) {
-                        const targetThreadId = input.threadId ?? item.threadId
-
                         groupProduced.push(
-                          createEvent(runId, {
-                            ...input,
-                            effectId: input.effectId ?? item.effectId,
-                            causationId: input.causationId ?? item.causingEventId,
-                            threadId: targetThreadId,
-                            origin: input.origin ?? { type: 'thread', threadId: item.threadId },
-                            id: input.id,
-                            ts: input.ts,
-                          }),
+                          yield* materializeEffectOutcome(registry.catalogs, runId, item, input),
                         )
                       }
 
@@ -957,7 +925,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             return yield* runtime.wake(runId)
           }
 
-          return finalState!
+          return finalState
         } finally {
           if (waking.has(runId)) {
             waking.delete(runId)

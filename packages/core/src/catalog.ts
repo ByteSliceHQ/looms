@@ -31,9 +31,7 @@ export type InferPayload<T> =
       ? Schema.Schema.Type<T>
       : T extends StandardSchemaV1<infer _In, infer Out>
         ? Out
-        : T
-
-type CatalogPayload<T> = InferPayload<T> extends JsonValue ? InferPayload<T> : JsonValue
+        : JsonValue
 
 export interface EventCatalog<
   TNamespace extends string = string,
@@ -45,15 +43,45 @@ export interface EventCatalog<
     key: K,
     payload: InferPayload<TEntries[K]>,
     meta: Omit<EventInput, 'type' | 'payload'> & { runId: string },
-  ): EventEnvelope<`${TNamespace}.${K}`>
+  ): EventEnvelope<`${TNamespace}.${K}`, InferPayload<TEntries[K]>>
+  input<K extends keyof TEntries & string>(
+    key: K,
+    payload: InferPayload<TEntries[K]>,
+    meta?: Omit<EventInput, 'type' | 'payload'>,
+  ): Omit<EventInput, 'type' | 'payload'> & {
+    readonly type: `${TNamespace}.${K}`
+    readonly payload: InferPayload<TEntries[K]>
+  }
 }
 
 export type CatalogEvent<TNamespace extends string, TEntries extends CatalogEntries> = {
-  [K in keyof TEntries & string]: TypedEvent<`${TNamespace}.${K}`, CatalogPayload<TEntries[K]>>
+  [K in keyof TEntries & string]: TypedEvent<`${TNamespace}.${K}`, InferPayload<TEntries[K]>>
 }[keyof TEntries & string]
 
 export type EventsOfCatalog<T> =
   T extends EventCatalog<infer N, infer E> ? CatalogEvent<N, E> : never
+
+export type EventTypeOf<T> =
+  T extends EventCatalog<infer N, infer E>
+    ? `${N}.${keyof E & string}`
+    : T extends EventEnvelope<infer Type, any>
+      ? Type
+      : string
+
+export type EventInputOf<T> =
+  T extends EventCatalog<infer N, infer E>
+    ? {
+        [K in keyof E & string]: Omit<EventInput, 'type' | 'payload'> & {
+          readonly type: `${N}.${K}`
+          readonly payload: InferPayload<E[K]>
+        }
+      }[keyof E & string]
+    : T extends EventEnvelope<infer Type, infer Payload>
+      ? Omit<EventInput, 'type' | 'payload'> & {
+          readonly type: Type
+          readonly payload: Payload
+        }
+      : EventInput
 
 export function eventType<TNamespace extends string, K extends string>(
   namespace: TNamespace,
@@ -71,11 +99,20 @@ export function defineEventCatalog<TNamespace extends string, TEntries extends C
     entries,
     event(key, eventPayload, meta) {
       const { runId, ...rest } = meta
+      // SAFETY: createEvent returns EventEnvelope with inferred payload type.
       return createEvent(runId, {
         ...rest,
         type: eventType(namespace, key),
         payload: asJson(eventPayload),
-      })
+      }) as EventEnvelope<`${TNamespace}.${typeof key}`, InferPayload<TEntries[typeof key]>>
+    },
+    input(key, eventPayload, meta) {
+      return {
+        ...meta,
+        type: eventType(namespace, key),
+        // SAFETY: asJson returns typed payload for catalog event.
+        payload: asJson(eventPayload) as InferPayload<TEntries[typeof key]>,
+      }
     },
   }
 }

@@ -1,18 +1,9 @@
 import { Predicate } from 'effect'
 
-import { defineProjection, type EventEnvelope, type JsonValue } from '@looms/core'
-
+import { agentModule } from './scope'
 import { ConversationSchema, TokenUsageSchema, type Message, type ToolCall } from './types'
 
-function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) {
-    return {}
-  }
-
-  return event.payload
-}
-
-export const conversation = defineProjection({
+export const conversation = agentModule.projection({
   name: 'conversation',
   shape: ConversationSchema,
   initialState: { lines: [] },
@@ -22,14 +13,17 @@ export const conversation = defineProjection({
       case 'agent.message':
 
       case 'agent.steered': {
-        const payload = payloadObject(event)
-        const raw = payload.message
+        const raw = event.payload.message
 
-        if (!Predicate.isObject(raw)) {
+        if (!raw) {
           return state
         }
 
-        const role = Predicate.isString(raw.role) ? raw.role : 'user'
+        const role =
+          raw.role === 'system' || raw.role === 'assistant' || raw.role === 'tool'
+            ? raw.role
+            : 'user'
+
         let toolCalls: ToolCall[] | undefined
         const calls = raw.toolCalls
 
@@ -54,10 +48,10 @@ export const conversation = defineProjection({
         }
 
         const line: Message = {
-          role: role === 'system' || role === 'assistant' || role === 'tool' ? role : 'user',
+          role,
           content: Predicate.isString(raw.content) ? raw.content : '',
-          toolCallId: Predicate.isString(raw.toolCallId) ? raw.toolCallId : undefined,
-          name: Predicate.isString(raw.name) ? raw.name : undefined,
+          toolCallId: raw.toolCallId ?? undefined,
+          name: raw.name ?? undefined,
           toolCalls,
         }
 
@@ -65,19 +59,16 @@ export const conversation = defineProjection({
       }
 
       case 'agent.tool.result': {
-        const payload = payloadObject(event)
-        const error = payload.error
+        const { error, result, toolCallId, name } = event.payload
 
         const content =
-          Predicate.isString(error) && error.length > 0
-            ? error
-            : JSON.stringify(payload.result ?? null)
+          Predicate.isString(error) && error.length > 0 ? error : JSON.stringify(result ?? null)
 
         const toolLine: Message = {
           role: 'tool',
           content,
-          toolCallId: Predicate.isString(payload.toolCallId) ? payload.toolCallId : undefined,
-          name: Predicate.isString(payload.name) ? payload.name : undefined,
+          toolCallId: toolCallId ?? undefined,
+          name: name ?? undefined,
           toolCalls: undefined,
         }
 
@@ -92,7 +83,7 @@ export const conversation = defineProjection({
   },
 })
 
-export const tokenUsage = defineProjection({
+export const tokenUsage = agentModule.projection({
   name: 'tokenUsage',
   shape: TokenUsageSchema,
   initialState: { input: 0, output: 0 },
@@ -101,10 +92,9 @@ export const tokenUsage = defineProjection({
       return state
     }
 
-    const payload = payloadObject(event)
-    const usage = payload.usage
+    const usage = event.payload.usage
 
-    if (!Predicate.isObject(usage)) {
+    if (!usage) {
       return state
     }
 

@@ -1,16 +1,47 @@
-import { payload, defineEventCatalog, type JsonValue } from '@looms/core'
+import { Schema } from 'effect'
+
+import { defineEventCatalog, type RuntimeEffect } from '@looms/core'
+
+export const WorkflowNodeStartedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+})
+
+export const WorkflowNodeFinishedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+  result: Schema.NullOr(Schema.Json),
+  error: Schema.NullOr(Schema.String),
+})
+
+export const WorkflowNodeSkippedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+  reason: Schema.String,
+})
+
+export const WorkflowSpawnRequestedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+  childThreadId: Schema.String,
+  kind: Schema.String,
+  definitionName: Schema.String,
+  input: Schema.Json,
+})
+
+export const WorkflowSleepRequestedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+  waitId: Schema.String,
+  wakeAt: Schema.Number,
+})
+
+export const WorkflowEffectsRequestedPayloadSchema = Schema.Struct({
+  nodeId: Schema.String,
+  // SAFETY: RuntimeEffect represents serializable requested effect instructions.
+  effects: Schema.Array(Schema.Unknown as Schema.Schema<RuntimeEffect>),
+})
 
 export const workflowCatalog = defineEventCatalog('workflow', {
-  'node.started': payload<{ nodeId: string }>(),
-  'node.finished': payload<{ nodeId: string; result: JsonValue | null; error: string | null }>(),
-  'node.skipped': payload<{ nodeId: string; reason: string }>(),
-  'spawn.requested': payload<{
-    nodeId: string
-    childThreadId: string
-    kind: string
-    definitionName: string
-    input: JsonValue
-  }>(),
-  'sleep.requested': payload<{ nodeId: string; waitId: string; wakeAt: number }>(),
-  'effects.requested': payload<{ nodeId: string; effects: JsonValue[] }>(),
+  'node.started': WorkflowNodeStartedPayloadSchema,
+  'node.finished': WorkflowNodeFinishedPayloadSchema,
+  'node.skipped': WorkflowNodeSkippedPayloadSchema,
+  'spawn.requested': WorkflowSpawnRequestedPayloadSchema,
+  'sleep.requested': WorkflowSleepRequestedPayloadSchema,
+  'effects.requested': WorkflowEffectsRequestedPayloadSchema,
 })

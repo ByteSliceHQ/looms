@@ -61,9 +61,9 @@ function Landing() {
           When an agent runs multi-step tool calls, a workflow sleeps for days, or a human approval
           pauses execution, relying on server memory breaks down. Deployments restart workers,
           retries trigger duplicate charges, and client state drifts from reality. Looms replaces
-          brittle process memory with an append-only event log: pure reducers transition state, while
-          side-effects execute in the world and append back as new facts. Replaying history never
-          re-runs external IO. In production, each run executes in an isolated actor cell with
+          brittle process memory with an append-only event log: pure reducers transition state,
+          while side-effects execute in the world and append back as new facts. Replaying history
+          never re-runs external IO. In production, each run executes in an isolated actor cell with
           dedicated local storage.
         </p>
 
@@ -132,9 +132,9 @@ await looms.start(assistant, 'Charge $40 after approval')
 await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
 
         <p className="text-muted mb-0 max-w-[40rem] text-[0.9rem] leading-relaxed">
-          An agent can spawn that checkout workflow as a tool. The workflow can{' '}
-          <code>gate()</code> for a human, then <code>invoke(&apos;payments.charge&apos;)</code>.
-          Same run. Same log. See <Link to="/docs/modules">Modules</Link>.
+          An agent can spawn that checkout workflow as a tool. The workflow can <code>gate()</code>{' '}
+          for a human, then <code>invoke(&apos;payments.charge&apos;)</code>. Same run. Same log.
+          See <Link to="/docs/modules">Modules</Link>.
         </p>
       </section>
 

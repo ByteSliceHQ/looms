@@ -64,6 +64,7 @@ export const assistant = defineAgent({
 import { createWaitId, invoke, wait } from '@looms/core'
 import { defineWorkflow } from '@looms/workflow'
 import { z } from 'zod'
+import { chargeCardEffect } from './modules/payments'
 
 export const checkout = defineWorkflow({
   name: 'checkout',
@@ -84,7 +85,8 @@ export const checkout = defineWorkflow({
       deps: ['gate'],
       run: (ctx) =>
         ctx.effects([
-          invoke('payments.charge', {
+          // Typed invoke statically verifies arguments against chargeCardEffect's input schema:
+          invoke(chargeCardEffect, {
             amount: ctx.input.amount,
             currency: ctx.input.currency,
           }),

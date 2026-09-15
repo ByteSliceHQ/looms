@@ -3,7 +3,6 @@ import { Predicate, Schema } from 'effect'
 import {
   asJson,
   createWaitId,
-  defineThread,
   emit,
   fail,
   invoke,
@@ -15,21 +14,11 @@ import {
   type RuntimeEffect,
 } from '@looms/core'
 
-export const NodeStatusSchema = Schema.Union([
-  Schema.Literal('pending'),
-  Schema.Literal('running'),
-  Schema.Literal('completed'),
-  Schema.Literal('failed'),
-  Schema.Literal('skipped'),
-])
-export type NodeStatus = Schema.Schema.Type<typeof NodeStatusSchema>
+import { type NodeState } from './definitions'
+import { runNodeEffect, scheduleEffect } from './effects'
+import { workflowModule } from './scope'
 
-export const NodeStateSchema = Schema.Struct({
-  status: NodeStatusSchema,
-  result: Schema.NullOr(Schema.Json),
-  error: Schema.NullOr(Schema.String),
-})
-export type NodeState = Schema.Schema.Type<typeof NodeStateSchema>
+export { NodeStateSchema, NodeStatusSchema, type NodeState, type NodeStatus } from './definitions'
 
 export interface WorkflowPendingSpawn {
   readonly childThreadId: string
@@ -74,58 +63,34 @@ export interface WorkflowState {
 // SAFETY: WorkflowState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
 export const WorkflowStateSchema = Schema.Unknown as Schema.Schema<WorkflowState>
 
-function asObject(payload: JsonValue): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(payload)) {
-    return {}
-  }
-
-  return payload
-}
-
-function readString(obj: { [key: string]: JsonValue }, key: string): string | undefined {
-  const value = obj[key]
-  return Predicate.isString(value) ? value : undefined
-}
-
 function scheduleInvocation(state: WorkflowState) {
-  const nodes: {
-    [id: string]: { status: string; result: JsonValue | null; error: string | null }
-  } = {}
-
-  for (const [id, node] of Object.entries(state.nodes)) {
-    nodes[id] = { status: node.status, result: node.result, error: node.error }
-  }
-
-  return invoke(
-    'workflow.schedule',
-    asJson({
-      definitionName: state.definitionName,
-      nodes,
-      input: state.input,
-    }),
-  )
+  return invoke(scheduleEffect, {
+    definitionName: state.definitionName,
+    nodes: state.nodes,
+    input: state.input,
+  })
 }
 
 function runNodeInvocation(state: WorkflowState, nodeId: string) {
-  const results: { [id: string]: JsonValue | null } = {}
+  const results: { [id: string]: Schema.Json | null } = {}
 
   for (const [id, node] of Object.entries(state.nodes)) {
     results[id] = node.result
   }
 
   return invoke(
-    'workflow.runNode',
-    asJson({
+    runNodeEffect,
+    {
       definitionName: state.definitionName,
       nodeId,
       input: state.input,
       results,
-    }),
+    },
     `runNode_${nodeId}`,
   )
 }
 
-export const workflowThread = defineThread({
+export const workflowThread = workflowModule.thread({
   kind: 'workflow',
   shape: WorkflowStateSchema,
   initialState: (ctx): WorkflowState => ({
@@ -143,11 +108,11 @@ export const workflowThread = defineThread({
     status: 'running',
     error: null,
   }),
-  step(state: WorkflowState, event, ctx): WorkflowState {
+  step(state, event, ctx) {
     switch (event.type) {
       case 'runtime.thread.started': {
-        const payload = asObject(event.payload)
-        const defName = readString(payload, 'definitionName') ?? state.definitionName
+        const payload = event.payload
+        const defName = payload.definitionName || state.definitionName
         const inputObj = Predicate.isObject(payload.input) ? payload.input : {}
 
         const nodeIds = Array.isArray(inputObj.nodeIds)
@@ -171,7 +136,7 @@ export const workflowThread = defineThread({
       }
 
       case 'workflow.node.started': {
-        const nodeId = readString(asObject(event.payload), 'nodeId')
+        const nodeId = event.payload.nodeId
 
         if (!nodeId) {
           return state
@@ -191,14 +156,12 @@ export const workflowThread = defineThread({
       }
 
       case 'workflow.node.finished': {
-        const payload = asObject(event.payload)
-        const nodeId = readString(payload, 'nodeId')
+        const { nodeId, result, error } = event.payload
 
         if (!nodeId) {
           return state
         }
 
-        const error = payload.error
         const failed = Predicate.isString(error) && error.length > 0
         return {
           ...state,
@@ -206,7 +169,7 @@ export const workflowThread = defineThread({
             ...state.nodes,
             [nodeId]: {
               status: failed ? 'failed' : 'completed',
-              result: payload.result ?? null,
+              result: result ?? null,
               error: failed ? error : null,
             },
           },
@@ -222,11 +185,7 @@ export const workflowThread = defineThread({
       }
 
       case 'workflow.spawn.requested': {
-        const payload = asObject(event.payload)
-        const childThreadId = readString(payload, 'childThreadId')
-        const kind = readString(payload, 'kind')
-        const definitionName = readString(payload, 'definitionName')
-        const nodeId = readString(payload, 'nodeId')
+        const { childThreadId, kind, definitionName, nodeId, input } = event.payload
 
         if (!childThreadId || !kind || !definitionName || !nodeId) {
           return state
@@ -241,17 +200,14 @@ export const workflowThread = defineThread({
               kind,
               definitionName,
               nodeId,
-              input: payload.input ?? null,
+              input: input ?? null,
             },
           ],
         }
       }
 
       case 'workflow.sleep.requested': {
-        const payload = asObject(event.payload)
-        const waitId = readString(payload, 'waitId')
-        const wakeAt = payload.wakeAt
-        const nodeId = readString(payload, 'nodeId')
+        const { waitId, wakeAt, nodeId } = event.payload
 
         if (!waitId || !Predicate.isNumber(wakeAt) || !nodeId) {
           return state
@@ -267,11 +223,8 @@ export const workflowThread = defineThread({
       }
 
       case 'workflow.effects.requested': {
-        const payload = asObject(event.payload)
-        const nodeId = readString(payload, 'nodeId')
-        const raw = payload.effects
-        // SAFETY: node handlers serialize RuntimeEffect values into the event payload.
-        const effects: RuntimeEffect[] = Array.isArray(raw) ? (raw as RuntimeEffect[]) : []
+        const { nodeId, effects: rawEffects } = event.payload
+        const effects: readonly RuntimeEffect[] = Array.isArray(rawEffects) ? rawEffects : []
 
         if (!nodeId) {
           return state
@@ -300,8 +253,7 @@ export const workflowThread = defineThread({
       }
 
       case 'runtime.effect.failed': {
-        const payload = asObject(event.payload)
-        const error = readString(payload, 'error') ?? 'effect failed'
+        const error = event.payload.error || 'effect failed'
 
         if (isWithdrawnError(error)) {
           return state
@@ -331,7 +283,7 @@ export const workflowThread = defineThread({
               id: `finished_${nodeId}`,
               event: {
                 type: 'workflow.node.finished',
-                payload: asJson({ nodeId, result: null, error: message }),
+                payload: { nodeId, result: null, error: message },
                 threadId: ctx.threadId,
               },
             },
@@ -340,27 +292,26 @@ export const workflowThread = defineThread({
       }
 
       case 'runtime.wait.satisfied': {
-        const payload = asObject(event.payload)
-        const tag = payload.tag
+        const tag = event.payload.tag
 
         if (!Predicate.isObject(tag)) {
           return state
         }
 
-        const nodeId = readString(tag, 'nodeId')
+        const nodeId = Predicate.isString(tag.nodeId) ? tag.nodeId : undefined
 
         if (!nodeId) {
           return state
         }
 
-        const embedded = payload.event
+        const embedded = event.payload.event
 
         const embeddedObj =
           Predicate.isObject(embedded) && Predicate.isObject(embedded.payload)
             ? embedded.payload
             : {}
 
-        const error = readString(embeddedObj, 'error') ?? null
+        const error = Predicate.isString(embeddedObj.error) ? embeddedObj.error : null
 
         const result =
           embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : { waited: true })
@@ -376,11 +327,12 @@ export const workflowThread = defineThread({
               id: `finished_${nodeId}`,
               event: {
                 type: 'workflow.node.finished',
-                payload: asJson({
+                payload: {
                   nodeId,
-                  result,
+                  // SAFETY: result is serialized to a JSON-compatible node execution result.
+                  result: asJson(result) ?? null,
                   error,
-                }),
+                },
                 threadId: ctx.threadId,
               },
             },
@@ -392,26 +344,15 @@ export const workflowThread = defineThread({
         return state
     }
   },
-  effects(state: WorkflowState, ctx) {
+  effects(state, ctx) {
     const effects: RuntimeEffect[] = []
-
-    if (state.status === 'failed' && state.error) {
-      effects.push(fail(state.error))
-      return effects
-    }
 
     if (state.needsSchedule) {
       effects.push(scheduleInvocation(state))
     }
 
     for (const nodeId of state.runningNodes) {
-      const hasSpawn = state.pendingSpawns.some((item) => item.nodeId === nodeId)
-      const hasSleep = state.pendingSleeps.some((item) => item.nodeId === nodeId)
-      const hasEffects = state.pendingEffects.some((item) => item.nodeId === nodeId)
-
-      if (!hasSpawn && !hasSleep && !hasEffects) {
-        effects.push(runNodeInvocation(state, nodeId))
-      }
+      effects.push(runNodeInvocation(state, nodeId))
     }
 
     for (const spawnReq of state.pendingSpawns) {
@@ -453,6 +394,10 @@ export const workflowThread = defineThread({
 
     for (const emitReq of state.pendingEmits) {
       effects.push(emit(emitReq.event))
+    }
+
+    if (state.status === 'failed') {
+      effects.push(fail(state.error ?? 'Workflow execution failed'))
     }
 
     return effects

@@ -48,6 +48,8 @@ describe('defineEffect', () => {
     let message = ''
 
     try {
+      // SAFETY: Explicitly passing invalid input to verify runtime validation failure message.
+      // @ts-expect-error deliberately passing invalid input to test schema rejection
       await Effect.runPromise(effect.execute({}, ctx))
     } catch (err) {
       message = err instanceof Error ? err.message : String(err)
@@ -75,7 +77,8 @@ describe('defineEffect', () => {
 
     const result = await Effect.runPromise(
       // SAFETY: invalid age is a fixture that must fail schema validation.
-      validateInputEffect(schema, { name: 'Alice', age: 'invalid' as any }).pipe(
+      // @ts-expect-error deliberately passing invalid age type to test schema rejection
+      validateInputEffect(schema, { name: 'Alice', age: 'invalid' }).pipe(
         Effect.map(() => 'valid'),
         Effect.catchTag('InvalidInputError', (err) =>
           Effect.succeed({ tag: err._tag, issues: err.issues.length, msg: err.message }),
