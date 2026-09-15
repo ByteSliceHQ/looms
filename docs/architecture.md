@@ -35,8 +35,7 @@ Because state is derived from events, you can inspect any point in a run. `repla
 import { createLooms } from '@looms/runtime'
 
 const looms = createLooms({
-  definitions: [echo, checkout, assistant],
-  modules: [agent(), workflow(), approval(), payments()],
+  modules: [agent({ definitions: [echo, assistant] }), workflow({ definitions: [checkout] }), approval(), payments],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')

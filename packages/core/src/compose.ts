@@ -4,7 +4,7 @@ import type { CatalogEvent, EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
-import type { AnyRuntimeModule, EffectMiddleware, RuntimeModule } from './module'
+import type { AnyRuntimeModule, EffectMiddleware, RuntimeModule, RegisteredDefinition } from './module'
 import type { ProjectionDefinition } from './projection'
 import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
@@ -19,6 +19,7 @@ export class ModuleCompositionError extends Data.TaggedError('ModuleCompositionE
 }
 
 export interface ComposedRegistry extends FoldRegistry {
+  readonly definitions: readonly RegisteredDefinition[]
   readonly modules: readonly AnyRuntimeModule[]
   readonly effects: ReadonlyMap<string, EffectDefinition>
   readonly projections: ReadonlyMap<string, ProjectionDefinition>
@@ -27,6 +28,8 @@ export interface ComposedRegistry extends FoldRegistry {
 }
 
 export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRegistry {
+  const definitions: RegisteredDefinition[] = []
+  const definitionKeys = new Set<string>()
   const namespaces = new Set<string>()
   const threads = new Map<string, ThreadDefinition>()
   const effects = new Map<string, EffectDefinition>()
@@ -67,6 +70,18 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
       }
     }
 
+    for (const definition of module.definitions ?? []) {
+      const key = `${definition.kind}:${definition.name}`
+      if (definitionKeys.has(key)) {
+        throw new ModuleCompositionError(`Duplicate definition: ${key}`)
+      }
+      if (!module.threads || !Object.hasOwn(module.threads, definition.kind)) {
+        throw new ModuleCompositionError(`Module ${module.namespace} registers definition ${key} but does not implement thread kind ${definition.kind}`)
+      }
+      definitionKeys.add(key)
+      definitions.push({ kind: definition.kind, name: definition.name, input: definition.input, value: definition })
+    }
+
     const moduleThreads = module.threads
 
     if (moduleThreads) {
@@ -104,7 +119,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     }
   }
 
-  return { modules, threads, effects, projections, catalogs, middleware }
+  return { definitions, modules, threads, effects, projections, catalogs, middleware }
 }
 
 export function composeModulesEffect(

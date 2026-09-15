@@ -1,7 +1,5 @@
 import { Effect, Predicate } from 'effect'
 
-import { agent } from '@looms/agent'
-import { approval } from '@looms/approval'
 import {
   EventStoreTag,
   makeMemoryEventStore,
@@ -16,19 +14,15 @@ import {
   type JsonValue,
   type SnapshotStore,
   type ProjectionDefinition,
-  type RegisteredDefinition,
   type ReplayStep,
   type RunState,
 } from '@looms/core'
-import { workflow } from '@looms/workflow'
 
 import { createRuntime, type LoomsRuntime, type WakeScheduler } from './runtime'
 import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
 
 export interface CreateLoomsOptions {
-  /** Anything with `{ kind, name }`: agents, workflows, or definitions from your own modules. */
-  readonly definitions?: ReadonlyArray<DefinitionRef>
-  /** Defaults to `[agent(), workflow(), approval()]`. Pass your own list to add or swap modules. */
+  /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
   readonly modules?: readonly AnyRuntimeModule[]
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
@@ -95,18 +89,9 @@ interface Initialized {
   readonly fetchHandler: (req: Request) => Promise<Response | null>
 }
 
-function toRegistered(definitions: ReadonlyArray<DefinitionRef>): RegisteredDefinition[] {
-  return definitions.map((def) => ({
-    kind: def.kind,
-    name: def.name,
-    input: def.input,
-    value: def,
-  }))
-}
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
-  const definitions = options.definitions ? [...options.definitions] : []
-  const modules = options.modules ?? [agent(), workflow(), approval()]
+  const modules = options.modules ?? []
   let initPromise: Promise<Initialized> | undefined
   let runningServer: RunningServer | undefined
 
@@ -126,7 +111,6 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         const runtime = createRuntime({
           modules,
           store,
-          definitions: toRegistered(definitions),
           maxWakeIterations: options.maxWakeIterations,
           snapshotEvery: options.snapshotEvery,
           snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),

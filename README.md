@@ -16,16 +16,19 @@ Looms is an SDK for long-running work in your application. Each **run** is an ev
 
 ```bash
 bun install
+bun run examples        # small createLooms scripts under examples/
 bun run dev             # demo http://127.0.0.1:8787 + docs http://127.0.0.1:8788
 # or either alone: bun run demo | bun run docs
 # Cloudflare worker demo: bun run dev:cloudflare (worker also defaults to :8788 — stop docs first)
 ```
 
+Minimal hosts live in [`examples/`](./examples) (echo agent, workflow, approval, custom module). The demo app is the fuller UI.
+
 Host it in your app:
 
 ```ts
+import { agent, defineAgent } from '@looms/agent'
 import { createLooms } from '@looms/runtime'
-import { defineAgent } from '@looms/agent'
 import { z } from 'zod'
 
 const echo = defineAgent({
@@ -40,15 +43,14 @@ const echo = defineAgent({
 })
 
 const looms = createLooms({
-  definitions: [echo],
+  modules: [agent({ definitions: [echo] })],
   // store: s2(s2ConfigFromEnv(process.env)),
-  // modules: [agent({ llm: vercelLlm({ model }) }), workflow(), approval()],
 })
 
 const { runId } = await looms.start(echo, { text: 'hi' })
 ```
 
-`start` takes any definition — an agent, a workflow, or a kind from your own module — and types the input from its schema. `createLooms` includes agent, workflow, and approval; pass `modules` to configure them or add a domain module (see [docs/modules.md](./docs/modules.md)).
+`start` takes any definition — an agent, a workflow, or a kind from your own module — and types the input from its schema. Pass the modules you need (`agent()`, `workflow()`, `approval()`, or your own) into `createLooms` (see [docs/modules.md](./docs/modules.md)).
 
 React client:
 
@@ -97,7 +99,7 @@ Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules,
 | `@looms/agent`      | `defineAgent`, tools, `conversation`                  |
 | `@looms/workflow`   | `defineWorkflow`                                      |
 | `@looms/approval`   | `gate`, `pendingApprovals`                            |
-| `@looms/core`       | Custom modules: `defineRuntimeModule`, `defineEffect` |
+| `@looms/core`       | Custom modules: `defineModule`, `invoke` |
 | `@looms/client`     | HTTP client                                           |
 | `@looms/react`      | `useRunStore` / `useProjection`                       |
 | `@looms/s2`         | Durable event log                                     |

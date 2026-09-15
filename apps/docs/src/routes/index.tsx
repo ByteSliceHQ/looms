@@ -128,8 +128,7 @@ import { createLooms } from '@looms/runtime'
 import { payments } from './modules/payments'
 
 export const looms = createLooms({
-  definitions: [assistant, checkout],
-  modules: [agent({ llm }), workflow(), approval(), payments()],
+  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')

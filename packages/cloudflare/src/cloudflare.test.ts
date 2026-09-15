@@ -108,8 +108,8 @@ describe('@looms/cloudflare', () => {
 
         return store
       },
-      modules: [workflow()],
-      definitions: [flow],
+      modules: [workflow({ definitions: [flow] })],
+      
     })
 
     const fakeNamespace = {
@@ -207,8 +207,7 @@ describe('@looms/cloudflare', () => {
     class TestDO extends LoomsDurableObject {
       override configure(): LoomsDurableObjectConfig {
         return {
-          modules: [workflow()],
-          definitions: [delayedFlow],
+          modules: [workflow({ definitions: [delayedFlow] })],
         }
       }
     }

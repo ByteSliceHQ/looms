@@ -47,10 +47,6 @@ export type DefinitionInput<TDef> = TDef extends { readonly input?: infer S }
   ? InferDefinedSchema<S>
   : JsonValue
 
-export interface ModuleServicesContext {
-  readonly definitions: ReadonlyArray<RegisteredDefinition>
-}
-
 export interface RuntimeModule<
   TNamespace extends string = string,
   TEvents extends EventCatalog = EventCatalog,
@@ -72,10 +68,11 @@ export interface RuntimeModule<
   readonly threads?: TThreads
   readonly effects?: TEffects
   readonly projections?: TProjections
+  readonly definitions?: readonly DefinitionRef[]
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
-  readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<TServices>
+  readonly services?: () => Layer.Layer<TServices>
 }
 
 export function defineRuntimeModule<

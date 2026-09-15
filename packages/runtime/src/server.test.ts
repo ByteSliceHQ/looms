@@ -25,8 +25,8 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      definitions: [flow],
-      modules: [workflow()],
+      
+      modules: [workflow({ definitions: [flow] })],
     })
 
     const runId = 'run_http_body_idem'
@@ -95,8 +95,8 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      definitions: [flow],
-      modules: [workflow()],
+      
+      modules: [workflow({ definitions: [flow] })],
     })
 
     const runId = 'run_http_header_idem'
@@ -163,8 +163,8 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      definitions: [flow],
-      modules: [workflow()],
+      
+      modules: [workflow({ definitions: [flow] })],
     })
 
     const { runId } = await looms.start(flow, {})
@@ -220,7 +220,7 @@ describe('server HTTP idempotency', () => {
       namespace: 'billing',
       protocolVersion: '1.0.0',
       events: catalog,
-    })
+    }, () => ({}))
 
     const flow = defineWorkflow({
       name: 'billing-flow',
@@ -233,8 +233,8 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      definitions: [flow],
-      modules: [workflow(), billingModule.build({})],
+      
+      modules: [workflow({ definitions: [flow] }), billingModule],
     })
 
     const { runId } = await looms.start(flow, {})

@@ -4,7 +4,7 @@ import { Context, Effect, Layer, Schema } from 'effect'
 
 import { defineEventCatalog, payload } from './catalog'
 import { invoke } from './effects'
-import { defineModule, type EventOf, type ThreadStateOf } from './module-scope'
+import { createModuleScope, defineModule, type EventOf, type ThreadStateOf } from './module-scope'
 
 export interface DatabaseService {
   readonly query: (sql: string) => Promise<string>
@@ -24,7 +24,7 @@ const shippingCatalog = defineEventCatalog('shipping', {
 })
 
 describe('defineModule scope', () => {
-  const ordersModule = defineModule({
+  const ordersModule = createModuleScope({
     namespace: 'orders',
     protocolVersion: '1.0.0',
     events: ordersCatalog,
@@ -253,7 +253,7 @@ describe('defineModule scope', () => {
     expect(invoked.tag).toBe('tag-1')
   })
 
-  test('scope.build requires services when effect requires environment', () => {
+  test('defineModule requires services when effect requires environment', () => {
     const queryEffect = ordersModule.effect({
       type: 'orders.queryDb',
       execute: (_input, _ctx) =>
@@ -268,22 +268,22 @@ describe('defineModule scope', () => {
         ),
     })
 
-    // Providing DatabaseTag satisfies build
-    const built = ordersModule.build({
+    // Providing DatabaseTag satisfies the effect requirements
+    const built = defineModule(ordersModule, () => ({
       effects: { queryDb: queryEffect },
       services: () =>
         Layer.succeed(DatabaseTag, {
           query: async () => 'ok',
         }),
-    })
+    }))
 
     expect(built.namespace).toBe('orders')
 
     // Omitting services when an effect requires DatabaseTag should fail
     // @ts-expect-error services is required because queryDb requires DatabaseTag
-    ordersModule.build({
+    defineModule(ordersModule, () => ({
       effects: { queryDb: queryEffect },
-    })
+    }))
   })
 
   test('compile-time type rejection assertions', () => {
@@ -344,5 +344,38 @@ describe('defineModule scope', () => {
 
     // @ts-expect-error input must have count: number
     invoke(effectWithSchema, { count: 'string' })
+  })
+
+  test('defineModule produces clean RuntimeModule without leaking builder methods', () => {
+    const built = defineModule(ordersModule, () => ({
+      effects: {},
+    }))
+
+    expect(built.namespace).toBe('orders')
+    expect(built.protocolVersion).toBe('1.0.0')
+    expect((built as any).thread).toBeUndefined()
+    expect((built as any).effect).toBeUndefined()
+    expect((built as any).projection).toBeUndefined()
+    expect((built as any).input).toBeUndefined()
+    expect((built as any).emit).toBeUndefined()
+  })
+
+  test('preserves observes and dependencies when finished from scope', () => {
+    const billingCatalog = defineEventCatalog('billing', {
+      invoiced: payload<{ invoiceId: string }>(),
+    })
+    const shippingScope = createModuleScope({
+      namespace: 'shipping',
+      protocolVersion: '1.0.0',
+      observes: [billingCatalog],
+      dependencies: [{ namespace: 'billing' }],
+    })
+
+    const shippingModule = defineModule(shippingScope, () => ({
+      effects: {},
+    }))
+
+    expect(shippingModule.observes).toEqual([billingCatalog])
+    expect(shippingModule.dependencies).toEqual([{ namespace: 'billing' }])
   })
 })

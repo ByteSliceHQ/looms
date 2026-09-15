@@ -50,8 +50,8 @@ bun run demo
         isolation and durable alarms, deploy virtual actor cells on Cloudflare Durable Objects or
         Bun (see <Link to="/docs/durability">Durability &amp; Hosting</Link>).
       </p>
-      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
-import { defineAgent } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { agent, defineAgent } from '@looms/agent'
+import { createLooms } from '@looms/runtime'
 import { z } from 'zod'
 
 const echo = defineAgent({
@@ -66,15 +66,15 @@ const echo = defineAgent({
 })
 
 const looms = createLooms({
-  definitions: [echo],
+  modules: [agent({ definitions: [echo] })],
 })
 
 const { runId } = await looms.start(echo, { text: 'hi' })
 const state = await looms.getRun(runId)`}</CodeBlock>
       <p>
         <code>start</code> takes any definition — an agent, a workflow, or a kind from your own
-        module — and types the input from its schema. Configure modules (for example{' '}
-        <code>agent({'{ llm }'})</code>) and add your own when the app needs them — see{' '}
+        module — and types the input from its schema. Pass the modules you need (for example{' '}
+        <code>agent()</code> or <code>agent({'{ llm }'})</code>) — see{' '}
         <Link to="/docs/modules">Modules</Link>. Serve HTTP with <code>looms.fetch</code> /{' '}
         <code>looms.serve()</code>, then subscribe from a client in{' '}
         <Link to="/docs/examples">Examples</Link>.

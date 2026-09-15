@@ -19,5 +19,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@looms/demo"]
+  "ignore": ["@looms/demo", "@looms/examples"]
 }

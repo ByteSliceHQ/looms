@@ -9,7 +9,7 @@ import {
   type AnyRuntimeModule,
   type EventStore,
 } from '@looms/core'
-import { createRuntime, type LoomsRuntime, type RegisteredDefinition } from '@looms/runtime'
+import { createRuntime, type LoomsRuntime } from '@looms/runtime'
 
 type NamedEffect = {
   readonly type: string
@@ -49,10 +49,9 @@ export interface TestRuntime {
 
 export async function createTestRuntime(
   modules: readonly AnyRuntimeModule[],
-  definitions: RegisteredDefinition[] = [],
 ): Promise<TestRuntime> {
   const store = await Effect.runPromise(makeMemoryEventStore)
-  const runtime = createRuntime({ modules, store, definitions })
+  const runtime = createRuntime({ modules, store })
   return {
     runtime,
     store,

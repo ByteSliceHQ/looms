@@ -44,6 +44,12 @@
       "rules": {
         "effecttsgo/unsafe-effect-type-assertion": "off"
       }
+    },
+    {
+      "files": ["examples/**"],
+      "rules": {
+        "effecttsgo/global-console": "off"
+      }
     }
   ],
   "rules": {

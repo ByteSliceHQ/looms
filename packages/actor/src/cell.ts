@@ -3,9 +3,7 @@ import { Effect } from 'effect'
 import {
   EventStoreTag,
   type AnyRuntimeModule,
-  type DefinitionRef,
   type EventStore,
-  type RegisteredDefinition,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
@@ -25,7 +23,6 @@ export interface ActorCellOptions<
   readonly store: EventStore
   readonly scheduler?: WakeScheduler
   readonly modules: TModules
-  readonly definitions?: ReadonlyArray<DefinitionRef>
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   readonly snapshotStore?: SnapshotStore
@@ -43,14 +40,6 @@ export interface ActorCell<
   dispose(): void
 }
 
-function toRegistered(definitions: ReadonlyArray<DefinitionRef>): RegisteredDefinition[] {
-  return definitions.map((def) => ({
-    kind: def.kind,
-    name: def.name,
-    input: def.input,
-    value: def,
-  }))
-}
 
 /**
  * Creates an in-process actor cell that owns a single `runId`.
@@ -60,12 +49,10 @@ export function createActorCell<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 >(options: ActorCellOptions<TModules>): ActorCell<TModules> {
   const { runId, store, scheduler } = options
-  const definitions = options.definitions ? toRegistered(options.definitions) : []
 
   const runtime = createRuntime({
     modules: options.modules,
     store,
-    definitions,
     scheduler,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,

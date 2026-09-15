@@ -82,21 +82,20 @@ import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
 import { payments } from './modules/payments'
-import { assistant, checkout, definitions } from './definitions'
+import { assistant, checkout } from './definitions'
 import { llm } from './llm'
 
 export const looms = createLooms({
-  definitions,
-  modules: [agent({ llm }), workflow(), approval(), payments()],
+  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')
 await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       <p>
-        Omit <code>modules</code> to get default agent, workflow, and approval behaviors. Pass your
-        own list to configure modules (e.g. providing an LLM adapter to{' '}
-        <code>agent({'{ llm }'})</code>), add custom domain modules, or omit built-ins you
-        don&apos;t use.
+        Pass every module you need explicitly — <code>agent()</code>, <code>workflow()</code>,{' '}
+        <code>approval()</code>, and any domain modules. Configure modules in that list (e.g.
+        providing an LLM adapter to <code>{'agent({ llm })'}</code>). Omitting{' '}
+        <code>modules</code> leaves the runtime with no built-in kinds.
       </p>
       <p>
         <code>start</code> does not care which module owns the definition. An agent and a workflow
@@ -104,6 +103,19 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
         <code>looms.start(myDefinition, input)</code> works the same way.
       </p>
 
+      <h3>Definitions belong to modules</h3>
+      <p>
+        Pass named agents to <code>{'agent({ definitions: [assistant], llm })'}</code> and named
+        workflows to <code>{'workflow({ definitions: [checkout] })'}</code>. The host gathers their
+        definitions automatically. Include child definitions in their owning modules too.
+        Effects-only modules such as payments or approval need no definitions.
+      </p>
+      <p>
+        Initialization rejects duplicate kind/name registrations and definitions whose kind the
+        owning module does not implement. Starting or spawning an unregistered definition fails
+        explicitly. The callback form returns a finished module: only returned members are
+        installed, and they are exposed through its effects, projections, and threads properties.
+      </p>
       <h2>Talk to a running run</h2>
       <p>
         Every input to a run is an event. Modules export small builders so you never hand-write
@@ -126,10 +138,7 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         and effects are inferred and type-safe end-to-end. Handlers should be safe to retry — use{' '}
         <code>ctx.effectId</code> as an idempotency key.
       </p>
-      <CodeBlock lang="ts">{`import {
-  defineEventCatalog,
-  defineModule,
-} from '@looms/core'
+      <CodeBlock lang="ts">{`import { defineModule } from '@looms/core'
 import { z } from 'zod'
 
 const Charge = z.object({
@@ -137,50 +146,53 @@ const Charge = z.object({
   amount: z.number(),
 })
 
-export const paymentsCatalog = defineEventCatalog('payments', {
-  'charge.requested': Charge,
-  'charge.authorized': Charge,
-})
-
-export const paymentsModule = defineModule({
-  namespace: 'payments',
-  protocolVersion: '1.0.0',
-  events: paymentsCatalog,
-})
-
-const charge = paymentsModule.effect({
-  type: 'payments.charge',
-  input: z.object({ amount: z.number() }),
-  execute: (input, ctx) => [
-    {
-      type: 'payments.charge.requested',
-      payload: { chargeId: ctx.effectId, amount: input.amount },
+export const payments = defineModule(
+  {
+    namespace: 'payments',
+    protocolVersion: '1.0.0',
+    events: {
+      'charge.requested': Charge,
+      'charge.authorized': Charge,
     },
-    {
-      type: 'payments.charge.authorized',
-      payload: { chargeId: ctx.effectId, amount: input.amount },
-    },
-  ],
-})
-
-export const ledger = paymentsModule.projection({
-  name: 'ledger',
-  shape: z.object({
-    entries: z.array(z.object({ chargeId: z.string(), amount: z.number() })),
-  }),
-  initialState: { entries: [] },
-  reduce(state, event) {
-    if (event.type !== 'payments.charge.authorized') return state
-    return { entries: [...state.entries, event.payload] }
   },
-})
+  (m) => ({
+    effects: {
+      charge: m.effect({
+        type: 'payments.charge',
+        input: z.object({ amount: z.number() }),
+        execute: (input, ctx) => [
+          {
+            type: 'payments.charge.requested',
+            payload: { chargeId: ctx.effectId, amount: input.amount },
+          },
+          {
+            type: 'payments.charge.authorized',
+            payload: { chargeId: ctx.effectId, amount: input.amount },
+          },
+        ],
+      }),
+    },
+    projections: {
+      ledger: m.projection({
+        name: 'ledger',
+        shape: z.object({
+          entries: z.array(Charge),
+        }),
+        initialState: { entries: [] },
+        reduce(state, event) {
+          if (event.type !== 'payments.charge.authorized') {
+            return state
+          }
 
-export function payments() {
-  return paymentsModule.build({
-    effects: { charge },
-    projections: { ledger },
-  })
-}`}</CodeBlock>
+          return { entries: [...state.entries, event.payload] }
+        },
+      }),
+    },
+  }),
+)
+
+export const { charge } = payments.effects
+export const { ledger } = payments.projections`}</CodeBlock>
       <h3>What the scope gives you</h3>
       <ul>
         <li>
@@ -197,7 +209,7 @@ export function payments() {
           type-checks inputs against the effect&apos;s input schema.
         </li>
         <li>
-          <strong>Compile-time service checks:</strong> <code>scope.build</code> requires satisfying
+          <strong>Compile-time service checks:</strong> <code>defineModule</code> requires satisfying
           the environment requirements (<code>R</code>) of all constituent effects via Effect
           Layers.
         </li>
@@ -239,7 +251,14 @@ export function payments() {
         event catalog:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { paymentsModule } from './scope'
+import { createModuleScope } from '@looms/core'
+import { paymentsCatalog } from './events'
+
+const paymentsScope = createModuleScope({
+  namespace: 'payments',
+  protocolVersion: '1.0.0',
+  events: paymentsCatalog,
+})
 
 const ChargeCardInput = z.object({
   customerId: z.string(),
@@ -247,7 +266,7 @@ const ChargeCardInput = z.object({
   currency: z.string().default('USD'),
 })
 
-export const chargeCardEffect = paymentsModule.effect({
+export const chargeCardEffect = paymentsScope.effect({
   type: 'payments.chargeCard',
   input: ChargeCardInput,
   retry: {
@@ -380,33 +399,34 @@ export const chargeCardEffect = paymentsModule.effect({
         required service environment in the effect&apos;s type signature.
       </p>
       <p>
-        When you call <code>scope.build</code>, Looms inspects the service requirements of all
+        When you call <code>defineModule</code>, Looms inspects the service requirements of all
         registered effects. If any required service is missing, the build will fail to compile until
         you supply a matching <code>Layer</code>:
       </p>
-      <CodeBlock lang="ts">{`import { Context, Layer } from 'effect'
+      <CodeBlock lang="ts">{`import { Context, Effect, Layer } from 'effect'
+import { defineModule } from '@looms/core'
+import { z } from 'zod'
 
 export interface DatabaseService {
   insertCharge(chargeId: string, amount: number): Promise<void>
 }
 export class DatabaseTag extends Context.Service<DatabaseTag, DatabaseService>()('app/Database') {}
 
-const dbEffect = paymentsModule.effect({
-  type: 'payments.recordInDb',
-  execute: (input, ctx) =>
-    Effect.gen(function* () {
-      const db = yield* DatabaseTag
-      yield* Effect.tryPromise(() => db.insertCharge(ctx.effectId, input.amount))
-      return []
-    }),
-})
-
-// Compile-time safety: build REQUIRES DatabaseTag in services
 export function payments(db: DatabaseService) {
-  return paymentsModule.build({
-    effects: { recordInDb: dbEffect },
-    services: () => Layer.succeed(DatabaseTag, db), // Required! Omitting fails type-check
-  })
+  return defineModule({ namespace: 'payments', protocolVersion: '1.0.0' }, (m) => ({
+    effects: {
+      recordInDb: m.effect({
+        type: 'payments.recordInDb',
+        input: z.object({ amount: z.number() }),
+        execute: (input, ctx) => Effect.gen(function* () {
+          const database = yield* DatabaseTag
+          yield* Effect.tryPromise(() => database.insertCharge(ctx.effectId, input.amount))
+          return []
+        }),
+      }),
+    },
+    services: () => Layer.succeed(DatabaseTag, db),
+  }))
 }`}</CodeBlock>
 
       <h3>
@@ -418,7 +438,7 @@ export function payments(db: DatabaseService) {
         migration. Use <code>ctx.emit(event)</code> to append events to the live log before the
         effect completes:
       </p>
-      <CodeBlock lang="ts">{`export const downloadAndProcessEffect = paymentsModule.effect({
+      <CodeBlock lang="ts">{`const downloadAndProcessEffect = m.effect({
   type: 'payments.downloadBatch',
   input: z.object({ batchUrl: z.string() }),
   execute: async (input, ctx) => {
@@ -434,7 +454,7 @@ export function payments(db: DatabaseService) {
   },
 })`}</CodeBlock>
       <p>
-        With <code>scope.effect</code>, events passed to <code>ctx.emit</code> are checked at
+        With <code>m.effect</code>, events passed to <code>ctx.emit</code> are checked at
         compile time against your module&apos;s catalog and validated against their schemas at
         runtime.
       </p>
@@ -444,7 +464,7 @@ export function payments(db: DatabaseService) {
         External networks and third-party APIs fail. Pass a <code>retry</code> policy to
         automatically retry transient failures using exponential backoff:
       </p>
-      <CodeBlock lang="ts">{`export const callGatewayEffect = paymentsModule.effect({
+      <CodeBlock lang="ts">{`export const callGatewayEffect = paymentsScope.effect({
   type: 'payments.callGateway',
   retry: {
     maxAttempts: 4,     // Retry up to 4 times
@@ -492,21 +512,23 @@ effects(state, ctx) {
 
       <h2>File layout</h2>
       <p>
-        Built-in modules use one file per slot on <code>defineRuntimeModule</code>. Open the folder
+        Built-in modules assemble separately authored members with <code>defineModule</code>. Open the folder
         and the names tell you where to look:
       </p>
       <CodeBlock lang="text">{`src/
   events.ts        # namespaced event catalog
-  scope.ts         # defineModule scope and module-level EventOf type
+  scope.ts         # createModuleScope for shared typed builders
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
   signals.ts       # builders for looms.signal / store.commit
-  module.ts        # scope.build wiring
+  module.ts        # defineModule(options, setup) assembly
   index.ts         # public re-exports`}</CodeBlock>
       <p>
-        A small domain module can stay in one file. When a second event, effect, or projection
-        appears, split along these names so the folder stays scannable.
+        Small modules can stay in one callback. For larger modules, export a shared
+        <code>createModuleScope(options)</code> from <code>scope.ts</code>, author members across
+        files, and return them from <code>defineModule(options, setup)</code>. Only the finished
+        module is passed to the host.
       </p>
 
       <h2>Module Composition Principles</h2>

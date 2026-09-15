@@ -10,6 +10,7 @@
   },
   "workspaces": [
     "apps/*",
+    "examples",
     "packages/*"
   ],
   "type": "module",
@@ -26,6 +27,7 @@
     "dev:cloudflare": "LOOMS_BACKEND=cloudflare LOOMS_WORKER_URL=http://127.0.0.1:8788 turbo run dev --filter=@looms/demo --filter=@looms/demo-worker",
     "demo": "turbo run dev --filter=@looms/demo",
     "docs": "turbo run dev --filter=@looms/docs",
+    "examples": "bun run --filter @looms/examples all",
     "setup:s2": "bash scripts/install-s2-cli.sh",
     "changeset": "changeset",
     "version-packages": "changeset version",

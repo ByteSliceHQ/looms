@@ -1,6 +1,13 @@
 import type { Layer } from 'effect'
 
-import type { EventCatalog, EventInputOf, EventsOfCatalog, InferPayload } from './catalog'
+import {
+  defineEventCatalog,
+  type CatalogEntries,
+  type EventCatalog,
+  type EventInputOf,
+  type EventsOfCatalog,
+  type InferPayload,
+} from './catalog'
 import type { EventsOf, ProtocolEvents } from './compose'
 import {
   emit,
@@ -14,11 +21,10 @@ import {
 } from './effects'
 import type { EventEnvelope, EventInput } from './envelope'
 import {
-  defineRuntimeModule,
   type AnyRuntimeModule,
   type EffectMiddleware,
-  type ModuleServicesContext,
   type RuntimeModule,
+  type DefinitionRef,
   type RuntimeModuleDependency,
 } from './module'
 import { defineProjection, type ProjectionDefinition } from './projection'
@@ -60,17 +66,20 @@ export type EffectRequirementsOf<TEffects> = TEffects extends {
   : never
 
 export type ModuleServicesConfig<TR> = [TR] extends [never]
-  ? { readonly services?: (ctx: ModuleServicesContext) => Layer.Layer<any> }
-  : { readonly services: (ctx: ModuleServicesContext) => Layer.Layer<TR> }
+  ? { readonly services?: () => Layer.Layer<any> }
+  : { readonly services: () => Layer.Layer<TR> }
 
 export interface ModuleScope<
   TNamespace extends string,
   U extends EventEnvelope<any, any>,
   TEvents extends EventCatalog | undefined,
+  TObserves extends readonly EventCatalog[] | undefined = readonly EventCatalog[] | undefined,
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
   readonly events?: TEvents
+  readonly observes?: TObserves
+  readonly dependencies?: readonly RuntimeModuleDependency[]
 
   thread<TShape, TInputSchema extends SchemaInput | undefined = undefined>(def: {
     readonly kind: string
@@ -117,7 +126,7 @@ export interface ModuleScope<
       input: TInput,
       ctx: ScopedEffectContext<EventInputOf<U>>,
     ) => EffectHandlerResult<R, EventInputOf<U>>
-  }): EffectDefinition<TInput, R, E>
+  }): NoInfer<EffectDefinition<TInput, R, E>>
 
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
@@ -133,26 +142,6 @@ export interface ModuleScope<
     payload: InferPayload<(TEvents extends EventCatalog<any, infer E> ? E : never)[K]>,
     meta?: Omit<EventInput, 'type' | 'payload'>,
   ): EmitEffect
-
-  build<
-    TEffects extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
-    TThreads extends { readonly [key: string]: ThreadDefinition } = {},
-    TProjections extends { readonly [key: string]: ProjectionDefinition } = {},
-  >(
-    config: {
-      readonly threads?: TThreads
-      readonly effects?: TEffects
-      readonly projections?: TProjections
-      readonly middleware?: readonly EffectMiddleware[]
-    } & ModuleServicesConfig<EffectRequirementsOf<TEffects>>,
-  ): RuntimeModule<
-    TNamespace,
-    TEvents extends EventCatalog ? TEvents : EventCatalog,
-    TEffects,
-    TThreads,
-    TProjections,
-    [EffectRequirementsOf<TEffects>] extends [never] ? any : EffectRequirementsOf<TEffects>
-  >
 }
 
 export type EventOf<T> =
@@ -179,19 +168,21 @@ function buildScopeInput(
   }
 }
 
-export function defineModule<
+export function createModuleScope<
   TNamespace extends string,
   TEvents extends EventCatalog | undefined = undefined,
   TObserves extends readonly EventCatalog[] | undefined = undefined,
 >(
   options: DefineModuleOptions<TNamespace, TEvents, TObserves>,
-): ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents> {
+): ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents, TObserves> {
   const { namespace, protocolVersion, events, observes, dependencies } = options
 
-  const scope: ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents> = {
+  const scope: ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents, TObserves> = {
     namespace,
     protocolVersion,
     events,
+    observes,
+    dependencies,
 
     thread(def: any): any {
       return defineThread(def)
@@ -212,22 +203,64 @@ export function defineModule<
     emit(key: any, payload: any, meta?: any): any {
       return emit(buildScopeInput(namespace, events, key, payload, meta))
     },
-
-    build(config: any): any {
-      return defineRuntimeModule({
-        namespace,
-        protocolVersion,
-        events,
-        observes,
-        dependencies,
-        threads: config.threads,
-        effects: config.effects,
-        projections: config.projections,
-        middleware: config.middleware,
-        services: config.services,
-      })
-    },
   }
 
   return scope
+}
+
+/** A catalog may be supplied directly, or created from inline event schemas. */
+export type ModuleCatalog<N extends string, E> = E extends EventCatalog
+  ? E
+  : E extends CatalogEntries
+    ? EventCatalog<N, E>
+    : undefined
+
+/** Construct a complete module. Only members returned by setup are installed. */
+export function defineModule<
+  const N extends string,
+  E extends EventCatalog | CatalogEntries | undefined = undefined,
+  O extends readonly EventCatalog[] | undefined = undefined,
+  FX extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
+  TH extends { readonly [key: string]: ThreadDefinition } = {},
+  PR extends { readonly [key: string]: ProjectionDefinition } = {},
+>(
+  options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
+  setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
+    readonly effects?: FX
+    readonly threads?: TH
+    readonly projections?: PR
+    readonly definitions?: readonly DefinitionRef[]
+    readonly middleware?: readonly EffectMiddleware[]
+  } & ModuleServicesConfig<EffectRequirementsOf<FX>>,
+): RuntimeModule<N, Extract<ModuleCatalog<N, E>, EventCatalog>, FX, TH, PR> & {
+  readonly effects: FX
+  readonly threads: TH
+  readonly projections: PR
+} {
+  const source = options.events
+  // SAFETY: catalogs have an input builder; inline entries are normalized once here.
+  const events = (source &&
+    (typeof (source as any).input === 'function'
+      ? source
+      : defineEventCatalog(options.namespace, source as CatalogEntries))) as ModuleCatalog<N, E>
+  const scope =
+    typeof (options as any).effect === 'function'
+      ? (options as unknown as ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>)
+      : createModuleScope({ ...options, events })
+  const members = setup(scope)
+
+  return {
+    namespace: options.namespace,
+    protocolVersion: options.protocolVersion,
+    events: events as Extract<ModuleCatalog<N, E>, EventCatalog> | undefined,
+    ...(options.observes ? { observes: options.observes } : {}),
+    ...(options.dependencies ? { dependencies: options.dependencies } : {}),
+    ...(members.definitions ? { definitions: members.definitions } : {}),
+    ...(members.middleware ? { middleware: members.middleware } : {}),
+    ...(members.services ? { services: members.services } : {}),
+    // SAFETY: absent member bags use the corresponding empty-object generic defaults.
+    effects: (members.effects ?? {}) as FX,
+    threads: (members.threads ?? {}) as TH,
+    projections: (members.projections ?? {}) as PR,
+  }
 }

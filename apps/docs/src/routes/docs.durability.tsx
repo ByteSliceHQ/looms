@@ -247,8 +247,7 @@ const store = sqliteEventStore({ exec: myDatabaseConnection })
 const cell = createActorCell({
   runId: 'run_94819',
   store,
-  modules: [agent({ llm }), workflow(), approval()],
-  definitions: [checkoutWorkflow],
+  modules: [agent({ llm }), workflow({ definitions: [checkoutWorkflow] }), approval()],
 })
 
 // 3. Dispatch HTTP or internal requests directly to the cell

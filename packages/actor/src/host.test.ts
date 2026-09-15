@@ -32,8 +32,8 @@ describe('LocalActorHost', () => {
 
         return store
       },
-      modules: [workflow()],
-      definitions: [flow],
+      modules: [workflow({ definitions: [flow] })],
+      
     })
 
     // Start first run

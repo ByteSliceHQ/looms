@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { createActorCell, type ActorCell } from '@looms/actor'
-import type { AnyRuntimeModule, DefinitionRef } from '@looms/core'
+import type { AnyRuntimeModule } from '@looms/core'
 import type { Projector } from '@looms/projectors'
 
 import { alarmScheduler } from './alarm-scheduler'
@@ -9,7 +9,6 @@ import { durableObjectEventStore } from './event-store'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
-  readonly definitions?: ReadonlyArray<DefinitionRef>
   readonly projectors?: readonly Projector[]
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -18,7 +17,7 @@ export interface LoomsDurableObjectConfig {
 
 /**
  * Base Durable Object class for hosting a Looms actor cell.
- * Subclasses implement `configure(env)` to supply modules and definitions.
+ * Subclasses implement `configure(env)` to supply configured modules.
  * Works identically on Cloudflare Workers and celld.
  */
 export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<Env> {
@@ -46,7 +45,6 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
           store,
           scheduler,
           modules: config.modules,
-          definitions: config.definitions,
           snapshotEvery: config.snapshotEvery,
           maxWakeIterations: config.maxWakeIterations,
           trimAfterSnapshot: config.trimAfterSnapshot,

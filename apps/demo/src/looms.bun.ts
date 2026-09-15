@@ -7,7 +7,6 @@ import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
 import { withProjectors } from '@looms/projectors'
 import { s2Projector, startS2Lite } from '@looms/s2'
 
-import { definitions } from './definitions'
 import { demoEnvFromProcess, resolveDemoLlm, resolveDemoProjectors } from './demo-config'
 import { demoModules } from './runtime'
 
@@ -72,7 +71,7 @@ export function getLocalRuntime(): Promise<LocalActorHost> {
       createLocalActorHost({
         createStore: createRunStore,
         modules: demoModules({ llm: resolveDemoLlm(env) }),
-        definitions,
+
       }),
     )
   }

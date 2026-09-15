@@ -2,7 +2,7 @@
 
 Looms is designed so `swirls-platform` can host threads on the Looms kernel instead of Temporal, without importing Swirls product packages into this repo.
 
-The compile-to-modules framing: Swirls keeps its DSL and product types. An adapter compiles a deployment snapshot into Looms `RuntimeModule`s plus `defineAgent` / `defineWorkflow` definitions, then calls `createRuntime({ modules })`.
+The compile-to-modules framing: Swirls keeps its DSL and product types. An adapter compiles a deployment snapshot into Looms `RuntimeModule`s carrying `defineAgent` / `defineWorkflow` definitions, then calls `createRuntime({ modules })`.
 
 ## Mapping
 
@@ -20,7 +20,7 @@ The compile-to-modules framing: Swirls keeps its DSL and product types. An adapt
 
 ## Suggested dogfood path
 
-1. **Agent sessions first** — `createRuntime({ modules: [agent(), approval()] })` for a single Cloud chat path; keep Temporal graphs.
+1. **Agent sessions first** — `createRuntime({ modules: [agent({ definitions: [support] }), approval()] })` for a single Cloud chat path; keep Temporal graphs.
 2. Event bridge — map Swirls `execution_events` types onto namespaced catalogs.
 3. Projector — write Looms appends into `execution_events` (or dual-write) so existing Cloud UI keeps working.
 4. Workflows second — compile graph nodes to `@looms/workflow` nodes that invoke existing activities as effects.
@@ -36,12 +36,11 @@ import { createLooms } from '@looms/runtime'
 import { s2 } from '@looms/s2'
 
 const looms = createLooms({
-  modules: [agent(), workflow(), approval(), swirlsBilling()],
+  modules: [agent({ definitions: agents }), workflow({ definitions: workflows }), approval(), swirlsBilling()],
   store: s2({
     basin: process.env.LOOMS_S2_BASIN!,
     accessToken: process.env.LOOMS_S2_ACCESS_TOKEN!,
   }),
-  definitions,
 })
 
 await looms.start(support, { channel: 'slack' })

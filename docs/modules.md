@@ -20,21 +20,31 @@ import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
 import { payments } from './modules/payments'
-import { assistant, checkout, definitions } from './definitions'
+import { assistant, checkout } from './definitions'
 import { llm } from './llm' // an LlmAdapter, see ai-providers.md
 
 export const looms = createLooms({
-  definitions,
-  modules: [agent({ llm }), workflow(), approval(), payments()],
+  modules: [
+    agent({ definitions: [assistant], llm }),
+    workflow({ definitions: [checkout] }),
+    approval(),
+    payments,
+  ],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')
 await looms.start(checkout, { amount: 150, currency: 'USD' })
 ```
 
-Omit `modules` to get agent, workflow, and approval. Pass your own list to configure a module (the LLM adapter belongs to `agent({ llm })`), add a domain module, or skip a built-in.
+Omit `modules` (or pass `[]`) for a runtime with no built-in kinds — you must pass `agent()`, `workflow()`, `approval()`, and any domain modules you need. Configure a module (the LLM adapter belongs to `agent({ llm })`) in that list.
 
-`start` does not care which module owns the definition. An agent and a workflow are two kinds of thread; a module you write adds a third, and `looms.start(myThing, input)` works the same way.
+Each module owns its definitions. `workflow({ definitions: [checkout] })` installs both the workflow machinery and the named workflow. The host has no separate definition list. Custom modules that only supply effects or projections need no definitions.
+
+At initialization, Looms rejects duplicate `(kind, name)` registrations and definitions whose kind is not implemented by their owning module. Starting or spawning an unregistered definition fails before any run events are written. An unsupported thread kind is rejected the same way; if such an event somehow appears in a log, fold marks the thread failed instead of inventing empty state. Pass all child definitions to their owning modules too.
+
+`defineModule(options, setup)` returns a complete runtime module. The callback receives typed `effect`, `projection`, `thread`, `input`, and `emit` builders. Only returned members are installed; access them through `payments.effects.charge` and `payments.projections.ledger`. Event schemas can be inline or supplied as a reusable `defineEventCatalog`.
+
+Modules that implement a custom thread kind can return `definitions` alongside `threads`. The runtime gathers these for `start`, HTTP starts, and cross-module child spawning.
 
 ## Talk to a running run
 
@@ -55,12 +65,7 @@ Your module can do the same: export a function that returns an `EventInput`, and
 A module declares namespaced events, effects the host should run, and optional projections for the UI. Handlers should be safe to retry — use `ctx.effectId` as an idempotency key.
 
 ```ts
-import {
-  defineEffect,
-  defineEventCatalog,
-  defineProjection,
-  defineRuntimeModule,
-} from '@looms/core'
+import { defineModule } from '@looms/core'
 import { z } from 'zod'
 
 const Charge = z.object({
@@ -68,47 +73,53 @@ const Charge = z.object({
   amount: z.number(),
 })
 
-const events = defineEventCatalog('payments', {
-  'charge.requested': Charge,
-  'charge.authorized': Charge,
-})
-
-const charge = defineEffect({
-  type: 'payments.charge',
-  input: z.object({ amount: z.number() }),
-  execute: (input, ctx) => [
-    {
-      type: 'payments.charge.requested',
-      payload: { chargeId: ctx.effectId, amount: input.amount },
-    },
-    {
-      type: 'payments.charge.authorized',
-      payload: { chargeId: ctx.effectId, amount: input.amount },
-    },
-  ],
-})
-
-export const ledger = defineProjection({
-  name: 'ledger',
-  shape: z.object({
-    entries: z.array(z.object({ chargeId: z.string(), amount: z.number() })),
-  }),
-  initialState: { entries: [] },
-  reduce(state, event) {
-    if (event.type !== 'payments.charge.authorized') return state
-    return { entries: [...state.entries, event.payload] }
-  },
-})
-
-export function payments() {
-  return defineRuntimeModule({
+export const payments = defineModule(
+  {
     namespace: 'payments',
     protocolVersion: '1.0.0',
-    events,
-    effects: { charge },
-    projections: { ledger },
-  })
-}
+    events: {
+      'charge.requested': Charge,
+      'charge.authorized': Charge,
+    },
+  },
+  (m) => ({
+    effects: {
+      charge: m.effect({
+        type: 'payments.charge',
+        input: z.object({ amount: z.number() }),
+        execute: (input, ctx) => [
+          {
+            type: 'payments.charge.requested',
+            payload: { chargeId: ctx.effectId, amount: input.amount },
+          },
+          {
+            type: 'payments.charge.authorized',
+            payload: { chargeId: ctx.effectId, amount: input.amount },
+          },
+        ],
+      }),
+    },
+    projections: {
+      ledger: m.projection({
+        name: 'ledger',
+        shape: z.object({
+          entries: z.array(Charge),
+        }),
+        initialState: { entries: [] },
+        reduce(state, event) {
+          if (event.type !== 'payments.charge.authorized') {
+            return state
+          }
+
+          return { entries: [...state.entries, event.payload] }
+        },
+      }),
+    },
+  }),
+)
+
+export const { charge } = payments.effects
+export const { ledger } = payments.projections
 ```
 
 Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
@@ -117,7 +128,7 @@ Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Age
 
 ## File layout
 
-Built-in modules (`@looms/agent`, `@looms/workflow`, `@looms/approval`) use one file per slot on `defineRuntimeModule`. Open the folder and the names tell you where to look:
+Built-in modules (`@looms/agent`, `@looms/workflow`, `@looms/approval`) use separate files for larger modules. Open the folder and the names tell you where to look:
 
 ```
 src/
@@ -126,11 +137,12 @@ src/
   effects.ts       # host-side effect handlers
   projections.ts   # read models
   signals.ts       # builders for looms.signal / store.commit
-  module.ts        # defineRuntimeModule wiring
+  scope.ts         # createModuleScope for shared typed builders
+  module.ts        # defineModule(options, setup) assembly
   index.ts         # public re-exports
 ```
 
-A small domain module can stay in one file. When a second event, effect, or projection appears, split along these names so the folder stays scannable.
+A small domain module can stay in one callback. Larger modules can use `createModuleScope(options)` in `scope.ts` to author members across files, then return those members from `defineModule(options, setup)` in `module.ts`. The scope is an authoring helper; pass the finished module to the host.
 
 Conventions that keep modules composable:
 
@@ -146,7 +158,7 @@ Conventions that keep modules composable:
 ```ts
 import { createTestRuntime, assertReplayDeterministic, moduleConformance } from '@looms/testing'
 
-expect(moduleConformance(payments())).toEqual([])
-const test = await createTestRuntime([payments()])
+expect(moduleConformance(payments)).toEqual([])
+const test = await createTestRuntime([payments])
 await assertReplayDeterministic(test, runId)
 ```

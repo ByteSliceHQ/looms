@@ -11,7 +11,7 @@ import {
 } from './compose'
 import { defineEffect } from './effects'
 import { defineRuntimeModule } from './module'
-import { defineModule } from './module-scope'
+import { createModuleScope, defineModule } from './module-scope'
 import { defineThread } from './thread'
 
 const ping = defineThread({
@@ -72,12 +72,12 @@ describe('composeModules', () => {
     expect(result).toContain('caught: Duplicate module namespace: dup_effect')
   })
 
-  test('composes module built via defineModule scope', () => {
+  test('composes a module assembled from separately defined members', () => {
     const catalog = defineEventCatalog('scoped', {
       started: Schema.Struct({ id: Schema.String }),
     })
 
-    const scoped = defineModule({
+    const scoped = createModuleScope({
       namespace: 'scoped',
       protocolVersion: '1.0.0',
       events: catalog,
@@ -100,16 +100,61 @@ describe('composeModules', () => {
       execute: () => [],
     })
 
-    const module = scoped.build({
+    const module = defineModule(scoped, () => ({
       threads: { scopedThread: thread },
       effects: { work: effect },
-    })
+    }))
 
     const composed = composeModules([module])
     expect(composed.threads.get('scopedThread')).toBe(thread)
     expect(composed.effects.get('scoped.doWork')).toBe(effect)
     expect(composed.catalogs).toHaveLength(2)
     expect(composed.catalogs[1]?.namespace).toBe('scoped')
+  })
+
+  test('collects definitions owned by modules', () => {
+    const checkout = { kind: 'ping', name: 'checkout' }
+    const module = defineRuntimeModule({
+      namespace: 'flows',
+      protocolVersion: '1.0.0',
+      definitions: [checkout],
+      threads: { ping },
+    })
+
+    const composed = composeModules([module])
+    expect(composed.definitions).toEqual([
+      { kind: 'ping', name: 'checkout', input: undefined, value: checkout },
+    ])
+  })
+
+  test('rejects duplicate definitions across modules', () => {
+    const def = { kind: 'ping', name: 'shared' }
+    const a = defineRuntimeModule({
+      namespace: 'a',
+      protocolVersion: '1.0.0',
+      definitions: [def],
+      threads: { ping },
+    })
+    const b = defineRuntimeModule({
+      namespace: 'b',
+      protocolVersion: '1.0.0',
+      definitions: [def],
+      threads: { ping },
+    })
+
+    expect(() => composeModules([a, b])).toThrow(/Duplicate definition: ping:shared/)
+  })
+
+  test('rejects definitions whose owning module does not implement the kind', () => {
+    const module = defineRuntimeModule({
+      namespace: 'orphan',
+      protocolVersion: '1.0.0',
+      definitions: [{ kind: 'workflow', name: 'checkout' }],
+    })
+
+    expect(() => composeModules([module])).toThrow(
+      /registers definition workflow:checkout but does not implement thread kind workflow/,
+    )
   })
 })
 

@@ -61,8 +61,7 @@ const store = withProjectors(bunSqliteEventStore({ path: './looms.sqlite' }), [
 ])
 
 const looms = createLooms({
-  definitions: [echo, checkout, assistant],
-  modules: [agent({ llm }), workflow(), approval(), payments()],
+  modules: [agent({ definitions: [echo, assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
   store,
   serve: { port: 8787 },
 })`}</CodeBlock>
@@ -75,27 +74,17 @@ const looms = createLooms({
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>
-              <code>definitions</code>
-            </td>
-            <td>
-              <code>[]</code>
-            </td>
-            <td>
-              Anything you can <code>start</code>: agents, workflows, or kinds from your own modules
-            </td>
-          </tr>
+
           <tr>
             <td>
               <code>modules</code>
             </td>
             <td>
-              <code>[agent(), workflow(), approval()]</code>
+              <code>[]</code>
             </td>
             <td>
-              Configure a module (<code>agent({'{ llm }'})</code>), add domain modules, or drop ones
-              you do not need
+              Configured modules, including their definitions. Pass <code>{'agent({ definitions: [echo], llm })'}</code>, <code>{'workflow({ definitions: [checkout] })'}</code>,{' '}
+              <code>approval()</code>, and/or your own — nothing is included unless you pass it
             </td>
           </tr>
           <tr>
@@ -131,7 +120,7 @@ const looms = createLooms({
         </tbody>
       </table>
       <p>
-        The LLM adapter lives on the agent module (<code>agent({'{ llm }'})</code>), not on the host
+        The LLM adapter lives on the agent module (<code>{'agent({ llm })'}</code>), not on the host
         — the host does not know what an agent is. Without one, agents run on a deterministic stub.
       </p>
       <p>Common methods:</p>
@@ -203,7 +192,7 @@ const looms = createLooms({
               <code>@looms/agent</code>
             </td>
             <td>
-              <code>agent({'{ llm }'})</code>, <code>defineAgent</code>, <code>defineTool</code>,{' '}
+              <code>{'agent({ llm })'}</code>, <code>defineAgent</code>, <code>defineTool</code>,{' '}
               <code>conversation</code>, <code>userMessage</code>
             </td>
           </tr>
@@ -308,11 +297,11 @@ const looms = createLooms({
         <tbody>
           <tr>
             <td>
-              <code>defineModule(options)</code>
+              <code>defineModule(options, setup)</code>
             </td>
             <td>
-              Create a typed module scope weaving a catalog into threads, projections, effects, and
-              input/emit builders.
+              Return a finished module from a typed setup callback. Accepts inline event schemas or
+              a catalog; returned effects, threads, projections, and definitions are installed.
             </td>
           </tr>
           <tr>

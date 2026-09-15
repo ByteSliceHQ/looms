@@ -2,7 +2,6 @@ import { Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
-  DefinitionRef,
   EventStore,
   RunState,
   SnapshotStore,
@@ -18,7 +17,6 @@ export interface LocalActorHostOptions<
 > {
   readonly createStore: (runId: string) => EventStore | Promise<EventStore>
   readonly modules: TModules
-  readonly definitions?: ReadonlyArray<DefinitionRef>
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -76,7 +74,6 @@ export function createLocalActorHost<
         store,
         scheduler,
         modules: options.modules,
-        definitions: options.definitions,
         snapshotStore: options.snapshotStore,
         snapshotEvery: options.snapshotEvery,
         maxWakeIterations: options.maxWakeIterations,

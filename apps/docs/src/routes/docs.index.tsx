@@ -80,8 +80,7 @@ import { createLooms } from '@looms/runtime'
 import { payments } from './modules/payments'
 
 const looms = createLooms({
-  definitions: [assistant, checkout],
-  modules: [agent({ llm }), workflow(), approval(), payments()],
+  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
 })`}</CodeBlock>
       <p>
         A payments service can ship workflow + approval + a custom charges module and skip agents

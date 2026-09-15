@@ -1,8 +1,8 @@
-import { defineModule, type EventOf } from '@looms/core'
+import { createModuleScope, type EventOf } from '@looms/core'
 
 import { workflowCatalog } from './events'
 
-export const workflowModule = defineModule({
+export const workflowModule = createModuleScope({
   namespace: 'workflow',
   protocolVersion: '1.0.0',
   events: workflowCatalog,

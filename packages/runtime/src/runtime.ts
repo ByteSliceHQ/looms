@@ -107,7 +107,6 @@ export interface CreateRuntimeOptions<
 > {
   readonly modules: TModules
   readonly store?: EventStore
-  readonly definitions?: ReadonlyArray<RegisteredDefinition>
   /**
    * Durable events between mid-wake snapshots. Default 200; `0` disables.
    * A snapshot is always taken when a wake parks, so this only bounds replay
@@ -198,13 +197,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   options: CreateRuntimeOptions<TModules>,
 ): LoomsRuntime<TModules> {
   const registry = composeModules(options.modules)
-  const registeredDefinitions = options.definitions ?? []
+  const registeredDefinitions = registry.definitions
 
   const definitions = new Map(
     registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const),
   )
 
-  const services = moduleServices(options.modules, registeredDefinitions)
+  const services = moduleServices(options.modules)
   const waking = new Set<string>()
   /** Coalesce wake requests that arrive while a wake is in flight for the same run. */
   const wakeAgain = new Set<string>()

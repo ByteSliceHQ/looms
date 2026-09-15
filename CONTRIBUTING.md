@@ -50,5 +50,6 @@ flox activate -- bun run doctor
 | Path         | Role                                                       |
 | ------------ | ---------------------------------------------------------- |
 | `packages/*` | Publishable libraries (`@looms/*`)                         |
-| `apps/*`     | Private apps (demo UI)                                     |
+| `apps/*`     | Private apps (demo UI, docs)                               |
+| `examples/`  | Small runnable `createLooms` scripts (`bun run examples`)  |
 | `turbo.json` | Task graph (`build` → `^build`, cached outputs in `dist/`) |

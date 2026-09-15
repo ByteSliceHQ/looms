@@ -15,6 +15,7 @@ import { approval } from '@looms/approval'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { createLooms } from '@looms/runtime'
 import { workflow } from '@looms/workflow'
+import { assistant, checkout } from './definitions'
 
 const llm = vercelLlm({
   model: createOpenRouter({ apiKey }).chat('openai/gpt-4o-mini'),
@@ -22,8 +23,7 @@ const llm = vercelLlm({
 })
 
 const looms = createLooms({
-  definitions,
-  modules: [agent({ llm }), workflow(), approval()],
+  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval()],
 })
 ```
 

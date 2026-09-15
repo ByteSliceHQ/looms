@@ -1,6 +1,6 @@
 import { Layer } from 'effect'
 
-import type { ModuleServicesContext } from '@looms/core'
+import { defineModule } from '@looms/core'
 
 import type { AgentDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
@@ -11,32 +11,20 @@ import { agentModule } from './scope'
 import { agentThread } from './threads'
 
 export interface AgentModuleOptions {
+  readonly definitions?: readonly AgentDefinition[]
   /** Model adapter used for every agent turn. Defaults to a deterministic stub for tests and scripted agents. */
   readonly llm?: LlmAdapter
   readonly llmPolicy?: StubLlmPolicy
 }
 
-function agentDefinitions(ctx: ModuleServicesContext): AgentDefinition[] {
-  const found: AgentDefinition[] = []
-
-  for (const registered of ctx.definitions) {
-    if (registered.value.kind !== 'agent') {
-      continue
-    }
-
-    // SAFETY: definitions with kind 'agent' are produced by defineAgent.
-    found.push(registered.value as AgentDefinition)
-  }
-
-  return found
-}
-
 export function agent(options: AgentModuleOptions = {}) {
+  const definitions = options.definitions ?? []
   const llmLayer = options.llm
     ? Layer.succeed(LlmTag, llmFromAdapter(options.llm))
     : StubLlmLive(options.llmPolicy)
 
-  return agentModule.build({
+  return defineModule(agentModule, () => ({
+    definitions,
     threads: { agent: agentThread },
     effects: {
       callLLM: callLlmEffect,
@@ -46,6 +34,6 @@ export function agent(options: AgentModuleOptions = {}) {
       conversation,
       tokenUsage,
     },
-    services: (ctx) => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions(ctx))),
-  })
+    services: () => Layer.merge(llmLayer, AgentDefinitionsLive(definitions)),
+  }))
 }

@@ -1,0 +1,29 @@
+{
+  "name": "@looms/examples",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Small runnable Looms examples",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "echo-agent": "bun run echo-agent.ts",
+    "workflow": "bun run workflow.ts",
+    "approval": "bun run approval.ts",
+    "custom-module": "bun run custom-module.ts",
+    "custom-thread": "bun run custom-thread.ts",
+    "all": "bun run echo-agent && bun run workflow && bun run approval && bun run custom-module && bun run custom-thread",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@looms/agent": "workspace:*",
+    "@looms/approval": "workspace:*",
+    "@looms/core": "workspace:*",
+    "@looms/runtime": "workspace:*",
+    "@looms/workflow": "workspace:*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.9",
+    "typescript": "7.0.2"
+  }
+}

@@ -17,7 +17,7 @@ import {
 import { createLooms } from '@looms/runtime'
 import { workflow } from '@looms/workflow'
 
-import { assistant, checkout, definitions, echo, orchestrator, pipeline } from './definitions'
+import { assistant, checkout, echo, orchestrator, pipeline } from './definitions'
 import { demoModules } from './runtime'
 
 const EchoOutputSchema = z.object({ text: z.string() })
@@ -43,7 +43,7 @@ function rootOf(state: {
 }
 
 export async function verifyDemo(): Promise<void> {
-  const looms = createLooms({ definitions, modules: demoModules() })
+  const looms = createLooms({ modules: demoModules() })
 
   {
     const { state } = await looms.start(echo, { text: 'hello' })
@@ -341,8 +341,7 @@ export async function verifyDemo(): Promise<void> {
     })
 
     const scripted = createLooms({
-      definitions: [...definitions, caller],
-      modules: demoModules(),
+      modules: demoModules({ agents: [caller] }),
     })
 
     const { runId, state } = await scripted.start(caller, 'run checkout')
@@ -453,8 +452,7 @@ export async function verifyDemo(): Promise<void> {
     })
 
     const failing = createLooms({
-      definitions: [asker],
-      modules: [agent(), workflow(), failingApproval],
+      modules: [agent({ definitions: [asker] }), workflow(), failingApproval],
     })
 
     const { runId, state } = await failing.start(asker, 'please approve')

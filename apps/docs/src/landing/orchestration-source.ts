@@ -82,12 +82,13 @@ export const incidentEvents = defineEventCatalog('incident', {
   {
     name: 'run.ts',
     language: 'tsx',
-    source: `import { createLooms } from '@looms/runtime'
+    source: `import { agent } from '@looms/agent'
+import { createLooms } from '@looms/runtime'
 
 import { incidentCommander } from './actors'
 
 const looms = createLooms({
-  definitions: [incidentCommander],
+  modules: [agent({ definitions: [incidentCommander] })],
 })
 
 const run = await looms.start(incidentCommander, {

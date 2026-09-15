@@ -98,14 +98,13 @@ export function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[
 
 export function moduleServices(
   modules: readonly AnyRuntimeModule[],
-  definitions: ReadonlyArray<RegisteredDefinition>,
 ): Layer.Layer<any> {
   // SAFETY: Empty layer serves as seed; module service layers are merged in.
   let merged: Layer.Layer<any> = Layer.empty as Layer.Layer<any>
 
   for (const module of modules) {
     if (module.services) {
-      merged = Layer.merge(merged, module.services({ definitions }))
+      merged = Layer.merge(merged, module.services())
     }
   }
 
@@ -150,6 +149,9 @@ export function threadStartedEvents(
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
   return Effect.gen(function* () {
     const def = definitions.get(`${args.kind}:${args.definitionName}`)
+    if (!def) {
+      return yield* Effect.fail(new Error(`Unknown definition ${args.kind}:${args.definitionName}`))
+    }
     const raw = args.input ?? null
     let startedInput = raw
     let validationError: string | undefined

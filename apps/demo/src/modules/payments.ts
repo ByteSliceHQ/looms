@@ -20,14 +20,6 @@ export const paymentsCatalog = defineEventCatalog('payments', {
   'charge.declined': ChargeDeclined,
 })
 
-export const paymentsModule = defineModule({
-  namespace: 'payments',
-  protocolVersion: '1.0.0',
-  events: paymentsCatalog,
-})
-
-export type PaymentsEvent = EventOf<typeof paymentsModule>
-
 const ChargeInput = z.object({
   chargeId: z.string().optional(),
   amount: z.number(),
@@ -51,35 +43,6 @@ function decideOutcome(effectId: string, input: ChargeInput): 'authorized' | 'de
   return next
 }
 
-export const chargeEffect = paymentsModule.effect({
-  type: 'payments.charge',
-  input: ChargeInput,
-  execute: (input, ctx) => {
-    const chargeId = input.chargeId ?? ctx.effectId
-    const currency = input.currency ?? 'USD'
-    const outcome = decideOutcome(ctx.effectId, input)
-
-    return [
-      {
-        type: 'payments.charge.requested',
-        payload: { chargeId, amount: input.amount, currency },
-        threadId: ctx.threadId,
-      },
-      outcome === 'authorized'
-        ? {
-            type: 'payments.charge.authorized',
-            payload: { chargeId, amount: input.amount, currency },
-            threadId: ctx.threadId,
-          }
-        : {
-            type: 'payments.charge.declined',
-            payload: { chargeId, amount: input.amount, currency, reason: 'card_declined' },
-            threadId: ctx.threadId,
-          },
-    ]
-  },
-})
-
 const LedgerEntrySchema = z.object({
   chargeId: z.string(),
   amount: z.number(),
@@ -93,51 +56,89 @@ const LedgerSchema = z.object({
 
 export type LedgerEntry = z.infer<typeof LedgerEntrySchema>
 
-export const ledger = paymentsModule.projection({
-  name: 'ledger',
-  shape: LedgerSchema,
-  initialState: { entries: [] },
-  reduce(state, event) {
-    switch (event.type) {
-      case 'payments.charge.requested': {
-        const { chargeId, amount, currency } = event.payload
-        return {
-          entries: [
-            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-            { chargeId, amount, currency, status: 'requested' },
-          ],
-        }
-      }
-
-      case 'payments.charge.authorized': {
-        const { chargeId, amount, currency } = event.payload
-        return {
-          entries: [
-            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-            { chargeId, amount, currency, status: 'authorized' },
-          ],
-        }
-      }
-
-      case 'payments.charge.declined': {
-        const { chargeId, amount, currency } = event.payload
-        return {
-          entries: [
-            ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-            { chargeId, amount, currency, status: 'declined' },
-          ],
-        }
-      }
-
-      default:
-        return state
-    }
+export const payments = defineModule(
+  {
+    namespace: 'payments',
+    protocolVersion: '1.0.0',
+    events: paymentsCatalog,
   },
-})
+  (m) => ({
+    effects: {
+      charge: m.effect({
+        type: 'payments.charge',
+        input: ChargeInput,
+        execute: (input, ctx) => {
+          const chargeId = input.chargeId ?? ctx.effectId
+          const currency = input.currency ?? 'USD'
+          const outcome = decideOutcome(ctx.effectId, input)
 
-export function payments() {
-  return paymentsModule.build({
-    effects: { charge: chargeEffect },
-    projections: { ledger },
-  })
-}
+          return [
+            {
+              type: 'payments.charge.requested',
+              payload: { chargeId, amount: input.amount, currency },
+              threadId: ctx.threadId,
+            },
+            outcome === 'authorized'
+              ? {
+                  type: 'payments.charge.authorized',
+                  payload: { chargeId, amount: input.amount, currency },
+                  threadId: ctx.threadId,
+                }
+              : {
+                  type: 'payments.charge.declined',
+                  payload: { chargeId, amount: input.amount, currency, reason: 'card_declined' },
+                  threadId: ctx.threadId,
+                },
+          ]
+        },
+      }),
+    },
+    projections: {
+      ledger: m.projection({
+        name: 'ledger',
+        shape: LedgerSchema,
+        initialState: { entries: [] },
+        reduce(state, event) {
+          switch (event.type) {
+            case 'payments.charge.requested': {
+              const { chargeId, amount, currency } = event.payload
+              return {
+                entries: [
+                  ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+                  { chargeId, amount, currency, status: 'requested' },
+                ],
+              }
+            }
+
+            case 'payments.charge.authorized': {
+              const { chargeId, amount, currency } = event.payload
+              return {
+                entries: [
+                  ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+                  { chargeId, amount, currency, status: 'authorized' },
+                ],
+              }
+            }
+
+            case 'payments.charge.declined': {
+              const { chargeId, amount, currency } = event.payload
+              return {
+                entries: [
+                  ...state.entries.filter((entry) => entry.chargeId !== chargeId),
+                  { chargeId, amount, currency, status: 'declined' },
+                ],
+              }
+            }
+
+            default:
+              return state
+          }
+        },
+      }),
+    },
+  }),
+)
+
+export const chargeEffect = payments.effects.charge
+export const ledger = payments.projections.ledger
+export type PaymentsEvent = EventOf<typeof payments>

@@ -123,26 +123,24 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       const input = payload.input ?? null
       const definition = registry.threads.get(kind)
 
-      const initial = definition
-        ? definition.initialState({
-            runId: event.runId,
-            threadId,
-            parentThreadId,
-            definitionName,
-            input,
-          })
-        : {}
-
       const record: ThreadRecord = {
         threadId,
         kind,
         definitionName,
         parentThreadId,
-        status: 'running',
+        status: definition ? 'running' : 'failed',
         input,
         output: null,
-        error: null,
-        state: initial,
+        error: definition ? null : `Unsupported thread kind: ${kind}`,
+        state: definition
+          ? definition.initialState({
+              runId: event.runId,
+              threadId,
+              parentThreadId,
+              definitionName,
+              input,
+            })
+          : {},
       }
 
       let next = putThread(state, record)

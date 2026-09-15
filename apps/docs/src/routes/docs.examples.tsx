@@ -16,9 +16,10 @@ function Examples() {
         React, and interacting over HTTP or the CLI.
       </p>
       <p>
-        The included demo app combines these patterns into a complete system. Run it locally with
-        Bun actors (<code>bun run demo</code>) or deploy it to Cloudflare Durable Objects (
-        <code>bun run dev:cloudflare</code>).
+        Prefer the small scripts in the repo <code>examples/</code> folder when you want a minimal{' '}
+        <code>createLooms</code> host (<code>bun run examples</code>). The demo app combines these
+        patterns into a complete system — run it with Bun actors (<code>bun run demo</code>) or
+        deploy it to Cloudflare Durable Objects (<code>bun run dev:cloudflare</code>).
       </p>
 
       <h2>Agent with tools</h2>

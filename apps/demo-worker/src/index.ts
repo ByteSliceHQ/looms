@@ -3,7 +3,6 @@ import {
   routeToDurableObject,
   type LoomsDurableObjectConfig,
 } from '@looms/cloudflare'
-import { definitions } from '@looms/demo/definitions'
 import { resolveDemoLlm, resolveDemoProjectors } from '@looms/demo/demo-config'
 import { demoModules } from '@looms/demo/runtime'
 
@@ -20,7 +19,7 @@ export class LoomsRun extends LoomsDurableObject<Env> {
   override configure(env: Env): LoomsDurableObjectConfig {
     return {
       modules: demoModules({ llm: resolveDemoLlm(env) }),
-      definitions,
+
       projectors: resolveDemoProjectors(env),
     }
   }
