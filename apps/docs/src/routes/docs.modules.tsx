@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
+import { ConceptFigure } from '../illustrations/illustration'
 
 export const Route = createFileRoute('/docs/modules')({
   component: Modules,
@@ -21,6 +22,8 @@ function Modules() {
         and projections. That is what makes an agent spawning a checkout workflow that waits on a
         human gate feel like one system instead of three frameworks glued together.
       </p>
+
+      <ConceptFigure name="modules" />
 
       <h2>What you get out of the box</h2>
       <table>

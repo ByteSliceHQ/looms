@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocsRouteImport } from './routes/docs'
+import { Route as IllustrationsRouteImport } from './routes/illustrations'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IllustrationsRoute = IllustrationsRouteImport.update({
+  id: '/illustrations',
+  path: '/illustrations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -80,6 +86,7 @@ const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/docs': typeof DocsRouteWithChildren
+  '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/durability': typeof DocsDurabilityRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/durability': typeof DocsDurabilityRoute
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/docs': typeof DocsRouteWithChildren
+  '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
   '/docs/durability': typeof DocsDurabilityRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/docs'
+    | '/illustrations'
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/durability'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/illustrations'
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/durability'
@@ -146,6 +157,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/docs'
+    | '/illustrations'
     | '/docs/api'
     | '/docs/concepts'
     | '/docs/durability'
@@ -160,6 +172,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DocsRoute: typeof DocsRouteWithChildren
+  IllustrationsRoute: typeof IllustrationsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -176,6 +189,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs'
       preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/illustrations': {
+      id: '/illustrations'
+      path: '/illustrations'
+      fullPath: '/illustrations'
+      preLoaderRoute: typeof IllustrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -273,6 +293,7 @@ const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DocsRoute: DocsRouteWithChildren,
+  IllustrationsRoute: IllustrationsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

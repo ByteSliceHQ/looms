@@ -10,7 +10,8 @@
     "build": "vite build",
     "start": "PORT=8788 bun .output/server/index.mjs",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "illustrations:export": "bun scripts/export-illustrations.tsx"
   },
   "dependencies": {
     "@looms/core": "workspace:*",
