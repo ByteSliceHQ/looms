@@ -1,12 +1,12 @@
 {
-  "name": "@looms/livestore",
+  "name": "@looms/react",
   "version": "0.1.0",
-  "description": "Opinionated LiveStore schema, React bindings, and light materializers for Looms",
+  "description": "React bindings and client run store for Looms",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/ByteSliceHQ/looms.git",
-    "directory": "packages/livestore"
+    "directory": "packages/react"
   },
   "files": [
     "dist",
@@ -20,11 +20,6 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./react": {
-      "types": "./src/react.ts",
-      "import": "./src/react.ts",
-      "default": "./src/react.ts"
     }
   },
   "publishConfig": {
@@ -34,10 +29,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
-      },
-      "./react": {
-        "types": "./dist/react.d.ts",
-        "import": "./dist/react.js"
       }
     },
     "access": "public"

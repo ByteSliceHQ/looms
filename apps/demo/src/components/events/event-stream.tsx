@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 
 import { loomsClient } from '@/lib/looms-client'
 import { EventStream as EventStreamView, type ReplayStep } from '@looms/debugger'
-import { useRunEvents, useRunSelector, useRunStore } from '@looms/livestore/react'
+import { useRunEvents, useRunSelector, useRunStore } from '@looms/react'
 
 import { demoEventCatalog } from './event-summary'
 

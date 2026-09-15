@@ -11,7 +11,7 @@
       "@looms/agent",
       "@looms/workflow",
       "@looms/client",
-      "@looms/livestore",
+      "@looms/react",
       "@looms/cli",
       "@looms/projectors"
     ]

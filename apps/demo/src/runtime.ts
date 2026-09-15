@@ -1,7 +1,7 @@
 import { agent, type LlmAdapter } from '@looms/agent'
 import { approval } from '@looms/approval'
 import type { EventsOf } from '@looms/core'
-import type {} from '@looms/livestore'
+import type {} from '@looms/react'
 import { workflow } from '@looms/workflow'
 
 import { demoLlm } from './demo-llm'
@@ -14,7 +14,7 @@ export function demoModules(options: { llm?: LlmAdapter } = {}) {
 
 export type DemoEvents = EventsOf<typeof demoModules>
 
-declare module '@looms/livestore' {
+declare module '@looms/react' {
   interface LoomsRegister {
     events: DemoEvents
   }

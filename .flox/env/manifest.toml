@@ -4,7 +4,7 @@ schema-version = "1.13.0"
 bun.pkg-path = "bun"
 # Optional host index for actor directory / review inbox / timer wakes
 postgresql.pkg-path = "postgresql"
-# Used by scripts/install-s2-cli.sh (s2-lite for the LiveStore demo)
+# Used by scripts/install-s2-cli.sh (s2-lite for the demo)
 curl.pkg-path = "curl"
 unzip.pkg-path = "unzip"
 nodejs.pkg-path = "nodejs"
@@ -12,7 +12,7 @@ nodejs.pkg-path = "nodejs"
 [vars]
 LOOMS_HOST = "127.0.0.1"
 LOOMS_PORT = "4242"
-# In-memory by default. For the LiveStore demo / s2-lite, export (or copy .env.example):
+# In-memory by default. For the demo / s2-lite, export (or copy .env.example):
 # LOOMS_S2_ACCESS_TOKEN = "local"
 # LOOMS_S2_BASIN = "looms-demo"
 # LOOMS_S2_ENDPOINT = "http://127.0.0.1:8080"

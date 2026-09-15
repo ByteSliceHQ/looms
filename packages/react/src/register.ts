@@ -10,7 +10,7 @@ export type AnyEventEnvelope = EventEnvelope<string, any>
  * `useRunEvents`, `createLoomsStore`, and related hooks:
  *
  * ```ts
- * declare module '@looms/livestore' {
+ * declare module '@looms/react' {
  *   interface LoomsRegister {
  *     modules: typeof demoModules
  *   }

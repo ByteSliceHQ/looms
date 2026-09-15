@@ -739,8 +739,8 @@
             <a href="#bring-your-own-event-catalog">Bring Your Own Event Catalog</a>
             <a href="#execution-kinds-should-be-open">Execution Kinds Should Be Open</a>
             <a href="#two-different-reducer-contracts">Two Different Reducer Contracts</a>
-            <a href="#projections-are-portable-livestore-is-an-adapter"
-              >Projections Are Portable; LiveStore Is an Adapter</a
+            <a href="#projections-are-portable-ui-is-an-adapter"
+              >Projections Are Portable; The UI Is an Adapter</a
             >
             <a href="#effects-and-handlers-should-be-pluggable"
               >Effects and Handlers Should Be Pluggable</a
@@ -1381,24 +1381,24 @@ type Events = EventsOf&lt;typeof runtime&gt;</code></pre>
           </p>
         </section>
 
-        <section id="projections-are-portable-livestore-is-an-adapter">
+        <section id="projections-are-portable-ui-is-an-adapter">
           <div class="section-topline">
             <div class="section-kicker">14</div>
             <span class="origin extension">Design extension</span>
           </div>
-          <h2>Projections Are Portable; LiveStore Is an Adapter</h2>
+          <h2>Projections Are Portable; The UI Is an Adapter</h2>
 
           <p>
             The abstraction should be <strong>Projection</strong>, not
-            <strong>LiveStoreProjection</strong>. LiveStore is one host capable of materializing a
-            projection.
+            <strong>ReactProjection</strong>. The React client store is one host capable of
+            materializing a projection.
           </p>
 
           <div class="projection-diagram">
             <div class="source-node">Run Stream</div>
             <div class="projection-grid">
               <div><strong>Runtime Projection</strong><span>executor state</span></div>
-              <div><strong>LiveStore Adapter</strong><span>reactive UI</span></div>
+              <div><strong>React Adapter</strong><span>reactive UI</span></div>
               <div><strong>Postgres Adapter</strong><span>queryable views</span></div>
               <div><strong>ClickHouse Adapter</strong><span>analytics</span></div>
               <div><strong>SQLite Adapter</strong><span>local/offline</span></div>
@@ -1628,7 +1628,7 @@ type Projections = ProjectionsOf&lt;typeof runtime&gt;</code></pre>
   snapshots: postgresSnapshots(...),
 
   projections: [
-    liveStoreAdapter(...),
+    reactAdapter(...),
     clickhouseAdapter(...),
   ],
 })</code></pre>
@@ -1887,7 +1887,7 @@ type Projections = ProjectionsOf&lt;typeof runtime&gt;</code></pre>
             <article>
               <h3>Projection portability</h3>
               <p>
-                What subset of reducer logic can run identically in backend, LiveStore, SQLite, and
+                What subset of reducer logic can run identically in backend, React, SQLite, and
                 analytics environments?
               </p>
             </article>
@@ -1931,7 +1931,7 @@ type Projections = ProjectionsOf&lt;typeof runtime&gt;</code></pre>
             </li>
             <li>
               <strong>Projection API:</strong> make the same projection run in memory and through a
-              LiveStore adapter.
+              React client adapter.
             </li>
             <li>
               <strong>Third-party-style module:</strong> build a Stripe or GitHub module without
@@ -2070,11 +2070,11 @@ type Projections = ProjectionsOf&lt;typeof runtime&gt;</code></pre>
                 </td>
               </tr>
               <tr>
-                <td><strong>LiveStore</strong></td>
-                <td>Event-sourced reactive projections materialized into local/queryable state.</td>
+                <td><strong>Client reactive store</strong></td>
+                <td>Event-sourced reactive projections materialized into local UI state.</td>
                 <td>
                   Excellent fit for the projection layer, but not an execution runtime. In our model
-                  LiveStore is an adapter/host for portable projections.
+                  <code>@looms/react</code> is an adapter/host for portable projections.
                 </td>
               </tr>
               <tr>
@@ -2138,7 +2138,7 @@ type Projections = ProjectionsOf&lt;typeof runtime&gt;</code></pre>
             <article>
               <h3>Portable projections</h3>
               <p>
-                The same Event history can drive runtime state, LiveStore UI state, Postgres views,
+                The same Event history can drive runtime state, React UI state, Postgres views,
                 ClickHouse analytics, local SQLite, debugger timelines, and custom projections.
               </p>
             </article>

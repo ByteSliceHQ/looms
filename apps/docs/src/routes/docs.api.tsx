@@ -156,7 +156,7 @@ const looms = createLooms({
           <code>replayTo(runId, seq)</code> — state before and after an event
         </li>
         <li>
-          <code>fetch(request)</code> — handle <code>/runs</code> and <code>/api/livestore</code>;
+          <code>fetch(request)</code> — handle <code>/runs</code> and <code>/api/events</code>;
           returns <code>null</code> for other paths so you can mount Looms next to your own UI
         </li>
         <li>
@@ -242,7 +242,7 @@ const looms = createLooms({
           </tr>
           <tr>
             <td>
-              <code>@looms/livestore</code>
+              <code>@looms/react</code>
             </td>
             <td>
               <code>useRunStore</code>, <code>useProjection</code>, <code>useRunEvents</code>,{' '}
@@ -469,10 +469,10 @@ const looms = createLooms({
           <tr>
             <td>GET</td>
             <td>
-              <code>/api/livestore</code>
+              <code>/api/events</code>
             </td>
             <td>
-              LiveStore pull (<code>?storeId=&cursor=</code>) or SSE (<code>live=true</code> /{' '}
+              Event pull (<code>?runId=&cursor=</code>) or SSE (<code>live=true</code> /{' '}
               <code>Accept: text/event-stream</code>)
             </td>
           </tr>

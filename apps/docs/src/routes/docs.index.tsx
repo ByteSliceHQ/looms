@@ -96,7 +96,7 @@ const looms = createLooms({
         Once history is a log, read models stop being a second source of truth. A{' '}
         <strong>projection</strong> is a pure fold: chat transcripts, approval queues, financial
         ledgers, debugger timelines. The same reducer runs on the host and in the browser via
-        LiveStore, so the UI cannot drift from what happened.
+        <code>@looms/react</code>, so the UI cannot drift from what happened.
       </p>
       <FlowChain steps={['Run stream', 'Pure fold', 'UI projections', 'DB projectors']} />
       <p>

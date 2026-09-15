@@ -5,13 +5,7 @@ import { loomsClient } from '@/lib/looms-client'
 import { cn, compactJson } from '@/lib/utils'
 import { conversation, userMessage } from '@looms/agent'
 import { createRunId } from '@looms/core'
-import {
-  createFold,
-  useEventFold,
-  useProjection,
-  useRunStore,
-  useRunSummary,
-} from '@looms/livestore/react'
+import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import type { AgentRunType } from '../../catalog'
 import { Button } from '../ui/button'

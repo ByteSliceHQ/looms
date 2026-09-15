@@ -5,14 +5,14 @@ import {
   encodeLoomsEvent,
   EventStoreConflictError,
   EventStoreTag,
+  type EncodedLoomsEvent,
   type EventStore,
-  type LiveStoreGlobalEncoded,
 } from '@looms/core'
 
 import type { LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
 
-export { encodeLoomsEvent, type LiveStoreGlobalEncoded }
+export { encodeLoomsEvent, type EncodedLoomsEvent }
 
 function readCursor(req: Request, url: URL): number {
   const lastEventId = req.headers.get('last-event-id')
@@ -26,7 +26,11 @@ function readCursor(req: Request, url: URL): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
-export async function handleLivestoreProxy(
+function readRunId(url: URL): string | null {
+  return url.searchParams.get('runId')
+}
+
+export async function handleEventsApi(
   req: Request,
   runtime: LoomsRuntime,
   store: EventStore,
@@ -38,10 +42,10 @@ export async function handleLivestoreProxy(
   }
 
   if (req.method === 'GET') {
-    const storeId = url.searchParams.get('storeId') ?? url.searchParams.get('runId')
+    const runId = readRunId(url)
 
-    if (!storeId) {
-      return Response.json({ error: 'storeId required' }, { status: 400 })
+    if (!runId) {
+      return Response.json({ error: 'runId required' }, { status: 400 })
     }
 
     const cursor = readCursor(req, url)
@@ -53,11 +57,11 @@ export async function handleLivestoreProxy(
       acceptHeader.includes('text/event-stream')
 
     if (!isLive) {
-      const events = await Effect.runPromise(store.read(storeId, { fromSeq: cursor + 1 }))
+      const events = await Effect.runPromise(store.read(runId, { fromSeq: cursor + 1 }))
 
       const bounds = store.bounds
-        ? await Effect.runPromise(store.bounds(storeId))
-        : { head: events[0]?.seq ?? 1, tail: await Effect.runPromise(store.tail(storeId)) }
+        ? await Effect.runPromise(store.bounds(runId))
+        : { head: events[0]?.seq ?? 1, tail: await Effect.runPromise(store.tail(runId)) }
 
       return Response.json({
         batch: events.map(encodeLoomsEvent),
@@ -70,7 +74,7 @@ export async function handleLivestoreProxy(
       signal: req.signal,
       request: req,
       store,
-      runId: storeId,
+      runId,
       fromSeq: cursor + 1,
     })
   }
@@ -78,39 +82,39 @@ export async function handleLivestoreProxy(
   if (req.method === 'POST') {
     const body: unknown = await req.json()
 
-    const storeId =
-      url.searchParams.get('storeId') ??
-      (Predicate.isReadonlyObject(body) && Predicate.isString(body.storeId) ? body.storeId : null)
+    const runId =
+      readRunId(url) ??
+      (Predicate.isReadonlyObject(body) && Predicate.isString(body.runId) ? body.runId : null)
 
-    if (!storeId) {
-      return Response.json({ error: 'storeId required' }, { status: 400 })
+    if (!runId) {
+      return Response.json({ error: 'runId required' }, { status: 400 })
     }
 
     const batch = Predicate.isReadonlyObject(body) && Array.isArray(body.batch) ? body.batch : []
 
-    const parentSeqNum =
-      Predicate.isReadonlyObject(body) && Predicate.isNumber(body.parentSeqNum)
-        ? body.parentSeqNum
+    const expectedTail =
+      Predicate.isReadonlyObject(body) && Predicate.isNumber(body.expectedTail)
+        ? body.expectedTail
         : 0
 
-    const tail = await Effect.runPromise(store.tail(storeId))
+    const tail = await Effect.runPromise(store.tail(runId))
 
-    if (parentSeqNum !== tail) {
+    if (expectedTail !== tail) {
       return Response.json(
-        { _tag: 'ServerAheadError', expected: parentSeqNum, actual: tail },
+        { _tag: 'ServerAheadError', expected: expectedTail, actual: tail },
         { status: 409 },
       )
     }
 
     const appendable = batch
       .map((item) => {
-        // SAFETY: LiveStore push batch items are host-encoded envelopes.
-        return decodeAppendableEvent(item as LiveStoreGlobalEncoded, storeId)
+        // SAFETY: push batch items are host-encoded envelopes.
+        return decodeAppendableEvent(item as EncodedLoomsEvent, runId)
       })
       .filter((item): item is NonNullable<typeof item> => item !== undefined)
 
     try {
-      await Effect.runPromise(store.append(storeId, appendable, { expectedTail: parentSeqNum }))
+      await Effect.runPromise(store.append(runId, appendable, { expectedTail }))
     } catch (err) {
       if (err instanceof EventStoreConflictError) {
         return Response.json(
@@ -122,7 +126,7 @@ export async function handleLivestoreProxy(
       throw err
     }
 
-    await Effect.runPromise(Effect.provideService(runtime.wake(storeId), EventStoreTag, store))
+    await Effect.runPromise(Effect.provideService(runtime.wake(runId), EventStoreTag, store))
     return Response.json({ ok: true })
   }
 

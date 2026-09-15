@@ -25,7 +25,7 @@ Looms uses [Changesets](https://github.com/changesets/changesets) for versioning
    # bunx changeset publish   # do not run unless intentionally releasing
    ```
 
-Linked packages (`@looms/core`, `@looms/s2`, `@looms/runtime`, `@looms/agent`, `@looms/workflow`, `@looms/client`, `@looms/livestore`, `@looms/cli`, `@looms/projectors`) share versions.
+Linked packages (`@looms/core`, `@looms/s2`, `@looms/runtime`, `@looms/agent`, `@looms/workflow`, `@looms/client`, `@looms/react`, `@looms/cli`, `@looms/projectors`) share versions.
 
 ## First release (0.1.0)
 

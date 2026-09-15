@@ -14,7 +14,7 @@ const decodePayloadRecord = Schema.decodeUnknownOption(
 
 /**
  * Extracts the target `runId` from a Looms HTTP request.
- * Inspects `x-looms-run-id`, `/runs/:runId/*`, and `/api/livestore?storeId=*`.
+ * Inspects `x-looms-run-id`, `/runs/:runId/*`, and `/api/events?runId=*`.
  */
 export function runIdFromRequest(req: Request): string | null {
   const header = req.headers.get('x-looms-run-id')
@@ -32,11 +32,11 @@ export function runIdFromRequest(req: Request): string | null {
     return decodeURIComponent(runsMatch[1])
   }
 
-  if (path.startsWith('/api/livestore')) {
-    const storeId = url.searchParams.get('storeId') ?? url.searchParams.get('runId')
+  if (path.startsWith('/api/events')) {
+    const runId = url.searchParams.get('runId')
 
-    if (storeId) {
-      return storeId
+    if (runId) {
+      return runId
     }
   }
 

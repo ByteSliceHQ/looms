@@ -16,13 +16,13 @@ describe('routing', () => {
       'run_abc123',
     )
 
-    expect(
-      runIdFromRequest(new Request('http://localhost:8787/api/livestore?storeId=run_live1')),
-    ).toBe('run_live1')
+    expect(runIdFromRequest(new Request('http://localhost:8787/api/events?runId=run_live1'))).toBe(
+      'run_live1',
+    )
 
-    expect(
-      runIdFromRequest(new Request('http://localhost:8787/api/livestore?runId=run_live2')),
-    ).toBe('run_live2')
+    expect(runIdFromRequest(new Request('http://localhost:8787/api/events?runId=run_live2'))).toBe(
+      'run_live2',
+    )
 
     const reqWithHeader = new Request('http://localhost:8787/runs', {
       headers: { 'x-looms-run-id': 'run_header' },

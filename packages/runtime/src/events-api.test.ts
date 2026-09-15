@@ -39,7 +39,7 @@ async function readSseFrames(res: Response, count: number): Promise<string[]> {
   return frames
 }
 
-describe('handleLivestoreProxy SSE', () => {
+describe('handleEventsApi SSE', () => {
   test('streams existing events with id framing', async () => {
     const echo = defineAgent({
       name: 'echo-sse',
@@ -55,7 +55,7 @@ describe('handleLivestoreProxy SSE', () => {
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`),
+      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&live=true`),
     )
 
     expect(res).not.toBeNull()
@@ -84,12 +84,9 @@ describe('handleLivestoreProxy SSE', () => {
     expect(events.length).toBeGreaterThan(1)
 
     const res = await looms.fetch(
-      new Request(
-        `http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&live=true`,
-        {
-          headers: { 'last-event-id': '1', accept: 'text/event-stream' },
-        },
-      ),
+      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&live=true`, {
+        headers: { 'last-event-id': '1', accept: 'text/event-stream' },
+      }),
     )
 
     expect(res).not.toBeNull()
@@ -113,7 +110,7 @@ describe('handleLivestoreProxy SSE', () => {
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/livestore?storeId=${encodeURIComponent(runId)}&cursor=0`),
+      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&cursor=0`),
     )
 
     expect(res).not.toBeNull()

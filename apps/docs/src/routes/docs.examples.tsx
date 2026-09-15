@@ -103,10 +103,10 @@ export const checkout = defineWorkflow({
 
       <h2>React: chat and approvals</h2>
       <CodeBlock lang="tsx">{`import {
-  LoomsLiveStoreProvider,
+  LoomsProvider,
   useRunStore,
   useProjection,
-} from '@looms/livestore/react'
+} from '@looms/react'
 import { conversation, userMessage } from '@looms/agent'
 import { decision, pendingApprovals } from '@looms/approval'
 import { ledger } from './modules/payments'

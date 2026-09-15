@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 
 import { statusClass } from '@/lib/status'
 import { shortId } from '@/lib/utils'
-import { useRunStore, useRunSummary } from '@looms/livestore/react'
+import { useRunStore, useRunSummary } from '@looms/react'
 
 import { StatusDot } from '../status-dot'
 import { Button } from '../ui/button'

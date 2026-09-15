@@ -10,7 +10,7 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import { handleLivestoreProxy } from './livestore-proxy'
+import { handleEventsApi } from './events-api'
 import type { LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
 
@@ -121,7 +121,7 @@ async function readJson(req: Request): Promise<JsonValue> {
 }
 
 export function isLoomsApiPath(path: string): boolean {
-  return path === '/health' || path.startsWith('/api/livestore') || path.startsWith('/runs')
+  return path === '/health' || path.startsWith('/api/events') || path.startsWith('/runs')
 }
 
 function toErrorResponse(err: Error): Response {
@@ -155,8 +155,8 @@ export function createFetchHandler(
       return Response.json({ ok: true })
     }
 
-    if (path.startsWith('/api/livestore')) {
-      return handleLivestoreProxy(req, runtime, store)
+    if (path.startsWith('/api/events')) {
+      return handleEventsApi(req, runtime, store)
     }
 
     try {

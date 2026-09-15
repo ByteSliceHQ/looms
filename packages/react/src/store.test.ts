@@ -45,8 +45,8 @@ describe('createLoomsStore', () => {
       async fetch(req) {
         const url = new URL(req.url)
 
-        if (url.pathname === '/api/livestore') {
-          const storeId = url.searchParams.get('storeId')
+        if (url.pathname === '/api/events') {
+          const storeId = url.searchParams.get('runId')
 
           if (storeId !== 'run_1') {
             return new Response('Not Found', { status: 404 })
@@ -155,7 +155,7 @@ describe('createLoomsStore reconnect', () => {
       async fetch(req) {
         const url = new URL(req.url)
 
-        if (url.pathname !== '/api/livestore') {
+        if (url.pathname !== '/api/events') {
           return new Response('Not Found', { status: 404 })
         }
 

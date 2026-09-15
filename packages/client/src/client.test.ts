@@ -37,15 +37,15 @@ describe('createLoomsClient', () => {
     expect(calls[0]).toBe('/runs')
   })
 
-  test('subscribeEvents follows /api/livestore SSE', async () => {
+  test('subscribeEvents follows /api/events SSE', async () => {
     const received: string[] = []
 
     const client = createLoomsClient({
       fetch: async (input) => {
         const href = hrefOf(input)
-        expect(href).toContain('/api/livestore')
+        expect(href).toContain('/api/events')
         expect(href).toContain('live=true')
-        expect(href).toContain('storeId=run_1')
+        expect(href).toContain('runId=run_1')
 
         const stream = new ReadableStream({
           start(controller) {
@@ -56,23 +56,19 @@ describe('createLoomsClient', () => {
                 `id: 1\ndata: ${JSON.stringify({
                   batch: [
                     {
-                      name: 'runtime.run.started',
-                      args: {
-                        id: 'evt_1',
-                        ts: Date.now(),
-                        payload: {},
-                        threadId: 'thr_1',
-                        parentThreadId: null,
-                        causationId: null,
-                        correlationId: null,
-                        effectId: null,
-                        ephemeral: false,
-                        origin: { type: 'system' },
-                      },
-                      seqNum: 1,
-                      parentSeqNum: 0,
-                      clientId: 'looms-host',
-                      sessionId: 'looms-host',
+                      id: 'evt_1',
+                      runId: 'run_1',
+                      seq: 1,
+                      ts: Date.now(),
+                      type: 'runtime.run.started',
+                      payload: {},
+                      threadId: 'thr_1',
+                      parentThreadId: null,
+                      causationId: null,
+                      correlationId: null,
+                      effectId: null,
+                      ephemeral: false,
+                      origin: { type: 'system' },
                     },
                   ],
                 })}\n\n`,
@@ -114,23 +110,19 @@ describe('createLoomsClient', () => {
                   `id: 1\ndata: ${JSON.stringify({
                     batch: [
                       {
-                        name: 'agent.turn.text_delta',
-                        args: {
-                          id: 'evt_delta',
-                          ts: Date.now(),
-                          payload: { turn: 1, delta: 'hel' },
-                          threadId: 'thr_1',
-                          parentThreadId: null,
-                          causationId: null,
-                          correlationId: null,
-                          effectId: null,
-                          ephemeral: true,
-                          origin: { type: 'system' },
-                        },
-                        seqNum: 1,
-                        parentSeqNum: 0,
-                        clientId: 'looms-host',
-                        sessionId: 'looms-host',
+                        id: 'evt_delta',
+                        runId: 'run_stream',
+                        seq: 1,
+                        ts: Date.now(),
+                        type: 'agent.turn.text_delta',
+                        payload: { turn: 1, delta: 'hel' },
+                        threadId: 'thr_1',
+                        parentThreadId: null,
+                        causationId: null,
+                        correlationId: null,
+                        effectId: null,
+                        ephemeral: true,
+                        origin: { type: 'system' },
                       },
                     ],
                   })}\n\n`,
@@ -142,23 +134,19 @@ describe('createLoomsClient', () => {
                   `id: 2\ndata: ${JSON.stringify({
                     batch: [
                       {
-                        name: 'agent.message',
-                        args: {
-                          id: 'evt_msg',
-                          ts: Date.now(),
-                          payload: { turn: 1, message: { role: 'assistant', content: 'hello' } },
-                          threadId: 'thr_1',
-                          parentThreadId: null,
-                          causationId: null,
-                          correlationId: null,
-                          effectId: null,
-                          ephemeral: false,
-                          origin: { type: 'system' },
-                        },
-                        seqNum: 2,
-                        parentSeqNum: 1,
-                        clientId: 'looms-host',
-                        sessionId: 'looms-host',
+                        id: 'evt_msg',
+                        runId: 'run_stream',
+                        seq: 2,
+                        ts: Date.now(),
+                        type: 'agent.message',
+                        payload: { turn: 1, message: { role: 'assistant', content: 'hello' } },
+                        threadId: 'thr_1',
+                        parentThreadId: null,
+                        causationId: null,
+                        correlationId: null,
+                        effectId: null,
+                        ephemeral: false,
+                        origin: { type: 'system' },
                       },
                     ],
                   })}\n\n`,

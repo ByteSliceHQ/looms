@@ -10,12 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import {
-  threadTree,
-  toThreadTree,
-  type ProjectionDefinition,
-  type ThreadTree,
-} from '@looms/core'
+import { threadTree, toThreadTree, type ProjectionDefinition, type ThreadTree } from '@looms/core'
 
 import { createFold, foldEvents, type EventFoldDefinition } from './derived'
 import type { AnyEventEnvelope, RegisteredEvent } from './register'
@@ -26,7 +21,7 @@ import {
   type LoomsConnectionStatus,
 } from './store'
 
-export interface LoomsLiveStoreProviderProps {
+export interface LoomsProviderProps {
   children: ReactNode
   endpoint?: string
   coalesce?: CoalesceOption
@@ -37,7 +32,7 @@ interface ProviderContextValue {
   coalesce?: CoalesceOption
 }
 
-const LiveStoreContext = createContext<ProviderContextValue>({ endpoint: '' })
+const LoomsContext = createContext<ProviderContextValue>({ endpoint: '' })
 const GRACE_MS = 5_000
 
 interface RegistryEntry {
@@ -132,13 +127,9 @@ function releaseStore(runId: string, endpoint: string): void {
 }
 
 /** Root provider that supplies the Looms host endpoint to run stores. */
-export function LoomsLiveStoreProvider({
-  children,
-  endpoint = '',
-  coalesce,
-}: LoomsLiveStoreProviderProps) {
+export function LoomsProvider({ children, endpoint = '', coalesce }: LoomsProviderProps) {
   const value = useMemo(() => ({ endpoint, coalesce }), [endpoint, coalesce])
-  return createElement(LiveStoreContext.Provider, { value, children })
+  return createElement(LoomsContext.Provider, { value, children })
 }
 
 export interface UseRunStoreOptions {
@@ -156,7 +147,7 @@ export function useRunStore<TEvent extends AnyEventEnvelope = RegisteredEvent>(
   runId: string,
   options?: UseRunStoreOptions,
 ): LoomsClientStore<TEvent> {
-  const context = useContext(LiveStoreContext)
+  const context = useContext(LoomsContext)
   const endpoint = options?.endpoint ?? context.endpoint
   const reconnectDelayMs = options?.reconnectDelayMs
   const coalesce = options?.coalesce ?? context.coalesce

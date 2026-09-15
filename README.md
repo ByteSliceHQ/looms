@@ -53,7 +53,7 @@ const { runId } = await looms.start(echo, { text: 'hi' })
 React client:
 
 ```ts
-import { LoomsLiveStoreProvider, useRunStore, useProjection } from '@looms/livestore/react'
+import { LoomsProvider, useRunStore, useProjection } from '@looms/react'
 import { conversation, userMessage } from '@looms/agent'
 import { decision } from '@looms/approval'
 
@@ -82,7 +82,7 @@ Runs speak one language: `start` a definition, `signal` events into it, read `pr
 - [Modules](./docs/modules.md) — agents, workflows, approvals, your own domain
 - [Protocol](./docs/protocol.md) — event types and HTTP
 - [Snapshots & actors](./docs/snapshots.md) — per-run cells, Bun / Cloudflare / celld backends, S2 as projector
-- [LiveStore](./docs/livestore.md) — React subscriptions
+- [React](./docs/react.md) — React subscriptions
 - [AI providers](./docs/ai-providers.md)
 
 Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules, projectors, API, examples.
@@ -99,7 +99,7 @@ Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules,
 | `@looms/approval`   | `gate`, `pendingApprovals`                            |
 | `@looms/core`       | Custom modules: `defineRuntimeModule`, `defineEffect` |
 | `@looms/client`     | HTTP client                                           |
-| `@looms/livestore`  | `useRunStore` / `useProjection`                       |
+| `@looms/react`      | `useRunStore` / `useProjection`                       |
 | `@looms/s2`         | Durable event log                                     |
 | `@looms/ai-vercel`  | Vercel AI SDK models                                  |
 | `@looms/projectors` | Cross-run indexes                                     |

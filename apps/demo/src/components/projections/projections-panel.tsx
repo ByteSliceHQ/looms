@@ -4,7 +4,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { conversation, tokenUsage } from '@looms/agent'
 import { pendingApprovals } from '@looms/approval'
 import { asJson } from '@looms/core'
-import { useProjection, useRunSelector, useRunStore } from '@looms/livestore/react'
+import { useProjection, useRunSelector, useRunStore } from '@looms/react'
 import { nodes } from '@looms/workflow'
 
 import { ledger } from '../../modules/payments'

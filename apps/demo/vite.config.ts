@@ -33,8 +33,8 @@ export default defineConfig(({ mode }) => {
         srcDirectory: 'src',
         importProtection: {
           client: {
-            // Allow `@looms/livestore/react` and `@looms/client` in the browser; block host packages.
-            specifiers: [/^@looms\/(runtime|s2)(\/|$)/, /^@looms\/livestore$/],
+            // Allow `@looms/react` and `@looms/client` in the browser; block host packages.
+            specifiers: [/^@looms\/(runtime|s2)(\/|$)/],
           },
         },
       }),

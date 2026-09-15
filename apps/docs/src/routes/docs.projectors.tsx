@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
+import { ConceptFigure } from '../illustrations/illustration'
 
 export const Route = createFileRoute('/docs/projectors')({
   component: Projectors,
@@ -19,9 +20,11 @@ function Projectors() {
       </p>
       <p>
         That is the bridge between execution and UI: the same events that wake a parked workflow
-        also fold into React via LiveStore, and into SQLite or Postgres via projectors. No
-        per-feature sync protocol. No second source of truth that drifts.
+        also fold into React via <code>@looms/react</code>, and into SQLite or Postgres via
+        projectors. No per-feature sync protocol. No second source of truth that drifts.
       </p>
+
+      <ConceptFigure name="projections" />
 
       <FlowChain steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']} />
 
@@ -59,10 +62,10 @@ function Projectors() {
       </div>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
-        <strong>Projections are Portable; LiveStore is an Adapter:</strong> A projection definition
-        is pure TypeScript. The same projection can be folded in-memory on the host, rendered
-        reactively in the browser via LiveStore, or materialized into SQLite, Postgres, or
-        ClickHouse for analytics.
+        <strong>Projections are Portable; React is an Adapter:</strong> A projection definition is
+        pure TypeScript. The same projection can be folded in-memory on the host, rendered
+        reactively in the browser via <code>@looms/react</code>, or materialized into SQLite,
+        Postgres, or ClickHouse for analytics.
       </div>
 
       <h2>Building Custom UIs Using Projections</h2>
@@ -152,18 +155,17 @@ export const orderTracker = ordersModule.projection({
 
       <h3>Step 2: Provide the host connection</h3>
       <p>
-        Wrap your React tree or page with <code>LoomsLiveStoreProvider</code> from{' '}
-        <code>@looms/livestore/react</code>. The default endpoint points to{' '}
-        <code>/api/livestore</code> on your Looms host:
+        Wrap your React tree or page with <code>LoomsProvider</code> from <code>@looms/react</code>.
+        Pass the Looms host URL; the client opens <code>/api/events</code> on that host:
       </p>
-      <CodeBlock lang="tsx">{`import { LoomsLiveStoreProvider } from '@looms/livestore/react'
+      <CodeBlock lang="tsx">{`import { LoomsProvider } from '@looms/react'
 import { OrderDashboard } from './order-dashboard'
 
 export function App({ runId }: { runId: string }) {
   return (
-    <LoomsLiveStoreProvider endpoint="http://localhost:8787/api/livestore">
+    <LoomsProvider endpoint="http://localhost:8787">
       <OrderDashboard runId={runId} />
-    </LoomsLiveStoreProvider>
+    </LoomsProvider>
   )
 }`}</CodeBlock>
 
@@ -174,7 +176,7 @@ export function App({ runId }: { runId: string }) {
         In your component, call <code>useRunStore(runId)</code> to connect to the run&apos;s event
         stream, then pass it to <code>useProjection</code>:
       </p>
-      <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/livestore/react'
+      <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/react'
 import { orderTracker } from './projections'
 
 export function OrderDashboard({ runId }: { runId: string }) {
@@ -250,7 +252,7 @@ export function OrderControls({ runId }: { runId: string }) {
       </p>
       <CodeBlock lang="tsx">{`import { useState } from 'react'
 import { foldProjection } from '@looms/core'
-import { useRunStore } from '@looms/livestore/react'
+import { useRunStore } from '@looms/react'
 import { orderTracker } from './projections'
 
 export function TimeTravelSlider({ runId }: { runId: string }) {

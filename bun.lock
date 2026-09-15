@@ -34,8 +34,8 @@
         "@looms/client": "workspace:*",
         "@looms/core": "workspace:*",
         "@looms/debugger": "workspace:*",
-        "@looms/livestore": "workspace:*",
         "@looms/projectors": "workspace:*",
+        "@looms/react": "workspace:*",
         "@looms/runtime": "workspace:*",
         "@looms/s2": "workspace:*",
         "@looms/workflow": "workspace:*",
@@ -258,8 +258,27 @@
         "react-dom": "^19.0.0",
       },
     },
-    "packages/livestore": {
-      "name": "@looms/livestore",
+    "packages/projectors": {
+      "name": "@looms/projectors",
+      "version": "0.1.0",
+      "dependencies": {
+        "@looms/core": "workspace:*",
+        "effect": "4.0.0-rc.112",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.9",
+        "postgres": "^3.4.0",
+        "typescript": "7.0.2",
+      },
+      "peerDependencies": {
+        "postgres": "^3.4.0",
+      },
+      "optionalPeers": [
+        "postgres",
+      ],
+    },
+    "packages/react": {
+      "name": "@looms/react",
       "version": "0.1.0",
       "dependencies": {
         "@looms/client": "workspace:*",
@@ -281,25 +300,6 @@
       "optionalPeers": [
         "react",
         "react-dom",
-      ],
-    },
-    "packages/projectors": {
-      "name": "@looms/projectors",
-      "version": "0.1.0",
-      "dependencies": {
-        "@looms/core": "workspace:*",
-        "effect": "4.0.0-rc.112",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.3.9",
-        "postgres": "^3.4.0",
-        "typescript": "7.0.2",
-      },
-      "peerDependencies": {
-        "postgres": "^3.4.0",
-      },
-      "optionalPeers": [
-        "postgres",
       ],
     },
     "packages/runtime": {
@@ -665,9 +665,9 @@
 
     "@looms/docs": ["@looms/docs@workspace:apps/docs"],
 
-    "@looms/livestore": ["@looms/livestore@workspace:packages/livestore"],
-
     "@looms/projectors": ["@looms/projectors@workspace:packages/projectors"],
+
+    "@looms/react": ["@looms/react@workspace:packages/react"],
 
     "@looms/runtime": ["@looms/runtime@workspace:packages/runtime"],
 

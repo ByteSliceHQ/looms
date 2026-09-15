@@ -22,11 +22,11 @@ export type StoreListener = () => void
 export type LoomsConnectionStatus = 'connecting' | 'live' | 'reconnecting'
 
 export interface LoomsClientStoreOptions {
-  /** Run id / LiveStore store id. */
+  /** Run id for this client store. */
   storeId: string
   /**
    * Base URL of the Looms host (e.g. http://127.0.0.1:8787).
-   * Opens `${endpoint}/api/livestore?storeId=&live=true` as an SSE stream.
+   * Opens `${endpoint}/api/events?runId=&live=true` as an SSE stream.
    */
   endpoint: string
   /** Backoff between SSE reconnects. */
@@ -167,13 +167,13 @@ export function createLoomsStore<TEvent extends AnyEventEnvelope = RegisteredEve
 
   const liveUrl = () => {
     const cursor = Math.max(0, fromSeq - 1)
-    return `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&live=true&cursor=${cursor}`
+    return `${endpoint}/api/events?runId=${encodeURIComponent(options.storeId)}&live=true&cursor=${cursor}`
   }
 
   const pull = async () => {
     try {
       const cursor = Math.max(0, fromSeq - 1)
-      const url = `${endpoint}/api/livestore?storeId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
+      const url = `${endpoint}/api/events?runId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
       const res = await fetchFn(url)
 
       if (!res.ok) {
@@ -187,7 +187,7 @@ export function createLoomsStore<TEvent extends AnyEventEnvelope = RegisteredEve
           return
         }
 
-        throw new Error(`livestore pull failed: ${res.status}`)
+        throw new Error(`event pull failed: ${res.status}`)
       }
 
       const body: unknown = await res.json()
@@ -201,7 +201,7 @@ export function createLoomsStore<TEvent extends AnyEventEnvelope = RegisteredEve
       applyBatch(
         batch.map((raw) =>
           decodeLoomsEvent(
-            // SAFETY: host pull batch items are EventEnvelope | LiveStoreGlobalEncoded.
+            // SAFETY: host pull batch items are encoded Looms event envelopes.
             raw as Parameters<typeof decodeLoomsEvent>[0],
             options.storeId,
           ),
@@ -332,11 +332,11 @@ export function createLoomsStore<TEvent extends AnyEventEnvelope = RegisteredEve
         const res = await fetchFn(liveUrl(), { headers, signal: controller.signal })
 
         if (!res.ok) {
-          throw new Error(`livestore sse failed: ${res.status}`)
+          throw new Error(`event stream failed: ${res.status}`)
         }
 
         if (!res.body) {
-          throw new Error('livestore sse missing body')
+          throw new Error('event stream missing body')
         }
 
         live = true

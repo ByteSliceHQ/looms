@@ -3,6 +3,7 @@ import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { LandingDebugger, LandingDebuggerFallback } from '../components/landing-debugger'
+import { Illustration } from '../illustrations/illustration'
 import { docsNav } from '../nav'
 
 export const Route = createFileRoute('/')({
@@ -69,6 +70,7 @@ function Landing() {
 
         <div className="mt-10 grid gap-10 md:grid-cols-3 md:gap-12">
           <div>
+            <Illustration name="log" className="mb-5 h-auto w-full" />
             <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
               Runs
             </h3>
@@ -78,6 +80,7 @@ function Landing() {
             </p>
           </div>
           <div>
+            <Illustration name="threads" className="mb-5 h-auto w-full" />
             <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
               Threads
             </h3>
@@ -87,6 +90,7 @@ function Landing() {
             </p>
           </div>
           <div>
+            <Illustration name="wait" className="mb-5 h-auto w-full" />
             <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
               Waits
             </h3>
@@ -158,7 +162,7 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
           steps={['Run stream', 'Pure fold', 'UI projections', 'DB projectors']}
         />
 
-        <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/livestore/react'
+        <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/react'
 import { conversation, userMessage } from '@looms/agent'
 import { pendingApprovals, decision } from '@looms/approval'
 import { ledger } from './modules/payments'

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
+import { ConceptFigure } from '../illustrations/illustration'
 
 export const Route = createFileRoute('/docs/concepts')({
   component: Concepts,
@@ -35,6 +36,8 @@ function Concepts() {
         Looking for the formal algebraic specifications and proofs? See{' '}
         <Link to="/docs/math">Math</Link>.
       </p>
+
+      <ConceptFigure name="threads" />
 
       <h2>Core Vocabulary</h2>
 
@@ -319,6 +322,7 @@ RequestApproval(...)     → Emit('approval.requested', ...) + Wait('approval.de
 SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
 
       <h2>Durable Waiting &amp; Parking</h2>
+      <ConceptFigure name="wait" />
       <p>
         In traditional runtimes, waiting for an approval, child job, or webhook ties up an in-memory
         process or call stack. In Looms:
@@ -382,7 +386,7 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
           <tr>
             <td>Renderer (React DOM / Native)</td>
             <td>
-              <strong>Runtime &amp; Adapters</strong> (Durable Objects, Bun SQLite, LiveStore)
+              <strong>Runtime &amp; Adapters</strong> (Durable Objects, Bun SQLite, React)
             </td>
           </tr>
           <tr>
@@ -403,7 +407,7 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
       <p>
         Because all facts exist in the append-only event stream, UIs do not need to poll ad-hoc CRUD
         endpoints or manage custom WebSocket protocols. Projections fold the event stream directly
-        into reactive UI state in the browser via LiveStore and SSE.
+        into reactive UI state in the browser via <code>@looms/react</code> and SSE.
       </p>
       <p>
         Learn how to build real-time reactive interfaces, ledgers, and time-travel debuggers in{' '}

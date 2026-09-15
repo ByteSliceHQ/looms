@@ -1,17 +1,17 @@
-# LiveStore
+# React
 
-Subscribe to a run from the browser. `@looms/livestore/react` connects to the host's event log over SSE, caches incremental projections, and delivers stable snapshots to React with frame-rate coalescing.
+Subscribe to a run from the browser. `@looms/react` connects to the host's event log over SSE, caches incremental projections, and delivers stable snapshots to React with frame-rate coalescing.
 
 ## Quick Start
 
 ```tsx
 import {
-  LoomsLiveStoreProvider,
+  LoomsProvider,
   useRunStore,
   useProjection,
   useRunSummary,
   useRunEvents,
-} from '@looms/livestore/react'
+} from '@looms/react'
 import { conversation, userMessage } from '@looms/agent'
 import { decision, pendingApprovals } from '@looms/approval'
 
@@ -37,15 +37,15 @@ function RunView({ runId }: { runId: string }) {
 }
 ```
 
-Wrap your root in `LoomsLiveStoreProvider`:
+Wrap your root in `LoomsProvider`:
 
 ```tsx
-<LoomsLiveStoreProvider endpoint="http://127.0.0.1:8787" coalesce="adaptive">
+<LoomsProvider endpoint="http://127.0.0.1:8787" coalesce="adaptive">
   <App />
-</LoomsLiveStoreProvider>
+</LoomsProvider>
 ```
 
-## React SDK Hooks (`@looms/livestore/react`)
+## Hooks (`@looms/react`)
 
 | Hook                                             | Purpose                                                                                                           | Re-renders                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -74,7 +74,7 @@ export function demoModules() {
 
 export type DemoEvents = EventsOf<typeof demoModules>
 
-declare module '@looms/livestore' {
+declare module '@looms/react' {
   interface LoomsRegister {
     events: DemoEvents // or `modules: typeof demoModules`
   }
@@ -97,7 +97,7 @@ For multi-runtime apps, skip global registration and pass an explicit event type
 
 ```tsx
 import type { EventsOf } from '@looms/core'
-import { useRunStore, useRunEvents } from '@looms/livestore/react'
+import { useRunStore, useRunEvents } from '@looms/react'
 
 type AppEvents = EventsOf<typeof demoModules>
 
@@ -118,7 +118,7 @@ When LLM agents generate dozens of parallel subthreads and stream thousands of t
 ## Standalone Store (Vanilla JS)
 
 ```ts
-import { createLoomsStore } from '@looms/livestore'
+import { createLoomsStore } from '@looms/react'
 
 const store = createLoomsStore({
   storeId: runId,

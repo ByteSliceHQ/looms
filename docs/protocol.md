@@ -38,8 +38,8 @@ Matching is by event `type` plus an optional payload subset (`match: { approvalI
 | `POST` | `/runs/:id/wake`              | Resume processing                                                                                                                                                            |
 | `GET`  | `/runs/:id/replay?seq=`       | State before / after an event                                                                                                                                                |
 | `GET`  | `/runs/:id/projections/:name` | Named read model                                                                                                                                                             |
-| `GET`  | `/api/livestore`              | LiveStore pull (`?storeId=&cursor=`) or SSE (`live=true` / `Accept: text/event-stream`)                                                                                      |
+| `GET`  | `/api/events`                 | Event pull (`?runId=&cursor=`) or SSE (`live=true` / `Accept: text/event-stream`)                                                                                            |
 
-`looms.fetch(request)` handles these paths (and `/api/livestore` for LiveStore). It returns `null` for everything else so you can mount Looms next to your own UI.
+`looms.fetch(request)` handles these paths. It returns `null` for everything else so you can mount Looms next to your own UI.
 
 Use `@looms/client` (`createLoomsClient`) instead of hand-rolling fetch when you can.

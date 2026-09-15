@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
+import { ConceptFigure } from '../illustrations/illustration'
 
 export const Route = createFileRoute('/docs/durability')({
   component: Durability,
@@ -18,6 +19,8 @@ function Durability() {
         events append directly to a fast local store (such as embedded SQLite), timers schedule
         durable wakes, and snapshots bound memory.
       </p>
+
+      <ConceptFigure name="log" />
 
       <FlowChain
         steps={[
@@ -156,8 +159,8 @@ export default {
           alarm fires.
         </li>
         <li>
-          <strong>LiveStore streaming:</strong> Real-time UI subscriptions (SSE via{' '}
-          <code>/api/livestore</code>) connect directly to the Durable Object owning that run,
+          <strong>Live event streaming:</strong> Real-time UI subscriptions (SSE via{' '}
+          <code>/api/events</code>) connect directly to the Durable Object owning that run,
           guaranteeing instant updates with zero polling lag.
         </li>
       </ul>

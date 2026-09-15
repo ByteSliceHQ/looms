@@ -1,7 +1,7 @@
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { LoomsLiveStoreProvider } from '@looms/livestore/react'
+import { LoomsProvider } from '@looms/react'
 
 import appCss from '../styles.css?url'
 
@@ -20,9 +20,9 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <RootDocument>
-      <LoomsLiveStoreProvider>
+      <LoomsProvider>
         <Outlet />
-      </LoomsLiveStoreProvider>
+      </LoomsProvider>
     </RootDocument>
   )
 }

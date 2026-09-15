@@ -90,7 +90,7 @@ export async function consumeSseStream(
   }
 }
 
-export function eventsFromSseData(data: string, storeId: string): EventEnvelope[] {
+export function eventsFromSseData(data: string, runId: string): EventEnvelope[] {
   let parsed: unknown
 
   try {
@@ -110,9 +110,9 @@ export function eventsFromSseData(data: string, storeId: string): EventEnvelope[
     try {
       events.push(
         decodeLoomsEvent(
-          // SAFETY: host SSE batch items are EventEnvelope | LiveStoreGlobalEncoded.
+          // SAFETY: host SSE batch items are encoded Looms event envelopes.
           item as Parameters<typeof decodeLoomsEvent>[0],
-          storeId,
+          runId,
         ),
       )
     } catch {

@@ -4,7 +4,7 @@ import { rememberRun } from '@/hooks/use-recent-runs'
 import { loomsClient } from '@/lib/looms-client'
 import { statusClass } from '@/lib/status'
 import type { JsonValue } from '@looms/core'
-import { useRunEvents, useRunStore, useRunSummary, useThreadTree } from '@looms/livestore/react'
+import { useRunEvents, useRunStore, useRunSummary, useThreadTree } from '@looms/react'
 
 import type { WorkflowRunType } from '../../catalog'
 import { JsonView } from '../json-view'

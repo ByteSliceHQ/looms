@@ -13,7 +13,7 @@ export interface DurableObjectNamespaceLike<
 /**
  * Routes incoming HTTP requests to the appropriate Durable Object actor cell.
  * Handles `/health` locally, returns 501 for global `GET /runs`, and forwards
- * all other run and LiveStore requests to `namespace.getByName(runId)`.
+ * all other run and event-stream requests to `namespace.getByName(runId)`.
  */
 export async function routeToDurableObject(
   namespace: DurableObjectNamespaceLike,

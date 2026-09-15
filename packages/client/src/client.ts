@@ -68,12 +68,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
           }
 
           const res = await fetchImpl(
-            `${baseUrl}/api/livestore?storeId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
+            `${baseUrl}/api/events?runId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
             { headers, signal: controller.signal },
           )
 
           if (!res.ok || !res.body) {
-            throw new Error(res.ok ? 'livestore sse missing body' : `HTTP ${res.status}`)
+            throw new Error(res.ok ? 'event stream missing body' : `HTTP ${res.status}`)
           }
 
           await consumeSseStream(

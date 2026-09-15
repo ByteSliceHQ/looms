@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 
 import { statusClass } from '@/lib/status'
 import { decision, pendingApprovals } from '@looms/approval'
-import { useProjection, useRunStore } from '@looms/livestore/react'
+import { useProjection, useRunStore } from '@looms/react'
 
 import { StatusDot } from '../status-dot'
 import { Button } from '../ui/button'

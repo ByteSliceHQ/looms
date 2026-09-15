@@ -1,5 +1,5 @@
 import { RunTree as RunTreeView } from '@looms/debugger'
-import { useEventCounts, useRunStore, useRunSummary, useThreadTree } from '@looms/livestore/react'
+import { useEventCounts, useRunStore, useRunSummary, useThreadTree } from '@looms/react'
 
 export function RunTree({
   runId,

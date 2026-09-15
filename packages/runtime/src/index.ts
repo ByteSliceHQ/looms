@@ -19,9 +19,5 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
-export {
-  handleLivestoreProxy,
-  encodeLoomsEvent,
-  type LiveStoreGlobalEncoded,
-} from './livestore-proxy'
+export { handleEventsApi, encodeLoomsEvent, type EncodedLoomsEvent } from './events-api'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'
