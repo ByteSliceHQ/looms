@@ -1,13 +1,16 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Predicate, Schema } from 'effect'
+import { Data, Effect, Predicate, Schema } from 'effect'
 
 import type { JsonValue } from './types'
 
-export class InvalidInputError extends Error {
-  readonly _tag = 'InvalidInputError'
+export class InvalidInputError extends Data.TaggedError('InvalidInputError')<{
+  readonly message: string
   readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
+}> {
+  override readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
+
   constructor(text: string, issues: ReadonlyArray<StandardSchemaV1.Issue> = []) {
-    super(text)
+    super({ message: text, issues })
     this.name = 'InvalidInputError'
     this.issues = issues
   }
@@ -172,31 +175,45 @@ function formatIssue(issue: StandardSchemaV1.Issue): string {
   return `${pathStr}: ${issue.message}`
 }
 
-export async function validateInput<TInput = JsonValue>(
+export function validateInputEffect<TInput = JsonValue>(
   schemaOrDef: SchemaCandidate<TInput>,
   raw: JsonValue,
-): Promise<TInput> {
+): Effect.Effect<TInput, InvalidInputError> {
   const schema = extractSchema(schemaOrDef)
 
   if (!schema) {
     // SAFETY: when no schema is provided, raw JsonValue is accepted as TInput.
-    return raw as TInput
+    return Effect.succeed(raw as TInput)
   }
 
-  // SAFETY: StandardSchemaV1.validate returns Result<TInput> or Promise<Result<TInput>>.
-  let result = schema['~standard'].validate(raw)
+  return Effect.gen(function* () {
+    let result = schema['~standard'].validate(raw)
 
-  if (result instanceof Promise) {
-    result = await result
-  }
+    if (result instanceof Promise) {
+      result = yield* Effect.tryPromise({
+        // SAFETY: Standard Schema validate() returns this Promise when async.
+        try: () => result as Promise<StandardSchemaV1.Result<TInput>>,
+        catch: (cause) =>
+          new InvalidInputError(
+            `Schema validation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          ),
+      })
+    }
 
-  if (result.issues !== undefined) {
-    const text = result.issues.map(formatIssue).join(', ')
-    throw new InvalidInputError(`Invalid input: ${text}`, result.issues)
-  }
+    if (result.issues !== undefined) {
+      const text = result.issues.map(formatIssue).join(', ')
+      return yield* Effect.fail(new InvalidInputError(`Invalid input: ${text}`, result.issues))
+    }
 
-  // SAFETY: When result.issues is undefined, result is SuccessResult.
-  return result.value
+    return result.value
+  })
+}
+
+export async function validateInput<TInput = JsonValue>(
+  schemaOrDef: SchemaCandidate<TInput>,
+  raw: JsonValue,
+): Promise<TInput> {
+  return Effect.runPromise(validateInputEffect(schemaOrDef, raw))
 }
 
 export function validateInputSync<TInput = JsonValue>(

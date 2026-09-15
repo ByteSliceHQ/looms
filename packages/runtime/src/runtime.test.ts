@@ -8,14 +8,21 @@ import {
   defineEffect,
   defineRuntimeModule,
   defineThread,
+  EventStoreTrimmedError,
+  createEvent,
+  snapshotStoreOf,
+  complete,
   invoke,
   makeMemoryEventStore,
+  makeMemorySnapshotStore,
   wait,
+  type EventStore,
   type JsonValue,
 } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
+import { DuplicateEffectDispatchError, MaxWakeIterationsError, type WakeScheduler } from './runtime'
 
 describe('createLooms', () => {
   test('runs a deterministic echo agent to completion', async () => {
@@ -324,6 +331,68 @@ describe('createLooms', () => {
     expect(deltas.every((event) => event.ephemeral === true)).toBe(true)
   })
 
+  test('coalesces live text deltas instead of appending one token at a time', async () => {
+    const tokens = Array.from({ length: 50 }, (_, i) => `t${i}`)
+
+    const llm = {
+      async complete(args: { onTextDelta?: (delta: string) => void | Promise<void> }) {
+        for (const delta of tokens) {
+          await args.onTextDelta?.(delta)
+        }
+
+        return {
+          message: { role: 'assistant', content: tokens.join('') },
+          done: true,
+          output: { text: tokens.join('') },
+        }
+      },
+    }
+
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+    let appendCalls = 0
+
+    const delayed: EventStore = {
+      append: (runId, events, options) =>
+        Effect.gen(function* () {
+          appendCalls += 1
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 20)))
+          return yield* inner.append(runId, events, options)
+        }),
+      read: inner.read,
+      tail: inner.tail,
+      subscribe: inner.subscribe,
+      listRuns: inner.listRuns,
+    }
+
+    const bot = defineAgent({
+      name: 'coalesced-streamer',
+      instructions: 'stream',
+    })
+
+    const looms = createLooms({
+      definitions: [bot],
+      modules: [agent({ llm })],
+      store: delayed,
+    })
+
+    const started = Date.now()
+    const { runId } = await looms.start(bot, 'hi')
+    const elapsed = Date.now() - started
+    const events = await looms.getEvents(runId)
+    const deltas = events.filter((event) => event.type === 'agent.turn.text_delta')
+    const message = events.findIndex((event) => event.type === 'agent.message')
+    const lastDelta = events.findLastIndex((event) => event.type === 'agent.turn.text_delta')
+
+    expect(
+      deltas.map((event) => (Predicate.isObject(event.payload) ? event.payload.delta : '')),
+    ).toEqual(tokens)
+
+    expect(lastDelta).toBeGreaterThan(-1)
+    expect(message).toBeGreaterThan(lastDelta)
+    expect(elapsed).toBeLessThan(50 * 20)
+    expect(appendCalls).toBeLessThan(20)
+  })
+
   test('middleware intercepts effects across modules', async () => {
     const intercepted: string[] = []
 
@@ -620,6 +689,806 @@ describe('createLooms', () => {
     const eventsAfterDone = await looms.getEvents(runId)
     const finalReqs = eventsAfterDone.filter((e) => e.type === 'approval.requested')
     expect(finalReqs.length).toBe(1)
+    await looms.stop()
+  })
+
+  test('pages a store that returns at most 5 events per read instead of treating it as truncation', async () => {
+    let completeCalls = 0
+    const tokens = Array.from({ length: 20 }, (_, i) => `token_${i}`)
+
+    const llm = {
+      async complete(args: { onTextDelta?: (delta: string) => void | Promise<void> }) {
+        completeCalls += 1
+
+        for (const delta of tokens) {
+          await args.onTextDelta?.(delta)
+        }
+
+        return {
+          message: { role: 'assistant', content: 'done' },
+          done: true,
+          output: { text: 'done' },
+        }
+      },
+    }
+
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+
+    // Unary reads are capped at 5 events even when more exist past the page.
+    const truncatedStore: EventStore = {
+      append: inner.append,
+      read: (runId, options) =>
+        Effect.gen(function* () {
+          const events = yield* inner.read(runId, options)
+          return events.slice(0, 5)
+        }),
+      tail: inner.tail,
+      subscribe: inner.subscribe,
+      listRuns: inner.listRuns,
+    }
+
+    const bot = defineAgent({
+      name: 'truncation-victim',
+      instructions: 'stream',
+    })
+
+    const seeded = 'run_truncated'
+
+    await Effect.runPromise(
+      inner.append(
+        seeded,
+        Array.from({ length: 10 }, (_, i) =>
+          createEvent(seeded, {
+            type: 'probe.event',
+            payload: { i },
+            threadId: null,
+            origin: { type: 'system' },
+          }),
+        ),
+      ),
+    )
+
+    const looms = createLooms({
+      definitions: [bot],
+      modules: [agent({ llm })],
+      store: truncatedStore,
+    })
+
+    const state = await looms.getRun(seeded)
+    expect(state.runId).toBe(seeded)
+    expect(completeCalls).toBe(0)
+    await looms.stop()
+  })
+
+  test('duplicate effect dispatch guard fails wake instead of re-executing effect', async () => {
+    let executeCalls = 0
+
+    const workModule = defineRuntimeModule({
+      namespace: 'work',
+      protocolVersion: '1.0.0',
+      effects: {
+        'work.do': defineEffect({
+          type: 'work.do',
+          execute: (_input, ctx) => {
+            executeCalls += 1
+            return [{ type: 'work.done', threadId: ctx.threadId, effectId: 'other' }]
+          },
+        }),
+      },
+      threads: {
+        worker: defineThread({
+          kind: 'worker',
+          shape: Schema.Struct({ count: Schema.Number }),
+          initialState: () => ({ count: 0 }),
+          step: (state, event) => {
+            if (event.type === 'work.done') {
+              return { count: state.count + 1 }
+            }
+
+            return state
+          },
+          effects: (state) => (state.count < 10 ? [invoke('work.do', {}, 'work_1')] : []),
+        }),
+      },
+    })
+
+    const workerDef = {
+      kind: 'worker',
+      name: 'worker-bot',
+    }
+
+    const looms = createLooms({
+      definitions: [workerDef],
+      modules: [workModule],
+    })
+
+    let caughtError: Error | undefined
+
+    try {
+      await looms.start(workerDef, {})
+    } catch (err) {
+      caughtError = err instanceof Error ? err : new Error(String(err))
+    }
+
+    expect(caughtError).toBeDefined()
+    expect(caughtError).toBeInstanceOf(DuplicateEffectDispatchError)
+
+    if (caughtError instanceof DuplicateEffectDispatchError) {
+      expect(caughtError._tag).toBe('DuplicateEffectDispatchError')
+    }
+
+    expect(caughtError?.message).toContain('Duplicate effect dispatch detected')
+    expect(caughtError?.message).toContain('work_1')
+    expect(executeCalls).toBe(1)
+    await looms.stop()
+  })
+
+  test('maxWakeIterations guard fails wake when iteration cap is hit', async () => {
+    let stepCalls = 0
+
+    const pingPongModule = defineRuntimeModule({
+      namespace: 'pingpong',
+      protocolVersion: '1.0.0',
+      effects: {
+        'pingpong.step': defineEffect({
+          type: 'pingpong.step',
+          input: Schema.Struct({ count: Schema.Number }),
+          execute: (input) => {
+            stepCalls += 1
+            return [
+              {
+                type: 'pingpong.stepped',
+                payload: { count: input.count + 1 },
+                threadId: null,
+              },
+            ]
+          },
+        }),
+      },
+      threads: {
+        pingpong: defineThread({
+          kind: 'pingpong',
+          shape: Schema.Struct({ count: Schema.Number }),
+          initialState: () => ({ count: 0 }),
+          step: (state, event) => {
+            if (event.type === 'pingpong.stepped' && Predicate.isObject(event.payload)) {
+              return { count: Number(event.payload.count) }
+            }
+
+            return state
+          },
+          effects: (state) => [
+            invoke('pingpong.step', { count: state.count }, `step_${state.count}`),
+          ],
+        }),
+      },
+    })
+
+    const pingPongDef = {
+      kind: 'pingpong',
+      name: 'stepper',
+    }
+
+    const looms = createLooms({
+      definitions: [pingPongDef],
+      modules: [pingPongModule],
+      maxWakeIterations: 5,
+    })
+
+    let caughtError: Error | undefined
+
+    try {
+      await looms.start(pingPongDef, {})
+    } catch (err) {
+      caughtError = err instanceof Error ? err : new Error(String(err))
+    }
+
+    expect(caughtError).toBeDefined()
+    expect(caughtError).toBeInstanceOf(MaxWakeIterationsError)
+
+    if (caughtError instanceof MaxWakeIterationsError) {
+      expect(caughtError._tag).toBe('MaxWakeIterationsError')
+    }
+
+    expect(caughtError?.message).toContain('Max wake iterations exceeded (5)')
+    expect(stepCalls).toBeLessThanOrEqual(5)
+    await looms.stop()
+  })
+
+  test('multi-turn streamed agent performs at most two store reads', async () => {
+    let reads = 0
+    const tokens = ['a', 'b', 'c', 'd', 'e']
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+
+    const countingStore: EventStore = {
+      append: inner.append,
+      read: (runId, options) =>
+        Effect.gen(function* () {
+          reads += 1
+          return yield* inner.read(runId, options)
+        }),
+      tail: inner.tail,
+      bounds: inner.bounds,
+      trim: inner.trim,
+      subscribe: inner.subscribe,
+      listRuns: inner.listRuns,
+    }
+
+    const llm = {
+      async complete(args: { onTextDelta?: (delta: string) => void | Promise<void> }) {
+        for (const delta of tokens) {
+          await args.onTextDelta?.(delta)
+        }
+
+        return {
+          message: { role: 'assistant', content: 'done' },
+          done: true,
+          output: { text: 'done' },
+        }
+      },
+    }
+
+    const bot = defineAgent({ name: 'read-count', instructions: 'stream' })
+
+    const looms = createLooms({
+      definitions: [bot],
+      modules: [agent({ llm })],
+      store: countingStore,
+    })
+
+    await looms.start(bot, 'hi')
+    expect(reads).toBeLessThanOrEqual(2)
+    await looms.stop()
+  })
+
+  test('createLooms defaults a snapshot store so trim recovery works without one being passed', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+
+    const echo = defineAgent({
+      name: 'default-snap',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: 'ok' },
+        done: true,
+        output: input,
+      }),
+    })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+      snapshotEvery: 1,
+    })
+
+    const { runId, state } = await looms.start(echo, 'hi')
+    expect(state.status).toBe('completed')
+    expect(snapshotStoreOf(store)).toBeDefined()
+
+    const latest = await Effect.runPromise(snapshotStoreOf(store)!.loadLatest(runId))
+    expect(latest._tag).toBe('Some')
+
+    if (latest._tag === 'Some') {
+      await Effect.runPromise(store.trim!(runId, latest.value.cursor + 1))
+    }
+
+    const restored = await looms.getRun(runId)
+    expect(restored.status).toBe('completed')
+    await looms.stop()
+  })
+
+  test('trimmed store with a snapshot loads without error', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const snapshots = await Effect.runPromise(makeMemorySnapshotStore)
+
+    const echo = defineAgent({
+      name: 'snap-echo',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: 'ok' },
+        done: true,
+        output: input,
+      }),
+    })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+      snapshotStore: snapshots,
+      snapshotEvery: 1,
+    })
+
+    const { runId, state } = await looms.start(echo, 'hi')
+    expect(state.status).toBe('completed')
+    const latest = await Effect.runPromise(snapshots.loadLatest(runId))
+    expect(latest._tag).toBe('Some')
+
+    if (latest._tag === 'Some') {
+      await Effect.runPromise(store.trim!(runId, latest.value.cursor + 1))
+    }
+
+    const looms2 = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+      snapshotStore: snapshots,
+    })
+
+    const restored = await looms2.getRun(runId)
+    expect(restored.status).toBe('completed')
+    await looms.stop()
+    await looms2.stop()
+  })
+
+  test('trimmed store without a snapshot fails with EventStoreTrimmedError', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const runId = 'run_trimmed_no_snap'
+
+    await Effect.runPromise(
+      store.append(runId, [
+        createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: { rootThreadId: 't', kind: 'echo', definitionName: 'e', input: null },
+          threadId: null,
+          origin: { type: 'system' },
+        }),
+        createEvent(runId, {
+          type: 'runtime.thread.started',
+          payload: { threadId: 't', kind: 'echo', definitionName: 'e', input: null },
+          threadId: 't',
+          origin: { type: 'system' },
+        }),
+        createEvent(runId, {
+          type: 'probe.event',
+          payload: {},
+          threadId: null,
+          origin: { type: 'system' },
+        }),
+      ]),
+    )
+
+    await Effect.runPromise(store.trim!(runId, 3))
+
+    const echo = defineAgent({ name: 'trim-echo', instructions: 'echo' })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+    })
+
+    let caught: unknown
+
+    try {
+      await looms.getRun(runId)
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(EventStoreTrimmedError)
+    await looms.stop()
+  })
+
+  test('a leading fence does not look like a trimmed log', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const runId = 'run_fence_head'
+
+    const echo = defineAgent({
+      name: 'fence-head',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: 'ok' },
+        done: true,
+        output: input,
+      }),
+    })
+
+    await Effect.runPromise(
+      store.append(
+        runId,
+        [
+          createEvent(runId, {
+            type: 'runtime.run.started',
+            payload: { rootThreadId: 't', kind: 'echo', definitionName: 'e', input: null },
+            threadId: null,
+            origin: { type: 'system' },
+          }),
+        ],
+        { fence: 'tok-a' },
+      ),
+    )
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+    })
+
+    const state = await looms.getRun(runId)
+    expect(state.status).toBe('running')
+    await looms.stop()
+  })
+
+  test('cached cursor behind a trim falls back to the snapshot path', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const snapshots = await Effect.runPromise(makeMemorySnapshotStore)
+    const runId = 'run_cache_trim'
+
+    const events = Array.from({ length: 6 }, (_, i) =>
+      createEvent(runId, {
+        type: i === 0 ? 'runtime.run.started' : 'probe.event',
+        payload:
+          i === 0 ? { rootThreadId: 't', kind: 'echo', definitionName: 'e', input: null } : { i },
+        threadId: null,
+        origin: { type: 'system' },
+      }),
+    )
+
+    await Effect.runPromise(store.append(runId, events))
+    const echo = defineAgent({ name: 'cache-trim', instructions: 'echo' })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+      snapshotStore: snapshots,
+    })
+
+    const before = await looms.getRun(runId)
+    expect(before.status).toBe('running')
+
+    await Effect.runPromise(
+      snapshots.save({
+        runId,
+        cursor: 6,
+        stateHash: 'h',
+        takenAt: Date.now(),
+        state: before,
+      }),
+    )
+
+    await Effect.runPromise(
+      store.append(runId, [
+        createEvent(runId, {
+          type: 'probe.event',
+          payload: { i: 7 },
+          threadId: null,
+          origin: { type: 'system' },
+        }),
+      ]),
+    )
+
+    await Effect.runPromise(store.trim!(runId, 7))
+
+    const after = await looms.getRun(runId)
+    expect(after.status).toBe('running')
+    await looms.stop()
+  })
+
+  test('trimAfterSnapshot keeps only the latest snapshot cursor in the log', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const snapshots = await Effect.runPromise(makeMemorySnapshotStore)
+
+    const stepper = defineWorkflow({
+      name: 'snap-trim',
+      nodes: [
+        { id: 'a', run: () => ({ n: 1 }) },
+        { id: 'b', deps: ['a'], run: () => ({ n: 2 }) },
+        { id: 'c', deps: ['b'], run: () => ({ n: 3 }) },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [stepper],
+      modules: [workflow()],
+      store,
+      snapshotStore: snapshots,
+      snapshotEvery: 2,
+      trimAfterSnapshot: { keepSnapshots: 1 },
+    })
+
+    const { runId } = await looms.start(stepper, {})
+    const bounds = await Effect.runPromise(store.bounds!(runId))
+    expect(bounds.head).toBeGreaterThan(1)
+    const cursors = await Effect.runPromise(snapshots.listCursors!(runId))
+    expect(cursors.length).toBe(1)
+    await looms.stop()
+  })
+
+  test('an in-process wake mutex serializes concurrent wakes on the same run', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    let release!: () => void
+    let dispatches = 0
+
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    const slow = defineWorkflow({
+      name: 'wake-mutex',
+      nodes: [
+        {
+          id: 'block',
+          run: async () => {
+            dispatches += 1
+            await blocked
+            return { ok: true }
+          },
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [slow],
+      modules: [workflow()],
+      store,
+    })
+
+    const started = looms.start(slow, {})
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    const runId = (await Effect.runPromise(store.listRuns()))[0]
+    expect(runId).toBeDefined()
+
+    const overlapping = await looms.wake(runId!)
+    expect(overlapping.status).toBe('running')
+    expect(dispatches).toBe(1)
+    release()
+    const done = await started
+    expect(done.state.status).toBe('completed')
+    await looms.stop()
+  })
+
+  test('a second runtime can continue a parked run from the shared store', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+
+    const waiterModule = defineRuntimeModule({
+      namespace: 'actorpark',
+      protocolVersion: '1.0.0',
+      threads: {
+        waiter: defineThread({
+          kind: 'waiter',
+          shape: Schema.Struct({ done: Schema.Boolean }),
+          initialState: () => ({ done: false }),
+          step: (state, event) => (event.type === 'go' ? { done: true } : state),
+          effects: (state) =>
+            state.done ? [complete({ ok: true })] : [wait({ waitId: 'w1', on: { type: 'go' } })],
+        }),
+      },
+    })
+
+    const waiter = { kind: 'waiter', name: 'actor-park' }
+
+    const a = createLooms({
+      definitions: [waiter],
+      modules: [waiterModule],
+      store,
+    })
+
+    const started = await a.start(waiter, {})
+    expect(started.state.status).toBe('running')
+
+    const b = createLooms({
+      definitions: [waiter],
+      modules: [waiterModule],
+      store,
+    })
+
+    const after = await b.signal(started.runId, [
+      {
+        type: 'go',
+        payload: {},
+        threadId: started.threadId,
+        origin: { type: 'external' },
+      },
+    ])
+
+    expect(after.status).toBe('completed')
+    await a.stop()
+    await b.stop()
+  })
+
+  test('wake writes no lease events onto the run log', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+
+    const echo = defineAgent({
+      name: 'clean-log',
+      instructions: 'echo',
+      runTurn: ({ input }) => ({
+        message: { role: 'assistant', content: 'ok' },
+        done: true,
+        output: input,
+      }),
+    })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store,
+    })
+
+    const { runId, state } = await looms.start(echo, 'hi')
+    expect(state.status).toBe('completed')
+
+    const events = await Effect.runPromise(store.read(runId))
+    expect(events.some((event) => event.type.startsWith('runtime.lease.'))).toBe(false)
+    expect(events.some((event) => event.type === 'runtime.snapshot.taken')).toBe(false)
+    await looms.stop()
+  })
+
+  test('parking writes a snapshot at the log tail so the next wake starts cold and cheap', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const snapshots = await Effect.runPromise(makeMemorySnapshotStore)
+
+    const waiterModule = defineRuntimeModule({
+      namespace: 'parksnap',
+      protocolVersion: '1.0.0',
+      threads: {
+        waiter: defineThread({
+          kind: 'waiter',
+          shape: Schema.Struct({ done: Schema.Boolean }),
+          initialState: () => ({ done: false }),
+          step: (state, event) => (event.type === 'go' ? { done: true } : state),
+          effects: (state) =>
+            state.done ? [complete({ ok: true })] : [wait({ waitId: 'w1', on: { type: 'go' } })],
+        }),
+      },
+    })
+
+    const waiter = { kind: 'waiter', name: 'park-snap' }
+
+    const looms = createLooms({
+      definitions: [waiter],
+      modules: [waiterModule],
+      store,
+      snapshotStore: snapshots,
+    })
+
+    const started = await looms.start(waiter, {})
+    expect(started.state.status).toBe('running')
+
+    const parked = await Effect.runPromise(snapshots.loadLatest(started.runId))
+    expect(parked._tag).toBe('Some')
+    const tailAfterPark = await Effect.runPromise(store.tail(started.runId))
+
+    if (parked._tag === 'Some') {
+      expect(parked.value.cursor).toBe(tailAfterPark)
+      expect(parked.value.state.status).toBe('running')
+    }
+
+    const readFrom: number[] = []
+
+    const counting: EventStore = {
+      ...store,
+      read: (runId, options) =>
+        Effect.gen(function* () {
+          readFrom.push(options?.fromSeq ?? 1)
+          return yield* store.read(runId, options)
+        }),
+    }
+
+    const looms2 = createLooms({
+      definitions: [waiter],
+      modules: [waiterModule],
+      store: counting,
+      snapshotStore: snapshots,
+    })
+
+    const after = await looms2.signal(started.runId, [
+      { type: 'go', payload: {}, threadId: started.threadId, origin: { type: 'external' } },
+    ])
+
+    expect(after.status).toBe('completed')
+    // rescan + signal + wake each read once, all from just past the park snapshot.
+    expect(readFrom.length).toBeLessThanOrEqual(3)
+    expect(readFrom.every((fromSeq) => fromSeq === tailAfterPark + 1)).toBe(true)
+
+    const cursors = await Effect.runPromise(snapshots.listCursors!(started.runId))
+    expect(cursors.length).toBe(1)
+    await looms.stop()
+    await looms2.stop()
+  })
+
+  test('a cached cursor is dropped when the stream tail moves backwards', async () => {
+    const first = await Effect.runPromise(makeMemoryEventStore)
+    const second = await Effect.runPromise(makeMemoryEventStore)
+    const runId = 'run_recreated'
+
+    const started = (rootThreadId: string) =>
+      createEvent(runId, {
+        type: 'runtime.run.started',
+        payload: { rootThreadId, kind: 'agent', definitionName: 'e', input: null },
+        threadId: null,
+        origin: { type: 'system' },
+      })
+
+    const probe = () =>
+      createEvent(runId, {
+        type: 'probe.event',
+        payload: {},
+        threadId: null,
+        origin: { type: 'system' },
+      })
+
+    await Effect.runPromise(first.append(runId, [started('first'), probe(), probe()]))
+    await Effect.runPromise(second.append(runId, [started('second')]))
+
+    let inner = first
+
+    const swappable: EventStore = {
+      append: (runId, events, options) => inner.append(runId, events, options),
+      read: (runId, options) => inner.read(runId, options),
+      tail: (runId) => inner.tail(runId),
+      bounds: (runId) => inner.bounds!(runId),
+      subscribe: (runId, options) => inner.subscribe(runId, options),
+      listRuns: () => inner.listRuns(),
+    }
+
+    const echo = defineAgent({ name: 'recreated', instructions: 'echo' })
+
+    const looms = createLooms({
+      definitions: [echo],
+      modules: [agent()],
+      store: swappable,
+      runCacheSize: 10,
+    })
+
+    const before = await looms.getRun(runId)
+    expect(before.rootThreadId).toBe('first')
+
+    inner = second
+    const after = await looms.getRun(runId)
+    expect(after.rootThreadId).toBe('second')
+    await looms.stop()
+  })
+
+  test('pluggable WakeScheduler records schedule on park and cancel on completion', async () => {
+    const scheduled: Array<{ runId: string; at: number }> = []
+    const cancelled: string[] = []
+
+    const fakeScheduler: WakeScheduler = {
+      schedule: (runId, at) => {
+        scheduled.push({ runId, at })
+      },
+      cancel: (runId) => {
+        cancelled.push(runId)
+      },
+    }
+
+    const targetTimerAt = Date.now() + 10_000
+
+    const sleeper = defineWorkflow({
+      name: 'sleeper-custom-scheduler',
+      nodes: [
+        {
+          id: 'step1',
+          run: (ctx) =>
+            ctx.effects([
+              wait({
+                waitId: 'timer1',
+                on: { timerAt: targetTimerAt },
+              }),
+            ]),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      definitions: [sleeper],
+      modules: [workflow()],
+      scheduler: fakeScheduler,
+      rescanTimers: false,
+    })
+
+    const { runId, state } = await looms.start(sleeper, {})
+    expect(state.status).toBe('running')
+    expect(scheduled.length).toBe(1)
+    expect(scheduled[0]?.runId).toBe(runId)
+    expect(scheduled[0]?.at).toBe(targetTimerAt)
+
+    await looms.cancel(runId)
+    expect(cancelled).toContain(runId)
+
     await looms.stop()
   })
 })

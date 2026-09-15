@@ -1,4 +1,4 @@
-import { Predicate, Schema } from 'effect'
+import { Predicate, Schema, Stream, type Effect } from 'effect'
 
 import type { EventEnvelope } from './envelope'
 import type { InferSchemaOutput } from './schema'
@@ -66,6 +66,18 @@ export function project<S>(
   }
 
   return state
+}
+
+/** Fold a projection over an Effect Stream of events, skipping ephemeral ones. */
+export function projectStream<S, E = never, R = never>(
+  definition: ProjectionDefinition<S>,
+  stream: Stream.Stream<EventEnvelope, E, R>,
+  from?: S,
+): Effect.Effect<S, E, R> {
+  const getInitial = () => (from !== undefined ? from : definition.initialState)
+  return Stream.runFold(stream, getInitial, (state, event) =>
+    event.ephemeral ? state : definition.reduce(state, event),
+  )
 }
 
 export interface ThreadNode {

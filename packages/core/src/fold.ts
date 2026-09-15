@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { Predicate, Stream, type Effect } from 'effect'
 
 import { isWithdrawnError, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
@@ -495,4 +495,18 @@ export function foldRun(
 ): RunState {
   const base = options?.initial ? cloneState(options.initial) : emptyRunState(options?.runId ?? '')
   return events.reduce((acc, event) => foldEvent(acc, event, registry), base)
+}
+
+/**
+ * Folds an Effect Stream of events into RunState without buffering all events into memory.
+ */
+export function foldStream<E = never, R = never>(
+  stream: Stream.Stream<EventEnvelope, E, R>,
+  registry: FoldRegistry,
+  options?: { runId?: string; initial?: RunState },
+): Effect.Effect<RunState, E, R> {
+  const getBase = () =>
+    options?.initial ? cloneState(options.initial) : emptyRunState(options?.runId ?? '')
+
+  return Stream.runFold(stream, getBase, (acc, event) => foldEvent(acc, event, registry))
 }

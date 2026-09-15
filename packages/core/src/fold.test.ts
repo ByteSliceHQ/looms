@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import { defineEventCatalog } from './catalog'
 import { complete, invoke, wait } from './effects'
 import { createEvent } from './envelope'
-import { foldRun } from './fold'
+import { foldRun, foldStream } from './fold'
 import { createEffectId } from './ids'
 import { composeModules, defineRuntimeModule } from './index'
 import { matchesWait, isSubset } from './match'
@@ -916,5 +916,39 @@ describe('threadTree projection', () => {
     expect(state3.threads[threadId]?.state).toEqual({ phase: 'yellow', ticks: 1 })
     expect(state3.outstandingEffects).toHaveLength(0)
     expect(state3.completedEffectIds).toContain(createEffectId(threadId, 'slow-now'))
+  })
+
+  test('foldStream folds an Effect Stream of events into RunState', async () => {
+    const streamRegistry = composeModules([
+      defineRuntimeModule({
+        namespace: 'counter',
+        protocolVersion: '1.0.0',
+        threads: { counter },
+      }),
+    ])
+
+    const threadId = 'thr_stream_1'
+
+    const startEvent = createEvent('run_stream_test', {
+      type: 'runtime.thread.started',
+      payload: { threadId, kind: 'counter', definitionName: 'c1', input: null },
+      threadId,
+      origin: { type: 'system' },
+    })
+
+    const incEvent = createEvent('run_stream_test', {
+      type: 'counter.incremented',
+      payload: { by: 5 },
+      threadId,
+      origin: { type: 'system' },
+    })
+
+    const stream = Stream.fromIterable([startEvent, incEvent])
+
+    const state = await Effect.runPromise(
+      foldStream(stream, streamRegistry, { runId: 'run_stream_test' }),
+    )
+
+    expect(state.threads[threadId]?.state).toEqual({ count: 5 })
   })
 })

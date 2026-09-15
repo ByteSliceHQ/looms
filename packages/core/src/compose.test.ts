@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { defineEventCatalog } from './catalog'
-import { composeModules, ModuleCompositionError } from './compose'
+import { composeModules, composeModulesEffect, ModuleCompositionError } from './compose'
 import { defineEffect } from './effects'
 import { defineRuntimeModule } from './module'
 import { defineThread } from './thread'
@@ -46,5 +46,23 @@ describe('composeModules', () => {
     const composed = composeModules([module])
     expect(composed.threads.get('ping')).toBe(ping)
     expect(composed.effects.get('demo.work')).toBe(effect)
+  })
+
+  test('composeModulesEffect returns typed ModuleCompositionError catchable with catchTag', async () => {
+    const a = defineRuntimeModule({
+      namespace: 'dup_effect',
+      protocolVersion: '1.0.0',
+    })
+
+    const result = await Effect.runPromise(
+      composeModulesEffect([a, a]).pipe(
+        Effect.map(() => 'ok'),
+        Effect.catchTag('ModuleCompositionError', (err) =>
+          Effect.succeed(`caught: ${err.message}`),
+        ),
+      ),
+    )
+
+    expect(result).toContain('caught: Duplicate module namespace: dup_effect')
   })
 })

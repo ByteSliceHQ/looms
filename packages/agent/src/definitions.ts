@@ -95,7 +95,7 @@ export interface AgentDefinition<
   ): Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
 }
 
-export type AnyAgentDefinition = AgentDefinition<string>
+export type AnyAgentDefinition = AgentDefinition
 
 export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolLike[] {
   return tools.map((entry) => {

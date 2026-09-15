@@ -1,0 +1,23 @@
+{
+  "name": "looms-demo-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LOOMS_RUN",
+        "class_name": "LoomsRun",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LoomsRun"],
+    },
+  ],
+  "vars": {
+    "LOOMS_MODEL": "openai/gpt-4o-mini",
+  },
+}

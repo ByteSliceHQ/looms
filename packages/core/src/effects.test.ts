@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { Effect, Schema } from 'effect'
 
 import { defineEffect, type EffectContext } from './effects'
+import { validateInputEffect } from './schema'
 
 const ctx: EffectContext = {
   effectId: 'eff_1',
@@ -67,5 +68,24 @@ describe('defineEffect', () => {
 
     const events = await Effect.runPromise(effect.execute({ amount: 99 }, ctx))
     expect(events).toEqual([{ type: 'demo.charged', payload: { amount: 99 } }])
+  })
+
+  test('validateInputEffect returns typed InvalidInputError with issues catchable by catchTag', async () => {
+    const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
+
+    const result = await Effect.runPromise(
+      // SAFETY: invalid age is a fixture that must fail schema validation.
+      validateInputEffect(schema, { name: 'Alice', age: 'invalid' as any }).pipe(
+        Effect.map(() => 'valid'),
+        Effect.catchTag('InvalidInputError', (err) =>
+          Effect.succeed({ tag: err._tag, issues: err.issues.length, msg: err.message }),
+        ),
+      ),
+    )
+
+    expect(result).toMatchObject({
+      tag: 'InvalidInputError',
+      issues: 1,
+    })
   })
 })

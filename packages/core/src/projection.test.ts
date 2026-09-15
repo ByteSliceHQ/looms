@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import { createEvent } from './envelope'
-import { defineProjection, foldProjection, project } from './projection'
+import { defineProjection, foldProjection, project, projectStream } from './projection'
 import type { JsonValue } from './types'
 
 function assignSeq<T extends { seq: number }>(events: T[]): T[] {
@@ -169,5 +169,28 @@ describe('defineProjection', () => {
 
     const result = project(simple, [createEvent('run_s', { type: 'inc', payload: {} })])
     expect(result.count).toBe(1)
+  })
+
+  test('projectStream reduces events over an Effect Stream', async () => {
+    const simple = defineProjection({
+      name: 'stream_simple',
+      initialState: { count: 0 },
+      reduce(state, event) {
+        if (event.type === 'inc') {
+          return { count: state.count + 1 }
+        }
+
+        return state
+      },
+    })
+
+    const stream = Stream.fromIterable([
+      createEvent('run_s', { type: 'inc', payload: {} }),
+      createEvent('run_s', { type: 'inc', payload: {} }),
+      createEvent('run_s', { type: 'inc', payload: {}, ephemeral: true }),
+    ])
+
+    const result = await Effect.runPromise(projectStream(simple, stream))
+    expect(result.count).toBe(2)
   })
 })

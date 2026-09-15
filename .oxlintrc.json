@@ -8,6 +8,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/.output/**",
+    "**/.wrangler/**",
     "**/node_modules/**",
     "**/.flox/**",
     ".agent/**",

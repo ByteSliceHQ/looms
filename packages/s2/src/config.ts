@@ -18,6 +18,18 @@ export const S2ConfigSchema = Schema.Struct({
       }),
     ]),
   ),
+  streamConfig: Schema.optional(
+    Schema.Struct({
+      retentionPolicy: Schema.optional(
+        Schema.Union([
+          Schema.Struct({ ageSecs: Schema.Number }),
+          Schema.Struct({ infinite: Schema.Struct({}) }),
+        ]),
+      ),
+      storageClass: Schema.optional(Schema.Literals(['standard', 'express'])),
+    }),
+  ),
+  snapshotPrefix: Schema.optional(Schema.String),
 })
 
 export type S2Config = Schema.Schema.Type<typeof S2ConfigSchema>

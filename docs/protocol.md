@@ -30,7 +30,7 @@ Matching is by event `type` plus an optional payload subset (`match: { approvalI
 | ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `GET`  | `/health`                     | Liveness                                                                                                     |
 | `POST` | `/runs`                       | Start `{ kind, definitionName, input }` (`Accept: text/event-stream` or `?stream=true` streams the log live) |
-| `GET`  | `/runs`                       | List run ids                                                                                                 |
+| `GET`  | `/runs`                       | List run ids (`createLooms` / shared store). Actor hosts (`createLocalActorHost`, Durable Objects, celld) return `501` — use a projector lake or client-side history instead |
 | `GET`  | `/runs/:id`                   | Current run state                                                                                            |
 | `GET`  | `/runs/:id/events`            | Event log (`?fromSeq=` for catch-up)                                                                         |
 | `POST` | `/runs/:id/events`            | Signal the run                                                                                               |

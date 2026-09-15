@@ -1,6 +1,12 @@
 import { Effect, Layer } from 'effect'
 
-import { EventStoreTag, type EventStore, type EventEnvelope } from '@looms/core'
+import {
+  EventStoreTag,
+  snapshotStoreOf,
+  withSnapshotStore,
+  type EventStore,
+  type EventEnvelope,
+} from '@looms/core'
 
 import type { Projector, ProjectorErrorHandler } from './projector'
 
@@ -23,7 +29,7 @@ export function withProjectors(
 ): EventStore {
   const onError = options?.onError ?? defaultOnError
 
-  return {
+  const wrapped: EventStore = {
     append: (runId, events, appendOptions) =>
       Effect.gen(function* () {
         const result = yield* store.append(runId, events, appendOptions)
@@ -54,9 +60,14 @@ export function withProjectors(
       }),
     read: (runId, readOptions) => store.read(runId, readOptions),
     tail: (runId) => store.tail(runId),
+    bounds: store.bounds ? (runId) => store.bounds!(runId) : undefined,
+    trim: store.trim ? (runId, beforeSeq) => store.trim!(runId, beforeSeq) : undefined,
     subscribe: (runId, subscribeOptions) => store.subscribe(runId, subscribeOptions),
     listRuns: () => store.listRuns(),
   }
+
+  const snapshots = snapshotStoreOf(store)
+  return snapshots ? withSnapshotStore(wrapped, snapshots) : wrapped
 }
 
 /** Project events after the fact (e.g. from a runtime hook). */

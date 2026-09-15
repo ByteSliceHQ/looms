@@ -5,21 +5,40 @@
   "description": "Looms demo runtime with TanStack Start UI and LiveStore + s2-lite sync",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    "./definitions": {
+      "types": "./src/definitions.ts",
+      "import": "./src/definitions.ts",
+      "default": "./src/definitions.ts"
+    },
+    "./demo-config": {
+      "types": "./src/demo-config.ts",
+      "import": "./src/demo-config.ts",
+      "default": "./src/demo-config.ts"
+    },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "import": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
+    }
+  },
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
+    "dev": "bun --bun vite dev",
+    "build": "bun --bun vite build",
     "start": "PORT=8787 bun .output/server/index.mjs",
     "verify": "bun run src/verify.ts",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
     "test": "bun test src"
   },
   "dependencies": {
+    "@looms/actor": "workspace:*",
     "@looms/agent": "workspace:*",
     "@looms/ai-vercel": "workspace:*",
     "@looms/approval": "workspace:*",
     "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/livestore": "workspace:*",
+    "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
     "@looms/s2": "workspace:*",
     "@looms/workflow": "workspace:*",

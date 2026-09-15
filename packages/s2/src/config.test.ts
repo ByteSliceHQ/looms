@@ -3,7 +3,7 @@ import * as net from 'node:net'
 
 import { Predicate, Schema } from 'effect'
 
-import { EventStoreConflictError } from '@looms/core'
+import { EventStoreConflictError, snapshotStoreOf } from '@looms/core'
 
 import {
   findS2Binary,
@@ -74,6 +74,7 @@ describe('@looms/s2 config', () => {
     expect(Predicate.isFunction(store.tail)).toBe(true)
     expect(Predicate.isFunction(store.subscribe)).toBe(true)
     expect(Predicate.isFunction(store.listRuns)).toBe(true)
+    expect(snapshotStoreOf(store)).toBeDefined()
   })
 
   test('isPortOpen returns false for closed port', async () => {

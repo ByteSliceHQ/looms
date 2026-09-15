@@ -54,8 +54,16 @@ export async function handleLivestoreProxy(
 
     if (!isLive) {
       const events = await Effect.runPromise(store.read(storeId, { fromSeq: cursor + 1 }))
-      const head = await Effect.runPromise(store.tail(storeId))
-      return Response.json({ batch: events.map(encodeLoomsEvent), head })
+
+      const bounds = store.bounds
+        ? await Effect.runPromise(store.bounds(storeId))
+        : { head: events[0]?.seq ?? 1, tail: await Effect.runPromise(store.tail(storeId)) }
+
+      return Response.json({
+        batch: events.map(encodeLoomsEvent),
+        head: bounds.head,
+        tail: bounds.tail,
+      })
     }
 
     return createEventStreamResponse({

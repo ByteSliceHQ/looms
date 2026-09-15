@@ -5,6 +5,8 @@ import { approval } from '@looms/approval'
 import {
   EventStoreTag,
   makeMemoryEventStore,
+  snapshotStoreOf,
+  SnapshotStoreTag,
   type AnyRuntimeModule,
   type DefinitionInput,
   type DefinitionRef,
@@ -12,6 +14,7 @@ import {
   type EventInput,
   type EventStore,
   type JsonValue,
+  type SnapshotStore,
   type ProjectionDefinition,
   type RegisteredDefinition,
   type ReplayStep,
@@ -19,7 +22,7 @@ import {
 } from '@looms/core'
 import { workflow } from '@looms/workflow'
 
-import { createRuntime, type LoomsRuntime } from './runtime'
+import { createRuntime, type LoomsRuntime, type WakeScheduler } from './runtime'
 import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
 
 export interface CreateLoomsOptions {
@@ -29,6 +32,18 @@ export interface CreateLoomsOptions {
   readonly modules?: readonly AnyRuntimeModule[]
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
+  readonly maxWakeIterations?: number
+  /** Durable events between mid-wake snapshots. Default 200; `0` disables. Parking always snapshots. */
+  readonly snapshotEvery?: number
+  /** Defaults to the EventStore's attached store (S2) or an in-memory SnapshotStore. */
+  readonly snapshotStore?: SnapshotStore
+  readonly trimAfterSnapshot?: { keepSnapshots: number }
+  /** In-process cursor cache size. Default `0` (stateless between calls). */
+  readonly runCacheSize?: number
+  /** Scan existing runs for pending timers on boot. Default true. */
+  readonly rescanTimers?: boolean
+  /** Pluggable wake scheduler for timer waits. Defaults to an in-process setTimeout scheduler. */
+  readonly scheduler?: WakeScheduler
 }
 
 export interface StartResult {
@@ -67,6 +82,7 @@ export interface Looms {
   rescanTimers(): Promise<number>
   project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
+  cancel(runId: string, threadId?: string): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
@@ -75,6 +91,7 @@ export interface Looms {
 interface Initialized {
   readonly runtime: LoomsRuntime
   readonly store: EventStore
+  readonly snapshotStore?: SnapshotStore
   readonly fetchHandler: (req: Request) => Promise<Response | null>
 }
 
@@ -110,17 +127,24 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           modules,
           store,
           definitions: toRegistered(definitions),
+          maxWakeIterations: options.maxWakeIterations,
+          snapshotEvery: options.snapshotEvery,
+          snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
+          trimAfterSnapshot: options.trimAfterSnapshot,
+          runCacheSize: options.runCacheSize,
+          scheduler: options.scheduler,
         })
 
-        // Automatically rescan pending timers from existing runs in the store
-        await Effect.runPromise(
-          Effect.provideService(runtime.rescanTimers(), EventStoreTag, store),
-        ).catch((err) => {
-          console.error('[rescan timers error]', err)
-        })
+        if (options.rescanTimers !== false) {
+          await Effect.runPromise(
+            Effect.provideService(runtime.rescanTimers(), EventStoreTag, store),
+          ).catch((err) => {
+            console.error('[rescan timers error]', err)
+          })
+        }
 
         const fetchHandler = createFetchHandler({ runtime, store })
-        return { runtime, store, fetchHandler }
+        return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
       })()
     }
 
@@ -131,7 +155,13 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     fn: (init: Initialized) => Effect.Effect<A, Error, EventStoreTag>,
   ): Promise<A> => {
     const init = await getInit()
-    return Effect.runPromise(Effect.provideService(fn(init), EventStoreTag, init.store))
+    let provided = Effect.provideService(fn(init), EventStoreTag, init.store)
+
+    if (init.snapshotStore) {
+      provided = Effect.provideService(provided, SnapshotStoreTag, init.snapshotStore)
+    }
+
+    return Effect.runPromise(provided)
   }
 
   const looms: Looms = {
@@ -166,6 +196,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     rescanTimers: () => runEffect((i) => i.runtime.rescanTimers()),
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
+    cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
     fetch: async (req) => {
       if (!isLoomsApiPath(new URL(req.url).pathname)) {
         return null

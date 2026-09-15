@@ -20,6 +20,16 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./sqlite-store": {
+      "types": "./src/sqlite-store.ts",
+      "import": "./src/sqlite-store.ts",
+      "default": "./src/sqlite-store.ts"
+    },
+    "./bun-sqlite": {
+      "types": "./src/bun-sqlite.ts",
+      "import": "./src/bun-sqlite.ts",
+      "default": "./src/bun-sqlite.ts"
     }
   },
   "publishConfig": {
@@ -29,6 +39,14 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./sqlite-store": {
+        "types": "./dist/sqlite-store.d.ts",
+        "import": "./dist/sqlite-store.js"
+      },
+      "./bun-sqlite": {
+        "types": "./dist/bun-sqlite.d.ts",
+        "import": "./dist/bun-sqlite.js"
       }
     },
     "access": "public"

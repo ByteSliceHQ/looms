@@ -18,6 +18,7 @@ Looms is an SDK for long-running work in your application. Each **run** is an ev
 bun install
 bun run dev             # demo http://127.0.0.1:8787 + docs http://127.0.0.1:8788
 # or either alone: bun run demo | bun run docs
+# Cloudflare worker demo: bun run dev:cloudflare (worker also defaults to :8788 — stop docs first)
 ```
 
 Host it in your app:
@@ -80,6 +81,7 @@ Runs speak one language: `start` a definition, `signal` events into it, read `pr
 - [Concepts](./docs/architecture.md) — runs, events, waits, projections
 - [Modules](./docs/modules.md) — agents, workflows, approvals, your own domain
 - [Protocol](./docs/protocol.md) — event types and HTTP
+- [Snapshots & actors](./docs/snapshots.md) — per-run cells, Bun / Cloudflare / celld backends, S2 as projector
 - [LiveStore](./docs/livestore.md) — React subscriptions
 - [AI providers](./docs/ai-providers.md)
 
@@ -90,6 +92,8 @@ Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules,
 | Package             | Import when you need                                  |
 | ------------------- | ----------------------------------------------------- |
 | `@looms/runtime`    | `createLooms`, HTTP host                              |
+| `@looms/actor`      | `createLocalActorHost`, per-run actor cells           |
+| `@looms/cloudflare` | Durable Object / celld actor host                     |
 | `@looms/agent`      | `defineAgent`, tools, `conversation`                  |
 | `@looms/workflow`   | `defineWorkflow`                                      |
 | `@looms/approval`   | `gate`, `pendingApprovals`                            |

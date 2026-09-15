@@ -20,11 +20,6 @@ export function hashRunState(state: RunState): string {
   return bytesToHex(sha256(new TextEncoder().encode(json))).slice(0, 16)
 }
 
-function runStateToJson(state: RunState): JsonValue {
-  const raw: unknown = JSON.parse(JSON.stringify(state))
-  return Schema.decodeUnknownSync(JsonValueSchema)(raw)
-}
-
 export function shouldTakeSnapshot(
   events: readonly EventEnvelope[],
   every: number = DEFAULT_SNAPSHOT_EVERY,
@@ -50,6 +45,13 @@ export function shouldTakeSnapshot(
   return since >= every
 }
 
+export const DEFAULT_MAX_INLINE_SNAPSHOT_BYTES = 256 * 1024
+
+export function runStateToJson(state: RunState): JsonValue {
+  const raw: unknown = JSON.parse(JSON.stringify(state))
+  return Schema.decodeUnknownSync(JsonValueSchema)(raw)
+}
+
 export function buildSnapshotEvent(
   runId: string,
   events: readonly EventEnvelope[],
@@ -59,9 +61,40 @@ export function buildSnapshotEvent(
   const state = foldRun(events, registry, { runId })
   const last = events[events.length - 1]
 
-  const payload = options?.includeState
-    ? asJson({ seq: last?.seq ?? 0, stateHash: hashRunState(state), state: runStateToJson(state) })
-    : asJson({ seq: last?.seq ?? 0, stateHash: hashRunState(state) })
+  return buildSnapshotMarker(runId, last?.seq ?? 0, hashRunState(state), {
+    state: options?.includeState ? state : undefined,
+  })
+}
+
+/**
+ * Pointer-only snapshot marker. Inline `state` only when provided and
+ * `JSON.stringify(state).length <= maxInlineBytes` (default 256 KiB).
+ */
+let warnedInlineSkip = false
+
+export function buildSnapshotMarker(
+  runId: string,
+  cursor: number,
+  stateHash: string,
+  options?: { state?: RunState; maxInlineBytes?: number },
+): EventEnvelope {
+  const maxInlineBytes = options?.maxInlineBytes ?? DEFAULT_MAX_INLINE_SNAPSHOT_BYTES
+  let payload: JsonValue = asJson({ seq: cursor, stateHash })
+
+  if (options?.state !== undefined) {
+    const encoded = runStateToJson(options.state)
+    const bytes = JSON.stringify(encoded).length
+
+    if (bytes <= maxInlineBytes) {
+      payload = asJson({ seq: cursor, stateHash, state: encoded })
+    } else if (!warnedInlineSkip) {
+      warnedInlineSkip = true
+
+      console.warn(
+        `[looms] snapshot state is ${bytes} bytes (limit ${maxInlineBytes}); writing a pointer-only marker`,
+      )
+    }
+  }
 
   return createEvent(runId, {
     type: 'runtime.snapshot.taken',

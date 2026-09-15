@@ -15,6 +15,7 @@
     "**/.flox/**",
     "**/.turbo/**",
     "**/.tanstack/**",
+    "**/.wrangler/**",
     "**/coverage/**",
     "**/routeTree.gen.ts",
     "bun.lock",

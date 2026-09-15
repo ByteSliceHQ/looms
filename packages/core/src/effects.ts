@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 
 import type { EventInput } from './envelope'
-import { validateInput, type InferDefinedSchema, type SchemaInput } from './schema'
+import { validateInputEffect, type InferDefinedSchema, type SchemaInput } from './schema'
 import type { JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -143,6 +143,12 @@ function liftHandlerResult<R>(
   return Effect.succeed(result)
 }
 
+/**
+ * Define an effect handler. A run's actor cell executes each effect at most
+ * once while it is alive. If the cell dies mid-execution, the replacement
+ * actor may re-run the handler (at-least-once across failover). Keep handlers
+ * idempotent when they have external side effects.
+ */
 export function defineEffect<
   TSchema = undefined,
   TInput = InferDefinedSchema<TSchema>,
@@ -161,12 +167,7 @@ export function defineEffect<
     retry: def.retry,
     execute: (raw: JsonValue, ctx) =>
       Effect.gen(function* () {
-        const input = schema
-          ? yield* Effect.tryPromise({
-              try: () => validateInput(schema, raw),
-              catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-            })
-          : raw
+        const input = schema ? yield* validateInputEffect(schema, raw) : raw
 
         // SAFETY: input has been validated against schema or is unconstrained raw input
         return yield* liftHandlerResult(def.execute(input as TInput, ctx))

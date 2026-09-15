@@ -39,7 +39,7 @@ export interface WorkflowDefinition<
   output?(ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }): TOutput
 }
 
-export type AnyWorkflowDefinition = WorkflowDefinition<string>
+export type AnyWorkflowDefinition = WorkflowDefinition
 
 export function defineWorkflow<
   TName extends string,

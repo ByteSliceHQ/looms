@@ -5,6 +5,8 @@
     "PORT",
     "DOCS_PORT",
     "HOST",
+    "LOOMS_BACKEND",
+    "LOOMS_WORKER_URL",
     "LOOMS_S2_ACCESS_TOKEN",
     "LOOMS_S2_BASIN",
     "LOOMS_S2_ENDPOINT",

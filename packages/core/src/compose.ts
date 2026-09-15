@@ -1,3 +1,5 @@
+import { Data, Effect } from 'effect'
+
 import type { CatalogEvent, EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
@@ -7,10 +9,11 @@ import type { ProjectionDefinition } from './projection'
 import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
 
-export class ModuleCompositionError extends Error {
-  readonly _tag = 'ModuleCompositionError'
+export class ModuleCompositionError extends Data.TaggedError('ModuleCompositionError')<{
+  readonly message: string
+}> {
   constructor(text: string) {
-    super(text)
+    super({ message: text })
     this.name = 'ModuleCompositionError'
   }
 }
@@ -94,6 +97,18 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
   }
 
   return { modules, threads, effects, projections, catalogs, middleware }
+}
+
+export function composeModulesEffect(
+  modules: readonly AnyRuntimeModule[],
+): Effect.Effect<ComposedRegistry, ModuleCompositionError> {
+  return Effect.try({
+    try: () => composeModules(modules),
+    catch: (cause) =>
+      cause instanceof ModuleCompositionError
+        ? cause
+        : new ModuleCompositionError(cause instanceof Error ? cause.message : String(cause)),
+  })
 }
 
 export type ProtocolEvents = CatalogEvent<'runtime', typeof protocolCatalog.entries>

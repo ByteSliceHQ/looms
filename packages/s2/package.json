@@ -20,6 +20,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./projector": {
+      "types": "./src/projector.ts",
+      "import": "./src/projector.ts",
+      "default": "./src/projector.ts"
     }
   },
   "publishConfig": {
@@ -29,6 +34,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./projector": {
+        "types": "./dist/projector.d.ts",
+        "import": "./dist/projector.js"
       }
     },
     "access": "public"
@@ -40,6 +49,7 @@
   },
   "dependencies": {
     "@looms/core": "workspace:*",
+    "@looms/projectors": "workspace:*",
     "@s2-dev/streamstore": "^0.23.0",
     "effect": "4.0.0-rc.112"
   },

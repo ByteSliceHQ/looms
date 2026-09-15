@@ -7,5 +7,21 @@ export {
   type S2LiteOptions,
   type StartedS2Lite,
 } from './lite'
-export { makeS2EventStore, s2, S2EventStoreLive } from './store'
+export {
+  makeS2EventStore,
+  paginateS2Stream,
+  readAllPages,
+  s2,
+  S2EventStoreLive,
+  type ReadAllPagesOptions,
+  type S2ReadBatchLike,
+} from './store'
 export { createKeyedSerializer, type KeyedSerializer } from './serialize'
+export { s2Projector } from './projector'
+export {
+  assembleSnapshot,
+  frameSnapshot,
+  s2SnapshotStore,
+  S2SnapshotStoreLive,
+  type SnapshotFrame,
+} from './snapshot-store'

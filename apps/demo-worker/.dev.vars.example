@@ -1,0 +1,9 @@
+# Local secrets for wrangler / celld (not committed).
+# Copied from apps/demo/.env via `wrangler dev --env-file ../demo/.env`,
+# or create this file manually for deploy/celld workflows.
+
+# OPENROUTER_API_KEY=
+# LOOMS_MODEL=openai/gpt-4o-mini
+# LOOMS_S2_ACCESS_TOKEN=
+# LOOMS_S2_BASIN=looms-demo
+# LOOMS_S2_ENDPOINT=
