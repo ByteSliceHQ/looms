@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
+import { FlowChain } from '../components/flow-chain'
 
 export const Route = createFileRoute('/docs/projectors')({
   component: Projectors,
@@ -11,19 +12,20 @@ function Projectors() {
     <>
       <h1>Projections &amp; Projectors</h1>
       <p>
-        In an event-sourced architecture, the canonical source of truth is the append-only event
-        log. State is never mutated in place—it is <strong>projected</strong>.
+        Durable execution is only half the problem. The other half is keeping product surfaces —
+        chat, approval queues, ledgers, admin indexes — honest about what the run actually did. In
+        Looms, the append-only event log is the only source of truth. State is never mutated in
+        place; it is <strong>projected</strong>.
+      </p>
+      <p>
+        That is the bridge between execution and UI: the same events that wake a parked workflow also
+        fold into React via LiveStore, and into SQLite or Postgres via projectors. No per-feature
+        sync protocol. No second source of truth that drifts.
       </p>
 
-      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
-        <span>Run Stream (Truth)</span>
-        <b>&rarr;</b>
-        <span>Pure Fold</span>
-        <b>&rarr;</b>
-        <span>Projections (UI &amp; State)</span>
-        <b>+</b>
-        <span>Projectors (DB &amp; Indexes)</span>
-      </div>
+      <FlowChain
+        steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']}
+      />
 
       <h2>Two Different Reducer Contracts</h2>
       <p>Looms cleanly separates behavioral execution from observational views:</p>
@@ -281,22 +283,29 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
 
       <h3>Attach projectors to the host</h3>
       <p>
-        Wrap your event store with <code>withProjectors</code> from <code>@looms/projectors</code>.
-        Events are delivered in log order after each commit.
+        Wrap the <em>local</em> execution store with <code>withProjectors</code> from{' '}
+        <code>@looms/projectors</code>. Events are delivered in log order after each commit.
+        Projection failures are isolated — the cell-local log stays authoritative.
       </p>
-      <CodeBlock lang="ts">{`import { withProjectors } from '@looms/projectors'
+      <CodeBlock lang="ts">{`import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
+import { withProjectors } from '@looms/projectors'
 import { sqlite } from '@looms/projectors/sqlite'
-import { createLooms } from '@looms/runtime'
-import { s2, s2ConfigFromEnv } from '@looms/s2'
+import { s2Projector, s2ConfigFromEnv } from '@looms/s2'
 
-const looms = createLooms({
-  definitions,
-  store: withProjectors(s2(s2ConfigFromEnv(process.env)), [sqlite({ path: './looms.db' })], {
-    onError: (error, projector) => {
-      console.warn(projector.name, error.message)
-    },
-  }),
+// Local SQLite is the execution store. Index + S2 lake are projectors.
+const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
+  sqlite({ path: './looms-index.db' }),
+  s2Projector(s2ConfigFromEnv(process.env)),
+], {
+  onError: (error, projector) => {
+    console.warn(projector.name, error.message)
+  },
 })`}</CodeBlock>
+      <p>
+        On Cloudflare Durable Objects, supply projectors via <code>configure().projectors</code> (see{' '}
+        <Link to="/docs/durability">Durability</Link>). Projectors can populate relational databases,
+        emit webhooks, or replicate events to a centralized data lake via <code>s2Projector</code>.
+      </p>
 
       <h3>Built-in index helpers</h3>
       <p>
@@ -381,7 +390,8 @@ export function approvalsWebhook(url: string): Projector {
 }`}</CodeBlock>
       <p>
         Next: see complete working examples of custom projections in{' '}
-        <Link to="/docs/examples">Examples</Link>, or browse available packages in{' '}
+        <Link to="/docs/examples">Examples</Link>, host runs on Durable Objects in{' '}
+        <Link to="/docs/durability">Durability</Link>, or browse packages in{' '}
         <Link to="/docs/modules">Modules</Link>.
       </p>
     </>

@@ -11,9 +11,15 @@ function Modules() {
     <>
       <h1>Modules</h1>
       <p>
-        Pick the capabilities your app needs and pass them into the runtime. Built-in modules cover
-        agents, workflows, and approvals. Add your own for domain work — charges, tickets,
-        notifications — without forking Looms.
+        Looms is composable the way a package manager is composable: you install capabilities, not a
+        monolith. Built-in modules cover agents, workflows, and approvals. Add your own for domain
+        work — charges, tickets, notifications — without forking the runtime.
+      </p>
+      <p>
+        The kernel does not special-case LLM turns or DAG nodes. Those are <strong>thread kinds</strong>{' '}
+        contributed by modules, alongside namespaced events, effects, and projections. That is what
+        makes an agent spawning a checkout workflow that waits on a human gate feel like one system
+        instead of three frameworks glued together.
       </p>
 
       <h2>What you get out of the box</h2>
@@ -62,14 +68,19 @@ function Modules() {
         charges module, and skip agents entirely.
       </p>
 
-      <h2>Start a host</h2>
+      <h2>Configuring modules on a host</h2>
+      <p>
+        Whether you run inside an in-process host with <code>createLooms</code>, local actors with{' '}
+        <code>createLocalActorHost</code>, or edge cells with <code>LoomsDurableObject</code>,
+        modules configure identically:
+      </p>
       <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
 import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
 import { createLooms } from '@looms/runtime'
 import { payments } from './modules/payments'
 import { assistant, checkout, definitions } from './definitions'
-import { llm } from './llm' // an LlmAdapter, see AI providers
+import { llm } from './llm'
 
 export const looms = createLooms({
   definitions,
@@ -79,14 +90,15 @@ export const looms = createLooms({
 await looms.start(assistant, 'Charge $40 after approval')
 await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       <p>
-        Omit <code>modules</code> to get agent, workflow, and approval. Pass your own list to
-        configure a module (the LLM adapter belongs to <code>agent({'{ llm }'})</code>), add a
-        domain module, or skip a built-in.
+        Omit <code>modules</code> to get default agent, workflow, and approval behaviors. Pass your
+        own list to configure modules (e.g. providing an LLM adapter to{' '}
+        <code>agent({'{ llm }'})</code>), add custom domain modules, or omit built-ins you
+        don&apos;t use.
       </p>
       <p>
         <code>start</code> does not care which module owns the definition. An agent and a workflow
         are two kinds of thread; a module you write adds a third, and{' '}
-        <code>looms.start(myThing, input)</code> works the same way.
+        <code>looms.start(myDefinition, input)</code> works the same way.
       </p>
 
       <h2>Talk to a running run</h2>

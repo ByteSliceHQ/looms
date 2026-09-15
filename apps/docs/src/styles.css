@@ -122,6 +122,13 @@ html.dark {
   }
 }
 
+/* Wins over utility text-muted: TanStack Link sets these when the route matches */
+nav a[data-status='active'],
+nav a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 500;
+}
+
 /* Code blocks and Shiki-generated markup */
 .code-block pre,
 pre {

@@ -11,8 +11,14 @@ function Examples() {
     <>
       <h1>Examples</h1>
       <p>
-        Patterns you can copy into an app. The demo at <code>bun run demo</code> is a fuller version
-        of the same pieces: checkout, an assistant, a run debugger, and chat.
+        Practical patterns for common application architectures: delegating tools to sub-agents,
+        orchestrating DAG workflows with human review gates, subscribing to reactive projections in
+        React, and interacting over HTTP or the CLI.
+      </p>
+      <p>
+        The included demo app combines these patterns into a complete system. Run it locally with
+        Bun actors (<code>bun run demo</code>) or deploy it to Cloudflare Durable Objects (
+        <code>bun run dev:cloudflare</code>).
       </p>
 
       <h2>Agent with tools</h2>

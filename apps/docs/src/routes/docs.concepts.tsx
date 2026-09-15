@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
+import { FlowChain } from '../components/flow-chain'
 
 export const Route = createFileRoute('/docs/concepts')({
   component: Concepts,
@@ -11,24 +12,19 @@ function Concepts() {
     <>
       <h1>Concepts &amp; Execution Model</h1>
       <p>
-        Looms is an <strong>event-sourced execution runtime</strong> designed for durable,
-        long-running agentic systems. A <strong>Run</strong> is the durability boundary. Inside it,{' '}
-        <strong>Threads</strong> provide universal units of computation. <strong>Events</strong> are
-        immutable facts. Pure <strong>Reducers</strong> reconstruct state and request{' '}
-        <strong>Effects</strong>, which cross into the outside world and return new events.
+        Looms is an <strong>event-sourced execution runtime</strong> for durable, long-running
+        agentic systems. A <strong>Run</strong> is the durability boundary. Inside it,{' '}
+        <strong>Threads</strong> are the universal unit of computation — agents, DAG workflows, and
+        custom kinds share the same tree. <strong>Events</strong> are immutable facts. Pure{' '}
+        <strong>Reducers</strong> reconstruct state and request <strong>Effects</strong>, which
+        cross into the outside world and return as new events.
+      </p>
+      <p>
+        This page is the mental model. If you only remember one thing: progress lives in the log.
+        Processes, workers, and UI caches are disposable.
       </p>
 
-      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
-        <span>Event</span>
-        <b>&rarr;</b>
-        <span>Pure Reducer</span>
-        <b>&rarr;</b>
-        <span>State + Effects</span>
-        <b>&rarr;</b>
-        <span>World</span>
-        <b>&rarr;</b>
-        <span>Event</span>
-      </div>
+      <FlowChain steps={['Event', 'Pure Reducer', 'State + Effects', 'World', 'Event']} />
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
         <strong>Core Invariant:</strong> The only way logical runtime state changes is by processing
@@ -227,20 +223,8 @@ function Concepts() {
         </div>
       </div>
 
-      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
-        <span>Event</span>
-        <b>&rarr;</b>
-        <span>Reducer</span>
-        <b>&rarr;</b>
-        <span>State + Effects</span>
-      </div>
-      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
-        <span>Effect</span>
-        <b>&rarr;</b>
-        <span>World (IO)</span>
-        <b>&rarr;</b>
-        <span>Event</span>
-      </div>
+      <FlowChain steps={['Event', 'Reducer', 'State + Effects']} />
+      <FlowChain steps={['Effect', 'World (IO)', 'Event']} />
 
       <p>
         This boundary is what guarantees <strong>safe replay and crash recovery</strong>. During
@@ -337,17 +321,9 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         In traditional runtimes, waiting for an approval, child job, or webhook ties up an in-memory
         process or call stack. In Looms:
       </p>
-      <div className="text-muted [&_b]:text-muted-light [&_span]:text-foreground my-6 flex flex-wrap items-center gap-2.5 font-mono text-[0.82rem] leading-normal [&_b]:px-0.5 [&_b]:font-normal [&_span]:font-medium">
-        <span>WAITING</span>
-        <b>&rarr;</b>
-        <span>persist state to log</span>
-        <b>&rarr;</b>
-        <span>0 compute / no worker held</span>
-        <b>&rarr;</b>
-        <span>matching event arrives</span>
-        <b>&rarr;</b>
-        <span>RUNNING</span>
-      </div>
+      <FlowChain
+        steps={['WAITING', 'persist state to log', '0 compute / no worker held', 'matching event arrives', 'RUNNING']}
+      />
       <p>
         When a thread registers a <code>Wait</code>, its state is checkpointed to the log and the
         host releases all worker resources. Days or weeks later, when someone approves the request
@@ -398,7 +374,7 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
           <tr>
             <td>Renderer (React DOM / Native)</td>
             <td>
-              <strong>Runtime &amp; Adapters</strong> (S2, LiveStore, SQLite)
+              <strong>Runtime &amp; Adapters</strong> (Durable Objects, Bun SQLite, LiveStore)
             </td>
           </tr>
           <tr>
@@ -426,12 +402,21 @@ SleepUntil(...)          → Wait('timer.fired')`}</CodeBlock>
         <Link to="/docs/projectors">Projectors &amp; Custom UIs</Link>.
       </p>
 
+      <h2>Where the log lives</h2>
+      <p>
+        Durability is an actor-cell concern: one writer per <code>runId</code>, with embedded SQLite
+        on Cloudflare Durable Objects (recommended), celld, or local Bun. Committed events can also
+        stream downstream to databases or data lakes. Learn how in{' '}
+        <Link to="/docs/durability">Durability &amp; Hosting</Link>.
+      </p>
+
       <h2>Next steps</h2>
       <p>
-        Explore composable packages in <Link to="/docs/modules">Modules</Link>, study the algebraic
-        foundations in <Link to="/docs/math">Math</Link>, build custom reactive interfaces in{' '}
+        Explore hosting in <Link to="/docs/durability">Durability</Link>, composable packages in{' '}
+        <Link to="/docs/modules">Modules</Link>, algebraic foundations in{' '}
+        <Link to="/docs/math">Math</Link>, custom reactive interfaces in{' '}
         <Link to="/docs/projectors">Projectors</Link>, or follow the{' '}
-        <Link to="/docs/quickstart">Quickstart</Link> to spin up a host in under two minutes.
+        <Link to="/docs/quickstart">Quickstart</Link> to spin up a host.
       </p>
     </>
   )

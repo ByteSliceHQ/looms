@@ -14,6 +14,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
+import { Route as DocsDurabilityRouteImport } from './routes/docs.durability'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
 import { Route as DocsMathRouteImport } from './routes/docs.math'
 import { Route as DocsModulesRouteImport } from './routes/docs.modules'
@@ -43,6 +44,11 @@ const DocsApiRoute = DocsApiRouteImport.update({
 const DocsConceptsRoute = DocsConceptsRouteImport.update({
   id: '/concepts',
   path: '/concepts',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsDurabilityRoute = DocsDurabilityRouteImport.update({
+  id: '/durability',
+  path: '/durability',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsExamplesRoute = DocsExamplesRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/docs': typeof DocsRouteWithChildren
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/durability': typeof DocsDurabilityRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/durability': typeof DocsDurabilityRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/docs': typeof DocsRouteWithChildren
   '/docs/api': typeof DocsApiRoute
   '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/durability': typeof DocsDurabilityRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/docs/api'
     | '/docs/concepts'
+    | '/docs/durability'
     | '/docs/examples'
     | '/docs/math'
     | '/docs/modules'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/'
     | '/docs/api'
     | '/docs/concepts'
+    | '/docs/durability'
     | '/docs/examples'
     | '/docs/math'
     | '/docs/modules'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/docs/api'
     | '/docs/concepts'
+    | '/docs/durability'
     | '/docs/examples'
     | '/docs/math'
     | '/docs/modules'
@@ -187,6 +199,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsConceptsRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/durability': {
+      id: '/docs/durability'
+      path: '/durability'
+      fullPath: '/docs/durability'
+      preLoaderRoute: typeof DocsDurabilityRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/examples': {
       id: '/docs/examples'
       path: '/examples'
@@ -228,6 +247,7 @@ declare module '@tanstack/react-router' {
 interface DocsRouteChildren {
   DocsApiRoute: typeof DocsApiRoute
   DocsConceptsRoute: typeof DocsConceptsRoute
+  DocsDurabilityRoute: typeof DocsDurabilityRoute
   DocsExamplesRoute: typeof DocsExamplesRoute
   DocsMathRoute: typeof DocsMathRoute
   DocsModulesRoute: typeof DocsModulesRoute
@@ -239,6 +259,7 @@ interface DocsRouteChildren {
 const DocsRouteChildren: DocsRouteChildren = {
   DocsApiRoute: DocsApiRoute,
   DocsConceptsRoute: DocsConceptsRoute,
+  DocsDurabilityRoute: DocsDurabilityRoute,
   DocsExamplesRoute: DocsExamplesRoute,
   DocsMathRoute: DocsMathRoute,
   DocsModulesRoute: DocsModulesRoute,

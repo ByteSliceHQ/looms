@@ -11,10 +11,31 @@ function Api() {
     <>
       <h1>API / SDK</h1>
       <p>
-        Start with <code>createLooms</code> from <code>@looms/runtime</code>. It registers agents,
-        workflows, approvals, and any extra modules you pass, then gives you a host you can call
-        in-process or over HTTP.
+        Production hosts are <strong>actor cells</strong> — Cloudflare Durable Objects (
+        <code>@looms/cloudflare</code>), celld with the same bundle, or{' '}
+        <code>createLocalActorHost</code> locally. <code>createLooms</code> is the single-process
+        embed API for scripts, tests, and small apps: start a definition, signal events, project
+        read models, optionally serve HTTP.
       </p>
+
+      <h2>Actor hosts (recommended)</h2>
+      <p>
+        See <Link to="/docs/durability">Durability &amp; Hosting</Link> for Durable Objects, celld,
+        Bun SQLite actors, and bring-your-own single-writer hosts. Package entry points:
+      </p>
+      <ul>
+        <li>
+          <code>@looms/cloudflare</code> — <code>LoomsDurableObject</code>,{' '}
+          <code>routeToDurableObject</code>
+        </li>
+        <li>
+          <code>@looms/actor</code> — <code>createLocalActorHost</code>, <code>createActorCell</code>
+        </li>
+        <li>
+          <code>@looms/core/bun-sqlite</code> — per-run SQLite <code>EventStore</code> for local
+          actors
+        </li>
+      </ul>
 
       <h2>
         <code>createLooms</code>
@@ -22,8 +43,10 @@ function Api() {
       <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
 import { vercelLlm } from '@looms/ai-vercel'
 import { approval } from '@looms/approval'
+import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
+import { withProjectors } from '@looms/projectors'
 import { createLooms } from '@looms/runtime'
-import { s2, s2ConfigFromEnv } from '@looms/s2'
+import { s2Projector, s2ConfigFromEnv } from '@looms/s2'
 import { workflow } from '@looms/workflow'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
@@ -31,10 +54,15 @@ const llm = vercelLlm({
   model: createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY }).chat('openai/gpt-4o-mini'),
 })
 
+// Embed path: local SQLite storage with optional stream replication to an S2 lake.
+const store = withProjectors(bunSqliteEventStore({ path: './looms.sqlite' }), [
+  s2Projector(s2ConfigFromEnv(process.env)),
+])
+
 const looms = createLooms({
   definitions: [echo, checkout, assistant],
   modules: [agent({ llm }), workflow(), approval(), payments()],
-  store: s2(s2ConfigFromEnv(process.env)),
+  store,
   serve: { port: 8787 },
 })`}</CodeBlock>
       <table>
@@ -75,8 +103,21 @@ const looms = createLooms({
             </td>
             <td>in-memory</td>
             <td>
-              Durable log via <code>@looms/s2</code>, or wrap with{' '}
-              <Link to="/docs/projectors">projectors</Link>
+              Execution <code>EventStore</code>. Use in-memory for tests or local SQLite for
+              single-process persistence. For multi-run production durability, deploy virtual actor
+              cells (Cloudflare Durable Objects).
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>snapshotEvery</code>
+            </td>
+            <td>
+              <code>200</code>
+            </td>
+            <td>
+              Durable events between mid-wake snapshots (<code>0</code> disables). Parking always
+              snapshots.
             </td>
           </tr>
           <tr>
@@ -136,7 +177,24 @@ const looms = createLooms({
               <code>@looms/runtime</code>
             </td>
             <td>
-              <code>createLooms</code>, HTTP host
+              <code>createLooms</code>, HTTP embed host
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>@looms/cloudflare</code>
+            </td>
+            <td>
+              <code>LoomsDurableObject</code>, <code>routeToDurableObject</code> — recommended
+              production host
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>@looms/actor</code>
+            </td>
+            <td>
+              <code>createLocalActorHost</code>, <code>createActorCell</code>
             </td>
           </tr>
           <tr>
@@ -170,7 +228,7 @@ const looms = createLooms({
             </td>
             <td>
               <code>defineRuntimeModule</code>, <code>defineEffect</code>, <code>invoke</code>,{' '}
-              <code>wait</code>
+              <code>wait</code>; <code>@looms/core/bun-sqlite</code> for local execution stores
             </td>
           </tr>
           <tr>
@@ -191,7 +249,11 @@ const looms = createLooms({
             <td>
               <code>@looms/s2</code>
             </td>
-            <td>Durable event log</td>
+            <td>
+              <code>s2Projector</code> — replicates committed events to a global S2 stream lake for
+              centralized auditing and analytics. See{' '}
+              <Link to="/docs/durability">Durability</Link>.
+            </td>
           </tr>
           <tr>
             <td>
@@ -204,7 +266,7 @@ const looms = createLooms({
               <code>@looms/projectors</code>
             </td>
             <td>
-              Cross-run indexes. See <Link to="/docs/projectors">Projectors</Link>.
+              Cross-run indexes and fan-out. See <Link to="/docs/projectors">Projectors</Link>.
             </td>
           </tr>
           <tr>
@@ -226,7 +288,9 @@ const looms = createLooms({
 
       <h2>HTTP</h2>
       <p>
-        Point <code>createLoomsClient</code> or curl at a host. JSON in, JSON out.
+        Point <code>createLoomsClient</code> or curl at a host. JSON in, JSON out. Actor / DO hosts
+        return <code>501</code> for global <code>GET /runs</code> (cells are isolated per{' '}
+        <code>runId</code>).
       </p>
       <table>
         <thead>
@@ -258,7 +322,10 @@ const looms = createLooms({
             <td>
               <code>/runs</code>
             </td>
-            <td>List run ids</td>
+            <td>
+              List run ids on shared-store <code>createLooms</code> hosts; <code>501</code> on actor
+              / DO / celld hosts
+            </td>
           </tr>
           <tr>
             <td>GET</td>

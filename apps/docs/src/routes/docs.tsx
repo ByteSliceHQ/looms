@@ -14,7 +14,8 @@ function DocsLayout() {
           <Link
             key={item.to}
             to={item.to}
-            className="text-muted hover:text-foreground text-[0.88rem] no-underline transition-colors"
+            activeOptions={{ exact: item.to === '/docs' }}
+            className="text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.88rem] no-underline transition-colors data-[status=active]:font-medium"
           >
             {item.label}
           </Link>
