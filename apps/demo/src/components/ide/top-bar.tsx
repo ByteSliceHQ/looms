@@ -46,7 +46,6 @@ export function TopBar({ runId }: { runId?: string }) {
       <Button variant="link" className="h-auto px-0 text-sm font-medium" asChild>
         <a href="/">Looms</a>
       </Button>
-      <span className="text-muted-foreground text-xs">demo</span>
       <div className="ml-auto">{runId ? <RunChip runId={runId} /> : null}</div>
     </header>
   )

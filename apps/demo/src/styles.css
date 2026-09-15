@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import '@looms/debugger/styles.css';
+@source '../../../packages/debugger/src/**/*.{ts,tsx}';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -25,17 +27,6 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
-  --color-status-running: var(--status-running);
-  --color-status-waiting: var(--status-waiting);
-  --color-status-completed: var(--status-completed);
-  --color-status-failed: var(--status-failed);
-  --color-status-cancelled: var(--status-cancelled);
-  --color-family-runtime: var(--family-runtime);
-  --color-family-agent: var(--family-agent);
-  --color-family-workflow: var(--family-workflow);
-  --color-family-approval: var(--family-approval);
-  --color-family-payments: var(--family-payments);
-  --color-family-wait: var(--family-wait);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -66,17 +57,6 @@
   --sidebar: oklch(0.18 0.006 260);
   --sidebar-foreground: oklch(0.93 0.01 260);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --status-running: oklch(0.74 0.12 240);
-  --status-waiting: oklch(0.8 0.14 85);
-  --status-completed: oklch(0.76 0.13 155);
-  --status-failed: oklch(0.68 0.18 25);
-  --status-cancelled: oklch(0.62 0.01 260);
-  --family-runtime: oklch(0.76 0.13 155);
-  --family-agent: oklch(0.74 0.12 240);
-  --family-workflow: oklch(0.76 0.12 300);
-  --family-approval: oklch(0.8 0.14 85);
-  --family-payments: oklch(0.78 0.1 175);
-  --family-wait: oklch(0.8 0.14 85);
 }
 
 @layer base {

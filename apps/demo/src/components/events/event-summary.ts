@@ -1,60 +1,17 @@
 import { compactJson } from '@/lib/utils'
 import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
+import {
+  DEFAULT_FAMILIES,
+  familyClass,
+  familyFromPrefix,
+  type EventStreamCatalog,
+  type EventSummary,
+} from '@looms/debugger'
 
 import type { DemoEvents } from '../../runtime'
 
-export type EventFamily = 'runtime' | 'agent' | 'workflow' | 'approval' | 'payments' | 'wait'
-
-export type EventSummary = {
-  title: string
-  detail?: string
-}
-
-export function eventFamily(type: string): EventFamily {
-  if (type.startsWith('agent.')) {
-    return 'agent'
-  }
-
-  if (type.startsWith('workflow.')) {
-    return 'workflow'
-  }
-
-  if (type.startsWith('approval.')) {
-    return 'approval'
-  }
-
-  if (type.startsWith('payments.')) {
-    return 'payments'
-  }
-
-  if (type.startsWith('runtime.wait')) {
-    return 'wait'
-  }
-
-  return 'runtime'
-}
-
-export function familyClass(family: EventFamily): string {
-  switch (family) {
-    case 'agent':
-      return 'bg-family-agent'
-    case 'workflow':
-      return 'bg-family-workflow'
-    case 'approval':
-      return 'bg-family-approval'
-    case 'payments':
-      return 'bg-family-payments'
-    case 'wait':
-      return 'bg-family-wait'
-    case 'runtime':
-      return 'bg-family-runtime'
-
-    default: {
-      const _exhaustive: never = family
-      return _exhaustive
-    }
-  }
-}
+export type { EventFamily, EventSummary } from '@looms/debugger'
+export { familyClass, familyFromPrefix as eventFamily }
 
 function obj(value: JsonValue | null): { [key: string]: JsonValue } {
   return isJsonObject(value) ? value : {}
@@ -230,4 +187,12 @@ export function searchText(event: DemoEvents): string {
   ]
     .join(' ')
     .toLowerCase()
+}
+
+export const demoEventCatalog: EventStreamCatalog<DemoEvents> = {
+  families: DEFAULT_FAMILIES,
+  familyOf: familyFromPrefix,
+  familyClass,
+  summarize: summarizeEvent,
+  searchText,
 }

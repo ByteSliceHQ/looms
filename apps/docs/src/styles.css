@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
+@import '@looms/debugger/styles.css';
+@source '../../../packages/debugger/src/**/*.{ts,tsx}';
 
 @plugin '@tailwindcss/typography';
 
@@ -16,6 +18,14 @@
   --color-line-subtle: var(--line-subtle);
   --color-code-bg: var(--code-bg);
   --color-line-number: var(--line-number);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--line-subtle);
+  --color-accent-foreground: var(--text);
+  --color-border: var(--line);
+  --color-secondary: var(--code-bg);
+  --color-secondary-foreground: var(--text);
+  --color-input: var(--line);
+  --color-ring: var(--muted-light);
   --font-sans: var(--sans);
   --font-mono: var(--mono);
 }
@@ -128,6 +138,17 @@ pre {
 
 .code-block pre {
   margin: 0;
+}
+
+.landing-source-code pre {
+  min-width: max-content;
+  min-height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  padding: 0.75rem 0;
+  font-size: 0.68rem;
 }
 
 pre code {
@@ -280,4 +301,12 @@ td strong {
 .equation > div {
   margin: 0;
   padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-debugger * {
+    scroll-behavior: auto;
+    animation: none !important;
+    transition: none !important;
+  }
 }
