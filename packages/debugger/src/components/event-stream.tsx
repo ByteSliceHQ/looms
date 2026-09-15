@@ -1,11 +1,13 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, Search, SlidersHorizontal } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { DebuggerEvent, EventStreamCatalog, ReplayLoader } from '../contracts'
-import { createDefaultCatalog, searchText as defaultSearchText } from '../events/catalog'
+import { defaultEventCatalog } from '../events/catalog'
 import { cn, shortId } from '../lib/cn'
+import { getEventMeta } from '../lib/event-meta'
+import { useVisibleEvents } from '../lib/visible-events'
 import { Checkbox } from '../ui/checkbox'
 import { Input } from '../ui/input'
 import { ScrollArea } from '../ui/scroll-area'
@@ -35,32 +37,34 @@ export function EventStream<TEvent extends DebuggerEvent>({
   loadReplayStep?: ReplayLoader
   renderInspector?: (selected: TEvent) => ReactNode
 }) {
-  const eventCatalog = catalog ?? createDefaultCatalog<TEvent>()
+  const eventCatalog = catalog ?? (defaultEventCatalog as EventStreamCatalog<TEvent>)
   const [query, setQuery] = useState('')
   const [follow, setFollow] = useState(true)
   const [families, setFamilies] = useState(() => new Set(eventCatalog.families))
   const parentRef = useRef<HTMLDivElement>(null)
   const followLock = useRef(false)
-  const selected = events.find((event) => event.seq === selectedSeq)
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return events.filter((event) => {
-      if (threadId && event.threadId !== threadId) {
-        return false
-      }
+  const selected = useMemo(() => {
+    if (selectedSeq === undefined) {
+      return undefined
+    }
 
-      if (!families.has(eventCatalog.familyOf(event.type))) {
-        return false
-      }
+    const idx = selectedSeq - 1
 
-      const haystack = eventCatalog.searchText
-        ? eventCatalog.searchText(event)
-        : defaultSearchText(event, eventCatalog.summarize)
+    if (idx >= 0 && idx < events.length && events[idx]?.seq === selectedSeq) {
+      return events[idx]
+    }
 
-      return !(q && !haystack.includes(q))
-    })
-  }, [eventCatalog, events, families, query, threadId])
+    return events.find((event) => event.seq === selectedSeq)
+  }, [events, selectedSeq])
+
+  const visible = useVisibleEvents({
+    events,
+    query,
+    families,
+    threadId,
+    catalog: eventCatalog,
+  })
 
   const virtualizer = useVirtualizer({
     count: visible.length,
@@ -70,6 +74,8 @@ export function EventStream<TEvent extends DebuggerEvent>({
     paddingStart: 4,
     paddingEnd: 4,
     getItemKey: (index) => visible[index]?.id ?? index,
+    // Avoid flushSync during ref measurement / follow-scroll under high event rates.
+    useFlushSync: false,
   })
 
   useEffect(() => {
@@ -78,16 +84,29 @@ export function EventStream<TEvent extends DebuggerEvent>({
     }
 
     followLock.current = true
-    virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
 
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const rafId = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
+
+      timer = setTimeout(() => {
+        followLock.current = false
+      }, 50)
+    })
+
+    return () => {
+      cancelAnimationFrame(rafId)
+
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
+
       followLock.current = false
-    }, 80)
-
-    return () => clearTimeout(timer)
+    }
   }, [follow, visible.length, virtualizer])
 
-  function onScroll() {
+  const onScroll = useCallback(() => {
     if (followLock.current) {
       return
     }
@@ -105,9 +124,9 @@ export function EventStream<TEvent extends DebuggerEvent>({
     } else if (!follow && atBottom) {
       setFollow(true)
     }
-  }
+  }, [follow])
 
-  function toggleFamily(family: string) {
+  const toggleFamily = useCallback((family: string) => {
     setFamilies((prev) => {
       const next = new Set(prev)
 
@@ -119,7 +138,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
 
       return next
     })
-  }
+  }, [])
 
   const hiddenFamilyCount = eventCatalog.families.length - families.size
 
@@ -223,7 +242,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
                   catalog={eventCatalog}
                   startedAt={startedAt}
                   selected={selectedSeq === event.seq}
-                  onSelect={() => onSelectSeq(selectedSeq === event.seq ? undefined : event.seq)}
+                  onSelectSeq={onSelectSeq}
                 />
               </div>
             )
@@ -239,34 +258,43 @@ export function EventStream<TEvent extends DebuggerEvent>({
   )
 }
 
-function EventRow<TEvent extends DebuggerEvent>({
-  event,
-  catalog,
-  startedAt,
-  selected,
-  onSelect,
-}: {
+interface EventRowProps<TEvent extends DebuggerEvent> {
   event: TEvent
   catalog: EventStreamCatalog<TEvent>
   startedAt?: number
   selected: boolean
-  onSelect: () => void
-}) {
-  const family = catalog.familyOf(event.type)
-  const summary = catalog.summarize(event)
+  onSelectSeq: (seq: number | undefined) => void
+}
+
+// SAFETY: memoized EventRow preserves generic EventRowProps contract.
+const EventRow = memo(function EventRow({
+  event,
+  catalog,
+  startedAt,
+  selected,
+  onSelectSeq,
+}: EventRowProps<DebuggerEvent>) {
+  const meta = getEventMeta(event, catalog)
   const offset = startedAt !== undefined ? Math.max(0, event.ts - startedAt) : undefined
+
+  const handleClick = useCallback(() => {
+    onSelectSeq(selected ? undefined : event.seq)
+  }, [onSelectSeq, selected, event.seq])
+
   return (
     <button
       type="button"
-      onClick={onSelect}
-      title={[summary.title, summary.detail].filter(Boolean).join(' — ')}
+      onClick={handleClick}
+      title={[meta.summary.title, meta.summary.detail].filter(Boolean).join(' — ')}
       className={cn(
         'flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left font-mono text-[11px]',
         selected ? 'bg-accent' : 'hover:bg-accent/40',
         event.ephemeral && 'opacity-50',
       )}
     >
-      <span className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', catalog.familyClass(family))} />
+      <span
+        className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', catalog.familyClass(meta.family))}
+      />
       <span className="text-muted-foreground w-6 shrink-0 text-right tabular-nums">
         {event.seq}
       </span>
@@ -274,9 +302,9 @@ function EventRow<TEvent extends DebuggerEvent>({
         {offset !== undefined ? `+${offset}` : ''}
       </span>
       <span className="min-w-0 flex-1 truncate whitespace-nowrap">
-        <span className="text-foreground">{summary.title}</span>
-        {summary.detail ? (
-          <span className="text-muted-foreground ml-1">{summary.detail}</span>
+        <span className="text-foreground">{meta.summary.title}</span>
+        {meta.summary.detail ? (
+          <span className="text-muted-foreground ml-1">{meta.summary.detail}</span>
         ) : null}
       </span>
       {event.causationId ? (
@@ -291,4 +319,5 @@ function EventRow<TEvent extends DebuggerEvent>({
       ) : null}
     </button>
   )
-}
+  // SAFETY: memoized EventRow preserves generic EventRowProps contract.
+}) as <TEvent extends DebuggerEvent>(props: EventRowProps<TEvent>) => ReactNode

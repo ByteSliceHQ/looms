@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
 import { rememberRun } from '@/hooks/use-recent-runs'
-import { useRun } from '@/hooks/use-run'
 import { loomsClient } from '@/lib/looms-client'
 import { statusClass } from '@/lib/status'
 import type { JsonValue } from '@looms/core'
+import { useRunEvents, useRunStore, useRunSummary, useThreadTree } from '@looms/livestore/react'
 
 import type { WorkflowRunType } from '../../catalog'
 import { JsonView } from '../json-view'
@@ -25,21 +25,26 @@ function fieldValue(
 }
 
 function WorkflowResult({ runId }: { runId: string }) {
-  const { status, tree, events } = useRun(runId)
+  const store = useRunStore(runId)
+  const summary = useRunSummary(store)
+  const tree = useThreadTree(store)
+  const events = useRunEvents(store)
+
+  const rootThreadId = tree.root?.threadId
 
   const completed = events.find(
-    (event) => event.type === 'runtime.thread.completed' && event.threadId === tree.root?.threadId,
+    (event) => event.type === 'runtime.thread.completed' && event.threadId === rootThreadId,
   )
 
   const failed = events.find(
-    (event) => event.type === 'runtime.thread.failed' && event.threadId === tree.root?.threadId,
+    (event) => event.type === 'runtime.thread.failed' && event.threadId === rootThreadId,
   )
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs">
         <span className="text-muted-foreground">Status</span>
-        <span className={statusClass(status)}>{status}</span>
+        <span className={statusClass(summary.status)}>{summary.status}</span>
       </div>
       {completed?.type === 'runtime.thread.completed' ? (
         <JsonView value={completed.payload.output} />

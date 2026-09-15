@@ -1,13 +1,12 @@
-import { useRun } from '@/hooks/use-run'
 import { statusClass } from '@/lib/status'
-import { useProjection } from '@looms/livestore/react'
+import { useProjection, useRunStore } from '@looms/livestore/react'
 import { nodes } from '@looms/workflow'
 
 import { JsonView } from '../json-view'
 import { StatusDot } from '../status-dot'
 
 export function WorkflowNodes({ runId }: { runId: string }) {
-  const { store } = useRun(runId)
+  const store = useRunStore(runId)
   const projected = useProjection(store, nodes)
   const entries = Object.entries(projected.nodes)
 

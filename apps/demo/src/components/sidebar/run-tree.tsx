@@ -1,5 +1,5 @@
-import { useRun } from '@/hooks/use-run'
 import { RunTree as RunTreeView } from '@looms/debugger'
+import { useEventCounts, useRunStore, useRunSummary, useThreadTree } from '@looms/livestore/react'
 
 export function RunTree({
   runId,
@@ -10,14 +10,18 @@ export function RunTree({
   selectedThread?: string
   onSelectThread: (threadId: string | undefined) => void
 }) {
-  const { tree, status, counts, events } = useRun(runId)
+  const store = useRunStore(runId)
+  const tree = useThreadTree(store)
+  const counts = useEventCounts(store)
+  const summary = useRunSummary(store)
+
   return (
     <RunTreeView
       runId={runId}
-      runStatus={status}
+      runStatus={summary.status}
       tree={tree}
       eventCounts={counts}
-      totalEventCount={counts.get('run') ?? events.length}
+      totalEventCount={counts.get('run') ?? 0}
       selectedThread={selectedThread}
       onSelectThread={onSelectThread}
     />

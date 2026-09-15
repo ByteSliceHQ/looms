@@ -1,12 +1,11 @@
-import { useRun } from '@/hooks/use-run'
 import { statusClass } from '@/lib/status'
-import { useProjection } from '@looms/livestore/react'
+import { useProjection, useRunStore } from '@looms/livestore/react'
 
 import { ledger } from '../../modules/payments'
 import { StatusDot } from '../status-dot'
 
 export function Ledger({ runId }: { runId: string }) {
-  const { store } = useRun(runId)
+  const store = useRunStore(runId)
   const charges = useProjection(store, ledger)
 
   if (charges.entries.length === 0) {

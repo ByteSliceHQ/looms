@@ -1,6 +1,13 @@
-import { project, threadTree, toThreadTree, type EventEnvelope, type ThreadTree } from '@looms/core'
+import {
+  EventIndex,
+  project,
+  threadTree,
+  toThreadTree,
+  type EventEnvelope,
+  type ThreadTree,
+} from '@looms/core'
 
-import { countEventsByThread, runStatusFromEvents, startedAtFromEvents } from './event-counts'
+import { runStatusFromEvents } from './event-counts'
 
 export type ProjectedRunView = {
   runId: string
@@ -11,12 +18,15 @@ export type ProjectedRunView = {
 }
 
 export function projectRunView(events: readonly EventEnvelope[]): ProjectedRunView {
+  const index = new EventIndex()
+  index.append(events)
   const tree = toThreadTree(project(threadTree, events))
+
   return {
     runId: events[0]?.runId ?? tree.runId,
     tree,
-    eventCounts: countEventsByThread(events),
+    eventCounts: new Map(index.getCounts()),
     runStatus: runStatusFromEvents(events),
-    startedAt: startedAtFromEvents(events),
+    startedAt: index.getStartedAt(),
   }
 }

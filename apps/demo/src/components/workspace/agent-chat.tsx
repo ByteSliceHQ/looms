@@ -1,89 +1,103 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { rememberRun } from '@/hooks/use-recent-runs'
-import { useRun } from '@/hooks/use-run'
 import { loomsClient } from '@/lib/looms-client'
 import { cn, compactJson } from '@/lib/utils'
 import { conversation, userMessage } from '@looms/agent'
 import { createRunId } from '@looms/core'
-import { useProjection } from '@looms/livestore/react'
+import {
+  createFold,
+  useEventFold,
+  useProjection,
+  useRunStore,
+  useRunSummary,
+} from '@looms/livestore/react'
 
 import type { AgentRunType } from '../../catalog'
-import type { DemoEvents } from '../../runtime'
 import { Button } from '../ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
 import { Textarea } from '../ui/textarea'
 
-function streamingText(events: DemoEvents[]): string | null {
-  let lastMessage = -1
+interface StreamingState {
+  lastMessageSeq: number
+  turnStarted: boolean
+  parts: string[]
+}
 
-  for (const event of events) {
+const streamingFold = createFold<StreamingState>({
+  name: 'agentStreamingText',
+  initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
+  includeEphemeral: true,
+  reduce(state, event) {
     if (event.type === 'agent.message') {
-      lastMessage = event.seq
+      return { lastMessageSeq: event.seq, turnStarted: false, parts: [] }
     }
-  }
 
-  const deltas: string[] = []
-  let turnStarted = false
-
-  for (const event of events) {
-    if (event.seq <= lastMessage) {
-      continue
+    if (event.seq <= state.lastMessageSeq) {
+      return state
     }
 
     if (event.type === 'agent.turn.started') {
-      turnStarted = true
+      // Live text_deltas can arrive before durable turn.started; keep any in-flight text.
+      return { ...state, turnStarted: true }
     }
 
     if (event.type === 'agent.turn.text_delta') {
-      deltas.push(event.payload.delta)
+      // Deltas are live-appended during the LLM call; turn.started is committed afterward.
+      return {
+        ...state,
+        turnStarted: true,
+        parts: state.parts.concat(event.payload.delta),
+      }
     }
-  }
 
-  if (deltas.length > 0) {
-    return deltas.join('')
-  }
-
-  return turnStarted ? '' : null
-}
+    return state
+  },
+})
 
 function Transcript({ runId }: { runId: string }) {
-  const { store, events } = useRun(runId)
+  const store = useRunStore(runId)
   const convo = useProjection(store, conversation)
-  const stream = useMemo(() => streamingText(events), [events])
+  const streaming = useEventFold(store, streamingFold)
+  const stream = streaming.turnStarted ? streaming.parts.join('') : null
 
   return (
     <div className="space-y-2">
-      {convo.lines.map((line, index) => (
-        <div key={`${line.role}-${index}`} className="grid grid-cols-[4.5rem_1fr] gap-2 text-sm">
-          <div className="text-muted-foreground pt-0.5 font-mono text-[10px] tracking-wide uppercase">
-            {line.role}
+      {convo.lines.map((line, index) => {
+        const lineKey =
+          line.toolCallId ?? line.toolCalls?.[0]?.id ?? `${index}:${line.role}:${line.name ?? ''}`
+
+        return (
+          <div key={lineKey} className="grid grid-cols-[4.5rem_1fr] gap-2 text-sm">
+            <div className="text-muted-foreground pt-0.5 font-mono text-[10px] tracking-wide uppercase">
+              {line.role}
+            </div>
+            <div className="min-w-0">
+              {line.role === 'tool' ? (
+                <Collapsible>
+                  <CollapsibleTrigger className="text-muted-foreground hover:text-foreground text-[11px]">
+                    {line.name ?? 'result'}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <pre className="text-muted-foreground mt-1 font-mono text-[11px] whitespace-pre-wrap">
+                      {line.content}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                <>
+                  {line.content ? <div className="whitespace-pre-wrap">{line.content}</div> : null}
+                  {line.toolCalls?.map((call) => (
+                    <div key={call.id} className="text-muted-foreground mt-1 font-mono text-[11px]">
+                      {call.name}({compactJson(call.arguments)})
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
           </div>
-          <div className="min-w-0">
-            {line.role === 'tool' ? (
-              <Collapsible>
-                <CollapsibleTrigger className="text-muted-foreground hover:text-foreground text-[11px]">
-                  {line.name ?? 'result'}
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <pre className="text-muted-foreground mt-1 font-mono text-[11px] whitespace-pre-wrap">
-                    {line.content}
-                  </pre>
-                </CollapsibleContent>
-              </Collapsible>
-            ) : (
-              <>
-                {line.content ? <div className="whitespace-pre-wrap">{line.content}</div> : null}
-                {line.toolCalls?.map((call) => (
-                  <div key={call.id} className="text-muted-foreground mt-1 font-mono text-[11px]">
-                    {call.name}({compactJson(call.arguments)})
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      ))}
+        )
+      })}
       {stream !== null ? (
         <div className="grid grid-cols-[4.5rem_1fr] gap-2 text-sm">
           <div className="text-muted-foreground pt-0.5 font-mono text-[10px] tracking-wide uppercase">
@@ -163,7 +177,9 @@ function FollowUpComposer({
   onSent: () => void
   setPending: (value: boolean) => void
 }) {
-  const { store, rootThreadId } = useRun(runId)
+  const store = useRunStore(runId)
+  const { rootThreadId } = useRunSummary(store)
+
   const canFollowUp = type.conversational && Boolean(rootThreadId)
   const canSend = draft.trim().length > 0 && canFollowUp
 

@@ -3,7 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import { Effect, Schema } from 'effect'
 
 import { defineEventCatalog } from './catalog'
-import { composeModules, composeModulesEffect, ModuleCompositionError } from './compose'
+import {
+  composeModules,
+  composeModulesEffect,
+  ModuleCompositionError,
+  type EventsOf,
+} from './compose'
 import { defineEffect } from './effects'
 import { defineRuntimeModule } from './module'
 import { defineModule } from './module-scope'
@@ -105,5 +110,53 @@ describe('composeModules', () => {
     expect(composed.effects.get('scoped.doWork')).toBe(effect)
     expect(composed.catalogs).toHaveLength(2)
     expect(composed.catalogs[1]?.namespace).toBe('scoped')
+  })
+})
+
+describe('EventsOf', () => {
+  test('infers events from module arrays and creator functions', () => {
+    const catalog = defineEventCatalog('demo', {
+      done: Schema.Struct({ ok: Schema.Boolean }),
+    })
+
+    const module = defineRuntimeModule({
+      namespace: 'demo',
+      protocolVersion: '1.0.0',
+      events: catalog,
+    })
+
+    const modules = [module] as const
+    const createModules = () => modules
+
+    type FromArray = EventsOf<typeof modules>
+    type FromFn = EventsOf<typeof createModules>
+    type FromComposed = EventsOf<{ modules: typeof modules }>
+    type FromCatalog = EventsOf<typeof catalog>
+
+    const fromArray: FromArray = {
+      id: 'e1',
+      runId: 'r1',
+      seq: 1,
+      ts: 1,
+      type: 'demo.done',
+      payload: { ok: true },
+      threadId: null,
+      origin: { type: 'system' },
+    }
+
+    const fromFn: FromFn = fromArray
+    const fromComposed: FromComposed = fromArray
+    const fromCatalog: FromCatalog = fromArray
+
+    expect(fromArray.type).toBe('demo.done')
+    expect(fromFn.payload.ok).toBe(true)
+    expect(fromComposed.type).toBe('demo.done')
+    expect(fromCatalog.payload.ok).toBe(true)
+
+    // Protocol events are included for module arrays
+    type ProtocolOk = Extract<FromArray, { type: 'runtime.run.started' }>
+    // SAFETY: null placeholder only exercises the ProtocolOk type alias.
+    const started = null as ProtocolOk | null
+    expect(started).toBeNull()
   })
 })

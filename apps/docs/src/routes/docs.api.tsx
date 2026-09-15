@@ -245,7 +245,10 @@ const looms = createLooms({
               <code>@looms/livestore</code>
             </td>
             <td>
-              <code>useRunStore</code>, <code>useProjection</code>
+              <code>useRunStore</code>, <code>useProjection</code>, <code>useRunEvents</code>,{' '}
+              <code>useRunSummary</code>, <code>useThreadTree</code>, <code>useEventCounts</code>,{' '}
+              <code>useRunSelector</code>, <code>useEventFold</code>, <code>LoomsRegister</code>{' '}
+              (typed event catalogs)
             </td>
           </tr>
           <tr>

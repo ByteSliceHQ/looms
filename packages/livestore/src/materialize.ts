@@ -1,26 +1,14 @@
-import { Predicate } from 'effect'
+import { isJsonObject, isJsonString, type EventEnvelope, type JsonValue } from '@looms/core'
 
-import type { EventEnvelope, JsonValue } from '@looms/core'
-
-import {
-  emptyTables,
-  eventToLogRow,
-  type ThreadRow,
-  type MaterializedTables,
-  type RunRow,
-} from './tables'
+import { emptyTables, type ThreadRow, type MaterializedTables, type RunRow } from './tables'
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
-  if (!Predicate.isObject(event.payload)) {
-    return {}
-  }
-
-  return event.payload
+  return isJsonObject(event.payload) ? event.payload : {}
 }
 
 function readString(obj: { [key: string]: JsonValue }, key: string): string | undefined {
   const value = obj[key]
-  return Predicate.isString(value) ? value : undefined
+  return isJsonString(value) ? value : undefined
 }
 
 export function materializeEvents(
@@ -28,13 +16,11 @@ export function materializeEvents(
   from: MaterializedTables = emptyTables(),
 ): MaterializedTables {
   const tables: MaterializedTables = {
-    runs: new Map(from.runs),
-    threads: new Map(from.threads),
-    events_log: [...from.events_log],
+    runs: from.runs,
+    threads: from.threads,
   }
 
   for (const event of events) {
-    tables.events_log.push(eventToLogRow(event))
     const payload = payloadObject(event)
 
     switch (event.type) {
@@ -78,7 +64,7 @@ export function materializeEvents(
         }
 
         const parent = payload.parentThreadId
-        const parentThreadId = parent === null || Predicate.isString(parent) ? parent : null
+        const parentThreadId = parent === null || isJsonString(parent) ? parent : null
 
         const row: ThreadRow = {
           threadId,

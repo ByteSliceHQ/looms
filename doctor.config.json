@@ -1,0 +1,14 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": ["**/.output/**", "**/dist/**", "**/routeTree.gen.ts"]
+  },
+  "rules": {
+    "react-doctor/jsx-no-new-function-as-prop": "warn",
+    "react-doctor/jsx-no-new-object-as-prop": "warn",
+    "react-doctor/jsx-no-new-array-as-prop": "warn",
+    "react-doctor/no-inline-prop-on-memo-component": "warn",
+    "react-doctor/prefer-stable-empty-fallback": "warn",
+    "react-doctor/postmessage-origin-risk": "off"
+  }
+}

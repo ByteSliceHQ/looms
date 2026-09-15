@@ -1,10 +1,10 @@
-import { useRun } from '@/hooks/use-run'
 import { tokenUsage } from '@looms/agent'
-import { useProjection } from '@looms/livestore/react'
+import { useProjection, useRunStore } from '@looms/livestore/react'
 
 export function TokenUsage({ runId }: { runId: string }) {
-  const { store } = useRun(runId)
+  const store = useRunStore(runId)
   const usage = useProjection(store, tokenUsage)
+
   return (
     <p className="font-mono text-xs">
       in {usage.input} / out {usage.output}

@@ -1,11 +1,10 @@
 import { ChevronDown } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 
-import { useRun } from '@/hooks/use-run'
 import { conversation, tokenUsage } from '@looms/agent'
 import { pendingApprovals } from '@looms/approval'
 import { asJson } from '@looms/core'
-import { useProjection } from '@looms/livestore/react'
+import { useProjection, useRunSelector, useRunStore } from '@looms/livestore/react'
 import { nodes } from '@looms/workflow'
 
 import { ledger } from '../../modules/payments'
@@ -58,12 +57,19 @@ function Section({
 }
 
 export function ProjectionsPanel({ runId }: { runId: string }) {
-  const { store, kind } = useRun(runId)
+  const store = useRunStore(runId)
+
+  const kind = useRunSelector(
+    store,
+    useCallback((s) => s.getState().runs.get(runId)?.kind, [runId]),
+  )
+
   const approvals = useProjection(store, pendingApprovals)
   const charges = useProjection(store, ledger)
   const usage = useProjection(store, tokenUsage)
   const workflow = useProjection(store, nodes)
   const convo = useProjection(store, conversation)
+
   const showWorkflow = kind === 'workflow' || Object.keys(workflow.nodes).length > 0
   const showTokens = usage.input > 0 || usage.output > 0 || convo.lines.length > 0
 

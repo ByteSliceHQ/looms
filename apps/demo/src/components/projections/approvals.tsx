@@ -1,18 +1,22 @@
-import { useRun } from '@/hooks/use-run'
+import { useCallback } from 'react'
+
 import { statusClass } from '@/lib/status'
-import { pendingApprovals, decision } from '@looms/approval'
-import { useProjection } from '@looms/livestore/react'
+import { decision, pendingApprovals } from '@looms/approval'
+import { useProjection, useRunStore } from '@looms/livestore/react'
 
 import { StatusDot } from '../status-dot'
 import { Button } from '../ui/button'
 
 export function Approvals({ runId }: { runId: string }) {
-  const { store } = useRun(runId)
+  const store = useRunStore(runId)
   const approvals = useProjection(store, pendingApprovals)
 
-  async function decide(approvalId: string, outcome: 'approve' | 'reject') {
-    await store.commit(decision(approvalId, outcome))
-  }
+  const decide = useCallback(
+    async (approvalId: string, outcome: 'approve' | 'reject') => {
+      await store.commit(decision(approvalId, outcome))
+    },
+    [store],
+  )
 
   if (approvals.items.length === 0) {
     return <p className="text-muted-foreground text-xs">None</p>

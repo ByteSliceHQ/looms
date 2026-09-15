@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 
 import type { ThreadNode } from '@looms/core'
 
@@ -7,7 +7,17 @@ import { cn, shortId } from '../lib/cn'
 import { statusClass } from '../lib/status'
 import { StatusDot } from './status-dot'
 
-function NodeRow({
+interface NodeRowProps {
+  node: ThreadNode
+  depth: number
+  selected?: string
+  counts: ReadonlyMap<string, number> | Map<string, number>
+  collapsed: ReadonlySet<string>
+  onToggle: (id: string) => void
+  onSelect: (threadId: string) => void
+}
+
+const NodeRow = memo(function NodeRow({
   node,
   depth,
   selected,
@@ -15,18 +25,19 @@ function NodeRow({
   collapsed,
   onToggle,
   onSelect,
-}: {
-  node: ThreadNode
-  depth: number
-  selected?: string
-  counts: Map<string, number>
-  collapsed: Set<string>
-  onToggle: (id: string) => void
-  onSelect: (threadId: string) => void
-}) {
+}: NodeRowProps) {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsed.has(node.threadId)
   const count = counts.get(node.threadId) ?? 0
+
+  const handleToggle = useCallback(() => {
+    onToggle(node.threadId)
+  }, [onToggle, node.threadId])
+
+  const handleSelect = useCallback(() => {
+    onSelect(node.threadId)
+  }, [onSelect, node.threadId])
+
   return (
     <li className="relative">
       <div
@@ -40,7 +51,7 @@ function NodeRow({
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground size-4 shrink-0"
-            onClick={() => onToggle(node.threadId)}
+            onClick={handleToggle}
             aria-label={isCollapsed ? 'Expand thread' : 'Collapse thread'}
           >
             {isCollapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
@@ -51,7 +62,7 @@ function NodeRow({
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-          onClick={() => onSelect(node.threadId)}
+          onClick={handleSelect}
         >
           <StatusDot status={node.status} />
           <span className="truncate">
@@ -84,7 +95,7 @@ function NodeRow({
       ) : null}
     </li>
   )
-}
+})
 
 export function RunTree({
   runId,
@@ -99,7 +110,7 @@ export function RunTree({
   runId: string
   runStatus: string
   tree: { root: ThreadNode | null }
-  eventCounts: Map<string, number>
+  eventCounts: ReadonlyMap<string, number> | Map<string, number>
   totalEventCount?: number
   selectedThread?: string
   onSelectThread: (threadId: string | undefined) => void
@@ -108,7 +119,7 @@ export function RunTree({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const runCount = totalEventCount ?? eventCounts.get('run') ?? 0
 
-  function toggle(id: string) {
+  const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
 
@@ -120,7 +131,11 @@ export function RunTree({
 
       return next
     })
-  }
+  }, [])
+
+  const handleSelectRoot = useCallback(() => {
+    onSelectThread(undefined)
+  }, [onSelectThread])
 
   return (
     <div>
@@ -129,7 +144,7 @@ export function RunTree({
       </h2>
       <button
         type="button"
-        onClick={() => onSelectThread(undefined)}
+        onClick={handleSelectRoot}
         className={cn(
           'mb-0.5 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs',
           !selectedThread ? 'bg-accent' : 'hover:bg-accent/50',

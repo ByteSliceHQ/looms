@@ -109,7 +109,7 @@ describe('createLoomsStore', () => {
   })
 
   test('pulls events and materializes the run row', async () => {
-    const store = createLoomsStore({ storeId: 'run_1', endpoint, pollIntervalMs: 10_000, fetch })
+    const store = createLoomsStore({ storeId: 'run_1', endpoint, reconnectDelayMs: 10_000, fetch })
     await store.sync()
     expect(store.getState().runs.get('run_1')?.status).toBe('running')
     expect(store.events()[0]?.type).toBe('runtime.run.started')

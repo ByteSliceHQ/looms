@@ -1,14 +1,10 @@
-import { isJsonObject, isJsonString, type EventEnvelope } from '@looms/core'
+import { EventIndex, isJsonObject, isJsonString, type EventEnvelope } from '@looms/core'
 
+/** Build thread→count map via the shared EventIndex. */
 export function countEventsByThread(events: readonly EventEnvelope[]): Map<string, number> {
-  const map = new Map<string, number>()
-
-  for (const event of events) {
-    const key = event.threadId ?? 'run'
-    map.set(key, (map.get(key) ?? 0) + 1)
-  }
-
-  return map
+  const index = new EventIndex()
+  index.append(events)
+  return new Map(index.getCounts())
 }
 
 export function runStatusFromEvents(events: readonly EventEnvelope[]): string {
@@ -23,9 +19,11 @@ export function runStatusFromEvents(events: readonly EventEnvelope[]): string {
     return isJsonString(payload.error) && payload.error.length > 0 ? 'failed' : 'completed'
   }
 
-  return events.length > 0 ? 'running' : 'running'
+  return 'running'
 }
 
 export function startedAtFromEvents(events: readonly EventEnvelope[]): number | undefined {
-  return events.find((event) => event.type === 'runtime.run.started')?.ts
+  const index = new EventIndex()
+  index.append(events)
+  return index.getStartedAt()
 }

@@ -24,21 +24,20 @@ function playbackReducer(state: PlaybackState, action: PlaybackAction): Playback
 export function LandingDebugger() {
   const [showcaseView, setShowcaseView] = useState<ShowcaseView>('live')
 
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  )
+  const [reducedMotion, setReducedMotion] = useState(false)
 
   const [state, dispatch] = useReducer(playbackReducer, undefined, () =>
-    initialPlaybackState(
-      landingOrchestrationEvents.length,
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    ),
+    initialPlaybackState(landingOrchestrationEvents.length, false),
   )
 
   const [selectedThread, setSelectedThread] = useState<string>()
   const [selectedSeq, setSelectedSeq] = useState<number>()
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return () => undefined
+    }
+
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
 
     function apply(matches: boolean) {
@@ -50,6 +49,8 @@ export function LandingDebugger() {
         reducedMotion: matches,
       })
     }
+
+    apply(media.matches)
 
     const onChange = (event: MediaQueryListEvent) => apply(event.matches)
     media.addEventListener('change', onChange)
@@ -152,6 +153,7 @@ export function LandingDebugger() {
               selectedSeq={selectedSeq}
               onSelectSeq={inspectSeq}
               catalog={defaultEventCatalog}
+              orientation="vertical"
             />
           </div>
         </div>

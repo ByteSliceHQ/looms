@@ -2,17 +2,24 @@ import { Predicate } from 'effect'
 
 import {
   decodeLoomsEvent,
-  project,
   type EventEnvelope,
   type EventInput,
   type ProjectionDefinition,
 } from '@looms/core'
 
+import { EventIndex, ProjectionCache, type EventFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'
+import { createNotifyScheduler, type CoalesceOption } from './notify'
+import type { AnyEventEnvelope, RegisteredEvent } from './register'
 import { consumeSseStream, delay, eventsFromSseData } from './sse'
 import { emptyTables, type MaterializedTables } from './tables'
 
-export type StoreListener = (tables: MaterializedTables) => void
+export type { CoalesceOption } from './notify'
+
+/** Fired after the store version bumps. Re-read via `events()` / `getState()` / `query`. */
+export type StoreListener = () => void
+
+export type LoomsConnectionStatus = 'connecting' | 'live' | 'reconnecting'
 
 export interface LoomsClientStoreOptions {
   /** Run id / LiveStore store id. */
@@ -22,26 +29,34 @@ export interface LoomsClientStoreOptions {
    * Opens `${endpoint}/api/livestore?storeId=&live=true` as an SSE stream.
    */
   endpoint: string
-  /** Backoff between SSE reconnects. Also accepted as `pollIntervalMs`. */
+  /** Backoff between SSE reconnects. */
   reconnectDelayMs?: number
-  /** @deprecated Use `reconnectDelayMs`. */
-  pollIntervalMs?: number
   fetch?: typeof fetch
+  coalesce?: CoalesceOption
 }
 
-export interface LoomsStoreQuery {
-  events: () => EventEnvelope[]
+export interface LoomsStoreQuery<TEvent extends AnyEventEnvelope = RegisteredEvent> {
+  events: (options?: { threadId?: string }) => readonly TEvent[]
   runs: () => MaterializedTables['runs']
   threads: () => MaterializedTables['threads']
+  counts: () => ReadonlyMap<string, number>
+  bySeq: (seq: number) => TEvent | undefined
+  startedAt: () => number | undefined
+  latest: (type: string) => TEvent | undefined
+  fold: <S>(def: EventFoldDefinition<S, TEvent>) => S
 }
 
-export interface LoomsClientStore {
+export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEvent> {
   storeId: string
+  version: () => number
+  status: () => LoomsConnectionStatus
   getState: () => MaterializedTables
-  events: () => EventEnvelope[]
-  query: LoomsStoreQuery
+  events: (options?: { threadId?: string }) => readonly TEvent[]
+  query: LoomsStoreQuery<TEvent>
   subscribe: (listener: StoreListener) => () => void
   project<S>(definition: ProjectionDefinition<S>): S
+  fold<S>(definition: EventFoldDefinition<S, TEvent>): S
+  flush: () => void
   commit: (event: EventInput) => Promise<void>
   sync: () => Promise<void>
   dispose: () => void
@@ -57,15 +72,25 @@ function eventSourceCtor(): typeof EventSource | undefined {
 
 /**
  * In-memory client store that follows a run's event log over SSE and
- * materializes generic `runs` / `threads` / `events_log` tables.
+ * materializes generic `runs` / `threads` tables.
  */
-export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientStore {
+export function createLoomsStore<TEvent extends AnyEventEnvelope = RegisteredEvent>(
+  options: LoomsClientStoreOptions,
+): LoomsClientStore<TEvent> {
   const endpoint = options.endpoint.replace(/\/$/, '')
   const fetchFn = options.fetch ?? fetch
-  const reconnectDelayMs = options.reconnectDelayMs ?? options.pollIntervalMs ?? 1_000
+  const reconnectDelayMs = options.reconnectDelayMs ?? 1_000
+  const coalesce = options.coalesce ?? 'adaptive'
   const listeners = new Set<StoreListener>()
   const events: EventEnvelope[] = []
   const seenIds = new Set<string>()
+  const projectionCache = new ProjectionCache()
+  const eventIndex = new EventIndex<TEvent>()
+
+  let eventsSnapshot: readonly TEvent[] = Object.freeze([])
+  let eventsSnapshotDirty = false
+  let version = 0
+  let status: LoomsConnectionStatus = 'connecting'
   let tables = emptyTables()
   let fromSeq = 1
   let disposed = false
@@ -76,14 +101,37 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let syncing: Promise<void> | null = null
 
-  const notify = () => {
-    for (const listener of listeners) {
-      listener(tables)
+  const publishedEvents = (): readonly TEvent[] => {
+    if (!eventsSnapshotDirty) {
+      return eventsSnapshot
     }
+
+    // SAFETY: events array only contains TEvent values pushed from applyBatch.
+    eventsSnapshot = Object.freeze(events.slice() as TEvent[])
+    eventsSnapshotDirty = false
+    return eventsSnapshot
+  }
+
+  const notify = createNotifyScheduler(coalesce, () => {
+    publishedEvents()
+
+    for (const listener of listeners) {
+      listener()
+    }
+  })
+
+  const setStatus = (next: LoomsConnectionStatus) => {
+    if (status === next) {
+      return
+    }
+
+    status = next
+    version += 1
+    notify.schedule()
   }
 
   const applyBatch = (batch: EventEnvelope[]) => {
-    const fresh: EventEnvelope[] = []
+    const fresh: TEvent[] = []
 
     for (const event of batch) {
       if (event.seq < fromSeq || seenIds.has(event.id)) {
@@ -91,7 +139,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       }
 
       seenIds.add(event.id)
-      fresh.push(event)
+      // SAFETY: wire events match the app-registered TEvent catalog at the type boundary.
+      fresh.push(event as TEvent)
       fromSeq = Math.max(fromSeq, event.seq + 1)
     }
 
@@ -105,7 +154,11 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       events.push(event)
     }
 
-    notify()
+    eventsSnapshotDirty = true
+    eventIndex.append(fresh)
+    version += 1
+
+    notify.schedule()
   }
 
   const applyEncoded = (data: string) => {
@@ -231,6 +284,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
     es.addEventListener('open', () => {
       live = true
+      setStatus('live')
     })
 
     es.addEventListener('message', (msg) => {
@@ -241,6 +295,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       live = es.readyState === Ctor.OPEN
 
       if (es.readyState === Ctor.CLOSED && !disposed && liveStarted) {
+        setStatus('reconnecting')
         // EventSource entered CLOSED state (e.g. server error or socket closed abruptly).
         // Standard EventSource will NOT automatically reconnect on CLOSED, so we must
         // clean up the dead instance and re-establish the connection.
@@ -251,6 +306,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         }
 
         scheduleReconnect(Ctor)
+      } else if (!live) {
+        setStatus('reconnecting')
       }
     })
   }
@@ -283,6 +340,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         }
 
         live = true
+        setStatus('live')
 
         await consumeSseStream(
           res.body,
@@ -297,6 +355,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         if (disposed) {
           return
         }
+
+        setStatus('reconnecting')
       }
 
       live = false
@@ -310,7 +370,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const startLive = () => {
-    if (liveStarted && !disposed) {
+    if (!options.storeId || (liveStarted && !disposed)) {
       return
     }
 
@@ -340,20 +400,42 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     liveAbort = undefined
   }
 
-  startLive()
+  if (options.storeId) {
+    startLive()
+  }
 
-  const store: LoomsClientStore = {
+  const readEvents = (filterOptions?: { threadId?: string }): readonly TEvent[] => {
+    if (filterOptions?.threadId) {
+      return eventIndex.getByThread(filterOptions.threadId)
+    }
+
+    return publishedEvents()
+  }
+
+  const store: LoomsClientStore<TEvent> = {
     storeId: options.storeId,
+    version: () => version,
+    status: () => status,
+    /**
+     * Live mutable materialized tables. Re-read after each version bump;
+     * do not hold Map/array references across notifies.
+     */
     getState: () => tables,
-    events: () => events.slice(),
+    events: readEvents,
     query: {
-      events: () => events.slice(),
+      events: readEvents,
       runs: () => tables.runs,
       threads: () => tables.threads,
+      counts: () => eventIndex.getCounts(),
+      bySeq: (seq: number) => eventIndex.getBySeq(seq),
+      startedAt: () => eventIndex.getStartedAt(),
+      latest: (type: string) => eventIndex.getLatest(type),
+      fold: <S>(def: EventFoldDefinition<S, TEvent>) =>
+        projectionCache.fold(def, publishedEvents()),
     },
     subscribe: (listener) => {
       listeners.add(listener)
-      listener(tables)
+      listener()
 
       if (disposed) {
         startLive()
@@ -363,8 +445,14 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         listeners.delete(listener)
       }
     },
-    project: (definition) => project(definition, events),
-    sync,
+    project: (definition) => projectionCache.project(definition, publishedEvents()),
+    fold: (definition) => projectionCache.fold(definition, publishedEvents()),
+    flush: notify.flush,
+    sync: async () => {
+      const res = await sync()
+      notify.flush()
+      return res
+    },
     commit: async (event) => {
       const res = await fetchFn(`${endpoint}/runs/${encodeURIComponent(options.storeId)}/events`, {
         method: 'POST',
@@ -380,11 +468,16 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       if (!live) {
         await sync()
       }
+
+      notify.flush()
     },
     dispose: () => {
       disposed = true
+      notify.cancel()
       stopLive()
       listeners.clear()
+      projectionCache.clear()
+      eventIndex.clear()
     },
   }
 

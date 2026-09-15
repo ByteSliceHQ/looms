@@ -1,34 +1,35 @@
 import { Copy } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback } from 'react'
 
-import { useRun } from '@/hooks/use-run'
 import { statusClass } from '@/lib/status'
 import { shortId } from '@/lib/utils'
+import { useRunStore, useRunSummary } from '@looms/livestore/react'
 
 import { StatusDot } from '../status-dot'
 import { Button } from '../ui/button'
 
 function RunChip({ runId }: { runId: string }) {
-  const { status, store } = useRun(runId)
-  const [live, setLive] = useState(false)
+  const store = useRunStore(runId)
+  const summary = useRunSummary(store)
+  const live = summary.connection === 'live'
 
-  useEffect(() => {
-    return store.subscribe(() => setLive(true))
-  }, [store])
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(runId)
+  }, [runId])
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      <StatusDot status={status} />
+      <StatusDot status={summary.status} />
       <button
         type="button"
         className="text-muted-foreground hover:text-foreground flex items-center gap-1 font-mono"
-        onClick={() => void navigator.clipboard.writeText(runId)}
+        onClick={handleCopy}
         title={runId}
       >
         {shortId(runId)}
         <Copy className="size-3" />
       </button>
-      <span className={statusClass(status)}>{status}</span>
+      <span className={statusClass(summary.status)}>{summary.status}</span>
       <span
         className={
           live

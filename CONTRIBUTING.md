@@ -31,6 +31,14 @@ bun run verify
 
 Without Flox, install the S2 CLI with `bun run setup:s2` (or see https://s2.dev/docs/cli/installation).
 
+### React Doctor
+
+To audit React codebase health and performance diagnostics (Node runtime provided via Flox):
+
+```bash
+flox activate -- bun run doctor
+```
+
 ## PR checklist
 
 - [ ] `bun run verify` passes

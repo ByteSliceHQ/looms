@@ -2,14 +2,12 @@ export {
   createLoomsStore,
   type LoomsClientStore,
   type LoomsClientStoreOptions,
+  type LoomsConnectionStatus,
+  type LoomsStoreQuery,
+  type CoalesceOption,
   type StoreListener,
 } from './store'
+export { createFold, foldEvents, EventIndex, eventThreadKey, type EventFoldDefinition } from './derived'
 export { materializeEvents } from './materialize'
-export {
-  emptyTables,
-  eventToLogRow,
-  type MaterializedTables,
-  type RunRow,
-  type ThreadRow,
-  type EventLogRow,
-} from './tables'
+export { emptyTables, type MaterializedTables, type RunRow, type ThreadRow } from './tables'
+export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from './register'

@@ -198,9 +198,10 @@ export function OrderDashboard({ runId }: { runId: string }) {
 }`}</CodeBlock>
       <p>
         Under the hood, <code>useProjection</code> leverages React 19&apos;s{' '}
-        <code>useSyncExternalStore</code>. When new events append to the run log on the server, the
-        SSE connection receives them and re-evaluates the projection. Updates are synchronous,
-        reactive, and completely flicker-free.
+        <code>useSyncExternalStore</code> with an incremental projection cache. When new events
+        append to the run log on the server, the SSE connection receives them and folds only the
+        newly appended events into the cached state, coalescing updates at animation frame rates so
+        streaming hundreds of events never freezes the UI.
       </p>
 
       <h3>Step 4: Dispatch user interactions via signals</h3>

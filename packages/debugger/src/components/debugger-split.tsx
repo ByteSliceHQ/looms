@@ -41,6 +41,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
   catalog,
   loadReplayStep,
   renderInspector,
+  orientation = 'horizontal',
   className,
   treeClassName,
   streamClassName,
@@ -58,20 +59,27 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
   catalog?: EventStreamCatalog<TEvent>
   loadReplayStep?: ReplayLoader
   renderInspector?: (selected: TEvent) => ReactNode
+  orientation?: 'horizontal' | 'vertical'
   className?: string
   treeClassName?: string
   streamClassName?: string
 }) {
+  const vertical = orientation === 'vertical'
+
   return (
     <div
       className={cn(
-        'grid h-full min-h-0 grid-cols-1 min-[36rem]:grid-cols-[11rem_minmax(0,1fr)]',
+        'grid h-full min-h-0',
+        vertical
+          ? 'grid-rows-[minmax(0,38%)_minmax(0,1fr)]'
+          : 'grid-cols-1 min-[36rem]:grid-cols-[11rem_minmax(0,1fr)]',
         className,
       )}
     >
       <section
         className={cn(
-          'border-border min-h-0 overflow-auto border-b py-2 min-[36rem]:border-r min-[36rem]:border-b-0',
+          'border-border min-h-0 overflow-auto border-b py-2',
+          !vertical && 'min-[36rem]:border-r min-[36rem]:border-b-0',
           treeClassName,
         )}
       >

@@ -1,7 +1,7 @@
 import { getRouteApi } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-import { useRun } from '@/hooks/use-run'
+import { useRunStore, useRunSummary } from '@looms/livestore/react'
 
 import { catalog, findRunType } from '../../catalog'
 import { EventStream } from '../events/event-stream'
@@ -20,7 +20,6 @@ export function Shell() {
   const navigate = route.useNavigate()
   const [typeName, setTypeName] = useState(catalog[0]!.name)
   const runId = search.run
-  const activeType = findRunType(typeName)
 
   function setSearch(next: { run?: string; thread?: string; seq?: number }) {
     void navigate({
@@ -29,46 +28,59 @@ export function Shell() {
     })
   }
 
+  function handleSelectType(item: { name: string }) {
+    setTypeName(item.name)
+    setSearch({})
+  }
+
+  function handleSelectRecentRun(run: { definitionName: string; runId: string }) {
+    setTypeName(run.definitionName)
+    setSearch({ run: run.runId })
+  }
+
+  function handleSelectThread(thread: string | undefined) {
+    setSearch({ run: runId, thread, seq: search.seq })
+  }
+
+  function handleSelectSeq(seq: number | undefined) {
+    setSearch({ run: runId, thread: search.thread, seq })
+  }
+
+  function handleStarted(nextRunId: string) {
+    setSearch({ run: nextRunId })
+  }
+
+  function handleReset() {
+    setSearch({})
+  }
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      {runId ? <SyncType runId={runId} current={typeName} onName={setTypeName} /> : null}
       <TopBar runId={runId} />
       <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1.1fr)_minmax(0,1.4fr)_18rem]">
         <section className="border-border bg-sidebar min-h-0 overflow-auto border-r">
           <div className="space-y-4 py-3">
-            <RunTypes
-              selected={typeName}
-              onSelect={(item) => {
-                setTypeName(item.name)
-                setSearch({})
-              }}
-            />
+            <RunTypes selected={typeName} onSelect={handleSelectType} />
             <Separator />
             {runId ? (
               <RunTree
                 runId={runId}
                 selectedThread={search.thread}
-                onSelectThread={(thread) => setSearch({ run: runId, thread, seq: search.seq })}
+                onSelectThread={handleSelectThread}
               />
             ) : (
               <p className="text-muted-foreground px-2 text-xs">Start a run to see its tree.</p>
             )}
             <Separator />
-            <RecentRuns
-              selected={runId}
-              onSelect={(run) => {
-                setTypeName(run.definitionName)
-                setSearch({ run: run.runId })
-              }}
-            />
+            <RecentRuns selected={runId} onSelect={handleSelectRecentRun} />
           </div>
         </section>
         <section className="border-border min-h-0 overflow-hidden border-r">
-          <WorkspacePanel
-            type={activeType}
+          <ActiveWorkspace
             runId={runId}
-            onStarted={(nextRunId) => setSearch({ run: nextRunId })}
-            onReset={() => setSearch({})}
+            fallbackTypeName={typeName}
+            onStarted={handleStarted}
+            onReset={handleReset}
           />
         </section>
         <section className="border-border min-h-0 overflow-hidden border-r">
@@ -77,7 +89,7 @@ export function Shell() {
               runId={runId}
               threadId={search.thread}
               selectedSeq={search.seq}
-              onSelectSeq={(seq) => setSearch({ run: runId, thread: search.thread, seq })}
+              onSelectSeq={handleSelectSeq}
             />
           ) : (
             <p className="text-muted-foreground p-3 text-xs">Events appear after a run starts.</p>
@@ -97,22 +109,52 @@ export function Shell() {
   )
 }
 
-function SyncType({
+function ActiveWorkspace({
   runId,
-  current,
-  onName,
+  fallbackTypeName,
+  onStarted,
+  onReset,
+}: {
+  runId?: string
+  fallbackTypeName: string
+  onStarted: (nextRunId: string) => void
+  onReset: () => void
+}) {
+  if (!runId) {
+    return (
+      <WorkspacePanel
+        type={findRunType(fallbackTypeName)}
+        onStarted={onStarted}
+        onReset={onReset}
+      />
+    )
+  }
+
+  return (
+    <ActiveWorkspaceWithRun
+      runId={runId}
+      fallbackTypeName={fallbackTypeName}
+      onStarted={onStarted}
+      onReset={onReset}
+    />
+  )
+}
+
+function ActiveWorkspaceWithRun({
+  runId,
+  fallbackTypeName,
+  onStarted,
+  onReset,
 }: {
   runId: string
-  current: string
-  onName: (name: string) => void
+  fallbackTypeName: string
+  onStarted: (nextRunId: string) => void
+  onReset: () => void
 }) {
-  const { definitionName } = useRun(runId)
+  const store = useRunStore(runId)
+  const summary = useRunSummary(store)
+  const activeTypeName = summary.definitionName ?? fallbackTypeName
+  const activeType = findRunType(activeTypeName)
 
-  useEffect(() => {
-    if (definitionName && definitionName !== current) {
-      onName(definitionName)
-    }
-  }, [definitionName, current, onName])
-
-  return null
+  return <WorkspacePanel type={activeType} runId={runId} onStarted={onStarted} onReset={onReset} />
 }

@@ -121,23 +121,29 @@ export function composeModulesEffect(
 
 export type ProtocolEvents = CatalogEvent<'runtime', typeof protocolCatalog.entries>
 
-export type ModuleEvents<T> = T extends { readonly events: infer C }
+export type ModuleEvents<T> = T extends { readonly events?: infer C }
   ? C extends EventCatalog<infer N, infer E>
     ? CatalogEvent<N, E>
     : never
   : never
 
-export type EventsOf<T> = T extends { readonly modules: infer M }
-  ? M extends readonly AnyRuntimeModule[]
-    ? ProtocolEvents | ModuleEvents<M[number]>
-    : T extends RuntimeModule
-      ? ProtocolEvents | ModuleEvents<T>
-      : EventEnvelope
-  : T extends RuntimeModule
-    ? ProtocolEvents | ModuleEvents<T>
-    : T extends EventCatalog
-      ? CatalogEvent<T['namespace'], T['entries']>
-      : EventEnvelope
+export type EventsOf<T> = T extends (...args: never[]) => infer R
+  ? EventsOf<R>
+  : T extends (...args: any[]) => infer R
+    ? EventsOf<R>
+    : T extends { readonly modules: infer M }
+      ? EventsOf<M>
+      : T extends readonly (infer Item)[]
+        ? Item extends AnyRuntimeModule
+          ? ProtocolEvents | ModuleEvents<Item>
+          : Item extends EventCatalog<infer N, infer E>
+            ? ProtocolEvents | CatalogEvent<N, E>
+            : EventEnvelope
+        : T extends RuntimeModule
+          ? ProtocolEvents | ModuleEvents<T>
+          : T extends EventCatalog<infer N, infer E>
+            ? CatalogEvent<N, E>
+            : EventEnvelope
 
 export type EffectsOf<T> = T extends { readonly modules: infer M }
   ? M extends readonly AnyRuntimeModule[]
