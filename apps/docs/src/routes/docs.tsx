@@ -1,4 +1,6 @@
 import { Outlet, createFileRoute, Link, useRouterState } from '@tanstack/react-router'
+import { Menu, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { docsNav, isDocsNavGroup, type DocsNavGroup, type DocsNavLink } from '../nav'
 
@@ -19,11 +21,15 @@ function DocsNavLinkItem({
   pathname,
   exact = false,
   nested = false,
+  mobile = false,
+  onNavigate,
 }: {
   item: DocsNavLink
   pathname: string
   exact?: boolean
   nested?: boolean
+  mobile?: boolean
+  onNavigate?: () => void
 }) {
   const active = linkIsActive(pathname, item.to, exact)
 
@@ -32,34 +38,49 @@ function DocsNavLinkItem({
       to={item.to}
       activeOptions={{ exact }}
       className={
-        nested
-          ? 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.82rem] no-underline transition-colors data-[status=active]:font-medium'
-          : 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.88rem] no-underline transition-colors data-[status=active]:font-medium'
+        mobile
+          ? 'text-muted hover:text-foreground data-[status=active]:text-foreground block py-2 text-lg no-underline transition-colors data-[status=active]:font-medium'
+          : nested
+            ? 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.82rem] no-underline transition-colors data-[status=active]:font-medium'
+            : 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.88rem] no-underline transition-colors data-[status=active]:font-medium'
       }
       aria-current={active ? 'page' : undefined}
+      onClick={onNavigate}
     >
       {item.label}
     </Link>
   )
 }
 
-function DocsNavGroupItem({ group, pathname }: { group: DocsNavGroup; pathname: string }) {
+function DocsNavGroupItem({
+  group,
+  pathname,
+  mobile = false,
+  onNavigate,
+}: {
+  group: DocsNavGroup
+  pathname: string
+  mobile?: boolean
+  onNavigate?: () => void
+}) {
   const childActive = group.children.some((child) =>
     linkIsActive(pathname, child.to, child.to === '/docs/concepts'),
   )
 
   return (
-    <div className="flex w-full flex-col gap-1.5 max-md:basis-full">
+    <div className={mobile ? 'flex w-full flex-col gap-2' : 'flex w-full flex-col gap-1.5'}>
       <span
         className={
-          childActive
-            ? 'text-foreground text-[0.88rem] font-medium'
-            : 'text-muted text-[0.88rem] font-medium'
+          mobile
+            ? 'text-foreground text-sm font-medium tracking-wide uppercase'
+            : childActive
+              ? 'text-foreground text-[0.88rem] font-medium'
+              : 'text-muted text-[0.88rem] font-medium'
         }
       >
         {group.label}
       </span>
-      <div className="border-line-subtle flex flex-row flex-wrap gap-x-4 gap-y-1 md:flex-col md:gap-1.5 md:border-l md:pl-3">
+      <div className="border-line-subtle flex flex-col border-l pl-4 md:gap-1.5 md:pl-3">
         {group.children.map((child) => (
           <DocsNavLinkItem
             key={child.to}
@@ -67,6 +88,8 @@ function DocsNavGroupItem({ group, pathname }: { group: DocsNavGroup; pathname: 
             pathname={pathname}
             exact={child.to === '/docs/concepts'}
             nested
+            mobile={mobile}
+            onNavigate={onNavigate}
           />
         ))}
       </div>
@@ -74,26 +97,118 @@ function DocsNavGroupItem({ group, pathname }: { group: DocsNavGroup; pathname: 
   )
 }
 
+function DocsNavigation({
+  pathname,
+  mobile = false,
+  onNavigate,
+}: {
+  pathname: string
+  mobile?: boolean
+  onNavigate?: () => void
+}) {
+  return (
+    <>
+      {docsNav.map((item) => {
+        if (isDocsNavGroup(item)) {
+          return (
+            <DocsNavGroupItem
+              key={item.label}
+              group={item}
+              pathname={pathname}
+              mobile={mobile}
+              onNavigate={onNavigate}
+            />
+          )
+        }
+
+        return (
+          <DocsNavLinkItem
+            key={item.to}
+            item={item}
+            pathname={pathname}
+            exact={item.to === '/docs'}
+            mobile={mobile}
+            onNavigate={onNavigate}
+          />
+        )
+      })}
+    </>
+  )
+}
+
 function DocsLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuDialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = menuDialogRef.current
+
+    if (!dialog) {
+      return
+    }
+
+    if (menuOpen && !dialog.open) {
+      dialog.showModal()
+    } else if (!menuOpen && dialog.open) {
+      dialog.close()
+    }
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [menuOpen])
 
   return (
     <div className="mx-auto grid max-w-[68rem] grid-cols-1 gap-8 px-5 py-8 pb-16 md:grid-cols-[13rem_minmax(0,44rem)] md:gap-16 md:px-8 md:py-12 md:pb-24">
-      <nav className="max-md:border-line-subtle sticky top-8 flex max-h-[calc(100vh-4rem)] flex-col gap-2.5 self-start overflow-y-auto pt-1 max-md:static max-md:max-h-none max-md:flex-row max-md:flex-wrap max-md:items-baseline max-md:gap-x-5 max-md:gap-y-2 max-md:overflow-y-visible max-md:border-b max-md:pb-4">
-        {docsNav.map((item) => {
-          if (isDocsNavGroup(item)) {
-            return <DocsNavGroupItem key={item.label} group={item} pathname={pathname} />
-          }
+      <button
+        type="button"
+        className="border-line text-foreground hover:bg-background-subtle focus-visible:outline-line flex w-full cursor-pointer items-center justify-between rounded-md border bg-transparent px-4 py-3 text-sm font-medium md:hidden"
+        aria-haspopup="dialog"
+        aria-expanded={menuOpen}
+        aria-controls="docs-mobile-menu"
+        onClick={() => setMenuOpen(true)}
+      >
+        Browse documentation
+        <Menu aria-hidden="true" size={18} />
+      </button>
 
-          return (
-            <DocsNavLinkItem
-              key={item.to}
-              item={item}
-              pathname={pathname}
-              exact={item.to === '/docs'}
-            />
-          )
-        })}
+      <dialog
+        ref={menuDialogRef}
+        id="docs-mobile-menu"
+        className="bg-background text-body fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none border-0 p-0 md:hidden"
+        aria-labelledby="docs-mobile-menu-title"
+        onClose={() => setMenuOpen(false)}
+      >
+        <div className="border-line-subtle flex items-center justify-between border-b px-5 py-5">
+          <span id="docs-mobile-menu-title" className="text-foreground font-semibold">
+            Documentation
+          </span>
+          <button
+            type="button"
+            className="border-line text-muted hover:bg-background-subtle hover:text-foreground focus-visible:outline-line inline-flex size-10 cursor-pointer items-center justify-center rounded-md border bg-transparent"
+            aria-label="Close documentation menu"
+            onClick={() => setMenuOpen(false)}
+          >
+            <X aria-hidden="true" size={20} />
+          </button>
+        </div>
+        <nav className="flex h-[calc(100dvh-5.1rem)] flex-col gap-5 overflow-y-auto px-6 py-6">
+          <DocsNavigation pathname={pathname} mobile onNavigate={() => setMenuOpen(false)} />
+        </nav>
+      </dialog>
+
+      <nav className="sticky top-8 hidden max-h-[calc(100vh-4rem)] flex-col gap-2.5 self-start overflow-y-auto pt-1 md:flex">
+        <DocsNavigation pathname={pathname} />
       </nav>
       <div className="prose max-w-none">
         <Outlet />
