@@ -6,6 +6,22 @@ function Loom() {
   return (
     <>
       <Ground />
+      <g strokeWidth="1.8">
+        <path className="loom-thread-agent" d="M116,12 C68,92 197,12 227,46 S267,50 283.6,93" />
+        <path className="loom-thread-workflow" d="M320,12 C384,40 267,42 304,73 Q320,86 320,114" />
+        <path className="loom-thread-custom" d="M514,12 C578,102 422,28 451,92 S385,89 356.4,135" />
+      </g>
+      <g className="loom-labels" fill="var(--text-body)" stroke="none" textAnchor="middle">
+        <text x="116" y="-8">
+          agents
+        </text>
+        <text x="320" y="-8">
+          workflows
+        </text>
+        <text x="514" y="-8">
+          your code
+        </text>
+      </g>
       <Plate at={[0, 0, -58]} width={230} depth={92} height={10} />
 
       <g fill="none" strokeLinecap="round">
@@ -44,18 +60,33 @@ function Loom() {
           accent={x === 0}
         />
       ))}
-      {[10, 20, 30, 40, 50, 60].map((z) => (
-        <Thread
-          key={z}
-          points={[
-            [-57, 0, z],
-            [57, 0, z],
-          ]}
-          accent={z === 30 || z === 40}
-        />
-      ))}
-
-      <Plate at={[25, -9, 35]} width={74} depth={13} height={5} active />
+      <g strokeWidth="1.8">
+        {([-42, 0, 42] as const).map((x, index) => (
+          <path
+            key={x}
+            className={['loom-thread-agent', 'loom-thread-workflow', 'loom-thread-custom'][index]}
+            d={trace([
+              [x, 0, 101],
+              [x, 0, 0],
+            ])}
+          />
+        ))}
+        {[10, 20, 30, 40, 50, 60].map((z, index) => (
+          <path
+            key={z}
+            className={
+              ['loom-thread-agent', 'loom-thread-workflow', 'loom-thread-custom'][index % 3]
+            }
+            d={trace([
+              [-57, 0, z],
+              [57, 0, z],
+            ])}
+          />
+        ))}
+      </g>
+      <g className="loom-shuttle">
+        <Plate at={[25, -9, 35]} width={74} depth={13} height={5} active />
+      </g>
       <Anchor at={[-82, 0, 112]} />
       <Anchor at={[82, 0, 112]} />
     </>
@@ -487,7 +518,7 @@ export const illustrations = {
     label: 'Loom',
     description:
       'A small frame holds durable threads in tension while a shuttle composes them into one fabric.',
-    alt: 'An isometric loom weaving a grid of fine threads on a simple frame.',
+    alt: 'An isometric loom weaving three colored strands labeled agents, workflows, and your code into one fabric.',
     component: Loom,
   },
   log: {

@@ -1,7 +1,6 @@
 import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
-import { GuidedRun } from '../components/guided-run'
 import { LandingDebugger, LandingDebuggerFallback } from '../components/landing-debugger'
 import { Illustration } from '../illustrations/illustration'
 
@@ -31,15 +30,21 @@ export const Route = createFileRoute('/')({
 function Landing() {
   return (
     <main id="main-content" className="mx-auto max-w-[68rem] px-5 py-14 md:px-8 md:py-20">
-      <div className="grid items-start gap-12 lg:grid-cols-2">
+      <div className="grid items-center gap-10 lg:grid-cols-2">
         <div className="min-w-0">
+          <p className="text-muted mb-5 font-mono text-xs tracking-[0.08em] uppercase">
+            Durable execution. Thread by thread.
+          </p>
           <h1 className="text-foreground mb-6 text-[clamp(2rem,3.5vw,2.8rem)] leading-[1.12] font-semibold tracking-[-0.035em]">
             Durable execution for agents, workflows, and whatever you build next.
           </h1>
           <p className="text-[1.1rem] leading-[1.65]">
-            Agents and workflows are built-in thread types. Define your own, nest them together, and
-            follow every step through one durable history.
+            Weave agents, workflows, and your own thread types into one durable run. Nest them
+            together, pause for the world, and pick up where you left off.
           </p>
+          <CodeBlock lang="bash" className="mb-0!">
+            {'npm install @swirls/looms'}
+          </CodeBlock>
           <div className="my-7 flex flex-wrap items-center gap-5">
             <Link
               className="bg-foreground text-background cursor-pointer rounded-[5px] px-4 py-[0.65rem] text-[0.9rem] font-medium no-underline"
@@ -49,9 +54,13 @@ function Landing() {
             </Link>
             <Link to="/docs/when-to-use">Is Looms a fit?</Link>
           </div>
-          <CodeBlock lang="bash">{'npm install @swirls/looms'}</CodeBlock>
         </div>
-        <GuidedRun />
+        <figure className="hero-loom mx-auto w-full max-w-[34rem]">
+          <Illustration name="loom" className="block h-auto w-full" />
+          <figcaption className="text-muted -mt-3 text-center font-mono text-xs">
+            Many threads. <span className="text-foreground">One durable history.</span>
+          </figcaption>
+        </figure>
       </div>
 
       <section className="mt-28 max-[640px]:mt-18">

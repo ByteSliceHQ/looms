@@ -122,6 +122,39 @@ html.dark {
   }
 }
 
+.loom-labels {
+  font-family: var(--mono);
+  font-size: 15px;
+}
+
+.loom-thread-agent {
+  stroke: #bd785e;
+}
+
+.loom-thread-workflow {
+  stroke: #7c8fb9;
+}
+
+.loom-thread-custom {
+  stroke: #6c9b8b;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-loom .loom-shuttle {
+    animation: loom-weave 5s ease-in-out;
+  }
+}
+
+@keyframes loom-weave {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-38px, -22px);
+  }
+}
+
 /* Wins over utility text-muted: TanStack Link sets these when the route matches */
 nav a[data-status='active'],
 nav a[aria-current='page'] {
