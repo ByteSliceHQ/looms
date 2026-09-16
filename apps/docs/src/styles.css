@@ -302,16 +302,11 @@ td strong {
   font-weight: 400;
 }
 
-/* KaTeX display math centering (Streamdown-generated markup) */
+/* KaTeX display math centering */
 .equation .katex-display {
   margin: 0;
   display: flex;
   justify-content: center;
-}
-
-.equation > div {
-  margin: 0;
-  padding: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -335,6 +330,17 @@ td strong {
 .concept-figure-art svg {
   display: block;
   width: min(100%, 32rem);
+  height: auto;
+}
+
+.site-error-art {
+  display: flex;
+  justify-content: center;
+}
+
+.site-error-illustration {
+  display: block;
+  width: min(100%, 28rem);
   height: auto;
 }
 

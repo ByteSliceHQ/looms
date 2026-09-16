@@ -1,10 +1,4 @@
-import { createMathPlugin } from '@streamdown/math'
 import katex from 'katex'
-import { Streamdown } from 'streamdown'
-
-export const mathPlugin = createMathPlugin({
-  singleDollarTextMath: true,
-})
 
 export interface MathBlockProps {
   math: string
@@ -12,16 +6,19 @@ export interface MathBlockProps {
 }
 
 /**
- * Renders a block-level LaTeX equation inside a styled equation container
- * using Vercel's Streamdown library with the @streamdown/math plugin.
+ * Renders a block-level LaTeX equation with KaTeX display mode.
  */
 export function MathBlock({ math, className = '' }: MathBlockProps) {
+  const html = katex.renderToString(math, {
+    displayMode: true,
+    throwOnError: false,
+  })
+
   return (
-    <div className={`equation not-prose my-7 overflow-x-auto text-center ${className}`.trim()}>
-      <Streamdown mode="static" plugins={{ math: mathPlugin }} parseIncompleteMarkdown={false}>
-        {`$$\n${math}\n$$`}
-      </Streamdown>
-    </div>
+    <div
+      className={`equation not-prose my-7 overflow-x-auto text-center ${className}`.trim()}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }
 
@@ -45,27 +42,5 @@ export function MathInline({ math, className = '' }: MathInlineProps) {
       className={`text-foreground inline-block px-0.5 align-baseline ${className}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />
-  )
-}
-
-export interface StreamdownMathProps {
-  children: string
-  className?: string
-}
-
-/**
- * Renders streaming or static markdown containing both inline ($...$)
- * and block ($$...$$) mathematical expressions using Streamdown + @streamdown/math.
- */
-export function StreamdownMath({ children, className = '' }: StreamdownMathProps) {
-  return (
-    <Streamdown
-      mode="static"
-      plugins={{ math: mathPlugin }}
-      parseIncompleteMarkdown={false}
-      className={className}
-    >
-      {children}
-    </Streamdown>
   )
 }

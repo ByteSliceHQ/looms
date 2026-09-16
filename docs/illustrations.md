@@ -33,6 +33,9 @@ The reference supplied for this work uses precise isometric silhouettes, thin ou
 3. **Durable waits** (`wait`): the execution thread pauses over recorded layers, a matching signal arrives from above, and execution continues. A parked thread holds no worker.
 4. **Runtime modules** (`modules`): distinct capability tiles align with a common base. The plus tile stands for the application's own module. Vertical placement is an exploded view, not execution order.
 5. **Projections** (`projections`): the event history fans into conversation, ledger, and analytics surfaces. Views independently derive from history; they do not feed each other.
+6. **Events & effects** (`effects`): a reducer plate reads events, requests effects, and appends only returned facts.
+7. **Not found** (`not-found`): a durable thread reaches a ghost outline where a destination was never woven.
+8. **Server error** (`error`): recorded layers remain while the active thread snaps mid-run.
 
 ## Source and use
 
@@ -40,7 +43,7 @@ The reference supplied for this work uses precise isometric silhouettes, thin ou
 - `apps/docs/src/illustrations/scenes.tsx`: compositions and their explanatory metadata.
 - `apps/docs/src/illustrations/illustration.tsx`: theme palettes, accessible SVG wrapper, documentation figure.
 - `/illustrations`: the live collection and SVG downloads.
-- `apps/docs/public/illustrations/`: ten exported SVGs, one per scene and theme.
+- `apps/docs/public/illustrations/`: exported SVGs, one per gallery scene and theme.
 
 Use `<Illustration name="log" />` for a standalone inline image and `<ConceptFigure name="log" />` for artwork with an explanatory caption. Set `decorative` only when adjacent content already conveys all the image's meaning. The in-app version follows the docs theme; an explicit `theme="light"` or `theme="dark"` overrides it.
 

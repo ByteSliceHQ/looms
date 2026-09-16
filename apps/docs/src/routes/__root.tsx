@@ -1,6 +1,8 @@
 import { Outlet, createRootRoute, HeadContent, Scripts, Link } from '@tanstack/react-router'
+import type { ErrorComponentProps } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import { ErrorPage, NotFoundPage } from '../components/site-error'
 import { ThemeToggle } from '../components/theme-toggle'
 
 import appCss from '../styles.css?url'
@@ -21,31 +23,43 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
-  notFoundComponent: () => (
-    <p className="text-muted mx-auto max-w-[42rem] px-5 py-14 md:px-8 md:pt-24 md:pb-20">
-      Not found.
-    </p>
-  ),
+  notFoundComponent: NotFoundPage,
+  errorComponent: RootError,
 })
+
+function SiteHeader() {
+  return (
+    <header className="border-line-subtle mx-auto flex max-w-[68rem] items-center gap-8 border-b px-8 py-5">
+      <Link
+        to="/"
+        className="text-foreground text-[1.1rem] font-semibold tracking-tight no-underline"
+      >
+        Looms
+      </Link>
+      <nav className="flex gap-5">
+        <Link to="/docs" className="text-muted hover:text-foreground text-sm no-underline">
+          Docs
+        </Link>
+      </nav>
+      <ThemeToggle />
+    </header>
+  )
+}
 
 function RootComponent() {
   return (
     <RootDocument>
-      <header className="border-line-subtle mx-auto flex max-w-[68rem] items-center gap-8 border-b px-8 py-5">
-        <Link
-          to="/"
-          className="text-foreground text-[1.1rem] font-semibold tracking-tight no-underline"
-        >
-          Looms
-        </Link>
-        <nav className="flex gap-5">
-          <Link to="/docs" className="text-muted hover:text-foreground text-sm no-underline">
-            Docs
-          </Link>
-        </nav>
-        <ThemeToggle />
-      </header>
+      <SiteHeader />
       <Outlet />
+    </RootDocument>
+  )
+}
+
+function RootError(props: ErrorComponentProps) {
+  return (
+    <RootDocument>
+      <SiteHeader />
+      <ErrorPage {...props} />
     </RootDocument>
   )
 }

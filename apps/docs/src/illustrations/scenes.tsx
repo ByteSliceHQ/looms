@@ -352,6 +352,134 @@ function EventEffects() {
   )
 }
 
+/** A solid path ends short of a ghost destination — nothing is woven there. */
+function NotFound() {
+  return (
+    <>
+      <Ground />
+      <Plate at={[-95, -10, -48]} width={148} depth={118} height={10}>
+        <Register x={-48} y={-40} />
+        <Rows count={5} width={72} />
+      </Plate>
+      <Plate at={[-95, -10, -16]} width={148} depth={118} height={10}>
+        <Rows count={5} width={72} />
+      </Plate>
+      <Plate at={[-95, -10, 22]} width={148} depth={118} height={12} active>
+        <Register x={-48} y={-40} />
+        <Stitch size={34} />
+      </Plate>
+
+      <Thread
+        points={[
+          [-21, -10, 22],
+          [48, -10, 22],
+        ]}
+        accent
+      />
+      <Anchor at={[48, -10, 22]} active />
+
+      <Thread
+        points={[
+          [64, -10, 22],
+          [118, -10, 22],
+          [118, 70, 22],
+        ]}
+        accent
+        dashed
+      />
+
+      {/* Ghost plate outline — contour only. */}
+      <g fill="none" stroke="var(--art-detail)" strokeWidth="1" strokeDasharray="4 5">
+        <path
+          d={trace([
+            [95, 25, 22],
+            [195, 25, 22],
+            [195, 125, 22],
+            [95, 125, 22],
+            [95, 25, 22],
+          ])}
+        />
+        <path
+          d={trace([
+            [95, 125, 22],
+            [95, 125, 10],
+            [195, 125, 10],
+            [195, 125, 22],
+          ])}
+        />
+        <path
+          d={trace([
+            [195, 25, 22],
+            [195, 25, 10],
+            [195, 125, 10],
+          ])}
+        />
+      </g>
+      <Anchor at={[145, 75, 22]} />
+    </>
+  )
+}
+
+/** A recorded stack remains, but the active thread snaps mid-run. */
+function ServerError() {
+  return (
+    <>
+      <Ground />
+      {[-52, -28, -4].map((z) => (
+        <Plate key={z} at={[-70, 0, z]} width={156} depth={128} height={9}>
+          <Register x={-52} y={-44} />
+          <Rows count={6} width={82} />
+        </Plate>
+      ))}
+      <Plate at={[-70, 0, 28]} width={156} depth={128} height={11}>
+        <Register x={-52} y={-44} />
+        <Rows count={5} width={78} />
+      </Plate>
+
+      <Thread
+        points={[
+          [8, 0, 28],
+          [58, 0, 28],
+        ]}
+        accent
+      />
+      <Anchor at={[58, 0, 28]} active />
+
+      {/* Visible snap gap. */}
+      <Thread
+        points={[
+          [86, 0, 28],
+          [118, 0, 28],
+        ]}
+        accent
+        dashed
+      />
+      <Anchor at={[86, 0, 28]} />
+
+      <Plate at={[155, 0, 28]} width={96} depth={96} height={12} active>
+        <path
+          d="M-16,-16 L16,16 M16,-16 L-16,16"
+          stroke="var(--art-accent)"
+          strokeWidth="1.4"
+          fill="none"
+        />
+      </Plate>
+
+      <Thread
+        points={[
+          [203, 0, 28],
+          [230, 0, 28],
+          [230, 0, 110],
+        ]}
+        dashed
+      />
+      <Plate at={[230, 0, 128]} width={36} height={7}>
+        <Rows count={2} width={16} />
+      </Plate>
+    </>
+  )
+}
+
 export const illustrations = {
   loom: {
     number: '00',
@@ -416,6 +544,24 @@ export const illustrations = {
     alt: 'An event stack feeds a reducer plate. Dashed threads reach a world marker and return as a new checked event on the log.',
     component: EventEffects,
   },
+  'not-found': {
+    number: '07',
+    title: 'This path was never woven.',
+    label: 'Not found',
+    description:
+      'A durable thread reaches the edge of known work and finds only a dashed outline where a destination should be.',
+    alt: 'An active plate sends a thread toward a ghost outline of a missing plate that was never recorded.',
+    component: NotFound,
+  },
+  error: {
+    number: '08',
+    title: 'The weave broke mid-run.',
+    label: 'Server error',
+    description:
+      'Recorded layers remain intact, but the active thread snaps. Recovery starts from the log, not from the failed step.',
+    alt: 'An event stack sits intact while an offset active plate shows a break mark and a snapped accent thread.',
+    component: ServerError,
+  },
 } as const
 
 export type IllustrationName = keyof typeof illustrations
@@ -427,4 +573,6 @@ export const illustrationNames = [
   'modules',
   'projections',
   'effects',
+  'not-found',
+  'error',
 ] as const satisfies readonly IllustrationName[]

@@ -15,6 +15,9 @@ export default defineConfig({
     strictPort: true,
     host: process.env.HOST ?? '127.0.0.1',
   },
+  optimizeDeps: {
+    include: ['katex'],
+  },
   worker: {
     format: 'es',
   },
