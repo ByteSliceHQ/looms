@@ -73,6 +73,7 @@ try {
     'dist/cli/cli.js',
     'package.json',
     'README.md',
+    'CHANGELOG.md',
     'LICENSE',
   ]
 
