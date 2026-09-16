@@ -1,30 +1,49 @@
 # Looms
 
-**Durable agents, workflows, and human approvals — composed like packages.**
+**Durable agents, workflows, and human approvals, composed like packages.**
 
-Looms is an SDK for long-running work in your application. Each **run** is an event log you can crash-recover, replay, and subscribe to from a UI. Plug in agents, DAG workflows, approvals, and your own domain modules (payments, tickets, search). They compose: a workflow can wait on an approval, then charge a card; an agent can spawn that workflow as a tool.
+Looms is a TypeScript SDK for long-running work in your application. Each run has an event log you can replay, recover from with persistent storage, and subscribe to from a UI. Agents, DAG workflows, approvals, and your own domain modules compose: a workflow can wait for an approval before charging a card, and an agent can start that workflow as a tool.
+
+[Website](https://looms.sh) · [Documentation](https://looms.sh/docs) · [Quickstart](https://looms.sh/docs/quickstart) · [Contributing](./CONTRIBUTING.md)
 
 ## Why Looms
 
-- **Durable by default.** Progress is the log. Restart the host and the run continues.
-- **Composable.** Mix first-party modules with your own. Ship only what the app needs.
-- **One stream, many views.** The same events power a chat transcript, a debugger, a ledger, and pending-approval badges.
-- **Human in the loop.** A run parks until someone decides; the UI posts an approval and work resumes.
-- **Actor cells in production.** One writer per `runId` (Cloudflare Durable Objects recommended; Bun SQLite actors locally). Optional S2 as a projector lake for cross-run analytics.
+- **Recoverable execution.** With persistent storage, a run can survive a host restart and resume unfinished work.
+- **Composable modules.** Use agents, workflows, approvals, and domain modules together. Ship the pieces your application needs.
+- **One stream, many views.** The same events can power a chat transcript, a debugger, a ledger, and pending-approval badges.
+- **Human decisions.** A run can wait for a decision and continue when your application submits it.
+- **A choice of hosts.** Use Bun with SQLite locally or Cloudflare Durable Objects for a production actor host. Preserve one writer per run; add projectors for cross-run views and analytics.
 
-## Quickstart
+Read [when to use Looms](https://looms.sh/docs/when-to-use) for use cases and tradeoffs.
+
+## Get started
+
+Follow the [quickstart](https://looms.sh/docs/quickstart) to build an agent and workflow that pause for human review, exit, and resume in a new process.
+
+To try the same example from this repository, install [Bun](https://bun.sh) first. The repository pins Bun 1.3.14 in `package.json`.
 
 ```bash
-bun install
-bun run examples        # small createLooms scripts under examples/
-bun run dev             # demo http://127.0.0.1:8787 + docs http://127.0.0.1:8788
-# or either alone: bun run demo | bun run docs
-# Cloudflare worker demo: bun run dev:cloudflare (worker also defaults to :8788 — stop docs first)
+git clone https://github.com/ByteSliceHQ/looms.git
+cd looms
+bun install --frozen-lockfile
+bun examples/durable-review.ts start
 ```
 
-Minimal hosts live in [`examples/`](./examples) (echo agent, workflow, approval, custom module). The demo app is the fuller UI.
+The command prints a `runId` and exits. Replace `YOUR_RUN_ID` below with that ID, then run each command separately from the repository root:
 
-Host it in your app:
+```bash
+bun examples/durable-review.ts inspect YOUR_RUN_ID
+bun examples/durable-review.ts approve YOUR_RUN_ID
+bun examples/durable-review.ts inspect YOUR_RUN_ID
+```
+
+The pending review survives between commands in `.looms/review.sqlite`. After approval, the example reports `status: "completed"` and `published: true`. Publishing is simulated: the example makes no network calls and needs no model API key. You can use `reject` instead of `approve` on a pending run to see the rejection path.
+
+See the [example source](./examples/durable-review.ts), its [definitions](./examples/review-definition.ts), and the [smaller examples](./examples/README.md).
+
+## Embed Looms in your application
+
+Definitions describe the work; modules register them with a runtime. This small agent echoes its input:
 
 ```ts
 import { agent, defineAgent } from '@looms/agent'
@@ -44,73 +63,69 @@ const echo = defineAgent({
 
 const looms = createLooms({
   modules: [agent({ definitions: [echo] })],
-  // store: s2(s2ConfigFromEnv(process.env)),
 })
 
-const { runId } = await looms.start(echo, { text: 'hi' })
+try {
+  const { runId } = await looms.start(echo, { text: 'hi' })
+  console.log(runId)
+} finally {
+  await looms.stop()
+}
 ```
 
-`start` takes any definition — an agent, a workflow, or a kind from your own module — and types the input from its schema. Pass the modules you need (`agent()`, `workflow()`, `approval()`, or your own) into `createLooms` (see the Modules guide in the docs site).
+This example uses the default **in-memory store**, which loses history when the process exits. Use persistent storage for restart recovery, as in the quickstart. The [hosting and storage guide](https://looms.sh/docs/hosting-and-storage) explains storage, actor ownership, and wake scheduling.
 
-React client:
+Runs share a small set of operations: start a definition, signal events into it, and read projections out. Modules supply typed helpers such as `userMessage` and `decision`. The [integration guide](https://looms.sh/docs/integration) covers HTTP and React clients.
 
-```ts
-import { LoomsProvider, useRunStore, useProjection } from '@looms/react'
-import { conversation, userMessage } from '@looms/agent'
-import { decision } from '@looms/approval'
+## Before deploying
 
-const store = useRunStore(runId)
-const convo = useProjection(store, conversation)
-await store.commit(userMessage('Also greet Maya'))
-await store.commit(decision(approvalId, 'approve'))
-```
+Looms is under active development. Review the [API documentation](https://looms.sh/docs/api) and [versioning guide](https://looms.sh/docs/versioning) before changing code that must resume existing runs.
 
-HTTP client:
+Your application supplies authentication, per-run authorization, and tenant ownership. Keep the execution host behind that boundary, authorize reads and event streams as well as writes, and keep credentials out of event logs. See [authentication and tenancy](https://looms.sh/docs/security).
 
-```ts
-import { createLoomsClient } from '@looms/client'
-import { decision } from '@looms/approval'
-
-const client = createLoomsClient()
-const { runId } = await client.start(echo, { text: 'hi' })
-await client.signal(runId, [decision(approvalId, 'approve')])
-```
-
-Runs speak one language: `start` a definition, `signal` events into it, read `projections` out. Modules ship helpers that build their events (`userMessage`, `decision`), so nothing agent- or approval-specific lives in the core client.
-
-## Docs
-
-Canonical docs: `bun run docs` → http://127.0.0.1:8788 (`apps/docs`)
-
-| Section                            | What it covers                                                |
-| ---------------------------------- | ------------------------------------------------------------- |
-| Introduction                       | Map of the docs                                               |
-| Concepts                           | Overview, runs & threads, events & effects, durable execution |
-| Quickstart / Examples              | Run the demo, then copy patterns                              |
-| Modules / Projections / Durability | Author, project, and host                                     |
-| API / SDK · Math                   | Reference and formalism                                       |
-
-Repo markdown under [`docs/`](./docs) is supplementary (protocol tables, snapshots notes, AI providers). Prefer the site for the mental model and builder path.
+Recovery may repeat an external action if its outcome was not recorded before a crash. Use provider-supported idempotency and reconciliation where needed. The [reliability guide](https://looms.sh/docs/reliability) explains recovery, retries, snapshots, and retention.
 
 ## Packages
 
-| Package             | Import when you need                        |
-| ------------------- | ------------------------------------------- |
-| `@looms/runtime`    | `createLooms`, HTTP host                    |
-| `@looms/actor`      | `createLocalActorHost`, per-run actor cells |
-| `@looms/cloudflare` | Durable Object / celld actor host           |
-| `@looms/agent`      | `defineAgent`, tools, `conversation`        |
-| `@looms/workflow`   | `defineWorkflow`                            |
-| `@looms/approval`   | `gate`, `pendingApprovals`                  |
-| `@looms/core`       | Custom modules: `defineModule`, `invoke`    |
-| `@looms/client`     | HTTP client                                 |
-| `@looms/react`      | `useRunStore` / `useProjection`             |
-| `@looms/s2`         | Durable event log                           |
-| `@looms/ai-vercel`  | Vercel AI SDK models                        |
-| `@looms/projectors` | Cross-run indexes                           |
-| `@looms/testing`    | `createTestRuntime`, replay checks          |
-| `@looms/cli`        | Inspect and approve runs from a terminal    |
+| Package             | Use it for                                             |
+| ------------------- | ------------------------------------------------------ |
+| `@looms/runtime`    | `createLooms`, processing, and the HTTP host           |
+| `@looms/actor`      | Local actor cells and one writer per run               |
+| `@looms/cloudflare` | Cloudflare Durable Object hosting                      |
+| `@looms/agent`      | Agent definitions, tools, and conversation projections |
+| `@looms/workflow`   | DAG workflow definitions                               |
+| `@looms/approval`   | Human approval gates and decisions                     |
+| `@looms/core`       | Custom modules, events, effects, and projections       |
+| `@looms/client`     | HTTP client                                            |
+| `@looms/react`      | React hooks and live run stores                        |
+| `@looms/debugger`   | Reusable run and event inspection UI                   |
+| `@looms/s2`         | S2 event storage, snapshots, and projection support    |
+| `@looms/ai-vercel`  | Vercel AI SDK model adapters                           |
+| `@looms/projectors` | Cross-run indexes                                      |
+| `@looms/testing`    | Runtime and replay helpers for module authors          |
+| `@looms/cli`        | Inspecting and approving runs from a terminal          |
+
+## Explore locally
+
+```bash
+bun run examples        # small, in-memory examples
+bun run demo            # demo at http://127.0.0.1:8787
+bun run docs            # docs at http://127.0.0.1:8788
+bun run dev             # demo and docs together
+```
+
+The Bun demo uses local SQLite and can start `s2-lite` for projections when the S2 CLI is available. See [contributor setup](./CONTRIBUTING.md#local-development) for optional tooling. The Cloudflare demo runs with `bun run dev:cloudflare`; its worker also defaults to port 8788, so stop the local docs server first.
+
+The published documentation lives at [looms.sh/docs](https://looms.sh/docs). Markdown in [`docs/`](./docs) contains supplementary architecture and protocol notes.
+
+## Help and contributions
+
+Use [GitHub issues](https://github.com/ByteSliceHQ/looms/issues) for bugs, feature proposals, and usage questions. Include a small reproduction when reporting a bug, and remove credentials and private run data from anything you share.
+
+Code, documentation, examples, reproductions, and thoughtful reviews are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) to get started and our [code of conduct](./CODE_OF_CONDUCT.md) for community expectations.
+
+Report suspected vulnerabilities privately to [security@swirls.ai](mailto:security@swirls.ai), following [SECURITY.md](./SECURITY.md).
 
 ## License
 
-Apache-2.0
+Looms is licensed under [Apache-2.0](./LICENSE). See [NOTICE](./NOTICE) for attribution.

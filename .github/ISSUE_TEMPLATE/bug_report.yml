@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible problem in Looms.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Looms. Please remove credentials, customer data, and private event content from your report.
+        For suspected vulnerabilities, email security@swirls.ai instead of opening a public issue. See our [security policy](https://github.com/ByteSliceHQ/looms/blob/main/SECURITY.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Include a small example or a link to a minimal repository, plus the commands or steps to reproduce the problem. If you cannot isolate it yet, explain what you have tried.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Packages and environment
+      description: Include the Looms packages and versions (or commit), runtime and version, operating system or hosting platform, and storage backend. Include React or framework versions if relevant.
+      placeholder: |
+        Looms packages / versions or commit:
+        Runtime / version:
+        OS / hosting platform:
+        Storage backend:
+        Other relevant dependencies:
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add relevant redacted logs, related issues, or a workaround. For recovery problems, describe whether a restart or deployment preceded the issue. Share only synthetic or redacted run data.

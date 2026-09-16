@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose an improvement to Looms.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us about the work you are trying to do. Discussing a proposal before implementing it helps keep contributions focused.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe a concrete use case and who would benefit.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the change you have in mind. An API example can help, but a complete design is not required.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and tradeoffs
+      description: What have you tried? Could an existing module, adapter, or application-level solution cover the need? Note compatibility concerns if you know of any.
+  - type: textarea
+    id: contribution
+    attributes:
+      label: How would you like to help?
+      description: Optional. You can help with use cases, design feedback, documentation, examples, or implementation. You do not need to offer an implementation to propose an idea.
