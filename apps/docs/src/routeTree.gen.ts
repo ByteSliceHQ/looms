@@ -15,12 +15,18 @@ import { Route as IllustrationsRouteImport } from './routes/illustrations'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
-import { Route as DocsDurabilityRouteImport } from './routes/docs.durability'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
+import { Route as DocsHostingAndStorageRouteImport } from './routes/docs.hosting-and-storage'
 import { Route as DocsMathRouteImport } from './routes/docs.math'
 import { Route as DocsModulesRouteImport } from './routes/docs.modules'
+import { Route as DocsPriorArtRouteImport } from './routes/docs.prior-art'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
+import { Route as DocsConceptsIndexRouteImport } from './routes/docs.concepts.index'
+import { Route as DocsConceptsEventsAndEffectsRouteImport } from './routes/docs.concepts.events-and-effects'
+import { Route as DocsConceptsRunsAndThreadsRouteImport } from './routes/docs.concepts.runs-and-threads'
+import { Route as DocsConceptsTypeSafetyRouteImport } from './routes/docs.concepts.type-safety'
+import { Route as DocsConceptsWaitsAndReplayRouteImport } from './routes/docs.concepts.waits-and-replay'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,14 +58,14 @@ const DocsConceptsRoute = DocsConceptsRouteImport.update({
   path: '/concepts',
   getParentRoute: () => DocsRoute,
 } as any)
-const DocsDurabilityRoute = DocsDurabilityRouteImport.update({
-  id: '/durability',
-  path: '/durability',
-  getParentRoute: () => DocsRoute,
-} as any)
 const DocsExamplesRoute = DocsExamplesRouteImport.update({
   id: '/examples',
   path: '/examples',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsHostingAndStorageRoute = DocsHostingAndStorageRouteImport.update({
+  id: '/hosting-and-storage',
+  path: '/hosting-and-storage',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsMathRoute = DocsMathRouteImport.update({
@@ -72,6 +78,11 @@ const DocsModulesRoute = DocsModulesRouteImport.update({
   path: '/modules',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsPriorArtRoute = DocsPriorArtRouteImport.update({
+  id: '/prior-art',
+  path: '/prior-art',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsProjectorsRoute = DocsProjectorsRouteImport.update({
   id: '/projectors',
   path: '/projectors',
@@ -82,33 +93,72 @@ const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
   path: '/quickstart',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsConceptsIndexRoute = DocsConceptsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsConceptsRoute,
+} as any)
+const DocsConceptsEventsAndEffectsRoute =
+  DocsConceptsEventsAndEffectsRouteImport.update({
+    id: '/events-and-effects',
+    path: '/events-and-effects',
+    getParentRoute: () => DocsConceptsRoute,
+  } as any)
+const DocsConceptsRunsAndThreadsRoute =
+  DocsConceptsRunsAndThreadsRouteImport.update({
+    id: '/runs-and-threads',
+    path: '/runs-and-threads',
+    getParentRoute: () => DocsConceptsRoute,
+  } as any)
+const DocsConceptsTypeSafetyRoute = DocsConceptsTypeSafetyRouteImport.update({
+  id: '/type-safety',
+  path: '/type-safety',
+  getParentRoute: () => DocsConceptsRoute,
+} as any)
+const DocsConceptsWaitsAndReplayRoute =
+  DocsConceptsWaitsAndReplayRouteImport.update({
+    id: '/waits-and-replay',
+    path: '/waits-and-replay',
+    getParentRoute: () => DocsConceptsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/docs': typeof DocsRouteWithChildren
   '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
-  '/docs/concepts': typeof DocsConceptsRoute
-  '/docs/durability': typeof DocsDurabilityRoute
+  '/docs/concepts': typeof DocsConceptsRouteWithChildren
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/': typeof DocsIndexRoute
+  '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
+  '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
+  '/docs/concepts/type-safety': typeof DocsConceptsTypeSafetyRoute
+  '/docs/concepts/waits-and-replay': typeof DocsConceptsWaitsAndReplayRoute
+  '/docs/concepts/': typeof DocsConceptsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
-  '/docs/concepts': typeof DocsConceptsRoute
-  '/docs/durability': typeof DocsDurabilityRoute
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs': typeof DocsIndexRoute
+  '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
+  '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
+  '/docs/concepts/type-safety': typeof DocsConceptsTypeSafetyRoute
+  '/docs/concepts/waits-and-replay': typeof DocsConceptsWaitsAndReplayRoute
+  '/docs/concepts': typeof DocsConceptsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,14 +166,20 @@ export interface FileRoutesById {
   '/docs': typeof DocsRouteWithChildren
   '/illustrations': typeof IllustrationsRoute
   '/docs/api': typeof DocsApiRoute
-  '/docs/concepts': typeof DocsConceptsRoute
-  '/docs/durability': typeof DocsDurabilityRoute
+  '/docs/concepts': typeof DocsConceptsRouteWithChildren
   '/docs/examples': typeof DocsExamplesRoute
+  '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/': typeof DocsIndexRoute
+  '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
+  '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
+  '/docs/concepts/type-safety': typeof DocsConceptsTypeSafetyRoute
+  '/docs/concepts/waits-and-replay': typeof DocsConceptsWaitsAndReplayRoute
+  '/docs/concepts/': typeof DocsConceptsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -133,26 +189,37 @@ export interface FileRouteTypes {
     | '/illustrations'
     | '/docs/api'
     | '/docs/concepts'
-    | '/docs/durability'
     | '/docs/examples'
+    | '/docs/hosting-and-storage'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/'
+    | '/docs/concepts/events-and-effects'
+    | '/docs/concepts/runs-and-threads'
+    | '/docs/concepts/type-safety'
+    | '/docs/concepts/waits-and-replay'
+    | '/docs/concepts/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/illustrations'
     | '/docs/api'
-    | '/docs/concepts'
-    | '/docs/durability'
     | '/docs/examples'
+    | '/docs/hosting-and-storage'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs'
+    | '/docs/concepts/events-and-effects'
+    | '/docs/concepts/runs-and-threads'
+    | '/docs/concepts/type-safety'
+    | '/docs/concepts/waits-and-replay'
+    | '/docs/concepts'
   id:
     | '__root__'
     | '/'
@@ -160,13 +227,19 @@ export interface FileRouteTypes {
     | '/illustrations'
     | '/docs/api'
     | '/docs/concepts'
-    | '/docs/durability'
     | '/docs/examples'
+    | '/docs/hosting-and-storage'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/'
+    | '/docs/concepts/events-and-effects'
+    | '/docs/concepts/runs-and-threads'
+    | '/docs/concepts/type-safety'
+    | '/docs/concepts/waits-and-replay'
+    | '/docs/concepts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -219,18 +292,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsConceptsRouteImport
       parentRoute: typeof DocsRoute
     }
-    '/docs/durability': {
-      id: '/docs/durability'
-      path: '/durability'
-      fullPath: '/docs/durability'
-      preLoaderRoute: typeof DocsDurabilityRouteImport
-      parentRoute: typeof DocsRoute
-    }
     '/docs/examples': {
       id: '/docs/examples'
       path: '/examples'
       fullPath: '/docs/examples'
       preLoaderRoute: typeof DocsExamplesRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/hosting-and-storage': {
+      id: '/docs/hosting-and-storage'
+      path: '/hosting-and-storage'
+      fullPath: '/docs/hosting-and-storage'
+      preLoaderRoute: typeof DocsHostingAndStorageRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/math': {
@@ -247,6 +320,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsModulesRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/prior-art': {
+      id: '/docs/prior-art'
+      path: '/prior-art'
+      fullPath: '/docs/prior-art'
+      preLoaderRoute: typeof DocsPriorArtRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/projectors': {
       id: '/docs/projectors'
       path: '/projectors'
@@ -261,16 +341,72 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsQuickstartRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/concepts/': {
+      id: '/docs/concepts/'
+      path: '/'
+      fullPath: '/docs/concepts/'
+      preLoaderRoute: typeof DocsConceptsIndexRouteImport
+      parentRoute: typeof DocsConceptsRoute
+    }
+    '/docs/concepts/events-and-effects': {
+      id: '/docs/concepts/events-and-effects'
+      path: '/events-and-effects'
+      fullPath: '/docs/concepts/events-and-effects'
+      preLoaderRoute: typeof DocsConceptsEventsAndEffectsRouteImport
+      parentRoute: typeof DocsConceptsRoute
+    }
+    '/docs/concepts/runs-and-threads': {
+      id: '/docs/concepts/runs-and-threads'
+      path: '/runs-and-threads'
+      fullPath: '/docs/concepts/runs-and-threads'
+      preLoaderRoute: typeof DocsConceptsRunsAndThreadsRouteImport
+      parentRoute: typeof DocsConceptsRoute
+    }
+    '/docs/concepts/type-safety': {
+      id: '/docs/concepts/type-safety'
+      path: '/type-safety'
+      fullPath: '/docs/concepts/type-safety'
+      preLoaderRoute: typeof DocsConceptsTypeSafetyRouteImport
+      parentRoute: typeof DocsConceptsRoute
+    }
+    '/docs/concepts/waits-and-replay': {
+      id: '/docs/concepts/waits-and-replay'
+      path: '/waits-and-replay'
+      fullPath: '/docs/concepts/waits-and-replay'
+      preLoaderRoute: typeof DocsConceptsWaitsAndReplayRouteImport
+      parentRoute: typeof DocsConceptsRoute
+    }
   }
 }
 
+interface DocsConceptsRouteChildren {
+  DocsConceptsEventsAndEffectsRoute: typeof DocsConceptsEventsAndEffectsRoute
+  DocsConceptsRunsAndThreadsRoute: typeof DocsConceptsRunsAndThreadsRoute
+  DocsConceptsTypeSafetyRoute: typeof DocsConceptsTypeSafetyRoute
+  DocsConceptsWaitsAndReplayRoute: typeof DocsConceptsWaitsAndReplayRoute
+  DocsConceptsIndexRoute: typeof DocsConceptsIndexRoute
+}
+
+const DocsConceptsRouteChildren: DocsConceptsRouteChildren = {
+  DocsConceptsEventsAndEffectsRoute: DocsConceptsEventsAndEffectsRoute,
+  DocsConceptsRunsAndThreadsRoute: DocsConceptsRunsAndThreadsRoute,
+  DocsConceptsTypeSafetyRoute: DocsConceptsTypeSafetyRoute,
+  DocsConceptsWaitsAndReplayRoute: DocsConceptsWaitsAndReplayRoute,
+  DocsConceptsIndexRoute: DocsConceptsIndexRoute,
+}
+
+const DocsConceptsRouteWithChildren = DocsConceptsRoute._addFileChildren(
+  DocsConceptsRouteChildren,
+)
+
 interface DocsRouteChildren {
   DocsApiRoute: typeof DocsApiRoute
-  DocsConceptsRoute: typeof DocsConceptsRoute
-  DocsDurabilityRoute: typeof DocsDurabilityRoute
+  DocsConceptsRoute: typeof DocsConceptsRouteWithChildren
   DocsExamplesRoute: typeof DocsExamplesRoute
+  DocsHostingAndStorageRoute: typeof DocsHostingAndStorageRoute
   DocsMathRoute: typeof DocsMathRoute
   DocsModulesRoute: typeof DocsModulesRoute
+  DocsPriorArtRoute: typeof DocsPriorArtRoute
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -278,11 +414,12 @@ interface DocsRouteChildren {
 
 const DocsRouteChildren: DocsRouteChildren = {
   DocsApiRoute: DocsApiRoute,
-  DocsConceptsRoute: DocsConceptsRoute,
-  DocsDurabilityRoute: DocsDurabilityRoute,
+  DocsConceptsRoute: DocsConceptsRouteWithChildren,
   DocsExamplesRoute: DocsExamplesRoute,
+  DocsHostingAndStorageRoute: DocsHostingAndStorageRoute,
   DocsMathRoute: DocsMathRoute,
   DocsModulesRoute: DocsModulesRoute,
+  DocsPriorArtRoute: DocsPriorArtRoute,
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
   DocsIndexRoute: DocsIndexRoute,

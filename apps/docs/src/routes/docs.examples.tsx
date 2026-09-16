@@ -136,8 +136,7 @@ function RunView({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
       <p>
-        The same projection reducers run on the host and in the browser, so the UI cannot drift from
-        the log.
+        The same projection reducers run on the host and in the browser, so the UI matches the log.
       </p>
 
       <h2>HTTP client</h2>

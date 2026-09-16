@@ -11,72 +11,37 @@ export const Route = createFileRoute('/docs/projectors')({
 function Projectors() {
   return (
     <>
-      <h1>Projections &amp; Projectors</h1>
+      <h1>Projections &amp; projectors</h1>
       <p>
-        Durable execution is only half the problem. The other half is keeping product surfaces —
-        chat, approval queues, ledgers, admin indexes — honest about what the run actually did. In
-        Looms, the append-only event log is the only source of truth. State is never mutated in
-        place; it is <strong>projected</strong>.
-      </p>
-      <p>
-        That is the bridge between execution and UI: the same events that wake a parked workflow
-        also fold into React via <code>@looms/react</code>, and into SQLite or Postgres via
-        projectors. No per-feature sync protocol. No second source of truth that drifts.
+        The append-only event log is the only source of truth. Product surfaces (chat, approval
+        queues, ledgers, admin indexes) are <strong>projected</strong> from that log via{' '}
+        <code>@looms/react</code> or cross-run projectors. Scoped projections share types with the
+        host; see <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
 
       <ConceptFigure name="projections" />
 
       <FlowChain steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']} />
 
-      <h2>Two Different Reducer Contracts</h2>
-      <p>Looms cleanly separates behavioral execution from observational views:</p>
-
-      <div className="my-8 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-14">
-        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
-          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
-            Behavioral Reducer
-          </span>
-          <h3>Changes Runtime Behavior</h3>
-          <p>
-            <code>(State, Event) &rarr; &#123; state, effects &#125;</code>
-          </p>
-          <p>
-            Owned by Thread kinds (agents, workflows). May request Effects to interact with the
-            outside world or spawn children.
-          </p>
-        </div>
-
-        <div className="[&_h3]:text-foreground [&_p]:text-muted [&_ul]:text-body m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-2 [&_h3]:text-[1.05rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-3 [&_p]:text-[0.9rem] [&_p]:leading-snug [&_ul]:mb-0 [&_ul]:pl-[1.1rem] [&_ul]:text-[0.88rem] [&_ul]:leading-relaxed">
-          <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
-            Projection Reducer
-          </span>
-          <h3>Derives an Observational View</h3>
-          <p>
-            <code>(State, Event) &rarr; State</code>
-          </p>
-          <p>
-            Pure observation. Folds events into a read model (chat history, financial ledger,
-            approval queue). Never causes side-effects.
-          </p>
-        </div>
-      </div>
+      <h2>Behavioral vs projection reducers</h2>
+      <p>
+        Thread kinds use <strong>behavioral</strong> reducers (
+        <code>(state, event) &rarr; &#123; state, effects &#125;</code>). Projections use{' '}
+        <strong>projection</strong> reducers (<code>(state, event) &rarr; state</code>): pure
+        observation, no side effects. Full event/effect boundary:{' '}
+        <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link>.
+      </p>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
-        <strong>Projections are Portable; React is an Adapter:</strong> A projection definition is
-        pure TypeScript. The same projection can be folded in-memory on the host, rendered
-        reactively in the browser via <code>@looms/react</code>, or materialized into SQLite,
-        Postgres, or ClickHouse for analytics.
+        <strong>Projections are portable; React is an adapter.</strong> The same definition folds
+        in-memory on the host, reactively in the browser via <code>@looms/react</code>, or into
+        SQLite, Postgres, or ClickHouse.
       </div>
 
-      <h2>Building Custom UIs Using Projections</h2>
+      <h2>Building custom UIs</h2>
       <p>
-        In traditional full-stack apps, building real-time dashboards or agent interfaces requires
-        writing ad-hoc REST endpoints, custom WebSocket schemas, and complex cache invalidation
-        logic—leading to inevitable state drift.
-      </p>
-      <p>
-        With Looms projections, the UI subscribes directly to the Run event stream. When events
-        land, client-side projections re-fold instantly. There are no bespoke sync APIs to maintain.
+        The UI subscribes to the run event stream. When events land, client-side projections
+        re-fold.
       </p>
 
       <h3>Step 1: Define your domain projection</h3>
@@ -199,11 +164,11 @@ export function OrderDashboard({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
       <p>
-        Under the hood, <code>useProjection</code> leverages React 19&apos;s{' '}
-        <code>useSyncExternalStore</code> with an incremental projection cache. When new events
-        append to the run log on the server, the SSE connection receives them and folds only the
-        newly appended events into the cached state, coalescing updates at animation frame rates so
-        streaming hundreds of events never freezes the UI.
+        <code>useProjection</code> uses React 19&apos;s <code>useSyncExternalStore</code> with an
+        incremental projection cache. When new events append to the run log on the server, the SSE
+        connection receives them and folds only the newly appended events into the cached state,
+        coalescing updates at animation frame rates so streaming hundreds of events never freezes
+        the UI.
       </p>
 
       <h3>Step 4: Dispatch user interactions via signals</h3>
@@ -247,8 +212,8 @@ export function OrderControls({ runId }: { runId: string }) {
 
       <h3>Step 5: Time-travel debugging in the client</h3>
       <p>
-        Because projections are pure folds over the event array, rendering historical UI states is
-        effortless. You can fold over any prefix of the log:
+        Because projections are pure folds over the event array, you can fold any prefix of the log
+        to render a historical UI state:
       </p>
       <CodeBlock lang="tsx">{`import { useState } from 'react'
 import { foldProjection } from '@looms/core'
@@ -308,9 +273,9 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
 })`}</CodeBlock>
       <p>
         On Cloudflare Durable Objects, supply projectors via <code>configure().projectors</code>{' '}
-        (see <Link to="/docs/durability">Durability</Link>). Projectors can populate relational
-        databases, emit webhooks, or replicate events to a centralized data lake via{' '}
-        <code>s2Projector</code>.
+        (see <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>). Projectors can
+        populate relational databases, emit webhooks, or replicate events to a centralized data lake
+        via <code>s2Projector</code>.
       </p>
 
       <h3>Built-in index helpers</h3>
@@ -397,7 +362,7 @@ export function approvalsWebhook(url: string): Projector {
       <p>
         Next: see complete working examples of custom projections in{' '}
         <Link to="/docs/examples">Examples</Link>, host runs on Durable Objects in{' '}
-        <Link to="/docs/durability">Durability</Link>, or browse packages in{' '}
+        <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>, or browse packages in{' '}
         <Link to="/docs/modules">Modules</Link>.
       </p>
     </>

@@ -4,7 +4,7 @@ import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { LandingDebugger, LandingDebuggerFallback } from '../components/landing-debugger'
 import { Illustration } from '../illustrations/illustration'
-import { docsNav } from '../nav'
+import { docsNavTopLinks } from '../nav'
 
 export const Route = createFileRoute('/')({
   component: Landing,
@@ -20,11 +20,11 @@ function Landing() {
             Looms
           </p>
           <h2 className="text-body mt-0 mb-4 text-[1.35rem] leading-snug font-normal">
-            Durable agents, workflows, and human approvals — composed like packages.
+            Durable agents, workflows, and custom execution, composed like packages.
           </h2>
           <p className="text-muted mb-6 leading-relaxed">
             Each run is an append-only event log. Restart the host, replay history, park for a human
-            decision, then resume — without reinventing durability for every agent or DAG.
+            decision, then resume.
           </p>
 
           <FlowChain steps={['Event', 'Reducer', 'State + Effects', 'World', 'Event']} />
@@ -56,16 +56,11 @@ function Landing() {
           Durable execution
         </p>
         <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Progress is the log — not the process.
+          Progress lives in the log.
         </h2>
         <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
-          When an agent runs multi-step tool calls, a workflow sleeps for days, or a human approval
-          pauses execution, relying on server memory breaks down. Deployments restart workers,
-          retries trigger duplicate charges, and client state drifts from reality. Looms replaces
-          brittle process memory with an append-only event log: pure reducers transition state,
-          while side-effects execute in the world and append back as new facts. Replaying history
-          never re-runs external IO. In production, each run executes in an isolated actor cell with
-          dedicated local storage.
+          Each run records its history as events. Pure reducers rebuild state without repeating
+          external IO, so work survives deploys and days-long waits.
         </p>
 
         <div className="mt-10 grid gap-10 md:grid-cols-3 md:gap-12">
@@ -85,7 +80,7 @@ function Landing() {
               Threads
             </h3>
             <p className="text-muted mb-0 text-[0.9rem] leading-snug">
-              Agents, DAG workflows, and custom kinds share one unit of computation — nest freely
+              Agents, DAG workflows, and custom kinds share one unit of computation. Nest them
               without separate runtimes.
             </p>
           </div>
@@ -95,8 +90,8 @@ function Landing() {
               Waits
             </h3>
             <p className="text-muted mb-0 text-[0.9rem] leading-snug">
-              Park until an approval, webhook, or timer. Zero worker held. Resume with full state
-              fidelity days later.
+              Park until an approval, webhook, or timer. Zero worker held. Resume days later with
+              the same state.
             </p>
           </div>
         </div>
@@ -113,7 +108,7 @@ function Landing() {
           Composable packages
         </p>
         <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Capabilities install like modules — including yours.
+          Capabilities install like modules.
         </h2>
         <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
           The kernel does not know what an agent or a payment is. Modules contribute namespaced
@@ -121,14 +116,23 @@ function Landing() {
           first-party packages with domain modules without forking the runtime.
         </p>
 
-        <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
+        <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+
+// built-in modules
 import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
-import { createLooms } from '@looms/runtime'
+import { agent } from '@looms/agent'
+
+// custom module
 import { payments } from './modules/payments'
 
 export const looms = createLooms({
-  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
+  modules: [
+    agent({ definitions: [assistant], llm }),
+    workflow({ definitions: [checkout] }),
+    approval(),
+    payments,
+  ],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')
@@ -136,7 +140,7 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
 
         <p className="text-muted mb-0 max-w-[40rem] text-[0.9rem] leading-relaxed">
           An agent can spawn that checkout workflow as a tool. The workflow can <code>gate()</code>{' '}
-          for a human, then <code>invoke(&apos;payments.charge&apos;)</code>. Same run. Same log.
+          for a human, then <code>invoke(&apos;payments.charge&apos;)</code>. Same run and same log.
           See <Link to="/docs/modules">Modules</Link>.
         </p>
       </section>
@@ -147,13 +151,12 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
           Projections &amp; projectors
         </p>
         <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Close the gap between execution and UI.
+          The same log drives the UI.
         </h2>
         <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
-          Traditional stacks invent REST, websockets, and cache invalidation for every agent surface
-          — then watch the UI drift from the worker. In Looms, read models are pure folds over the
-          same events. Chat, debuggers, ledgers, and approval badges share one stream; projectors
-          materialize cross-run indexes in SQLite or Postgres.
+          Read models are pure folds over the run&apos;s events. Chat, debuggers, ledgers, and
+          approval badges share one stream; projectors materialize cross-run indexes in SQLite or
+          Postgres.
         </p>
 
         <FlowChain
@@ -188,20 +191,19 @@ function RunView({ runId }: { runId: string }) {
 
         <p className="text-muted mb-0 max-w-[40rem] text-[0.9rem] leading-relaxed">
           The same projection reducers run on the host and in the browser. Time-travel is folding a
-          prefix of the log — no special backend. Deep dive:{' '}
-          <Link to="/docs/projectors">Projections &amp; Projectors</Link>.
+          prefix of the log. See <Link to="/docs/projectors">Projections &amp; projectors</Link>.
         </p>
       </section>
 
       {/* Close */}
       <section className="border-line-subtle mt-16 border-t pt-14 md:mt-24 md:pt-20">
         <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Built on a small, inspectable kernel.
+          A small kernel you can inspect.
         </h2>
         <p className="text-body mb-8 max-w-[40rem] leading-relaxed">
-          Clear boundaries between facts and intent. Pure state transitions. Isolated actor cells on
-          Cloudflare Durable Objects, celld, or local SQLite. Stream replication for downstream data
-          lakes. Grounded in mathematical formalism and backed by open-source code you can inspect.
+          Events are facts; effects are intent. Pure reducers. Isolated actor cells on Cloudflare
+          Durable Objects, celld, or local SQLite. Optional stream replication for lakes. Formal
+          specs live in <Link to="/docs/math">Math</Link>; the code is open source.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -212,10 +214,10 @@ function RunView({ runId }: { runId: string }) {
             Start with the introduction
           </Link>
           <Link
-            to="/docs/durability"
+            to="/docs/quickstart"
             className="text-muted hover:text-foreground text-sm no-underline"
           >
-            Durability &rarr;
+            Quickstart &rarr;
           </Link>
           <Link
             to="/docs/concepts"
@@ -223,13 +225,10 @@ function RunView({ runId }: { runId: string }) {
           >
             Concepts &rarr;
           </Link>
-          <Link to="/docs/math" className="text-muted hover:text-foreground text-sm no-underline">
-            Math &rarr;
-          </Link>
         </div>
 
         <ul className="mt-12 mb-0 flex list-none flex-wrap gap-x-7 gap-y-5 p-0">
-          {docsNav.map((item) => (
+          {docsNavTopLinks().map((item) => (
             <li key={item.to} className="m-0">
               <Link to={item.to} className="text-muted hover:text-foreground text-sm no-underline">
                 {item.label}

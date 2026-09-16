@@ -20,8 +20,8 @@ function Api() {
 
       <h2>Actor hosts (recommended)</h2>
       <p>
-        See <Link to="/docs/durability">Durability &amp; Hosting</Link> for Durable Objects, celld,
-        Bun SQLite actors, and bring-your-own single-writer hosts. Package entry points:
+        See <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link> for Durable Objects,
+        celld, Bun SQLite actors, and bring-your-own single-writer hosts. Package entry points:
       </p>
       <ul>
         <li>
@@ -61,7 +61,12 @@ const store = withProjectors(bunSqliteEventStore({ path: './looms.sqlite' }), [
 ])
 
 const looms = createLooms({
-  modules: [agent({ definitions: [echo, assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
+  modules: [
+    agent({ definitions: [echo, assistant], llm }),
+    workflow({ definitions: [checkout] }),
+    approval(),
+    payments,
+  ],
   store,
   serve: { port: 8787 },
 })`}</CodeBlock>
@@ -74,7 +79,6 @@ const looms = createLooms({
           </tr>
         </thead>
         <tbody>
-
           <tr>
             <td>
               <code>modules</code>
@@ -83,8 +87,10 @@ const looms = createLooms({
               <code>[]</code>
             </td>
             <td>
-              Configured modules, including their definitions. Pass <code>{'agent({ definitions: [echo], llm })'}</code>, <code>{'workflow({ definitions: [checkout] })'}</code>,{' '}
-              <code>approval()</code>, and/or your own — nothing is included unless you pass it
+              Configured modules, including their definitions. Pass{' '}
+              <code>{'agent({ definitions: [echo], llm })'}</code>,{' '}
+              <code>{'workflow({ definitions: [checkout] })'}</code>, <code>approval()</code>,
+              and/or your own — nothing is included unless you pass it
             </td>
           </tr>
           <tr>
@@ -237,7 +243,7 @@ const looms = createLooms({
               <code>useRunStore</code>, <code>useProjection</code>, <code>useRunEvents</code>,{' '}
               <code>useRunSummary</code>, <code>useThreadTree</code>, <code>useEventCounts</code>,{' '}
               <code>useRunSelector</code>, <code>useEventFold</code>, <code>LoomsRegister</code>{' '}
-              (typed event catalogs)
+              (typed event catalogs; see <Link to="/docs/concepts/type-safety">Type safety</Link>)
             </td>
           </tr>
           <tr>
@@ -246,7 +252,8 @@ const looms = createLooms({
             </td>
             <td>
               <code>s2Projector</code> — replicates committed events to a global S2 stream lake for
-              centralized auditing and analytics. See <Link to="/docs/durability">Durability</Link>.
+              centralized auditing and analytics. See{' '}
+              <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
             </td>
           </tr>
           <tr>

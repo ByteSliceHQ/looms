@@ -12,15 +12,11 @@ function Modules() {
     <>
       <h1>Modules</h1>
       <p>
-        Looms is composable the way a package manager is composable: you install capabilities, not a
-        monolith. Built-in modules cover agents, workflows, and approvals. Add your own for domain
-        work — charges, tickets, notifications — without forking the runtime.
-      </p>
-      <p>
-        The kernel does not special-case LLM turns or DAG nodes. Those are{' '}
-        <strong>thread kinds</strong> contributed by modules, alongside namespaced events, effects,
-        and projections. That is what makes an agent spawning a checkout workflow that waits on a
-        human gate feel like one system instead of three frameworks glued together.
+        Install capabilities as packages. Built-in modules cover agents, workflows, and approvals;
+        add your own for domain work without forking the runtime. The kernel does not special-case
+        LLM turns or DAG nodes; those are <strong>thread kinds</strong> contributed by modules,
+        alongside namespaced events, effects, and projections. Vocabulary:{' '}
+        <Link to="/docs/concepts">Concepts</Link>.
       </p>
 
       <ConceptFigure name="modules" />
@@ -77,16 +73,25 @@ function Modules() {
         <code>createLocalActorHost</code>, or edge cells with <code>LoomsDurableObject</code>,
         modules configure identically:
       </p>
-      <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
+      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+
+// built-in modules
+import { agent } from '@looms/agent'
 import { approval } from '@looms/approval'
 import { workflow } from '@looms/workflow'
-import { createLooms } from '@looms/runtime'
+
+// custom module
 import { payments } from './modules/payments'
 import { assistant, checkout } from './definitions'
 import { llm } from './llm'
 
 export const looms = createLooms({
-  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments],
+  modules: [
+    agent({ definitions: [assistant], llm }),
+    workflow({ definitions: [checkout] }),
+    approval(),
+    payments,
+  ],
 })
 
 await looms.start(assistant, 'Charge $40 after approval')
@@ -94,8 +99,8 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       <p>
         Pass every module you need explicitly — <code>agent()</code>, <code>workflow()</code>,{' '}
         <code>approval()</code>, and any domain modules. Configure modules in that list (e.g.
-        providing an LLM adapter to <code>{'agent({ llm })'}</code>). Omitting{' '}
-        <code>modules</code> leaves the runtime with no built-in kinds.
+        providing an LLM adapter to <code>{'agent({ llm })'}</code>). Omitting <code>modules</code>{' '}
+        leaves the runtime with no built-in kinds.
       </p>
       <p>
         <code>start</code> does not care which module owns the definition. An agent and a workflow
@@ -134,8 +139,8 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <h2>Add your own module</h2>
       <p>
         A module declares namespaced events, effects the host should run, and optional projections
-        for the UI. Weave them together using <code>defineModule</code> so event types, payloads,
-        and effects are inferred and type-safe end-to-end. Handlers should be safe to retry — use{' '}
+        for the UI. Compose them with <code>defineModule</code> so event types, payloads, and
+        effects are inferred and type-checked. Handlers should be safe to retry; use{' '}
         <code>ctx.effectId</code> as an idempotency key.
       </p>
       <CodeBlock lang="ts">{`import { defineModule } from '@looms/core'
@@ -194,6 +199,10 @@ export const payments = defineModule(
 export const { charge } = payments.effects
 export const { ledger } = payments.projections`}</CodeBlock>
       <h3>What the scope gives you</h3>
+      <p>
+        Catalog through React typing:{' '}
+        <Link to="/docs/concepts/type-safety">Type safety</Link>.
+      </p>
       <ul>
         <li>
           <strong>Typed events:</strong> <code>event.type</code> and <code>event.payload</code> are
@@ -209,9 +218,9 @@ export const { ledger } = payments.projections`}</CodeBlock>
           type-checks inputs against the effect&apos;s input schema.
         </li>
         <li>
-          <strong>Compile-time service checks:</strong> <code>defineModule</code> requires satisfying
-          the environment requirements (<code>R</code>) of all constituent effects via Effect
-          Layers.
+          <strong>Compile-time service checks:</strong> <code>defineModule</code> requires
+          satisfying the environment requirements (<code>R</code>) of all constituent effects via
+          Effect Layers.
         </li>
         <li>
           <strong>Runtime payload validation:</strong> Events entering the runtime (via signals or
@@ -231,15 +240,10 @@ export const { ledger } = payments.projections`}</CodeBlock>
 
       <h2>Defining Effects</h2>
       <p>
-        In an event-sourced architecture, state machines and reducers must stay strictly pure and
-        deterministic. Side effects — interacting with external APIs, charging credit cards, calling
-        LLMs, querying databases, sending emails, or triggering webhooks — must never run inside
-        reducers. Instead, reducers declare intent by requesting <strong>effects</strong>.
-      </p>
-      <p>
-        The host runtime executes requested effects outside the state machine, catches transient
-        failures with configurable retry policies, and writes the resulting outcome events back onto
-        the Run&apos;s durable log.
+        Reducers stay pure. Side effects (APIs, charges, LLMs, emails) are requested as{' '}
+        <strong>effects</strong>; the host runs them outside the state machine, retries on transient
+        failure, and appends outcome events to the log. Concepts:{' '}
+        <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link>.
       </p>
 
       <h3>Anatomy of an Effect Handler</h3>
@@ -454,9 +458,8 @@ export function payments(db: DatabaseService) {
   },
 })`}</CodeBlock>
       <p>
-        With <code>m.effect</code>, events passed to <code>ctx.emit</code> are checked at
-        compile time against your module&apos;s catalog and validated against their schemas at
-        runtime.
+        With <code>m.effect</code>, events passed to <code>ctx.emit</code> are checked at compile
+        time against your module&apos;s catalog and validated against their schemas at runtime.
       </p>
 
       <h3>Retry Policies &amp; Failure Handling</h3>
@@ -512,8 +515,8 @@ effects(state, ctx) {
 
       <h2>File layout</h2>
       <p>
-        Built-in modules assemble separately authored members with <code>defineModule</code>. Open the folder
-        and the names tell you where to look:
+        Built-in modules assemble separately authored members with <code>defineModule</code>. Open
+        the folder and the names tell you where to look:
       </p>
       <CodeBlock lang="text">{`src/
   events.ts        # namespaced event catalog
@@ -532,10 +535,7 @@ effects(state, ctx) {
       </p>
 
       <h2>Module Composition Principles</h2>
-      <p>
-        To ensure packages from different teams or authors interoperate reliably, modules follow
-        explicit architectural rules:
-      </p>
+      <p>Modules from different teams interoperate when they follow these rules:</p>
       <ul>
         <li>
           <strong>Stable namespaces:</strong> Every module defines a unique namespace (e.g.{' '}
@@ -543,18 +543,18 @@ effects(state, ctx) {
           names are scoped to prevent collision.
         </li>
         <li>
-          <strong>Open-world event catalogs:</strong> Applications do not maintain a gigantic
-          central event union. Installing modules composes their typed event catalogs automatically.
+          <strong>Open-world event catalogs:</strong> Applications do not maintain a central event
+          union. Installing modules composes their typed event catalogs automatically.
         </li>
         <li>
           <strong>Universal thread kinds:</strong> The runtime kernel knows nothing about agents or
-          DAGs. Kinds are open-ended; <code>agent</code> and <code>workflow</code> are simply kinds
+          DAGs. Kinds are open-ended; <code>agent</code> and <code>workflow</code> are kinds
           contributed by modules.
         </li>
         <li>
-          <strong>Observational freedom:</strong> While behavioral reducers own their thread&apos;s
-          state, projection reducers may freely observe events across multiple modules (for example,
-          a financial ledger observing both payment events and LLM token usage).
+          <strong>Cross-module projections:</strong> While behavioral reducers own their
+          thread&apos;s state, projection reducers may observe events across multiple modules (for
+          example, a financial ledger observing both payment events and LLM token usage).
         </li>
         <li>
           <strong>Idempotent effect execution:</strong> Effect handlers receive{' '}

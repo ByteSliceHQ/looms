@@ -118,7 +118,7 @@ html.dark {
   }
 
   code {
-    @apply bg-code-bg text-foreground rounded px-[0.35em] py-[0.15em] font-mono text-[0.86em];
+    @apply bg-code-bg text-foreground rounded px-[0.35em] py-[0.15em] font-mono text-[0.86em] font-normal;
   }
 }
 
@@ -298,6 +298,10 @@ td strong {
   content: none;
 }
 
+.prose :where(code):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+  font-weight: 400;
+}
+
 /* KaTeX display math centering (Streamdown-generated markup) */
 .equation .katex-display {
   margin: 0;
@@ -321,8 +325,6 @@ td strong {
 /* Vector illustrations: layout only. Portable art tokens live inside the SVG. */
 .concept-figure {
   margin: 2.5rem 0 3rem;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
 }
 
 .concept-figure-art {
@@ -350,14 +352,6 @@ td strong {
   color: var(--text);
   font-weight: 500;
   font-size: 1rem;
-}
-
-.concept-figure-number {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 
 .illustration-grid {

@@ -4,20 +4,20 @@ import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { ConceptFigure } from '../illustrations/illustration'
 
-export const Route = createFileRoute('/docs/durability')({
-  component: Durability,
+export const Route = createFileRoute('/docs/hosting-and-storage')({
+  component: HostingAndStorage,
 })
 
-function Durability() {
+function HostingAndStorage() {
   return (
     <>
-      <h1>Durability &amp; Hosting</h1>
+      <h1>Hosting &amp; storage</h1>
       <p>
-        Looms achieves durable execution through a{' '}
-        <strong>single-writer virtual actor model</strong>. Every run is identified by a unique{' '}
-        <code>runId</code> and owned by exactly one isolated actor cell at a time. Within that cell,
-        events append directly to a fast local store (such as embedded SQLite), timers schedule
-        durable wakes, and snapshots bound memory.
+        Production runs execute in a <strong>single-writer actor cell</strong> per{' '}
+        <code>runId</code>: local SQLite for the log, alarms for durable waits, snapshots to bound
+        memory. Waits, wake, and replay are covered in{' '}
+        <Link to="/docs/concepts/waits-and-replay">Waits &amp; replay</Link>; this page is how you
+        host them.
       </p>
 
       <ConceptFigure name="log" />
@@ -36,7 +36,7 @@ function Durability() {
         Because only one writer ever processes a run, Looms avoids distributed locking, heartbeats,
         and consensus leases inside the execution loop. If a worker crashes or deploys, the next
         request routes to a fresh cell, recovers state by loading <code>snapshot + delta</code>, and
-        continues without missing a beat.
+        continues from that recovered state.
       </p>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
@@ -106,9 +106,9 @@ function Durability() {
 
       <h2>Cloudflare Durable Objects (Recommended)</h2>
       <p>
-        Cloudflare Durable Objects provide a natural home for Looms runs: they are strongly
-        consistent, globally routable by name, automatically migrate during infrastructure
-        maintenance, and scale down to zero idle cost when a run parks.
+        Cloudflare Durable Objects fit Looms runs well: strongly consistent, globally routable by
+        name, migrate during infrastructure maintenance, and scale to zero idle cost when a run
+        parks.
       </p>
       <p>
         To run on Cloudflare, subclass <code>LoomsDurableObject</code> from{' '}
@@ -155,13 +155,12 @@ export default {
         <li>
           <strong>Native alarm scheduling:</strong> When an agent or workflow waits on a timer (
           <code>ctx.effects.wait({'{ timer }'})</code>), the cell schedules a Durable Object alarm
-          via <code>ctx.storage.setAlarm</code>. The run completely evicts from memory until the
-          alarm fires.
+          via <code>ctx.storage.setAlarm</code>. The run unloads from memory until the alarm fires.
         </li>
         <li>
           <strong>Live event streaming:</strong> Real-time UI subscriptions (SSE via{' '}
-          <code>/api/events</code>) connect directly to the Durable Object owning that run,
-          guaranteeing instant updates with zero polling lag.
+          <code>/api/events</code>) connect directly to the Durable Object owning that run. Events
+          push over SSE; there is no poll loop.
         </li>
       </ul>
 
@@ -235,7 +234,7 @@ export default {
         .
       </p>
       <p>
-        The fundamental primitive is <code>createActorCell</code> from <code>@looms/actor</code>:
+        The primitive is <code>createActorCell</code> from <code>@looms/actor</code>:
       </p>
       <CodeBlock lang="ts">{`import { createActorCell } from '@looms/actor'
 import { sqliteEventStore } from '@looms/core'
@@ -304,16 +303,15 @@ const store = withProjectors(
   [s2Projector(s2ConfigFromEnv(process.env))],
 )`}</CodeBlock>
       <p>
-        Projectors run after events commit locally. If downstream lake ingestion encounters a
-        temporary network hiccup, execution continues uninterrupted and local durability remains
-        uncompromised.
+        Projectors run after events commit locally. If downstream lake ingestion hits a temporary
+        network hiccup, execution continues and local durability is unchanged.
       </p>
 
       <h2>Next steps</h2>
       <p>
-        See how capabilities are organized in <Link to="/docs/modules">Modules</Link>, learn how to
-        fold events into reactive interfaces in <Link to="/docs/projectors">Projections</Link>, or
-        spin up a project with the <Link to="/docs/quickstart">Quickstart</Link>.
+        Author capabilities in <Link to="/docs/modules">Modules</Link>, fold events into UI in{' '}
+        <Link to="/docs/projectors">Projections</Link>, or spin up with the{' '}
+        <Link to="/docs/quickstart">Quickstart</Link>.
       </p>
     </>
   )

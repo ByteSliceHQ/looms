@@ -87,14 +87,13 @@ function MathDocs() {
       <MathBlock math="s_t^x = \text{fold}(\delta_k^{\text{state}}, s_0^x, \pi_x(L_{\le t}))" />
       <p>
         During replay or recovery, the effect stream <MathInline math="\Phi" /> is ignored by the
-        runtime kernel. Only recorded events produce state transitions, guaranteeing that historical
-        analysis and crash recovery never cause duplicate side effects.
+        runtime kernel. Only recorded events produce state transitions, so historical analysis and
+        crash recovery never cause duplicate side effects.
       </p>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
-        <strong>Return to conceptual overview:</strong> See{' '}
-        <Link to="/docs/concepts">Concepts</Link> for architectural principles, core vocabulary, and
-        the event/effect boundary.
+        See <Link to="/docs/concepts">Concepts</Link> for the mental model, vocabulary, and
+        event/effect boundary.
       </div>
     </>
   )

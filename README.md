@@ -10,7 +10,7 @@ Looms is an SDK for long-running work in your application. Each **run** is an ev
 - **Composable.** Mix first-party modules with your own. Ship only what the app needs.
 - **One stream, many views.** The same events power a chat transcript, a debugger, a ledger, and pending-approval badges.
 - **Human in the loop.** A run parks until someone decides; the UI posts an approval and work resumes.
-- **Local first.** In-memory store by default. Add S2 when you want a durable log.
+- **Actor cells in production.** One writer per `runId` (Cloudflare Durable Objects recommended; Bun SQLite actors locally). Optional S2 as a projector lake for cross-run analytics.
 
 ## Quickstart
 
@@ -50,7 +50,7 @@ const looms = createLooms({
 const { runId } = await looms.start(echo, { text: 'hi' })
 ```
 
-`start` takes any definition — an agent, a workflow, or a kind from your own module — and types the input from its schema. Pass the modules you need (`agent()`, `workflow()`, `approval()`, or your own) into `createLooms` (see [docs/modules.md](./docs/modules.md)).
+`start` takes any definition — an agent, a workflow, or a kind from your own module — and types the input from its schema. Pass the modules you need (`agent()`, `workflow()`, `approval()`, or your own) into `createLooms` (see the Modules guide in the docs site).
 
 React client:
 
@@ -80,33 +80,36 @@ Runs speak one language: `start` a definition, `signal` events into it, read `pr
 
 ## Docs
 
-- [Concepts](./docs/architecture.md) — runs, events, waits, projections
-- [Modules](./docs/modules.md) — agents, workflows, approvals, your own domain
-- [Protocol](./docs/protocol.md) — event types and HTTP
-- [Snapshots & actors](./docs/snapshots.md) — per-run cells, Bun / Cloudflare / celld backends, S2 as projector
-- [React](./docs/react.md) — React subscriptions
-- [AI providers](./docs/ai-providers.md)
+Canonical docs: `bun run docs` → http://127.0.0.1:8788 (`apps/docs`)
 
-Site (`apps/docs`, `bun run docs` → http://127.0.0.1:8788): concepts, modules, projectors, API, examples.
+| Section                            | What it covers                                                |
+| ---------------------------------- | ------------------------------------------------------------- |
+| Introduction                       | Map of the docs                                               |
+| Concepts                           | Overview, runs & threads, events & effects, durable execution |
+| Quickstart / Examples              | Run the demo, then copy patterns                              |
+| Modules / Projections / Durability | Author, project, and host                                     |
+| API / SDK · Math                   | Reference and formalism                                       |
+
+Repo markdown under [`docs/`](./docs) is supplementary (protocol tables, snapshots notes, AI providers). Prefer the site for the mental model and builder path.
 
 ## Packages
 
-| Package             | Import when you need                                  |
-| ------------------- | ----------------------------------------------------- |
-| `@looms/runtime`    | `createLooms`, HTTP host                              |
-| `@looms/actor`      | `createLocalActorHost`, per-run actor cells           |
-| `@looms/cloudflare` | Durable Object / celld actor host                     |
-| `@looms/agent`      | `defineAgent`, tools, `conversation`                  |
-| `@looms/workflow`   | `defineWorkflow`                                      |
-| `@looms/approval`   | `gate`, `pendingApprovals`                            |
-| `@looms/core`       | Custom modules: `defineModule`, `invoke` |
-| `@looms/client`     | HTTP client                                           |
-| `@looms/react`      | `useRunStore` / `useProjection`                       |
-| `@looms/s2`         | Durable event log                                     |
-| `@looms/ai-vercel`  | Vercel AI SDK models                                  |
-| `@looms/projectors` | Cross-run indexes                                     |
-| `@looms/testing`    | `createTestRuntime`, replay checks                    |
-| `@looms/cli`        | Inspect and approve runs from a terminal              |
+| Package             | Import when you need                        |
+| ------------------- | ------------------------------------------- |
+| `@looms/runtime`    | `createLooms`, HTTP host                    |
+| `@looms/actor`      | `createLocalActorHost`, per-run actor cells |
+| `@looms/cloudflare` | Durable Object / celld actor host           |
+| `@looms/agent`      | `defineAgent`, tools, `conversation`        |
+| `@looms/workflow`   | `defineWorkflow`                            |
+| `@looms/approval`   | `gate`, `pendingApprovals`                  |
+| `@looms/core`       | Custom modules: `defineModule`, `invoke`    |
+| `@looms/client`     | HTTP client                                 |
+| `@looms/react`      | `useRunStore` / `useProjection`             |
+| `@looms/s2`         | Durable event log                           |
+| `@looms/ai-vercel`  | Vercel AI SDK models                        |
+| `@looms/projectors` | Cross-run indexes                           |
+| `@looms/testing`    | `createTestRuntime`, replay checks          |
+| `@looms/cli`        | Inspect and approve runs from a terminal    |
 
 ## License
 

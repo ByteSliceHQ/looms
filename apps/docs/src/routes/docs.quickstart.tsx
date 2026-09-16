@@ -12,7 +12,7 @@ function Quickstart() {
       <h1>Quickstart</h1>
       <p>
         Three paths: run the Bun demo (local SQLite actors), run the Cloudflare Durable Object demo,
-        or embed Looms in-process for scripts and tests. All share the same loop — start a
+        or embed Looms in-process for scripts and tests. All share the same loop: start a
         definition, signal events, read projections.
       </p>
 
@@ -38,17 +38,18 @@ bun run demo
       <CodeBlock lang="bash">{`bun run dev:cloudflare
 # UI :8787 → worker/DOs :8788`}</CodeBlock>
       <p>
-        The same Workers bundle can run on <Link to="/docs/durability">celld</Link> for self-hosted
-        virtual actors. Full hosting guide:{' '}
-        <Link to="/docs/durability">Durability &amp; Hosting</Link>.
+        The same Workers bundle can run on <Link to="/docs/hosting-and-storage">celld</Link> for
+        self-hosted virtual actors. Full hosting guide:{' '}
+        <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
       </p>
 
       <h2>Embed in-process</h2>
       <p>
         For scripts, unit tests, and quick experiments, <code>createLooms</code> provides an
-        in-process runtime with an in-memory event store. For production deployments with per-run
-        isolation and durable alarms, deploy virtual actor cells on Cloudflare Durable Objects or
-        Bun (see <Link to="/docs/durability">Durability &amp; Hosting</Link>).
+        in-process runtime with an in-memory event store. For production isolation and durable
+        alarms, use Cloudflare Durable Objects (or celld); locally, Bun SQLite actors via{' '}
+        <code>@looms/actor</code> — see{' '}
+        <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
       </p>
       <CodeBlock lang="ts">{`import { agent, defineAgent } from '@looms/agent'
 import { createLooms } from '@looms/runtime'
@@ -75,8 +76,9 @@ const state = await looms.getRun(runId)`}</CodeBlock>
         <code>start</code> takes any definition — an agent, a workflow, or a kind from your own
         module — and types the input from its schema. Pass the modules you need (for example{' '}
         <code>agent()</code> or <code>agent({'{ llm }'})</code>) — see{' '}
-        <Link to="/docs/modules">Modules</Link>. Serve HTTP with <code>looms.fetch</code> /{' '}
-        <code>looms.serve()</code>, then subscribe from a client in{' '}
+        <Link to="/docs/modules">Modules</Link>. Minimal scripts also live under{' '}
+        <code>examples/</code> (<code>bun run examples</code>). Serve HTTP with{' '}
+        <code>looms.fetch</code> / <code>looms.serve()</code>, then subscribe from a client in{' '}
         <Link to="/docs/examples">Examples</Link>.
       </p>
     </>

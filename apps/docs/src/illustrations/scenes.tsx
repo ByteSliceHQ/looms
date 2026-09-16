@@ -1,4 +1,66 @@
-import { Anchor, Ground, Plate, Register, Rows, Stitch, Thread } from './primitives'
+import { Anchor, Ground, Plate, Register, Rows, Stitch, Thread, trace } from './primitives'
+
+function Loom() {
+  const warp = [-56, -42, -28, -14, 0, 14, 28, 42, 56]
+
+  return (
+    <>
+      <Ground />
+      <Plate at={[0, 0, -58]} width={230} depth={92} height={10} />
+
+      <g fill="none" strokeLinecap="round">
+        {[-82, 82].map((x) => (
+          <g key={x}>
+            <path
+              d={trace([
+                [x, 0, -48],
+                [x, 0, 112],
+              ])}
+              stroke="var(--art-edge)"
+              strokeWidth="10"
+            />
+            <path
+              d={trace([
+                [x, 0, -48],
+                [x, 0, 112],
+              ])}
+              stroke="var(--art-front)"
+              strokeWidth="7"
+            />
+          </g>
+        ))}
+      </g>
+
+      <Plate at={[0, 0, 112]} width={198} depth={28} height={12} />
+      <Plate at={[0, 0, -8]} width={186} depth={24} height={10} />
+
+      {warp.map((x) => (
+        <Thread
+          key={x}
+          points={[
+            [x, 0, 101],
+            [x, 0, 0],
+          ]}
+          accent={x === 0}
+        />
+      ))}
+      {[10, 20, 30, 40, 50, 60].map((z) => (
+        <Thread
+          key={z}
+          points={[
+            [-57, 0, z],
+            [57, 0, z],
+          ]}
+          accent={z === 30 || z === 40}
+        />
+      ))}
+
+      <Plate at={[25, -9, 35]} width={74} depth={13} height={5} active />
+      <Anchor at={[-82, 0, 112]} />
+      <Anchor at={[82, 0, 112]} />
+    </>
+  )
+}
 
 function EventLog() {
   return (
@@ -229,7 +291,77 @@ function Projections() {
   )
 }
 
+function EventEffects() {
+  return (
+    <>
+      <Ground />
+      {[-52, -28, -4].map((z) => (
+        <Plate key={z} at={[-115, -30, z]} width={108} depth={150} height={9}>
+          <Register x={-38} y={-55} />
+          <Rows count={6} width={58} />
+        </Plate>
+      ))}
+      <Plate at={[-115, -30, 28]} width={108} depth={150} height={11} active>
+        <Register x={-38} y={-55} />
+        <Rows count={5} width={54} />
+      </Plate>
+
+      <Thread
+        points={[
+          [-61, -30, 28],
+          [-8, -30, 28],
+          [-8, 45, 28],
+          [42, 45, 28],
+        ]}
+        accent
+      />
+      <Anchor at={[-8, -30, 28]} active />
+
+      <Plate at={[82, 45, 28]} width={104} depth={104} height={14} active>
+        <Stitch size={38} />
+      </Plate>
+
+      <Thread
+        points={[
+          [134, 45, 28],
+          [188, 45, 28],
+          [188, 45, 118],
+        ]}
+        accent
+        dashed
+      />
+      <Plate at={[188, 45, 138]} width={46} height={8} active>
+        <path d="M-11,0 H11 M0,-11 V11" stroke="var(--art-accent)" fill="none" />
+      </Plate>
+
+      <Thread
+        points={[
+          [188, 45, 138],
+          [188, -95, 138],
+          [-115, -95, 138],
+          [-115, -95, 62],
+        ]}
+        accent
+        dashed
+      />
+      <Plate at={[-115, -30, 62]} width={108} depth={150} height={11} active>
+        <Register x={-38} y={-55} />
+        <path d="m-14,0 10,10 20,-22" stroke="var(--art-accent)" fill="none" />
+      </Plate>
+    </>
+  )
+}
+
 export const illustrations = {
+  loom: {
+    number: '00',
+    title: 'Work, woven together.',
+    label: 'Loom',
+    description:
+      'A small frame holds durable threads in tension while a shuttle composes them into one fabric.',
+    alt: 'An isometric loom weaving a grid of fine threads on a simple frame.',
+    component: Loom,
+  },
   log: {
     number: '01',
     title: 'Progress lives in the log.',
@@ -275,6 +407,15 @@ export const illustrations = {
     alt: 'One event stack fans out into three surfaces: a conversation, a ledger, and an analytical chart.',
     component: Projections,
   },
+  effects: {
+    number: '06',
+    title: 'Facts go in. Intent goes out.',
+    label: 'Events & effects',
+    description:
+      'A pure reducer reads immutable events, requests effects against the world, and only appends new facts when those effects return.',
+    alt: 'An event stack feeds a reducer plate. Dashed threads reach a world marker and return as a new checked event on the log.',
+    component: EventEffects,
+  },
 } as const
 
 export type IllustrationName = keyof typeof illustrations
@@ -285,4 +426,5 @@ export const illustrationNames = [
   'wait',
   'modules',
   'projections',
+  'effects',
 ] as const satisfies readonly IllustrationName[]

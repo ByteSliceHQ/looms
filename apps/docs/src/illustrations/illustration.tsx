@@ -89,9 +89,6 @@ export function ConceptFigure({ name }: { name: IllustrationName }) {
         <Illustration name={name} />
       </div>
       <figcaption>
-        <span className="concept-figure-number">
-          FIG. {item.number} / {item.label}
-        </span>
         <strong>{item.title}</strong>
         <span>{item.description}</span>
       </figcaption>
