@@ -9,7 +9,7 @@ const port = Number(process.env.DOCS_PORT ?? 8788)
 process.env.PORT = String(port)
 process.env.NITRO_PORT = String(port)
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const isPrerenderBuild = mode === 'prerender'
 
   return {
@@ -44,6 +44,10 @@ export default defineConfig(({ mode }) => {
                 dir: '.prerender',
               },
             }
+          : command === 'serve'
+            ? {
+                preset: 'bun',
+              }
           : {
               preset: 'cloudflare_module',
               cloudflare: {
