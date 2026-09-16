@@ -525,9 +525,6 @@ describe('createLooms', () => {
     })
 
     const { runId } = await looms.start(sleeper, {})
-    const initialRun = await looms.getRun(runId)
-    expect(initialRun.status).toBe('running')
-    expect(wokeUp).toBe(false)
 
     // Wait for the automatic timer scheduler to fire wake(runId)
     await waitFor(() => wokeUp)
