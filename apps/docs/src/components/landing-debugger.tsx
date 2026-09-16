@@ -100,8 +100,8 @@ export function LandingDebugger() {
   }
 
   return (
-    <div>
-      <div className="landing-debugger border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem]">
+    <div className="min-w-0">
+      <div className="border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem] motion-reduce:[&_*]:animate-none! motion-reduce:[&_*]:scroll-auto! motion-reduce:[&_*]:transition-none!">
         <div className="border-border flex items-center gap-2 border-b px-3 py-2">
           <span className="text-muted font-mono text-xs tracking-wide uppercase">
             {reducedMotion ? 'Demo run' : 'Recorded orchestration'}
@@ -167,8 +167,8 @@ export function LandingDebugger() {
 
 export function LandingDebuggerFallback() {
   return (
-    <div>
-      <div className="landing-debugger border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem]">
+    <div className="min-w-0">
+      <div className="border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem] motion-reduce:[&_*]:animate-none! motion-reduce:[&_*]:scroll-auto! motion-reduce:[&_*]:transition-none!">
         <div className="border-border text-muted border-b px-3 py-2 font-mono text-xs tracking-wide uppercase">
           Recorded example
         </div>

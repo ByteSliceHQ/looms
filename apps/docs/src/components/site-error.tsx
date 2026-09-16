@@ -55,8 +55,12 @@ function SiteStatusPage({
             </Link>
           </div>
         </div>
-        <div className="site-error-art order-1 md:order-2">
-          <Illustration name={illustration} decorative className="site-error-illustration" />
+        <div className="order-1 flex justify-center md:order-2">
+          <Illustration
+            name={illustration}
+            decorative
+            className="block h-auto w-[min(100%,28rem)]"
+          />
         </div>
       </div>
     </main>

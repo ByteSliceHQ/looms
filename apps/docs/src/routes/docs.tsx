@@ -50,7 +50,9 @@ function DocsNavGroupItem({
   return (
     <div
       className={
-        mobile ? 'flex w-full flex-col gap-2' : 'docs-nav-group flex w-full flex-col gap-1.5'
+        mobile
+          ? 'flex w-full flex-col gap-2'
+          : "[&:has(a[data-status='active'])>span]:text-foreground flex w-full flex-col gap-1.5"
       }
     >
       <span
@@ -181,9 +183,9 @@ function DocsLayout() {
       </nav>
       <main id="main-content" className="min-w-0">
         {currentPage && currentPage.sections.length > 2 && (
-          <details className="docs-contents">
-            <summary>On this page</summary>
-            <nav aria-label="On this page">
+          <details className="border-line mb-8 border-b pb-4 text-[0.85rem]">
+            <summary className="text-foreground cursor-pointer">On this page</summary>
+            <nav className="grid gap-[0.45rem] pt-4" aria-label="On this page">
               {currentPage.sections
                 .filter((section) => section.level === 2)
                 .map((section) => (
@@ -197,7 +199,7 @@ function DocsLayout() {
         <article className="prose max-w-none">
           <Outlet />
         </article>
-        <footer className="docs-footer">
+        <footer className="border-line text-muted mt-16 flex flex-wrap justify-between gap-4 border-t pt-4 text-[0.8rem]">
           <a href="https://github.com/ByteSliceHQ/looms/issues">Report a docs issue</a>
           <span>0.0.x series · Pin your package version</span>
         </footer>

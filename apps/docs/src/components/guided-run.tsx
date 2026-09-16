@@ -44,19 +44,27 @@ export function GuidedRun() {
     ? 'The decision is recorded. Only an approval lets the workflow publish.'
     : stage.detail
 
+  const actionClassName =
+    'border-line cursor-pointer rounded-[5px] border px-[0.8rem] py-[0.6rem] text-[0.85rem]'
+
+  const primaryActionClassName = `${actionClassName} bg-foreground text-background font-medium`
+
   return (
-    <section className="guided-run" aria-label="Guided durability example">
-      <div className="guided-label">
+    <section
+      className="border-line bg-background-subtle min-w-0 rounded-lg border p-5"
+      aria-label="Guided durability example"
+    >
+      <div className="text-muted mb-6 flex justify-between font-mono text-xs">
         <span>Example run</span>
         <span>{step + 1} / 5</span>
       </div>
       <div aria-live="polite">
-        <h2>{title}</h2>
-        <p>{detail}</p>
-        <div className="guided-tree">
-          <div>
+        <h2 className="text-foreground mb-[0.6rem] text-[1.2rem] font-medium">{title}</h2>
+        <p className="text-[0.9rem] leading-[1.6]">{detail}</p>
+        <div className="my-[1.3rem] py-[0.8rem] font-mono text-xs">
+          <div className="flex justify-between gap-3 py-[0.3rem]">
             <span>release-v1</span>
-            <strong>
+            <strong className="text-foreground font-normal">
               {complete
                 ? 'completed'
                 : step === 2
@@ -66,9 +74,9 @@ export function GuidedRun() {
                     : 'drafting'}
             </strong>
           </div>
-          <div className="guided-child">
+          <div className="flex justify-between gap-3 py-[0.3rem]">
             <span>↳ writer</span>
-            <strong>completed</strong>
+            <strong className="text-foreground font-normal">completed</strong>
           </div>
         </div>
         <CodeBlock
@@ -80,14 +88,18 @@ export function GuidedRun() {
           }
         />
       </div>
-      <div className="guided-actions">
+      <div className="flex justify-end gap-3">
         {step > 0 && (
-          <button type="button" onClick={() => setStep(step - 1)}>
+          <button type="button" className={actionClassName} onClick={() => setStep(step - 1)}>
             Back
           </button>
         )}
         {step < 3 && (
-          <button type="button" className="primary-action" onClick={() => setStep(step + 1)}>
+          <button
+            type="button"
+            className={primaryActionClassName}
+            onClick={() => setStep(step + 1)}
+          >
             {['Request review', 'Stop the process', 'Open in a new process'][step]} →
           </button>
         )}
@@ -95,6 +107,7 @@ export function GuidedRun() {
           <>
             <button
               type="button"
+              className={actionClassName}
               onClick={() => {
                 setOutcome('reject')
                 setStep(4)
@@ -104,7 +117,7 @@ export function GuidedRun() {
             </button>
             <button
               type="button"
-              className="primary-action"
+              className={primaryActionClassName}
               onClick={() => {
                 setOutcome('approve')
                 setStep(4)
@@ -115,7 +128,7 @@ export function GuidedRun() {
           </>
         )}
         {complete && (
-          <button type="button" onClick={() => setStep(0)}>
+          <button type="button" className={actionClassName} onClick={() => setStep(0)}>
             Start again
           </button>
         )}

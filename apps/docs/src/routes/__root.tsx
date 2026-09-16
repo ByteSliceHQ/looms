@@ -57,7 +57,10 @@ function SiteHeader() {
 function RootComponent() {
   return (
     <RootDocument>
-      <a className="skip-link" href="#main-content">
+      <a
+        className="bg-background fixed -top-[100px] left-4 z-[100] p-[0.6rem] focus:top-4"
+        href="#main-content"
+      >
         Skip to content
       </a>
       <SiteHeader />

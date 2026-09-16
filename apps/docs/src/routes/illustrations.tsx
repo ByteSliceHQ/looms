@@ -23,16 +23,19 @@ function IllustrationGallery() {
           Built to continue.
         </p>
       </div>
-      <div className="illustration-grid">
+      <div className="border-line grid grid-cols-2 border-t max-[640px]:grid-cols-1">
         {illustrationNames.map((name) => {
           const item = illustrations[name]
 
           return (
-            <article key={name} className="illustration-card">
+            <article
+              key={name}
+              className="border-line border-b p-8 pb-10 odd:border-r odd:pl-0 even:pr-0 max-[640px]:border-r-0 max-[640px]:px-0 max-[640px]:pt-6 max-[640px]:pb-8"
+            >
               <p className="text-muted m-0 font-mono text-[11px] tracking-widest uppercase">
                 FIG. {item.number} / {item.label}
               </p>
-              <Illustration name={name} className="illustration-gallery-art" />
+              <Illustration name={name} className="my-2 mb-6 block h-auto w-full" />
               <h2 className="text-foreground mt-0 mb-3 text-xl font-medium tracking-tight">
                 {item.title}
               </h2>
@@ -50,7 +53,7 @@ function IllustrationGallery() {
             </article>
           )
         })}
-        <aside className="illustration-card flex flex-col justify-center">
+        <aside className="border-line flex flex-col justify-center border-b p-8 pb-10 odd:border-r odd:pl-0 even:pr-0 max-[640px]:border-r-0 max-[640px]:px-0 max-[640px]:pt-6 max-[640px]:pb-8">
           <p className="text-muted mb-5 font-mono text-[11px] tracking-widest uppercase">
             A system, made to grow
           </p>

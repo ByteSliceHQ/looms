@@ -84,12 +84,12 @@ export function ConceptFigure({ name }: { name: IllustrationName }) {
   const item = illustrations[name]
 
   return (
-    <figure className="concept-figure not-prose">
-      <div className="concept-figure-art">
+    <figure className="not-prose my-10 mb-12">
+      <div className="flex justify-center [&_svg]:block [&_svg]:h-auto [&_svg]:w-[min(100%,32rem)]">
         <Illustration name={name} />
       </div>
-      <figcaption>
-        <strong>{item.title}</strong>
+      <figcaption className="text-body m-0 grid gap-2 px-5 pt-0 pb-6 text-[0.85rem] leading-[1.6]">
+        <strong className="text-foreground text-base font-medium">{item.title}</strong>
         <span>{item.description}</span>
       </figcaption>
     </figure>

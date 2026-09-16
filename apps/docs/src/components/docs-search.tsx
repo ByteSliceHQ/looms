@@ -34,16 +34,18 @@ export function DocsSearch() {
       <DialogTrigger asChild>
         <button
           type="button"
-          className="docs-search-trigger"
+          className="text-muted hover:text-foreground hover:bg-background-subtle ml-auto inline-flex cursor-pointer items-center gap-[0.6rem] rounded-[5px] px-2 py-[0.4rem] text-[0.8rem]"
           aria-label="Search documentation"
           aria-keyshortcuts="Meta+K Control+K"
         >
           <Search size={15} aria-hidden="true" />
-          <span>Search docs</span>
-          <kbd>⌘ K</kbd>
+          <span className="max-[480px]:hidden">Search docs</span>
+          <kbd className="border-line rounded-[3px] border px-[0.3rem] py-[0.1rem] font-mono text-[0.7rem] max-[480px]:hidden">
+            ⌘ K
+          </kbd>
         </button>
       </DialogTrigger>
-      <DialogContent className="command-dialog overflow-hidden p-0">
+      <DialogContent className="command-dialog border-line overflow-hidden rounded-[0.65rem] p-0">
         <DialogTitle className="sr-only">Search documentation</DialogTitle>
         <DialogDescription className="sr-only">
           Find Looms guides and API reference. Use arrow keys to choose a page and Enter to open it.
