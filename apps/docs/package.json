@@ -8,8 +8,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "bun run build:worker && bun run build:prerender && bun scripts/merge-prerender-output.ts",
-    "build:worker": "vite build",
-    "build:prerender": "vite build --mode prerender",
+    "build:worker": "bun --bun vite build",
+    "build:prerender": "bun --bun vite build --mode prerender",
     "preview": "wrangler dev --config .output/server/wrangler.json",
     "deploy": "bun run build && wrangler deploy --config .output/server/wrangler.json",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
