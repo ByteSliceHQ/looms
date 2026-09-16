@@ -1,242 +1,179 @@
 import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
-import { FlowChain } from '../components/flow-chain'
+import { GuidedRun } from '../components/guided-run'
 import { LandingDebugger, LandingDebuggerFallback } from '../components/landing-debugger'
 import { Illustration } from '../illustrations/illustration'
-import { docsNavTopLinks } from '../nav'
 
 export const Route = createFileRoute('/')({
+  head: () => ({
+    meta: [
+      { title: 'Looms · Durable execution you can extend' },
+      {
+        name: 'description',
+        content:
+          'Durable execution for agents, workflows, and whatever you build next. Define custom thread kinds, compose them in one run, and build live views from recorded history.',
+      },
+      { property: 'og:title', content: 'Looms · Durable execution you can extend' },
+      {
+        property: 'og:description',
+        content: 'Agents, workflows, and your own thread types. One durable runtime.',
+      },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:url', content: 'https://looms.sh/' },
+      { name: 'twitter:card', content: 'summary' },
+    ],
+    links: [{ rel: 'canonical', href: 'https://looms.sh/' }],
+  }),
   component: Landing,
 })
 
 function Landing() {
   return (
-    <div className="mx-auto max-w-[68rem] px-5 py-14 pb-12 md:px-8 md:pt-24 md:pb-20">
-      {/* Hero: one composition — brand, pitch, CTA, live run */}
-      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-14">
-        <div className="lg:sticky lg:top-24 lg:self-start">
-          <p className="text-foreground mt-0 mb-5 text-[2.4rem] leading-none font-semibold tracking-tighter md:text-5xl">
-            Looms
+    <main id="main-content" className="landing mx-auto max-w-[68rem] px-5 py-14 md:px-8 md:py-20">
+      <div className="grid items-start gap-12 lg:grid-cols-2">
+        <div>
+          <h1 className="hero-title">
+            Durable execution for agents, workflows, and whatever you build next.
+          </h1>
+          <p className="hero-description">
+            Agents and workflows are built-in thread types. Define your own, nest them together, and
+            follow every step through one durable history.
           </p>
-          <h2 className="text-body mt-0 mb-4 text-[1.35rem] leading-snug font-normal">
-            Durable agents, workflows, and custom execution, composed like packages.
-          </h2>
-          <p className="text-muted mb-6 leading-relaxed">
-            Each run is an append-only event log. Restart the host, replay history, park for a human
-            decision, then resume.
-          </p>
-
-          <FlowChain steps={['Event', 'Reducer', 'State + Effects', 'World', 'Event']} />
-
-          <div className="my-6 flex flex-wrap items-center gap-3">
-            <Link
-              to="/docs"
-              className="bg-foreground text-background inline-block rounded-[5px] px-[1.1rem] py-[0.55rem] text-sm font-medium no-underline transition-colors hover:bg-neutral-700 hover:no-underline dark:hover:bg-slate-300"
-            >
-              Read the docs
+          <div className="landing-actions">
+            <Link className="primary-action" to="/docs/quickstart">
+              Get started →
             </Link>
-            <Link
-              to="/docs/quickstart"
-              className="text-muted hover:text-foreground text-sm no-underline"
-            >
-              Quickstart &rarr;
-            </Link>
+            <Link to="/docs/when-to-use">Is Looms a fit?</Link>
           </div>
+          <CodeBlock lang="bash">
+            {'npm install @looms/runtime @looms/agent @looms/workflow'}
+          </CodeBlock>
         </div>
-
-        <ClientOnly fallback={<LandingDebuggerFallback />}>
-          <LandingDebugger />
-        </ClientOnly>
+        <GuidedRun />
       </div>
 
-      {/* Story: durable execution */}
-      <section className="border-line-subtle mt-20 border-t pt-14 md:mt-28 md:pt-20">
-        <p className="text-muted mb-3 text-[0.72rem] font-semibold tracking-widest uppercase">
-          Durable execution
+      <section className="landing-section">
+        <h2>Use the built-in threads. Invent the next one.</h2>
+        <p className="section-intro">
+          An agent loop and a workflow DAG are two ways of running work. Looms lets you define
+          another: an auction, a review policy, a device controller. Compose them in one run, with
+          one shared history.
         </p>
-        <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Progress lives in the log.
-        </h2>
-        <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
-          Each run records its history as events. Pure reducers rebuild state without repeating
-          external IO, so work survives deploys and days-long waits.
-        </p>
-
-        <div className="mt-10 grid gap-10 md:grid-cols-3 md:gap-12">
+        <div className="thread-composition" aria-label="Example of custom thread composition">
           <div>
-            <Illustration name="log" className="mb-5 h-auto w-full" />
-            <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
-              Runs
-            </h3>
-            <p className="text-muted mb-0 text-[0.9rem] leading-snug">
-              One durability boundary. Every child thread, signal, and effect outcome appends to the
-              same canonical stream.
-            </p>
+            <small>agent</small>
+            <strong>Procurement assistant</strong>
+            <p>Finds suppliers and starts a purchase.</p>
           </div>
+          <span aria-hidden="true">→</span>
           <div>
-            <Illustration name="threads" className="mb-5 h-auto w-full" />
-            <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
-              Threads
-            </h3>
-            <p className="text-muted mb-0 text-[0.9rem] leading-snug">
-              Agents, DAG workflows, and custom kinds share one unit of computation. Nest them
-              without separate runtimes.
-            </p>
+            <small>workflow</small>
+            <strong>Purchase process</strong>
+            <p>Coordinates bidding, review, and fulfillment.</p>
           </div>
+          <span aria-hidden="true">→</span>
           <div>
-            <Illustration name="wait" className="mb-5 h-auto w-full" />
-            <h3 className="text-foreground mt-0 mb-2 text-[0.95rem] font-semibold tracking-tight">
-              Waits
-            </h3>
-            <p className="text-muted mb-0 text-[0.9rem] leading-snug">
-              Park until an approval, webhook, or timer. Zero worker held. Resume days later with
-              the same state.
-            </p>
+            <small>your custom kind</small>
+            <strong>Auction</strong>
+            <p>Accepts bids until a deadline and returns a winner.</p>
           </div>
         </div>
-
-        <FlowChain
-          className="mt-10"
-          steps={['WAITING', 'persist', '0 compute', 'matching event', 'RUNNING']}
-        />
+        <Link to="/docs/concepts/runs-and-threads">Build a custom thread →</Link>
       </section>
 
-      {/* Story: packages */}
-      <section className="border-line-subtle mt-16 border-t pt-14 md:mt-24 md:pt-20">
-        <p className="text-muted mb-3 text-[0.72rem] font-semibold tracking-widest uppercase">
-          Composable packages
-        </p>
-        <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          Capabilities install like modules.
-        </h2>
-        <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
-          The kernel does not know what an agent or a payment is. Modules contribute namespaced
-          events, effects, thread kinds, and projections. Ship only what the app needs; compose
-          first-party packages with domain modules without forking the runtime.
-        </p>
+      <section className="landing-section grid gap-10 md:grid-cols-3">
+        <div>
+          <Illustration name="log" />
+          <h2 className="feature-title">Recover recorded progress</h2>
+          <p>
+            Load durable history after a restart. Historical replay rebuilds state without
+            dispatching effects; interrupted external actions need safe retry handling.
+          </p>
+          <Link to="/docs/reliability">Understand the guarantees →</Link>
+        </div>
+        <div>
+          <Illustration name="wait" />
+          <h2 className="feature-title">Wait for the world</h2>
+          <p>
+            Pause for a human, webhook, timer, or child thread. Keep decisions in the log and resume
+            when the matching event arrives.
+          </p>
+          <Link to="/docs/approvals">Add a human decision →</Link>
+        </div>
+        <div>
+          <Illustration name="projections" />
+          <h2 className="feature-title">Show what happened</h2>
+          <p>
+            Use the same events to render conversations, approval queues, and debugging views. Build
+            shared indexes for work across runs.
+          </p>
+          <Link to="/docs/projectors">Connect your UI →</Link>
+        </div>
+      </section>
 
+      <section className="landing-section grid items-start gap-10 md:grid-cols-2">
+        <div>
+          <h2>Your domain belongs in the runtime.</h2>
+          <p>
+            Define events, effects, thread kinds, and projections in a module. Built-in modules use
+            the same extension model as yours.
+          </p>
+          <Link to="/docs/modules">Write a module →</Link>
+        </div>
         <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
-
-// built-in modules
-import { approval } from '@looms/approval'
-import { workflow } from '@looms/workflow'
 import { agent } from '@looms/agent'
+import { workflow } from '@looms/workflow'
+import { approval } from '@looms/approval'
+import { auction } from './auction'
+import { buyer, purchase, llm } from './definitions'
 
-// custom module
-import { payments } from './modules/payments'
-
-export const looms = createLooms({
+const looms = createLooms({
   modules: [
-    agent({ definitions: [assistant], llm }),
-    workflow({ definitions: [checkout] }),
+    agent({ definitions: [buyer], llm }),
+    workflow({ definitions: [purchase] }),
     approval(),
-    payments,
+    auction,
   ],
 })
 
-await looms.start(assistant, 'Charge $40 after approval')
-await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
-
-        <p className="text-muted mb-0 max-w-[40rem] text-[0.9rem] leading-relaxed">
-          An agent can spawn that checkout workflow as a tool. The workflow can <code>gate()</code>{' '}
-          for a human, then <code>invoke(&apos;payments.charge&apos;)</code>. Same run and same log.
-          See <Link to="/docs/modules">Modules</Link>.
-        </p>
+await looms.start(buyer, 'Find a supplier')`}</CodeBlock>
       </section>
 
-      {/* Story: projectors */}
-      <section className="border-line-subtle mt-16 border-t pt-14 md:mt-24 md:pt-20">
-        <p className="text-muted mb-3 text-[0.72rem] font-semibold tracking-widest uppercase">
-          Projections &amp; projectors
-        </p>
-        <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          The same log drives the UI.
-        </h2>
-        <p className="text-body mb-0 max-w-[40rem] leading-relaxed">
-          Read models are pure folds over the run&apos;s events. Chat, debuggers, ledgers, and
-          approval badges share one stream; projectors materialize cross-run indexes in SQLite or
-          Postgres.
-        </p>
-
-        <FlowChain
-          className="mt-8"
-          steps={['Run stream', 'Pure fold', 'UI projections', 'DB projectors']}
-        />
-
-        <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/react'
-import { conversation, userMessage } from '@looms/agent'
-import { pendingApprovals, decision } from '@looms/approval'
-import { ledger } from './modules/payments'
-
-function RunView({ runId }: { runId: string }) {
-  const store = useRunStore(runId)
-  const convo = useProjection(store, conversation)
-  const approvals = useProjection(store, pendingApprovals)
-  const charges = useProjection(store, ledger)
-
-  return (
-    <>
-      {convo.lines.map((m, i) => (
-        <p key={i}>{m.role}: {m.content}</p>
-      ))}
-      {approvals.items.map((a) => (
-        <button key={a.approvalId} onClick={() => store.commit(decision(a.approvalId, 'approve'))}>
-          {a.title}
-        </button>
-      ))}
-    </>
-  )
-}`}</CodeBlock>
-
-        <p className="text-muted mb-0 max-w-[40rem] text-[0.9rem] leading-relaxed">
-          The same projection reducers run on the host and in the browser. Time-travel is folding a
-          prefix of the log. See <Link to="/docs/projectors">Projections &amp; projectors</Link>.
-        </p>
-      </section>
-
-      {/* Close */}
-      <section className="border-line-subtle mt-16 border-t pt-14 md:mt-24 md:pt-20">
-        <h2 className="text-foreground mt-0 mb-4 text-[1.5rem] leading-snug font-semibold tracking-tight md:text-[1.75rem]">
-          A small kernel you can inspect.
-        </h2>
-        <p className="text-body mb-8 max-w-[40rem] leading-relaxed">
-          Events are facts; effects are intent. Pure reducers. Isolated actor cells on Cloudflare
-          Durable Objects, celld, or local SQLite. Optional stream replication for lakes. Formal
-          specs live in <Link to="/docs/math">Math</Link>; the code is open source.
-        </p>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            to="/docs"
-            className="bg-foreground text-background inline-block rounded-[5px] px-[1.1rem] py-[0.55rem] text-sm font-medium no-underline transition-colors hover:bg-neutral-700 hover:no-underline dark:hover:bg-slate-300"
-          >
-            Start with the introduction
-          </Link>
-          <Link
-            to="/docs/quickstart"
-            className="text-muted hover:text-foreground text-sm no-underline"
-          >
-            Quickstart &rarr;
-          </Link>
-          <Link
-            to="/docs/concepts"
-            className="text-muted hover:text-foreground text-sm no-underline"
-          >
-            Concepts &rarr;
-          </Link>
+      <section className="landing-section grid items-start gap-10 md:grid-cols-2">
+        <div>
+          <h2>One timeline across every thread.</h2>
+          <p className="section-intro">
+            Follow delegation, tool results, and decisions in one place. Select a thread or event in
+            this recorded run to see how the work unfolded.
+          </p>
+          <Link to="/docs/operations">Operate and inspect your runs →</Link>
         </div>
-
-        <ul className="mt-12 mb-0 flex list-none flex-wrap gap-x-7 gap-y-5 p-0">
-          {docsNavTopLinks().map((item) => (
-            <li key={item.to} className="m-0">
-              <Link to={item.to} className="text-muted hover:text-foreground text-sm no-underline">
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ClientOnly fallback={<LandingDebuggerFallback />}>
+          <LandingDebugger />
+        </ClientOnly>
       </section>
-    </div>
+
+      <section className="landing-section">
+        <h2>Start with a run.</h2>
+        <p className="section-intro">
+          Run locally with Bun and SQLite, then take the same definitions to Cloudflare Durable
+          Objects.
+        </p>
+        <div className="landing-actions">
+          <Link className="primary-action" to="/docs/quickstart">
+            Run the durable example →
+          </Link>
+          <Link to="/docs/hosting-and-storage">Deployment guide</Link>
+          <a href="https://github.com/ByteSliceHQ/looms">Source on GitHub</a>
+        </div>
+        <footer className="landing-footer">
+          <span>Looms by ByteSlice</span>
+          <Link to="/docs/api">API reference</Link>
+          <Link to="/docs/security">Security</Link>
+          <Link to="/docs/math">Execution model</Link>
+        </footer>
+      </section>
+    </main>
   )
 }

@@ -1,0 +1,143 @@
+import { createFileRoute, Link } from '@tanstack/react-router'
+
+import { pageHead } from '../page-head'
+
+export const Route = createFileRoute('/docs/reliability')({
+  head: () => pageHead('/docs/reliability'),
+  component: Page,
+})
+
+function Page() {
+  return (
+    <>
+      <h1>Reliability and recovery</h1>
+
+      <p>
+        Durability depends on the host and storage you choose. In-memory examples lose history on
+        exit. SQLite persists locally; production actor hosts must preserve one writer per run and
+        provide wake scheduling.
+      </p>
+      <h2 id="replay-and-recovery-are-different-operations">
+        Replay and recovery are different operations
+        <a
+          className="heading-anchor"
+          href="#replay-and-recovery-are-different-operations"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        Historical replay folds recorded events to reconstruct state and does not dispatch effects.
+        Recovery loads a snapshot and later events, then resumes unfinished work. An effect that
+        lacks a recorded outcome may execute again. Looms does not promise exactly-once actions
+        across arbitrary external services.
+      </p>
+      <h2 id="the-ambiguous-outcome-window">
+        The ambiguous outcome window
+        <a
+          className="heading-anchor"
+          href="#the-ambiguous-outcome-window"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <ol>
+        <li>Looms requests an external action.</li>
+        <li>The service performs it.</li>
+        <li>The host stops before recording success.</li>
+        <li>Recovery cannot infer success from the local log alone.</li>
+      </ol>
+      <p>
+        Pass ctx.effectId as an idempotency key where the external API supports it. Its guarantees
+        and key-retention window must cover your recovery horizon. For unsupported APIs, store a
+        durable operation ID, query the provider for the outcome, or reconcile before retrying.
+        Never assume adding an arbitrary header makes an API idempotent.
+      </p>
+      <h2 id="retries-and-errors">
+        Retries and errors
+        <a className="heading-anchor" href="#retries-and-errors" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Effect retry policies count total attempts: maxAttempts: 3 means one initial attempt and up
+        to two retries. Choose backoff and provider timeouts. A thrown error or failed Effect can
+        trigger retries; classify permanent failures in application code. Exhaustion records
+        runtime.effect.failed. Test what the owning thread does with that event rather than assuming
+        every kind reacts identically.
+      </p>
+      <h2 id="signals-and-webhook-delivery">
+        Signals and webhook delivery
+        <a
+          className="heading-anchor"
+          href="#signals-and-webhook-delivery"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        Use the embed start/signal idempotencyKey option with a stable runId for retries of the same
+        logical request. Verify webhook signatures and transform allowed webhook payloads into typed
+        events on the server. Deduplicate by the provider delivery ID and correlate by run, thread,
+        and domain identifiers. Retrying with a fresh key defeats deduplication.
+      </p>
+      <h2 id="interrupted-model-streams">
+        Interrupted model streams
+        <a
+          className="heading-anchor"
+          href="#interrupted-model-streams"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        A model call can produce partial deltas before failing. Those deltas may already be
+        recorded; resuming work may incur another model call and different output. Render partial
+        content as provisional, inspect completion events, and design your application policy for
+        abandoned partial turns. The adapter does not guarantee exactly-once billing or identical
+        regenerated text.
+      </p>
+      <h2 id="snapshots-retention-and-projections">
+        Snapshots, retention, and projections
+        <a
+          className="heading-anchor"
+          href="#snapshots-retention-and-projections"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        A compatible snapshot bounds replay work; it is not a backup or a schema migration. Trimming
+        events removes older audit and time-travel history and can prevent rebuilding new
+        projections from the beginning. Define a retention and archive policy before enabling
+        trimAfterSnapshot.
+      </p>
+      <p>
+        Projectors run after local commit. Their failures do not roll back the execution log. Do not
+        assume an external index or webhook has caught up just because a run succeeded. Track
+        downstream progress and provide a tested backfill/reconciliation path.
+      </p>
+      <h2 id="verify-your-boundary">
+        Verify your boundary
+        <a
+          className="heading-anchor"
+          href="#verify-your-boundary"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        Test a restart while parked, an interruption during an external action, duplicate webhook
+        delivery, and a deployment with existing runs. The{' '}
+        <Link to="/docs/testing">testing guide</Link> provides the local restart test. Review{' '}
+        <Link to="/docs/versioning">versioning</Link> before changing definitions.
+      </p>
+    </>
+  )
+}

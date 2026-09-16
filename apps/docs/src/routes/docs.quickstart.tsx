@@ -1,85 +1,134 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import runner from '../../../../examples/durable-review.ts?raw'
+import definitions from '../../../../examples/review-definition.ts?raw'
 import { CodeBlock } from '../components/code-block'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/quickstart')({
+  head: () => pageHead('/docs/quickstart'),
   component: Quickstart,
 })
 
 function Quickstart() {
   return (
     <>
-      <h1>Quickstart</h1>
+      <h1>Run, stop, resume</h1>
       <p>
-        Three paths: run the Bun demo (local SQLite actors), run the Cloudflare Durable Object demo,
-        or embed Looms in-process for scripts and tests. All share the same loop: start a
-        definition, signal events, read projections.
+        Build an agent that drafts a release announcement, then let a workflow wait for a human
+        decision. Exit the process, start a new one, and approve or reject the same run. Its history
+        and pending review survive.
       </p>
-
-      <h2>Try the demo (local actors)</h2>
       <p>
-        Default demo: <code>createLocalActorHost</code> with one Bun SQLite file per run under{' '}
-        <code>.looms/runs/</code>.
+        This tutorial uses <strong>Bun 1.3 or later</strong> and local SQLite. It makes no network
+        calls: the agent uses a deterministic turn function and publishing is simulated. The same
+        definitions can use a real model and a production actor host.
       </p>
-      <CodeBlock lang="bash">{`bun install
-bun run demo
-# http://127.0.0.1:8787`}</CodeBlock>
-
-      <p>Start a run from the panel, or:</p>
-      <CodeBlock lang="bash">{`curl -s -X POST http://127.0.0.1:8787/runs \\
-  -H 'content-type: application/json' \\
-  -d '{"kind":"agent","definitionName":"echo","input":{"text":"hi"}}'`}</CodeBlock>
-
-      <h2>Try the Durable Object demo</h2>
+      <h2 id="create-a-project">
+        Create a project
+        <a className="heading-anchor" href="#create-a-project" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <CodeBlock lang="bash">{`mkdir looms-starter
+cd looms-starter
+npm init -y
+npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod`}</CodeBlock>
       <p>
-        Recommended production shape: each run is a Cloudflare Durable Object cell with embedded
-        SQLite. The demo UI proxies to the worker:
+        Packages install from npm; Bun executes the TypeScript and provides SQLite. Keep all{' '}
+        <code>@looms/*</code> packages on matching versions and commit your lockfile. Node alone
+        cannot execute the Bun SQLite example.
       </p>
-      <CodeBlock lang="bash">{`bun run dev:cloudflare
-# UI :8787 → worker/DOs :8788`}</CodeBlock>
+      <h2 id="define-the-work">
+        Define the work
+        <a className="heading-anchor" href="#define-the-work" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        The same Workers bundle can run on <Link to="/docs/hosting-and-storage">celld</Link> for
-        self-hosted virtual actors. Full hosting guide:{' '}
-        <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
+        Save this as <code>review-definition.ts</code>. The workflow spawns a writer agent with a
+        tool, asks for a decision, and checks the outcome before publishing. A rejection completes
+        the workflow with <code>published: false</code>.
       </p>
-
-      <h2>Embed in-process</h2>
+      <CodeBlock lang="ts" code={definitions} />
+      <h2 id="add-durable-storage">
+        Add durable storage
+        <a className="heading-anchor" href="#add-durable-storage" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        For scripts, unit tests, and quick experiments, <code>createLooms</code> provides an
-        in-process runtime with an in-memory event store. For production isolation and durable
-        alarms, use Cloudflare Durable Objects (or celld); locally, Bun SQLite actors via{' '}
-        <code>@looms/actor</code> — see{' '}
-        <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
+        Save this as <code>durable-review.ts</code>. SQLite holds the event log and snapshots; each
+        invocation opens the same file. Run one command at a time—this is a single-process embed,
+        not a multi-writer server.
       </p>
-      <CodeBlock lang="ts">{`import { agent, defineAgent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
-import { z } from 'zod'
-
-const echo = defineAgent({
-  name: 'echo',
-  instructions: 'Echo the user.',
-  input: z.object({ text: z.string() }),
-  runTurn: ({ input }) => ({
-    message: { role: 'assistant', content: input.text },
-    done: true,
-    output: { text: input.text },
-  }),
-})
-
-const looms = createLooms({
-  modules: [agent({ definitions: [echo] })],
-})
-
-const { runId } = await looms.start(echo, { text: 'hi' })
-const state = await looms.getRun(runId)`}</CodeBlock>
+      <CodeBlock lang="ts" code={runner} />
+      <h2 id="start-and-stop">
+        Start and stop
+        <a className="heading-anchor" href="#start-and-stop" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <CodeBlock lang="bash">{'bun durable-review.ts start'}</CodeBlock>
       <p>
-        <code>start</code> takes any definition — an agent, a workflow, or a kind from your own
-        module — and types the input from its schema. Pass the modules you need (for example{' '}
-        <code>agent()</code> or <code>agent({'{ llm }'})</code>) — see{' '}
-        <Link to="/docs/modules">Modules</Link>. Minimal scripts also live under{' '}
-        <code>examples/</code> (<code>bun run examples</code>). Serve HTTP with{' '}
-        <code>looms.fetch</code> / <code>looms.serve()</code>, then subscribe from a client in{' '}
-        <Link to="/docs/examples">Examples</Link>.
+        The command prints a <code>runId</code> and exits. Copy that ID into the next commands. The
+        pending approval is durable even when an aggregate run status still reads{' '}
+        <code>running</code>; inspect the approval projection to see what needs attention.
+      </p>
+      <CodeBlock lang="bash">{'bun durable-review.ts inspect YOUR_RUN_ID'}</CodeBlock>
+      <p>
+        This is a new process. It should show one pending review and the agent/tool events recorded
+        by the first process.
+      </p>
+      <h2 id="resume-with-a-decision">
+        Resume with a decision
+        <a
+          className="heading-anchor"
+          href="#resume-with-a-decision"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <CodeBlock lang="bash">{'bun durable-review.ts approve YOUR_RUN_ID'}</CodeBlock>
+      <p>
+        Expect <code>status: "completed"</code> and <code>published: true</code> in the output.
+        Inspect it again: the result is still there, with no need to rerun the writer.
+      </p>
+      <p>Start another run and reject it instead:</p>
+      <CodeBlock lang="bash">{'bun durable-review.ts reject ANOTHER_RUN_ID'}</CodeBlock>
+      <p>
+        Expect <code>published: false</code>. A gate waits for a decision; it does not automatically
+        treat rejection as an execution error. Always check the result before a consequential
+        action.
+      </p>
+      <h2 id="make-it-yours">
+        Make it yours
+        <a className="heading-anchor" href="#make-it-yours" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <ul>
+        <li>
+          <Link to="/docs/agents">Connect a real model</Link> and keep the review deterministic.
+        </li>
+        <li>
+          <Link to="/docs/concepts/runs-and-threads">Define a custom thread kind</Link> with its own
+          state machine.
+        </li>
+        <li>
+          <Link to="/docs/projectors">Build a live React view</Link> of the same history.
+        </li>
+        <li>
+          <Link to="/docs/hosting-and-storage">Deploy to Cloudflare Durable Objects</Link> with one
+          actor per run.
+        </li>
+      </ul>
+      <p>
+        These source files are shared with the runnable examples and tested across separate
+        processes. The full{' '}
+        <a href="https://github.com/ByteSliceHQ/looms/tree/main/examples">examples directory</a>{' '}
+        includes smaller patterns.
       </p>
     </>
   )

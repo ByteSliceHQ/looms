@@ -13,15 +13,25 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as IllustrationsRouteImport } from './routes/illustrations'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
+import { Route as DocsAgentsRouteImport } from './routes/docs.agents'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
+import { Route as DocsApprovalsRouteImport } from './routes/docs.approvals'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
 import { Route as DocsHostingAndStorageRouteImport } from './routes/docs.hosting-and-storage'
+import { Route as DocsIntegrationRouteImport } from './routes/docs.integration'
 import { Route as DocsMathRouteImport } from './routes/docs.math'
 import { Route as DocsModulesRouteImport } from './routes/docs.modules'
+import { Route as DocsOperationsRouteImport } from './routes/docs.operations'
 import { Route as DocsPriorArtRouteImport } from './routes/docs.prior-art'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
+import { Route as DocsReliabilityRouteImport } from './routes/docs.reliability'
+import { Route as DocsSecurityRouteImport } from './routes/docs.security'
+import { Route as DocsTestingRouteImport } from './routes/docs.testing'
+import { Route as DocsTroubleshootingRouteImport } from './routes/docs.troubleshooting'
+import { Route as DocsVersioningRouteImport } from './routes/docs.versioning'
+import { Route as DocsWhenToUseRouteImport } from './routes/docs.when-to-use'
 import { Route as DocsConceptsIndexRouteImport } from './routes/docs.concepts.index'
 import { Route as DocsConceptsEventsAndEffectsRouteImport } from './routes/docs.concepts.events-and-effects'
 import { Route as DocsConceptsRunsAndThreadsRouteImport } from './routes/docs.concepts.runs-and-threads'
@@ -48,9 +58,19 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsAgentsRoute = DocsAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsApiRoute = DocsApiRouteImport.update({
   id: '/api',
   path: '/api',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsApprovalsRoute = DocsApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsConceptsRoute = DocsConceptsRouteImport.update({
@@ -68,6 +88,11 @@ const DocsHostingAndStorageRoute = DocsHostingAndStorageRouteImport.update({
   path: '/hosting-and-storage',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsIntegrationRoute = DocsIntegrationRouteImport.update({
+  id: '/integration',
+  path: '/integration',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsMathRoute = DocsMathRouteImport.update({
   id: '/math',
   path: '/math',
@@ -76,6 +101,11 @@ const DocsMathRoute = DocsMathRouteImport.update({
 const DocsModulesRoute = DocsModulesRouteImport.update({
   id: '/modules',
   path: '/modules',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsOperationsRoute = DocsOperationsRouteImport.update({
+  id: '/operations',
+  path: '/operations',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsPriorArtRoute = DocsPriorArtRouteImport.update({
@@ -91,6 +121,36 @@ const DocsProjectorsRoute = DocsProjectorsRouteImport.update({
 const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
   id: '/quickstart',
   path: '/quickstart',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsReliabilityRoute = DocsReliabilityRouteImport.update({
+  id: '/reliability',
+  path: '/reliability',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsSecurityRoute = DocsSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsTestingRoute = DocsTestingRouteImport.update({
+  id: '/testing',
+  path: '/testing',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsTroubleshootingRoute = DocsTroubleshootingRouteImport.update({
+  id: '/troubleshooting',
+  path: '/troubleshooting',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsVersioningRoute = DocsVersioningRouteImport.update({
+  id: '/versioning',
+  path: '/versioning',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsWhenToUseRoute = DocsWhenToUseRouteImport.update({
+  id: '/when-to-use',
+  path: '/when-to-use',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsConceptsIndexRoute = DocsConceptsIndexRouteImport.update({
@@ -126,15 +186,25 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/docs': typeof DocsRouteWithChildren
   '/illustrations': typeof IllustrationsRoute
+  '/docs/agents': typeof DocsAgentsRoute
   '/docs/api': typeof DocsApiRoute
+  '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
+  '/docs/integration': typeof DocsIntegrationRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/operations': typeof DocsOperationsRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/testing': typeof DocsTestingRoute
+  '/docs/troubleshooting': typeof DocsTroubleshootingRoute
+  '/docs/versioning': typeof DocsVersioningRoute
+  '/docs/when-to-use': typeof DocsWhenToUseRoute
   '/docs/': typeof DocsIndexRoute
   '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
   '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
@@ -145,14 +215,24 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/illustrations': typeof IllustrationsRoute
+  '/docs/agents': typeof DocsAgentsRoute
   '/docs/api': typeof DocsApiRoute
+  '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
+  '/docs/integration': typeof DocsIntegrationRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/operations': typeof DocsOperationsRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/testing': typeof DocsTestingRoute
+  '/docs/troubleshooting': typeof DocsTroubleshootingRoute
+  '/docs/versioning': typeof DocsVersioningRoute
+  '/docs/when-to-use': typeof DocsWhenToUseRoute
   '/docs': typeof DocsIndexRoute
   '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
   '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
@@ -165,15 +245,25 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/docs': typeof DocsRouteWithChildren
   '/illustrations': typeof IllustrationsRoute
+  '/docs/agents': typeof DocsAgentsRoute
   '/docs/api': typeof DocsApiRoute
+  '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
+  '/docs/integration': typeof DocsIntegrationRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
+  '/docs/operations': typeof DocsOperationsRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/testing': typeof DocsTestingRoute
+  '/docs/troubleshooting': typeof DocsTroubleshootingRoute
+  '/docs/versioning': typeof DocsVersioningRoute
+  '/docs/when-to-use': typeof DocsWhenToUseRoute
   '/docs/': typeof DocsIndexRoute
   '/docs/concepts/events-and-effects': typeof DocsConceptsEventsAndEffectsRoute
   '/docs/concepts/runs-and-threads': typeof DocsConceptsRunsAndThreadsRoute
@@ -187,15 +277,25 @@ export interface FileRouteTypes {
     | '/'
     | '/docs'
     | '/illustrations'
+    | '/docs/agents'
     | '/docs/api'
+    | '/docs/approvals'
     | '/docs/concepts'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
+    | '/docs/integration'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/operations'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
+    | '/docs/reliability'
+    | '/docs/security'
+    | '/docs/testing'
+    | '/docs/troubleshooting'
+    | '/docs/versioning'
+    | '/docs/when-to-use'
     | '/docs/'
     | '/docs/concepts/events-and-effects'
     | '/docs/concepts/runs-and-threads'
@@ -206,14 +306,24 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/illustrations'
+    | '/docs/agents'
     | '/docs/api'
+    | '/docs/approvals'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
+    | '/docs/integration'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/operations'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
+    | '/docs/reliability'
+    | '/docs/security'
+    | '/docs/testing'
+    | '/docs/troubleshooting'
+    | '/docs/versioning'
+    | '/docs/when-to-use'
     | '/docs'
     | '/docs/concepts/events-and-effects'
     | '/docs/concepts/runs-and-threads'
@@ -225,15 +335,25 @@ export interface FileRouteTypes {
     | '/'
     | '/docs'
     | '/illustrations'
+    | '/docs/agents'
     | '/docs/api'
+    | '/docs/approvals'
     | '/docs/concepts'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
+    | '/docs/integration'
     | '/docs/math'
     | '/docs/modules'
+    | '/docs/operations'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
+    | '/docs/reliability'
+    | '/docs/security'
+    | '/docs/testing'
+    | '/docs/troubleshooting'
+    | '/docs/versioning'
+    | '/docs/when-to-use'
     | '/docs/'
     | '/docs/concepts/events-and-effects'
     | '/docs/concepts/runs-and-threads'
@@ -278,11 +398,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsIndexRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/agents': {
+      id: '/docs/agents'
+      path: '/agents'
+      fullPath: '/docs/agents'
+      preLoaderRoute: typeof DocsAgentsRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/api': {
       id: '/docs/api'
       path: '/api'
       fullPath: '/docs/api'
       preLoaderRoute: typeof DocsApiRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/approvals': {
+      id: '/docs/approvals'
+      path: '/approvals'
+      fullPath: '/docs/approvals'
+      preLoaderRoute: typeof DocsApprovalsRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/concepts': {
@@ -306,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsHostingAndStorageRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/integration': {
+      id: '/docs/integration'
+      path: '/integration'
+      fullPath: '/docs/integration'
+      preLoaderRoute: typeof DocsIntegrationRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/math': {
       id: '/docs/math'
       path: '/math'
@@ -318,6 +459,13 @@ declare module '@tanstack/react-router' {
       path: '/modules'
       fullPath: '/docs/modules'
       preLoaderRoute: typeof DocsModulesRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/operations': {
+      id: '/docs/operations'
+      path: '/operations'
+      fullPath: '/docs/operations'
+      preLoaderRoute: typeof DocsOperationsRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/prior-art': {
@@ -339,6 +487,48 @@ declare module '@tanstack/react-router' {
       path: '/quickstart'
       fullPath: '/docs/quickstart'
       preLoaderRoute: typeof DocsQuickstartRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/reliability': {
+      id: '/docs/reliability'
+      path: '/reliability'
+      fullPath: '/docs/reliability'
+      preLoaderRoute: typeof DocsReliabilityRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/security': {
+      id: '/docs/security'
+      path: '/security'
+      fullPath: '/docs/security'
+      preLoaderRoute: typeof DocsSecurityRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/testing': {
+      id: '/docs/testing'
+      path: '/testing'
+      fullPath: '/docs/testing'
+      preLoaderRoute: typeof DocsTestingRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/troubleshooting': {
+      id: '/docs/troubleshooting'
+      path: '/troubleshooting'
+      fullPath: '/docs/troubleshooting'
+      preLoaderRoute: typeof DocsTroubleshootingRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/versioning': {
+      id: '/docs/versioning'
+      path: '/versioning'
+      fullPath: '/docs/versioning'
+      preLoaderRoute: typeof DocsVersioningRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/when-to-use': {
+      id: '/docs/when-to-use'
+      path: '/when-to-use'
+      fullPath: '/docs/when-to-use'
+      preLoaderRoute: typeof DocsWhenToUseRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/concepts/': {
@@ -400,28 +590,48 @@ const DocsConceptsRouteWithChildren = DocsConceptsRoute._addFileChildren(
 )
 
 interface DocsRouteChildren {
+  DocsAgentsRoute: typeof DocsAgentsRoute
   DocsApiRoute: typeof DocsApiRoute
+  DocsApprovalsRoute: typeof DocsApprovalsRoute
   DocsConceptsRoute: typeof DocsConceptsRouteWithChildren
   DocsExamplesRoute: typeof DocsExamplesRoute
   DocsHostingAndStorageRoute: typeof DocsHostingAndStorageRoute
+  DocsIntegrationRoute: typeof DocsIntegrationRoute
   DocsMathRoute: typeof DocsMathRoute
   DocsModulesRoute: typeof DocsModulesRoute
+  DocsOperationsRoute: typeof DocsOperationsRoute
   DocsPriorArtRoute: typeof DocsPriorArtRoute
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
+  DocsReliabilityRoute: typeof DocsReliabilityRoute
+  DocsSecurityRoute: typeof DocsSecurityRoute
+  DocsTestingRoute: typeof DocsTestingRoute
+  DocsTroubleshootingRoute: typeof DocsTroubleshootingRoute
+  DocsVersioningRoute: typeof DocsVersioningRoute
+  DocsWhenToUseRoute: typeof DocsWhenToUseRoute
   DocsIndexRoute: typeof DocsIndexRoute
 }
 
 const DocsRouteChildren: DocsRouteChildren = {
+  DocsAgentsRoute: DocsAgentsRoute,
   DocsApiRoute: DocsApiRoute,
+  DocsApprovalsRoute: DocsApprovalsRoute,
   DocsConceptsRoute: DocsConceptsRouteWithChildren,
   DocsExamplesRoute: DocsExamplesRoute,
   DocsHostingAndStorageRoute: DocsHostingAndStorageRoute,
+  DocsIntegrationRoute: DocsIntegrationRoute,
   DocsMathRoute: DocsMathRoute,
   DocsModulesRoute: DocsModulesRoute,
+  DocsOperationsRoute: DocsOperationsRoute,
   DocsPriorArtRoute: DocsPriorArtRoute,
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
+  DocsReliabilityRoute: DocsReliabilityRoute,
+  DocsSecurityRoute: DocsSecurityRoute,
+  DocsTestingRoute: DocsTestingRoute,
+  DocsTroubleshootingRoute: DocsTroubleshootingRoute,
+  DocsVersioningRoute: DocsVersioningRoute,
+  DocsWhenToUseRoute: DocsWhenToUseRoute,
   DocsIndexRoute: DocsIndexRoute,
 }
 

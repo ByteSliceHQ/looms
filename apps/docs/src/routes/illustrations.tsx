@@ -7,7 +7,10 @@ export const Route = createFileRoute('/illustrations')({ component: Illustration
 
 function IllustrationGallery() {
   return (
-    <main className="illustration-gallery mx-auto max-w-[68rem] px-5 py-16 md:px-8 md:py-24">
+    <main
+      id="main-content"
+      className="illustration-gallery mx-auto max-w-[68rem] px-5 py-16 md:px-8 md:py-24"
+    >
       <div className="mb-14 max-w-[43rem]">
         <p className="text-muted mb-5 font-mono text-xs tracking-widest uppercase">
           Looms / Visual language / 001

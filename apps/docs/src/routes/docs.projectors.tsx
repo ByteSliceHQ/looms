@@ -3,8 +3,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/projectors')({
+  head: () => pageHead('/docs/projectors'),
   component: Projectors,
 })
 
@@ -23,7 +25,16 @@ function Projectors() {
 
       <FlowChain steps={['Run stream (truth)', 'Pure fold', 'UI projections', 'DB projectors']} />
 
-      <h2>Behavioral vs projection reducers</h2>
+      <h2 id="behavioral-vs-projection-reducers">
+        Behavioral vs projection reducers
+        <a
+          className="heading-anchor"
+          href="#behavioral-vs-projection-reducers"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Thread kinds use <strong>behavioral</strong> reducers (
         <code>(state, event) &rarr; &#123; state, effects &#125;</code>). Projections use{' '}
@@ -38,16 +49,33 @@ function Projectors() {
         SQLite, Postgres, or ClickHouse.
       </div>
 
-      <h2>Building custom UIs</h2>
+      <h2 id="building-custom-uis">
+        Building custom UIs
+        <a className="heading-anchor" href="#building-custom-uis" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         The UI subscribes to the run event stream. When events land, client-side projections
         re-fold.
       </p>
 
-      <h3>Step 1: Define your domain projection</h3>
+      <h3 id="step-1-define-your-domain-projection">
+        Step 1: Define your domain projection
+        <a
+          className="heading-anchor"
+          href="#step-1-define-your-domain-projection"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
-        Define a pure read model using <code>ordersModule.projection</code> from your module&apos;s
-        scope (or standalone <code>defineProjection</code> from <code>@looms/core</code>). With{' '}
+        The snippets in this walkthrough use application-specific order events and an ordersModule
+        scope, defined with the module API. They illustrate integration rather than a standalone
+        application; the quickstart provides a complete runnable example. Define a pure read model
+        using <code>ordersModule.projection</code> from your module&apos;s scope (or standalone{' '}
+        <code>defineProjection</code> from <code>@looms/core</code>). With{' '}
         <code>scope.projection</code>, event types and payloads are automatically narrowed per case
         based on the module&apos;s registered catalogs. Providing a Zod (or Standard Schema){' '}
         <code>shape</code> infers the state type automatically without an explicit generic. Export
@@ -118,7 +146,16 @@ export const orderTracker = ordersModule.projection({
   },
 })`}</CodeBlock>
 
-      <h3>Step 2: Provide the host connection</h3>
+      <h3 id="step-2-provide-the-host-connection">
+        Step 2: Provide the host connection
+        <a
+          className="heading-anchor"
+          href="#step-2-provide-the-host-connection"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Wrap your React tree or page with <code>LoomsProvider</code> from <code>@looms/react</code>.
         Pass the Looms host URL; the client opens <code>/api/events</code> on that host:
@@ -134,8 +171,15 @@ export function App({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
 
-      <h3>
+      <h3 id="step-3-subscribe-reactively-with-useprojection">
         Step 3: Subscribe reactively with <code>useProjection</code>
+        <a
+          className="heading-anchor"
+          href="#step-3-subscribe-reactively-with-useprojection"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
       </h3>
       <p>
         In your component, call <code>useRunStore(runId)</code> to connect to the run&apos;s event
@@ -154,7 +198,7 @@ export function OrderDashboard({ runId }: { runId: string }) {
       <div className="badge">{order.status}</div>
       <p>Total: \${order.total}</p>
 
-      <h3>Timeline</h3>
+      <h3 id="timeline">Timeline<a className="heading-anchor" href="#timeline" aria-label="Link to this section">#</a></h3>
       <ul>
         {order.history.map((h, i) => (
           <li key={i}>{h.step} &mdash; {new Date(h.timestamp).toLocaleTimeString()}</li>
@@ -164,20 +208,37 @@ export function OrderDashboard({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
       <p>
-        <code>useProjection</code> uses React 19&apos;s <code>useSyncExternalStore</code> with an
+        <code>useProjection</code> uses React&apos;s <code>useSyncExternalStore</code> with an
         incremental projection cache. When new events append to the run log on the server, the SSE
         connection receives them and folds only the newly appended events into the cached state,
-        coalescing updates at animation frame rates so streaming hundreds of events never freezes
-        the UI.
+        coalescing updates at animation frame rates. Rendering cost still depends on the projection
+        and the components that subscribe to it.
       </p>
 
-      <h3>Step 4: Dispatch user interactions via signals</h3>
+      <h3 id="step-4-dispatch-user-interactions-via-signals">
+        Step 4: Dispatch user interactions via signals
+        <a
+          className="heading-anchor"
+          href="#step-4-dispatch-user-interactions-via-signals"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         User actions do not mutate state directly; they post events to the log using{' '}
         <code>store.commit</code> or <code>client.signal</code>:
       </p>
+      <p>
+        This excerpt is for a trusted internal client behind a gateway that authorizes the run and
+        validates allowed signals. For a public browser UI, send a decision intent to an application
+        endpoint that authenticates the reviewer and constructs the event. See{' '}
+        <Link to="/docs/security">authentication and tenancy</Link>. Add pending and error states
+        before using these controls in a product.
+      </p>
       <CodeBlock lang="tsx">{`import { decision } from '@looms/approval'
-import { userMessage } from '@looms/agent'
+import { useRunStore, useProjection } from '@looms/react'
+import { orderTracker } from './projections'
 
 export function OrderControls({ runId }: { runId: string }) {
   const store = useRunStore(runId)
@@ -210,7 +271,16 @@ export function OrderControls({ runId }: { runId: string }) {
         thread, and streams back to all subscribers, updating all projections automatically.
       </p>
 
-      <h3>Step 5: Time-travel debugging in the client</h3>
+      <h3 id="step-5-time-travel-debugging-in-the-client">
+        Step 5: Time-travel debugging in the client
+        <a
+          className="heading-anchor"
+          href="#step-5-time-travel-debugging-in-the-client"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Because projections are pure folds over the event array, you can fold any prefix of the log
         to render a historical UI state:
@@ -243,7 +313,16 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
   )
 }`}</CodeBlock>
 
-      <h2>Server-Side Projectors (Cross-Run Storage)</h2>
+      <h2 id="server-side-projectors-cross-run-storage">
+        Server-Side Projectors (Cross-Run Storage)
+        <a
+          className="heading-anchor"
+          href="#server-side-projectors-cross-run-storage"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         While client-side projections fold the log of a <em>single run</em>,{' '}
         <strong>projectors</strong> run on the host to watch the entire event store across{' '}
@@ -251,7 +330,16 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
         webhooks and Slack.
       </p>
 
-      <h3>Attach projectors to the host</h3>
+      <h3 id="attach-projectors-to-the-host">
+        Attach projectors to the host
+        <a
+          className="heading-anchor"
+          href="#attach-projectors-to-the-host"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Wrap the <em>local</em> execution store with <code>withProjectors</code> from{' '}
         <code>@looms/projectors</code>. Events are delivered in log order after each commit.
@@ -278,7 +366,16 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
         via <code>s2Projector</code>.
       </p>
 
-      <h3>Built-in index helpers</h3>
+      <h3 id="built-in-index-helpers">
+        Built-in index helpers
+        <a
+          className="heading-anchor"
+          href="#built-in-index-helpers"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Looms includes built-in projectors for Memory, SQLite, and Postgres to keep a searchable run
         index and an approval index up to date:
@@ -333,7 +430,16 @@ const index = sqlite({ path: './looms.db' })
 const run = await index.getActor(runId)
 const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
 
-      <h3>Custom webhook and fan-out projectors</h3>
+      <h3 id="custom-webhook-and-fan-out-projectors">
+        Custom webhook and fan-out projectors
+        <a
+          className="heading-anchor"
+          href="#custom-webhook-and-fan-out-projectors"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Any object implementing <code>project(events)</code> satisfies the <code>Projector</code>{' '}
         interface:

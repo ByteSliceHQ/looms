@@ -3,8 +3,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/concepts/waits-and-replay')({
+  head: () => pageHead('/docs/concepts/waits-and-replay'),
   component: WaitsAndReplay,
 })
 
@@ -14,13 +16,19 @@ function WaitsAndReplay() {
       <h1>Waits &amp; replay</h1>
       <p>
         Progress lives in the log. Processes, workers, and UI caches are disposable. When a thread
-        needs to pause for a human, webhook, child, or timer, it parks with{' '}
-        <strong>zero compute</strong> until a matching event arrives.
+        needs to pause for a human, webhook, child, or timer, it parks with its progress preserved
+        until a matching event arrives. Host scheduling, storage, and connected clients determine
+        resource usage.
       </p>
 
       <ConceptFigure name="wait" />
 
-      <h2>Waiting &amp; parking</h2>
+      <h2 id="waiting-and-parking">
+        Waiting &amp; parking
+        <a className="heading-anchor" href="#waiting-and-parking" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <FlowChain
         steps={[
           'WAITING',
@@ -56,7 +64,12 @@ wait({
         <Link to="/docs/examples">Examples</Link>.
       </p>
 
-      <h2>Wake</h2>
+      <h2 id="wake">
+        Wake
+        <a className="heading-anchor" href="#wake" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         After a signal or timer lands, the host <strong>wakes</strong> the run: load snapshot +
         delta, reduce outstanding events, dispatch effects, then park again if still waiting. Actor
@@ -64,7 +77,12 @@ wait({
         distributed locks inside the execution loop.
       </p>
 
-      <h2>Replay</h2>
+      <h2 id="replay">
+        Replay
+        <a className="heading-anchor" href="#replay" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         State is derived by folding events through pure reducers. Replay reconstructs thread state
         or views without re-executing nondeterministic effects. <code>replayTo(runId, seq)</code>{' '}
@@ -72,7 +90,12 @@ wait({
         it.
       </p>
 
-      <h2>Snapshots</h2>
+      <h2 id="snapshots">
+        Snapshots
+        <a className="heading-anchor" href="#snapshots" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         A <strong>snapshot</strong> is a persisted projection checkpoint that accelerates
         reconstruction for long streams. On cold start the cell loads the latest snapshot, then

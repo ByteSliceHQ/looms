@@ -20,7 +20,10 @@ function SiteStatusPage({
   onNavigate?: () => void
 }) {
   return (
-    <main className="site-error mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-[68rem] flex-col justify-center px-5 py-12 md:px-8 md:py-20">
+    <main
+      id="main-content"
+      className="site-error mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-[68rem] flex-col justify-center px-5 py-12 md:px-8 md:py-20"
+    >
       <div className="grid items-center gap-10 md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] md:gap-16">
         <div className="site-error-copy order-2 md:order-1">
           <p className="text-muted mb-5 font-mono text-xs tracking-widest uppercase">{code}</p>

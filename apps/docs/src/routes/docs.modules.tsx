@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import paymentsModule from '../../../../examples/payments-module.ts?raw'
 import { CodeBlock } from '../components/code-block'
 import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/modules')({
+  head: () => pageHead('/docs/modules'),
   component: Modules,
 })
 
@@ -21,7 +24,16 @@ function Modules() {
 
       <ConceptFigure name="modules" />
 
-      <h2>What you get out of the box</h2>
+      <h2 id="what-you-get-out-of-the-box">
+        What you get out of the box
+        <a
+          className="heading-anchor"
+          href="#what-you-get-out-of-the-box"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <table>
         <thead>
           <tr>
@@ -67,11 +79,21 @@ function Modules() {
         charges module, and skip agents entirely.
       </p>
 
-      <h2>Configuring modules on a host</h2>
+      <h2 id="configuring-modules-on-a-host">
+        Configuring modules on a host
+        <a
+          className="heading-anchor"
+          href="#configuring-modules-on-a-host"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Whether you run inside an in-process host with <code>createLooms</code>, local actors with{' '}
         <code>createLocalActorHost</code>, or edge cells with <code>LoomsDurableObject</code>,
-        modules configure identically:
+        modules use the same registration pattern. This composition excerpt assumes the imported
+        application definitions, payments module, and model adapter already exist:
       </p>
       <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
 
@@ -108,7 +130,16 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
         <code>looms.start(myDefinition, input)</code> works the same way.
       </p>
 
-      <h3>Definitions belong to modules</h3>
+      <h3 id="definitions-belong-to-modules">
+        Definitions belong to modules
+        <a
+          className="heading-anchor"
+          href="#definitions-belong-to-modules"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Pass named agents to <code>{'agent({ definitions: [assistant], llm })'}</code> and named
         workflows to <code>{'workflow({ definitions: [checkout] })'}</code>. The host gathers their
@@ -121,7 +152,16 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
         explicitly. The callback form returns a finished module: only returned members are
         installed, and they are exposed through its effects, projections, and threads properties.
       </p>
-      <h2>Talk to a running run</h2>
+      <h2 id="talk-to-a-running-run">
+        Talk to a running run
+        <a
+          className="heading-anchor"
+          href="#talk-to-a-running-run"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Every input to a run is an event. Modules export small builders so you never hand-write
         payloads:
@@ -136,69 +176,30 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         callers use it with <code>signal</code> or <code>store.commit</code>.
       </p>
 
-      <h2>Add your own module</h2>
+      <h2 id="add-your-own-module">
+        Add your own module
+        <a className="heading-anchor" href="#add-your-own-module" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         A module declares namespaced events, effects the host should run, and optional projections
         for the UI. Compose them with <code>defineModule</code> so event types, payloads, and
-        effects are inferred and type-checked. Handlers should be safe to retry; use{' '}
+        effects are inferred and type-checked. This complete module simulates charges without
+        contacting a payment provider. Real handlers should be safe to retry; use{' '}
         <code>ctx.effectId</code> as an idempotency key.
       </p>
-      <CodeBlock lang="ts">{`import { defineModule } from '@looms/core'
-import { z } from 'zod'
-
-const Charge = z.object({
-  chargeId: z.string(),
-  amount: z.number(),
-})
-
-export const payments = defineModule(
-  {
-    namespace: 'payments',
-    protocolVersion: '1.0.0',
-    events: {
-      'charge.requested': Charge,
-      'charge.authorized': Charge,
-    },
-  },
-  (m) => ({
-    effects: {
-      charge: m.effect({
-        type: 'payments.charge',
-        input: z.object({ amount: z.number() }),
-        execute: (input, ctx) => [
-          {
-            type: 'payments.charge.requested',
-            payload: { chargeId: ctx.effectId, amount: input.amount },
-          },
-          {
-            type: 'payments.charge.authorized',
-            payload: { chargeId: ctx.effectId, amount: input.amount },
-          },
-        ],
-      }),
-    },
-    projections: {
-      ledger: m.projection({
-        name: 'ledger',
-        shape: z.object({
-          entries: z.array(Charge),
-        }),
-        initialState: { entries: [] },
-        reduce(state, event) {
-          if (event.type !== 'payments.charge.authorized') {
-            return state
-          }
-
-          return { entries: [...state.entries, event.payload] }
-        },
-      }),
-    },
-  }),
-)
-
-export const { charge } = payments.effects
-export const { ledger } = payments.projections`}</CodeBlock>
-      <h3>What the scope gives you</h3>
+      <CodeBlock lang="ts" code={paymentsModule} />
+      <h3 id="what-the-scope-gives-you">
+        What the scope gives you
+        <a
+          className="heading-anchor"
+          href="#what-the-scope-gives-you"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Catalog through React typing: <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
@@ -234,10 +235,16 @@ export const { ledger } = payments.projections`}</CodeBlock>
       <p>
         Workflows invoke <code>payments.charge</code> and wait on{' '}
         <code>payments.charge.authorized</code>. Agents can expose the same charge as a tool. See{' '}
-        <Link to="/docs/examples">Examples</Link> for definitions and a React ledger.
+        <Link to="/docs/examples">Examples</Link> for runnable definitions and{' '}
+        <Link to="/docs/projectors">Projections</Link> for UI integration.
       </p>
 
-      <h2>Defining Effects</h2>
+      <h2 id="defining-effects">
+        Defining Effects
+        <a className="heading-anchor" href="#defining-effects" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Reducers stay pure. Side effects (APIs, charges, LLMs, emails) are requested as{' '}
         <strong>effects</strong>; the host runs them outside the state machine, retries on transient
@@ -245,17 +252,28 @@ export const { ledger } = payments.projections`}</CodeBlock>
         <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link>.
       </p>
 
-      <h3>Anatomy of an Effect Handler</h3>
+      <h3 id="anatomy-of-an-effect-handler">
+        Anatomy of an Effect Handler
+        <a
+          className="heading-anchor"
+          href="#anatomy-of-an-effect-handler"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Define effects within a module using <code>scope.effect</code> (or standalone with{' '}
         <code>defineEffect</code> from <code>@looms/core</code>). Using <code>scope.effect</code>{' '}
         constrains the effect&apos;s type name to your module&apos;s namespace and ensures that both
         the returned events and any events passed to <code>ctx.emit</code> match your module&apos;s
-        event catalog:
+        event catalog. This handler excerpt assumes a configured server-side Stripe client and a
+        payments catalog containing the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@looms/core'
 import { paymentsCatalog } from './events'
+import { stripe } from './stripe'
 
 const paymentsScope = createModuleScope({
   namespace: 'payments',
@@ -303,7 +321,12 @@ export const chargeCardEffect = paymentsScope.effect({
   },
 })`}</CodeBlock>
 
-      <h3>Input Validation</h3>
+      <h3 id="input-validation">
+        Input Validation
+        <a className="heading-anchor" href="#input-validation" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
       <p>
         Pass a Standard Schema V1 validator (Zod, Effect Schema, Valibot, or ArkType) to{' '}
         <code>input</code>. The runtime automatically parses and validates incoming arguments before
@@ -313,7 +336,16 @@ export const chargeCardEffect = paymentsScope.effect({
         <code>invoke(chargeCardEffect, input)</code>.
       </p>
 
-      <h3>The Effect Context &amp; Idempotency</h3>
+      <h3 id="the-effect-context-and-idempotency">
+        The Effect Context &amp; Idempotency
+        <a
+          className="heading-anchor"
+          href="#the-effect-context-and-idempotency"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Every handler receives an <code>EffectContext</code> providing metadata and runtime tools:
       </p>
@@ -327,8 +359,9 @@ export const chargeCardEffect = paymentsScope.effect({
             Always pass <code>ctx.effectId</code> as an idempotency key
           </em>{' '}
           when communicating with external APIs (Stripe, GitHub, payment gateways) or writing to
-          databases. If an actor cell crashes or fails over mid-execution, the replacement actor can
-          safely re-run the effect without producing duplicate external side effects.
+          databases. If an actor cell crashes or fails over mid-execution, the replacement actor may
+          re-run the effect. Deduplication depends on the external service honoring the key, its
+          retention window, or your own durable deduplication mechanism.
         </li>
         <li>
           <strong>
@@ -351,7 +384,16 @@ export const chargeCardEffect = paymentsScope.effect({
         </li>
       </ul>
 
-      <h3>Three Execution Styles: Sync, Async, and Effect-TS</h3>
+      <h3 id="three-execution-styles-sync-async-and-effect-ts">
+        Three Execution Styles: Sync, Async, and Effect-TS
+        <a
+          className="heading-anchor"
+          href="#three-execution-styles-sync-async-and-effect-ts"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         Looms effect handlers can return three shapes depending on your application&apos;s needs:
       </p>
@@ -395,7 +437,16 @@ export const chargeCardEffect = paymentsScope.effect({
         </div>
       </div>
 
-      <h3>Managing Dependencies with Effect Layers</h3>
+      <h3 id="managing-dependencies-with-effect-layers">
+        Managing Dependencies with Effect Layers
+        <a
+          className="heading-anchor"
+          href="#managing-dependencies-with-effect-layers"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         When an effect uses <code>Effect.gen</code> and yields dependencies (e.g.{' '}
         <code>yield* DatabaseTag</code> or <code>yield* LlmTag</code>), TypeScript tracks the
@@ -432,8 +483,15 @@ export function payments(db: DatabaseService) {
   }))
 }`}</CodeBlock>
 
-      <h3>
+      <h3 id="live-event-streaming-with-ctx-emit">
         Live Event Streaming with <code>ctx.emit</code>
+        <a
+          className="heading-anchor"
+          href="#live-event-streaming-with-ctx-emit"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
       </h3>
       <p>
         Some effects take time to finish and produce a stream of partial results — for example,
@@ -461,7 +519,16 @@ export function payments(db: DatabaseService) {
         time against your module&apos;s catalog and validated against their schemas at runtime.
       </p>
 
-      <h3>Retry Policies &amp; Failure Handling</h3>
+      <h3 id="retry-policies-and-failure-handling">
+        Retry Policies &amp; Failure Handling
+        <a
+          className="heading-anchor"
+          href="#retry-policies-and-failure-handling"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
       <p>
         External networks and third-party APIs fail. Pass a <code>retry</code> policy to
         automatically retry transient failures using exponential backoff:
@@ -469,12 +536,12 @@ export function payments(db: DatabaseService) {
       <CodeBlock lang="ts">{`export const callGatewayEffect = paymentsScope.effect({
   type: 'payments.callGateway',
   retry: {
-    maxAttempts: 4,     // Retry up to 4 times
+    maxAttempts: 4,     // Four total attempts, including the first
     backoffMs: 200,     // Initial backoff
     maxBackoffMs: 3000, // Maximum cap
   },
   execute: async (input, ctx) => {
-    // If this throws or returns a failed Effect, Looms retries up to 4 times.
+    // If this throws or returns a failed Effect, Looms makes up to four total attempts.
     return await sendWithNetworkTimeout(input)
   },
 })`}</CodeBlock>
@@ -485,8 +552,15 @@ export function payments(db: DatabaseService) {
         transition state, trigger compensations, or escalate to human review.
       </p>
 
-      <h3>
+      <h3 id="type-safe-invocations-with-invoke">
         Type-Safe Invocations with <code>invoke</code>
+        <a
+          className="heading-anchor"
+          href="#type-safe-invocations-with-invoke"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
       </h3>
       <p>
         To invoke an effect from a thread reducer or a workflow node, pass the effect definition
@@ -512,7 +586,12 @@ effects(state, ctx) {
   return []
 }`}</CodeBlock>
 
-      <h2>File layout</h2>
+      <h2 id="file-layout">
+        File layout
+        <a className="heading-anchor" href="#file-layout" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Built-in modules assemble separately authored members with <code>defineModule</code>. Open
         the folder and the names tell you where to look:
@@ -533,7 +612,16 @@ effects(state, ctx) {
         module is passed to the host.
       </p>
 
-      <h2>Module Composition Principles</h2>
+      <h2 id="module-composition-principles">
+        Module Composition Principles
+        <a
+          className="heading-anchor"
+          href="#module-composition-principles"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>Modules from different teams interoperate when they follow these rules:</p>
       <ul>
         <li>
@@ -558,8 +646,8 @@ effects(state, ctx) {
         <li>
           <strong>Idempotent effect execution:</strong> Effect handlers receive{' '}
           <code>ctx.effectId</code>. Handlers must use this ID as an idempotency key when
-          interacting with external APIs (like Stripe or GitHub) to guarantee safe retries after
-          network hiccups.
+          interacting with external APIs (like Stripe or GitHub) where the provider supports
+          idempotency; otherwise implement reconciliation for ambiguous outcomes.
         </li>
         <li>
           <strong>

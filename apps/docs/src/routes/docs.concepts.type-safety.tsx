@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/concepts/type-safety')({
+  head: () => pageHead('/docs/concepts/type-safety'),
   component: TypeSafety,
 })
 
@@ -15,7 +17,12 @@ function TypeSafety() {
         React hooks via <code>EventsOf</code> and <code>LoomsRegister</code>.
       </p>
 
-      <h2>The chain</h2>
+      <h2 id="the-chain">
+        The chain
+        <a className="heading-anchor" href="#the-chain" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <ol>
         <li>
           A Zod-backed (or Effect / Standard Schema) event catalog fixes event names and payloads.
@@ -37,7 +44,12 @@ function TypeSafety() {
         </li>
       </ol>
 
-      <h2>1. Catalog</h2>
+      <h2 id="1-catalog">
+        1. Catalog
+        <a className="heading-anchor" href="#1-catalog" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Catalog keys become namespaced event types. Payload schemas fix what builders and reducers
         accept:
@@ -64,7 +76,16 @@ paymentsCatalog.input('charge.authorized', {
   currency: 'USD',
 })`}</CodeBlock>
 
-      <h2>2. Scoped reducers and effects</h2>
+      <h2 id="2-scoped-reducers-and-effects">
+        2. Scoped reducers and effects
+        <a
+          className="heading-anchor"
+          href="#2-scoped-reducers-and-effects"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Inside <code>defineModule</code>, <code>event.type</code> is a discriminated union over the
         module catalog (plus protocol events and any <code>observes</code> catalogs). Effect
@@ -133,13 +154,23 @@ paymentsCatalog.input('charge.authorized', {
 export const charge = payments.effects.charge
 export const ledger = payments.projections.ledger`}</CodeBlock>
 
-      <h2>3. Typed invoke</h2>
+      <h2 id="3-typed-invoke">
+        3. Typed invoke
+        <a className="heading-anchor" href="#3-typed-invoke" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>Pass the effect definition when you want input checking:</p>
       <CodeBlock lang="ts">{`import { invoke } from '@looms/core'
 
 invoke(charge, { amount: 40, currency: 'USD' })`}</CodeBlock>
 
-      <h2>4. Projection state</h2>
+      <h2 id="4-projection-state">
+        4. Projection state
+        <a className="heading-anchor" href="#4-projection-state" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         The projection&apos;s <code>shape</code> (or <code>initialState</code>) is the state type.
         Server and client share the same definition:
@@ -147,7 +178,12 @@ invoke(charge, { amount: 40, currency: 'USD' })`}</CodeBlock>
       <CodeBlock lang="ts">{`const book = await looms.project(runId, ledger)
 // book.entries: { chargeId, amount, currency, status }[]`}</CodeBlock>
 
-      <h2>5. React register</h2>
+      <h2 id="5-react-register">
+        5. React register
+        <a className="heading-anchor" href="#5-react-register" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Augment <code>LoomsRegister</code> with your composed modules so hooks see the same event
         union as the host:
@@ -174,7 +210,16 @@ function Ledger({ runId }: { runId: string }) {
   return <p>{book.entries.length} charges</p>
 }`}</CodeBlock>
 
-      <h2>TypeScript catches this</h2>
+      <h2 id="typescript-catches-this">
+        TypeScript catches this
+        <a
+          className="heading-anchor"
+          href="#typescript-catches-this"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <CodeBlock lang="ts">{`// @ts-expect-error — unknown catalog key
 paymentsCatalog.input('charge.authorised', { chargeId: 'x', amount: 1, currency: 'USD' })
 
@@ -184,7 +229,12 @@ paymentsCatalog.input('charge.authorized', { chargeId: 'x', amount: '40', curren
 // @ts-expect-error — wrong effect input
 invoke(charge, { amount: '40' })`}</CodeBlock>
 
-      <h2>Boundaries</h2>
+      <h2 id="boundaries">
+        Boundaries
+        <a className="heading-anchor" href="#boundaries" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <ul>
         <li>
           Zod / Effect / Standard Schema catalog entries validate at runtime on signal and effect

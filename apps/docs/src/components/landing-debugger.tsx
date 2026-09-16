@@ -13,21 +13,16 @@ import {
   type PlaybackAction,
   type PlaybackState,
 } from '../landing/playback'
-import { LandingSourceIde } from './landing-source-ide'
-
-type ShowcaseView = 'live' | 'source'
 
 function playbackReducer(state: PlaybackState, action: PlaybackAction): PlaybackState {
   return reducePlayback(state, action)
 }
 
 export function LandingDebugger() {
-  const [showcaseView, setShowcaseView] = useState<ShowcaseView>('live')
-
   const [reducedMotion, setReducedMotion] = useState(false)
 
   const [state, dispatch] = useReducer(playbackReducer, undefined, () =>
-    initialPlaybackState(landingOrchestrationEvents.length, false),
+    initialPlaybackState(landingOrchestrationEvents.length, true),
   )
 
   const [selectedThread, setSelectedThread] = useState<string>()
@@ -46,7 +41,7 @@ export function LandingDebugger() {
       dispatch({
         type: 'init',
         length: landingOrchestrationEvents.length,
-        reducedMotion: matches,
+        reducedMotion: true,
       })
     }
 
@@ -58,7 +53,7 @@ export function LandingDebugger() {
   }, [])
 
   useEffect(() => {
-    if (showcaseView === 'source' || reducedMotion || !state.playing) {
+    if (reducedMotion || !state.playing) {
       return () => undefined
     }
 
@@ -79,7 +74,7 @@ export function LandingDebugger() {
     )
 
     return () => window.clearTimeout(timer)
-  }, [reducedMotion, showcaseView, state.head, state.playing])
+  }, [reducedMotion, state.head, state.playing])
 
   const visible = useMemo(() => landingOrchestrationEvents.slice(0, state.head), [state.head])
 
@@ -106,97 +101,66 @@ export function LandingDebugger() {
 
   return (
     <div>
-      <ShowcaseTabs selected={showcaseView} onSelect={setShowcaseView} />
-      {showcaseView === 'live' ? (
-        <div className="landing-debugger border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem]">
-          <div className="border-border flex items-center gap-2 border-b px-3 py-2">
-            <span className="text-muted font-mono text-[11px] tracking-wide uppercase">
-              {reducedMotion ? 'Demo run' : 'Live orchestration'}
-            </span>
-            <div className="ml-auto flex items-center gap-1">
-              {reducedMotion ? null : (
-                <button
-                  type="button"
-                  className="text-muted hover:text-foreground inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px]"
-                  onClick={() =>
-                    send(
-                      state.playing
-                        ? { type: 'pause' }
-                        : { type: 'play', length: landingOrchestrationEvents.length },
-                    )
-                  }
-                >
-                  {state.playing ? <Pause className="size-3" /> : <Play className="size-3" />}
-                  {state.playing ? 'Pause' : 'Play'}
-                </button>
-              )}
+      <div className="landing-debugger border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem]">
+        <div className="border-border flex items-center gap-2 border-b px-3 py-2">
+          <span className="text-muted font-mono text-xs tracking-wide uppercase">
+            {reducedMotion ? 'Demo run' : 'Recorded orchestration'}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            {reducedMotion ? null : (
               <button
                 type="button"
-                className="text-muted hover:text-foreground inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px]"
-                onClick={() => send({ type: 'replay' })}
+                className="text-muted hover:text-foreground inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs"
+                onClick={() =>
+                  send(
+                    state.playing
+                      ? { type: 'pause' }
+                      : { type: 'play', length: landingOrchestrationEvents.length },
+                  )
+                }
               >
-                <RotateCcw className="size-3" />
-                Replay
+                {state.playing ? <Pause className="size-3" /> : <Play className="size-3" />}
+                {state.playing ? 'Pause' : 'Play'}
               </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1">
-            <DebuggerSplit
-              runId={view.runId || landingOrchestrationEvents[0]!.runId}
-              runStatus={view.runStatus}
-              tree={view.tree}
-              events={visible}
-              eventCounts={view.eventCounts}
-              startedAt={view.startedAt}
-              selectedThread={selectedThread}
-              onSelectThread={inspectThread}
-              selectedSeq={selectedSeq}
-              onSelectSeq={inspectSeq}
-              catalog={defaultEventCatalog}
-              orientation="vertical"
-            />
+            )}
+            <button
+              type="button"
+              className="text-muted hover:text-foreground inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs"
+              onClick={() =>
+                send(
+                  reducedMotion
+                    ? {
+                        type: 'init',
+                        length: landingOrchestrationEvents.length,
+                        reducedMotion: true,
+                      }
+                    : { type: 'replay' },
+                )
+              }
+            >
+              <RotateCcw className="size-3" />
+              Replay
+            </button>
           </div>
         </div>
-      ) : (
-        <LandingSourceIde />
-      )}
-    </div>
-  )
-}
-
-function ShowcaseTabs({
-  selected,
-  onSelect,
-}: {
-  selected: ShowcaseView
-  onSelect: (view: ShowcaseView) => void
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="Looms showcase"
-      className="border-line bg-background-subtle mb-2 inline-flex rounded-md border p-0.5"
-    >
-      {(['live', 'source'] as const).map((view) => {
-        const active = selected === view
-
-        return (
-          <button
-            key={view}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={`rounded px-2.5 py-1 font-mono text-[10px] transition-colors ${
-              active
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted hover:text-foreground'
-            }`}
-            onClick={() => onSelect(view)}
-          >
-            {view === 'live' ? 'Live orchestration' : 'Source'}
-          </button>
-        )
-      })}
+        <div className="min-h-0 flex-1">
+          <DebuggerSplit
+            runId={view.runId || landingOrchestrationEvents[0]!.runId}
+            runStatus={view.runStatus}
+            tree={view.tree}
+            events={visible}
+            eventCounts={view.eventCounts}
+            startedAt={view.startedAt}
+            selectedThread={selectedThread}
+            onSelectThread={inspectThread}
+            selectedSeq={selectedSeq}
+            onSelectSeq={inspectSeq}
+            catalog={defaultEventCatalog}
+            orientation="vertical"
+            showTreeHeading={false}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -204,17 +168,11 @@ function ShowcaseTabs({
 export function LandingDebuggerFallback() {
   return (
     <div>
-      <div className="border-line bg-background-subtle mb-2 inline-flex rounded-md border p-0.5">
-        <span className="bg-background text-foreground rounded px-2.5 py-1 font-mono text-[10px] shadow-sm">
-          Live orchestration
-        </span>
-        <span className="text-muted rounded px-2.5 py-1 font-mono text-[10px]">Source</span>
-      </div>
       <div className="landing-debugger border-line bg-background-subtle flex h-[22rem] min-h-[22rem] flex-col overflow-hidden rounded-lg border lg:h-[32rem] lg:min-h-[32rem]">
-        <div className="border-border text-muted border-b px-3 py-2 font-mono text-[11px] tracking-wide uppercase">
-          Starting run…
+        <div className="border-border text-muted border-b px-3 py-2 font-mono text-xs tracking-wide uppercase">
+          Recorded example
         </div>
-        <p className="text-muted p-3 text-xs">Waiting for threads…</p>
+        <p className="text-muted p-3 text-xs">Explore recorded events and thread relationships.</p>
       </div>
     </div>
   )

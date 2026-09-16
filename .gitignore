@@ -26,3 +26,4 @@ dump.rdb
 **/.wrangler/
 .looms/
 **/.looms/
+examples/cloudflare/worker-configuration.d.ts

@@ -3,8 +3,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { CodeBlock } from '../components/code-block'
 import { FlowChain } from '../components/flow-chain'
 import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/concepts/events-and-effects')({
+  head: () => pageHead('/docs/concepts/events-and-effects'),
   component: EventsAndEffects,
 })
 
@@ -24,7 +26,16 @@ function EventsAndEffects() {
           <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
             Event: immutable fact
           </span>
-          <h3>Something already happened</h3>
+          <h3 id="something-already-happened">
+            Something already happened
+            <a
+              className="heading-anchor"
+              href="#something-already-happened"
+              aria-label="Link to this section"
+            >
+              #
+            </a>
+          </h3>
           <p>Past-tense records written to the log.</p>
           <ul>
             <li>
@@ -46,7 +57,16 @@ function EventsAndEffects() {
           <span className="text-muted mb-1.5 block text-[0.72rem] font-semibold tracking-widest uppercase">
             Effect: requested consequence
           </span>
-          <h3>Something the runtime should cause</h3>
+          <h3 id="something-the-runtime-should-cause">
+            Something the runtime should cause
+            <a
+              className="heading-anchor"
+              href="#something-the-runtime-should-cause"
+              aria-label="Link to this section"
+            >
+              #
+            </a>
+          </h3>
           <p>Imperative intents returned by pure reducers.</p>
           <ul>
             <li>
@@ -75,11 +95,18 @@ function EventsAndEffects() {
 
       <p>
         During replay or debugging, reducers re-run over historical events to reconstruct state, but
-        the runtime skips effect dispatch. You do not re-charge a customer or re-call an LLM when
-        recovering from a crash.
+        the runtime skips effect dispatch. Historical replay does not call external services.
+        Resuming interrupted work can retry an effect whose outcome was not recorded; use
+        provider-supported idempotency keys or reconciliation to prevent duplicate actions. See the
+        reliability guide.
       </p>
 
-      <h2>Event catalogs</h2>
+      <h2 id="event-catalogs">
+        Event catalogs
+        <a className="heading-anchor" href="#event-catalogs" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Domain events live in a namespaced catalog. Keys become typed event strings (
         <code>payments.charge.authorized</code>). Builders fix the payload type at the call site:
@@ -107,7 +134,12 @@ paymentsCatalog.input('charge.authorized', {
         <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
 
-      <h2>Signals</h2>
+      <h2 id="signals">
+        Signals
+        <a className="heading-anchor" href="#signals" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         A <strong>signal</strong> is an externally originated event injected into the stream: user
         messages, human approvals, webhooks. Signals steer, wake, pause, or resume parked threads.
@@ -120,7 +152,12 @@ paymentsCatalog.input('charge.authorized', {
   }),
 ])`}</CodeBlock>
 
-      <h2>Defining an effect</h2>
+      <h2 id="defining-an-effect">
+        Defining an effect
+        <a className="heading-anchor" href="#defining-an-effect" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         An effect handler is host-side IO. Reducers request it with <code>invoke</code>; the handler
         returns events that append to the log. Scoped <code>m.effect</code> keeps the type under
@@ -169,7 +206,12 @@ const { charge } = payments.effects`}</CodeBlock>
         <Link to="/docs/modules">Modules</Link>.
       </p>
 
-      <h2>Reducers</h2>
+      <h2 id="reducers">
+        Reducers
+        <a className="heading-anchor" href="#reducers" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Thread kinds use a pure <code>step</code> (state + event &rarr; next state) and an optional{' '}
         <code>effects</code> function that returns runtime instructions. Projection reducers map
@@ -178,7 +220,16 @@ const { charge } = payments.effects`}</CodeBlock>
         indexes.
       </p>
 
-      <h2>Effect instruction set</h2>
+      <h2 id="effect-instruction-set">
+        Effect instruction set
+        <a
+          className="heading-anchor"
+          href="#effect-instruction-set"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>High-level module effects lower into a small runtime instruction set:</p>
 
       <div className="my-7 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
@@ -221,7 +272,12 @@ wait({
 })
 wait({ waitId: 'sleep_1', on: { timerAt: Date.now() + 60_000 } })`}</CodeBlock>
 
-      <h2>Lifecycle events</h2>
+      <h2 id="lifecycle-events">
+        Lifecycle events
+        <a className="heading-anchor" href="#lifecycle-events" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>The runtime also appends its own lifecycle facts alongside module events:</p>
       <ul>
         <li>

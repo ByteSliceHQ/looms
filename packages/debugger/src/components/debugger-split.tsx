@@ -42,6 +42,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
   loadReplayStep,
   renderInspector,
   orientation = 'horizontal',
+  showTreeHeading = true,
   className,
   treeClassName,
   streamClassName,
@@ -60,6 +61,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
   loadReplayStep?: ReplayLoader
   renderInspector?: (selected: TEvent) => ReactNode
   orientation?: 'horizontal' | 'vertical'
+  showTreeHeading?: boolean
   className?: string
   treeClassName?: string
   streamClassName?: string
@@ -77,6 +79,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
       )}
     >
       <section
+        aria-label="Run tree"
         className={cn(
           'border-border min-h-0 overflow-auto border-b py-2',
           !vertical && 'min-[36rem]:border-r min-[36rem]:border-b-0',
@@ -84,6 +87,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
         )}
       >
         <RunTree
+          showHeading={showTreeHeading}
           runId={runId}
           runStatus={runStatus}
           tree={tree}

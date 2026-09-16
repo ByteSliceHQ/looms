@@ -1,4 +1,5 @@
 import { approval, decision, gate, pendingApprovals } from '@looms/approval'
+import { isJsonObject } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
@@ -15,7 +16,9 @@ const review = defineWorkflow({
     {
       id: 'done',
       deps: ['ask'],
-      run: () => ({ shipped: true }),
+      run: (ctx) => ({
+        shipped: isJsonObject(ctx.results.ask) && ctx.results.ask.outcome === 'approve',
+      }),
     },
   ],
   output: ({ results }) => results.done ?? null,

@@ -2,6 +2,7 @@ import { Outlet, createRootRoute, HeadContent, Scripts, Link } from '@tanstack/r
 import type { ErrorComponentProps } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import { DocsSearch } from '../components/docs-search'
 import { ErrorPage, NotFoundPage } from '../components/site-error'
 import { ThemeToggle } from '../components/theme-toggle'
 
@@ -29,18 +30,25 @@ export const Route = createRootRoute({
 
 function SiteHeader() {
   return (
-    <header className="border-line-subtle mx-auto flex max-w-[68rem] items-center gap-8 border-b px-8 py-5">
+    <header className="border-line-subtle mx-auto flex max-w-[68rem] items-center gap-4 border-b px-5 py-5 md:gap-8 md:px-8">
       <Link
         to="/"
         className="text-foreground text-[1.1rem] font-semibold tracking-tight no-underline"
       >
         Looms
       </Link>
-      <nav className="flex gap-5">
+      <nav className="flex gap-4 md:gap-5">
         <Link to="/docs" className="text-muted hover:text-foreground text-sm no-underline">
           Docs
         </Link>
+        <a
+          href="https://github.com/ByteSliceHQ/looms"
+          className="text-muted hover:text-foreground text-sm no-underline"
+        >
+          GitHub
+        </a>
       </nav>
+      <DocsSearch />
       <ThemeToggle />
     </header>
   )
@@ -49,6 +57,9 @@ function SiteHeader() {
 function RootComponent() {
   return (
     <RootDocument>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <SiteHeader />
       <Outlet />
     </RootDocument>

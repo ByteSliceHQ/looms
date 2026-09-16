@@ -1,22 +1,33 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { MathBlock, MathInline } from '../components/math'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/math')({
+  head: () => pageHead('/docs/math'),
   component: MathDocs,
 })
 
 function MathDocs() {
   return (
     <>
-      <h1>Mathematical Formalism</h1>
+      <h1>Execution model</h1>
       <p>
-        Underneath its developer-friendly TypeScript API, Looms is grounded in a formal mathematical
-        model. This page details the algebraic specifications for runs, thread universes, state
-        transitions, projections, and causal ordering.
+        This notation describes the execution model. It is not a proof of implementation
+        correctness. Replay assumes deterministic reducers, compatible definitions, and available
+        event history or a compatible snapshot.
       </p>
 
-      <h2>1. The Canonical Run Log</h2>
+      <h2 id="1-the-canonical-run-log">
+        1. The Canonical Run Log
+        <a
+          className="heading-anchor"
+          href="#1-the-canonical-run-log"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         A Run <MathInline math="R" /> is a tuple consisting of a globally unique run identity{' '}
         <MathInline math="r" /> and an ordered, append-only sequence of immutable events{' '}
@@ -28,7 +39,16 @@ function MathDocs() {
         participates in this single, canonical event stream.
       </p>
 
-      <h2>2. Thread Universe &amp; Parent Relation</h2>
+      <h2 id="2-thread-universe-and-parent-relation">
+        2. Thread Universe &amp; Parent Relation
+        <a
+          className="heading-anchor"
+          href="#2-thread-universe-and-parent-relation"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         The units of computation participating in Run <MathInline math="R" /> form a thread universe{' '}
         <MathInline math="X_R" /> with a partial parent relation:
@@ -41,7 +61,16 @@ function MathDocs() {
         inducing a strict tree hierarchy over threads within the run.
       </p>
 
-      <h2>3. State Transition Function</h2>
+      <h2 id="3-state-transition-function">
+        3. State Transition Function
+        <a
+          className="heading-anchor"
+          href="#3-state-transition-function"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Each thread kind <MathInline math="k" /> (e.g. <code>agent</code>, <code>workflow</code>, or
         a custom module kind) defines a pure, deterministic state transition function:
@@ -55,7 +84,16 @@ function MathDocs() {
         <MathInline math="\Phi_t^x \in F^*" />.
       </p>
 
-      <h2>4. Projections as Folds</h2>
+      <h2 id="4-projections-as-folds">
+        4. Projections as Folds
+        <a
+          className="heading-anchor"
+          href="#4-projections-as-folds"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         State and read models are not primary truths—they are pure derivations folded from the event
         log:
@@ -65,11 +103,20 @@ function MathDocs() {
         With persisted snapshot checkpoints at event sequence <MathInline math="m \le n" />, state
         reconstruction is accelerated:
       </p>
-      <MathBlock math="S_n = \text{snapshot}(m) + \text{fold}(\text{reduce}, \langle e_{m+1}, \dots, e_n \rangle)" />
+      <MathBlock math="S_n = \text{fold}(\text{reduce}, S_m, \langle e_{m+1}, \dots, e_n \rangle)" />
 
-      <h2>5. Causal Ordering vs. Structural Hierarchy</h2>
+      <h2 id="5-causal-ordering-vs-structural-hierarchy">
+        5. Causal Ordering vs. Structural Hierarchy
+        <a
+          className="heading-anchor"
+          href="#5-causal-ordering-vs-structural-hierarchy"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
-        While events have a linear physical order in the log, causal provenance is explicitly
+        While events have a linear physical order in the log, direct causal provenance is explicitly
         decoupled from execution hierarchy:
       </p>
       <MathBlock math="e_i \prec_c e_j \iff \text{causationId}(e_j) = \text{id}(e_i)" />
@@ -78,17 +125,27 @@ function MathDocs() {
         in physical time while preserving unambiguous causal ancestry.
       </p>
 
-      <h2>6. Replay &amp; Durability Invariant</h2>
+      <h2 id="6-replay-and-durability-invariant">
+        6. Replay &amp; Durability Invariant
+        <a
+          className="heading-anchor"
+          href="#6-replay-and-durability-invariant"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         Let <MathInline math="\pi_x(L)" /> denote the projection filtering events relevant to thread{' '}
-        <MathInline math="x" />. The state at logical step <MathInline math="t" /> is
-        unconditionally reproducible:
+        <MathInline math="x" />. The state at logical step <MathInline math="t" /> is reproducible
+        under those assumptions:
       </p>
       <MathBlock math="s_t^x = \text{fold}(\delta_k^{\text{state}}, s_0^x, \pi_x(L_{\le t}))" />
       <p>
-        During replay or recovery, the effect stream <MathInline math="\Phi" /> is ignored by the
-        runtime kernel. Only recorded events produce state transitions, so historical analysis and
-        crash recovery never cause duplicate side effects.
+        During historical replay, the effect stream <MathInline math="\Phi" /> is ignored by the
+        runtime kernel. Historical replay does not dispatch effects. Recovery also resumes
+        unfinished work, which may retry external calls. Safe retries require idempotency or
+        reconciliation at the external boundary.
       </p>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">

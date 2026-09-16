@@ -1,0 +1,964 @@
+[
+  {
+    "path": "/docs/agents",
+    "title": "Agents and model providers",
+    "description": "An agent is a built-in thread kind. It can call function tools or spawn workflow, agent, and custom-thread children. Looms owns the turn lifecycle; model providers supply the next message and tool requests.",
+    "sections": [
+      {
+        "id": "connect-a-model",
+        "title": "Connect a model",
+        "level": 2
+      },
+      {
+        "id": "streaming-and-conversation-history",
+        "title": "Streaming and conversation history",
+        "level": 2
+      },
+      {
+        "id": "tools-and-child-threads",
+        "title": "Tools and child threads",
+        "level": 2
+      },
+      {
+        "id": "limits-failures-and-cancellation",
+        "title": "Limits, failures, and cancellation",
+        "level": 2
+      },
+      {
+        "id": "structured-output-and-custom-models",
+        "title": "Structured output and custom models",
+        "level": 2
+      }
+    ],
+    "text": "Agents and model providers An agent is a built-in thread kind. It can call function tools or spawn workflow, agent, and custom-thread children. Looms owns the turn lifecycle; model providers supply the next message and tool requests. Connect a model {`npm install @looms/runtime @looms/agent @looms/ai-vercel @openrouter/ai-sdk-provider zod export OPENROUTER_API_KEY=your-key export LOOMS_MODEL=your-provider-model-id`} Save the following as agent.ts and run bun agent.ts . Choose a model ID supported by your provider. This example uses memory, so exiting discards its history; use the quickstart storage configuration to persist it. Keep provider secrets on the server. Streaming and conversation history vercelLlm enables streaming by default when the turn supplies a text-delta callback. Subscribe through @looms/client or React projections while work executes. An awaited start result arrives after its wake cycle; use a streaming start or subscribe to a known run ID if you need events before it returns. Set conversational: true for an agent that should accept later user messages. Use userMessage(text) with signal. Recorded messages are conversation state, not an unlimited context window: design summarization and retention for long conversations. Tools and child threads A function tool returns JSON. Use asAgentTool , asWorkflowTool , or asThreadTool to delegate to a child. Register that child's definition in its owning module. Child execution appears in the same run log. Validate tool inputs and enforce permissions inside your application boundary. A model's request to perform an operation is not authorization. Keep approval checks in deterministic workflow code. Limits, failures, and cancellation Set maxTurns and, when needed, stopWhen using stepCountIs or a custom predicate. Turn limits are not token or spending limits. Enforce provider quotas and application budgets separately; current adapter usage should not be treated as a billing ledger. Use looms.cancel(runId, threadId?) to request cancellation. External operations already accepted by another system cannot be undone by cancellation. Tool handlers receive an abort signal where available; forward it to cancellable I/O. Inspect failure events and test your recovery policy. Structured output and custom models Input schemas validate inputs; they do not automatically guarantee model output shape. Validate structured output in a tool or custom turn and return a JSON-compatible result. Implement LlmAdapter for another model API or use runTurn for a fully controlled turn. Without either, the built-in agent uses a deterministic stub; it does not contact an LLM. Continue with human approvals and interrupted model calls . ) }"
+  },
+  {
+    "path": "/docs/api",
+    "title": "API reference",
+    "description": "The embed API runs within one process. Actor hosts expose a similar HTTP contract with one writer per run. Signatures below are extracted from the runtime source; the client returns HTTP response envelopes rather than exactly the same shapes as embed methods.",
+    "sections": [
+      {
+        "id": "create",
+        "title": "Create a runtime",
+        "level": 2
+      },
+      {
+        "id": "client",
+        "title": "Client and streaming",
+        "level": 2
+      },
+      {
+        "id": "packages",
+        "title": "Packages and extension APIs",
+        "level": 2
+      }
+    ],
+    "text": "API reference The embed API runs within one process. Actor hosts expose a similar HTTP contract with one writer per run. Signatures below are extracted from the runtime source; the client returns HTTP response envelopes rather than exactly the same shapes as embed methods. Create a runtime {`import { createLooms } from '@looms/runtime' import { modules, release } from './review-definition' const looms = createLooms({ modules }) try { const { runId, state } = await looms.start(release, { topic: 'Launch' }) console.log(runId, state.status) } finally { await looms.stop() }`} This uses the quickstart definition and an in-memory store. Pass a persistent store before relying on restart recovery. Nothing is installed by default: modules defaults to an empty list, store to memory, and serve to off. snapshotEvery defaults to 200 durable events; zero disables mid-wake snapshots, while parking still snapshots. runCacheSize defaults to zero. maxWakeIterations defaults to 100 and bounds a wake cycle, not application cost. The default scheduler uses process-local timers. trimAfterSnapshot is opt-in and can remove historical replay data. Embed methods and return types start and startRun start infers input from a definition; startRun accepts registered names. Both run a wake cycle and resolve with runId, threadId, and state. Resolution is not a promise that all business work is complete: a gate or child may still be pending. They reject on invalid input, missing definitions, storage failures, or execution limits. Use a stable runId and idempotencyKey when retrying creation of the same logical run. Generating a new runId on every retry creates a different run. Register all definitions before starting or spawning them. signal, wake, and cancel signal validates and appends inputs, then wakes execution and returns state. Its optional idempotencyKey identifies retries of the same request within a run. wake processes pending work without inventing a new domain signal. cancel records cancellation for a run or thread; it cannot undo an external action. Read and inspect getRun returns folded RunState. getEvents returns recorded envelopes ordered by sequence, with optional fromSeq and limit. project folds a projection and returns its state. replayTo returns before/after state at a sequence, or null when no matching step is available; it does not execute effects. ready initializes storage and modules. rescanTimers re-registers persisted timers on the configured scheduler. fetch returns a Response or null for unhandled paths. serve starts the Bun HTTP server. stop disposes the runtime scheduler and any server it started; it is not an application-level cancellation or a database backup. HTTP contract Put authentication and authorization ahead of every route, including event streams. JSON requests use content-type: application/json. {`GET /health → { ok: true } POST /runs → { runId, threadId, state } GET /runs → { runIds } (embed only) GET /runs/:id → { runId, state } GET /runs/:id/events → { runId, events } POST /runs/:id/events → { runId, state } GET /runs/:id/threads → { runId, threads } POST /runs/:id/wake → { runId, state } GET /runs/:id/replay?seq=10 → { runId, step } GET /runs/:id/projections/:name → { runId, name, value } GET /api/events?runId=ID&live=true → SSE`} POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey. POST /runs/:id/events accepts an events array and optionally idempotencyKey. The embed handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and limit; SSE uses cursor and Last-Event-ID for catch-up. {`curl -X POST http://localhost:8787/runs \\\\ -H 'content-type: application/json' \\\\ -d '{\"kind\":\"workflow\",\"definitionName\":\"release-v1\",\"input\":{\"topic\":\"Launch\"}}'`} Actor hosts return 501 for global GET /runs; use an application registry or shared index. The embed handler maps InvalidInputError and InvalidEventError to 400, unknown projections to 404, and other caught execution failures to 500. Routing behavior differs by host; inspect status and body. Client request helpers reject non-success responses. Cancellation is currently an embed runtime method, not a client HTTP endpoint. Client and streaming createLoomsClient accepts baseUrl and an optional fetch implementation. getRun and signal resolve to objects containing state; getEvents resolves to an object containing events. subscribeEvents returns an unsubscribe function and reconnects using its last cursor. stream(definition, input) or streamRun(args) returns an async iterable with a runId for events during the initial wake cycle. A stream ending does not mean a parked workflow has finished. The current client start/signal helpers do not expose every embed idempotency option. For retry-sensitive requests, use an application endpoint or explicit HTTP bodies/headers with stable operation identifiers. See integration . Packages and extension APIs @looms/core : defineModule, defineEventCatalog, defineThread, defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite entry supplies Bun storage. @looms/runtime : createLooms and lower-level runtime APIs. @looms/agent : agent, defineAgent, defineTool, asThreadTool, asAgentTool, asWorkflowTool, conversation, userMessage. @looms/workflow : workflow and defineWorkflow. @looms/approval : approval, gate, decision, pendingApprovals. @looms/actor : createActorCell and createLocalActorHost. @looms/cloudflare : LoomsDurableObject and routeToDurableObject. @looms/client and @looms/react : HTTP clients, streams, providers, and projection hooks. @looms/ai-vercel : vercelLlm for AI SDK model providers. @looms/projectors : post-commit indexes and fan-out. @looms/s2 : stream replication. @looms/testing : deterministic in-memory helpers and conformance checks. @looms/cli and @looms/debugger : inspection tools. For module authoring, see custom modules . For agent options and tools, see agents . Package type declarations remain the exhaustive reference for lower-level interfaces. ) }"
+  },
+  {
+    "path": "/docs/approvals",
+    "title": "Human approvals",
+    "description": "gate() records an approval request and waits for a matching decision. It is a waiting primitive. Your application decides what approval, rejection, and expiration mean.",
+    "sections": [
+      {
+        "id": "require-an-explicit-approval",
+        "title": "Require an explicit approval",
+        "level": 2
+      },
+      {
+        "id": "deliver-a-decision",
+        "title": "Deliver a decision",
+        "level": 2
+      },
+      {
+        "id": "concurrent-and-duplicate-decisions",
+        "title": "Concurrent and duplicate decisions",
+        "level": 2
+      },
+      {
+        "id": "expiration-and-late-replies",
+        "title": "Expiration and late replies",
+        "level": 2
+      },
+      {
+        "id": "review-ui",
+        "title": "Review UI",
+        "level": 2
+      }
+    ],
+    "text": "Human approvals gate() records an approval request and waits for a matching decision. It is a waiting primitive. Your application decides what approval, rejection, and expiration mean. Require an explicit approval The complete quickstart checks the review result with a schema requiring outcome: 'approve' . Every other result takes the unpublished branch. A rejected gate can complete normally, so a node dependency alone never authorizes an action. {`// Fragment inside the node after a gate: const approved = z.object({ outcome: z.literal('approve') }) if (!approved.safeParse(ctx.results.review).success) { return { published: false } } // Only this branch may request the publication effect.`} Deliver a decision {`import { decision, pendingApprovals } from '@looms/approval' const reviews = await looms.project(runId, pendingApprovals) const pending = reviews.items.find((review) => review.status === 'pending') if (!pending) throw new Error('No pending approval') await looms.signal(runId, [decision(pending.approvalId, 'reject')], { idempotencyKey: 'decision-request-from-your-application', })`} Authenticate the reviewer, authorize access to this run and approval, and validate the action on the server. Use a unique key per logical request and reuse it for retries of that request. A new key represents a new request; it is not conflict resolution. Concurrent and duplicate decisions Correlate waits by approvalId, not only the event type. Concurrent approvals can otherwise satisfy the wrong wait. Serialize decisions at an authoritative application boundary and reject decisions for already resolved approvals. A read of pendingApprovals followed by a write is not an atomic compare-and-set across multiple clients. The runtime validates event shape, but does not implement your reviewer identity, permission policy, or a complete approval lifecycle service. Do not allow clients to submit arbitrary approval.decided events. Expiration and late replies gate() has no automatic timeout option. To expire approvals, define an application workflow or custom thread that records a deadline, waits for a correlated decision or timer, and fails closed on timeout. Record expiration explicitly and reject late decisions at the gateway. Merely emitting approval.timed_out does not satisfy a gate waiting for approval.decided. Review UI Render only pending items from pendingApprovals. Show the proposed action and relevant inputs, offer approve and reject, disable controls while a request is in flight, and display failures. The server must still enforce the decision policy. Reconnect by reading the recorded state rather than assuming a click succeeded. ) }"
+  },
+  {
+    "path": "/docs/concepts/events-and-effects",
+    "title": "Events & effects",
+    "description": "Looms separates what has occurred from what the runtime should cause . Replay and crash recovery depend on that split.",
+    "sections": [
+      {
+        "id": "something-already-happened",
+        "title": "Something already happened",
+        "level": 3
+      },
+      {
+        "id": "something-the-runtime-should-cause",
+        "title": "Something the runtime should cause",
+        "level": 3
+      },
+      {
+        "id": "event-catalogs",
+        "title": "Event catalogs",
+        "level": 2
+      },
+      {
+        "id": "signals",
+        "title": "Signals",
+        "level": 2
+      },
+      {
+        "id": "defining-an-effect",
+        "title": "Defining an effect",
+        "level": 2
+      },
+      {
+        "id": "reducers",
+        "title": "Reducers",
+        "level": 2
+      },
+      {
+        "id": "effect-instruction-set",
+        "title": "Effect instruction set",
+        "level": 2
+      },
+      {
+        "id": "lifecycle-events",
+        "title": "Lifecycle events",
+        "level": 2
+      }
+    ],
+    "text": "Events & effects Looms separates what has occurred from what the runtime should cause . Replay and crash recovery depend on that split. Event: immutable fact Something already happened Past-tense records written to the log. agent.message workflow.node.finished approval.decided payments.charge.authorized Effect: requested consequence Something the runtime should cause Imperative intents returned by pure reducers. invoke(charge, &#123; amount: 40 &#125;) spawn(&#123; kind: 'agent', definitionName: 'researcher', input &#125;) emit(&#123; type: 'payments.charge.requested', payload &#125;) wait(&#123; waitId, on: &#123; type: 'approval.decided' &#125; &#125;) During replay or debugging, reducers re-run over historical events to reconstruct state, but the runtime skips effect dispatch. Historical replay does not call external services. Resuming interrupted work can retry an effect whose outcome was not recorded; use provider-supported idempotency keys or reconciliation to prevent duplicate actions. See the reliability guide. Event catalogs Domain events live in a namespaced catalog. Keys become typed event strings ( payments.charge.authorized ). Builders fix the payload type at the call site: {`import { z } from 'zod' import { defineEventCatalog } from '@looms/core' const Charge = z.object({ chargeId: z.string(), amount: z.number(), }) export const paymentsCatalog = defineEventCatalog('payments', { 'charge.requested': Charge, 'charge.authorized': Charge, }) // Typed signal / commit input: paymentsCatalog.input('charge.authorized', { chargeId: 'ch_123', amount: 40, })`} How those types reach projections and React: Type safety . Signals A signal is an externally originated event injected into the stream: user messages, human approvals, webhooks. Signals steer, wake, pause, or resume parked threads. Internally emitted events and external signals both land on the same log: {`await looms.signal(runId, [ paymentsCatalog.input('charge.authorized', { chargeId: 'ch_123', amount: 40, }), ])`} Defining an effect An effect handler is host-side IO. Reducers request it with invoke ; the handler returns events that append to the log. Scoped m.effect keeps the type under your module namespace and checks returned event types against the catalog: {`import { z } from 'zod' import { defineModule } from '@looms/core' const Charge = z.object({ chargeId: z.string(), amount: z.number(), }) const payments = defineModule( { namespace: 'payments', protocolVersion: '1.0.0', events: { 'charge.requested': Charge, 'charge.authorized': Charge, }, }, (m) => ({ effects: { charge: m.effect({ type: 'payments.charge', input: z.object({ amount: z.number() }), execute: (input, ctx) => [ { type: 'payments.charge.requested', payload: { chargeId: ctx.effectId, amount: input.amount }, }, { type: 'payments.charge.authorized', payload: { chargeId: ctx.effectId, amount: input.amount }, }, ], }), }, }), ) const { charge } = payments.effects`} Retries, Effect Layers, and ctx.emit live in Modules . Reducers Thread kinds use a pure step (state + event &rarr; next state) and an optional effects function that returns runtime instructions. Projection reducers map state + event to next state only. See Projections & projectors for building UIs and indexes. Effect instruction set High-level module effects lower into a small runtime instruction set: Invoke External IO (LLM, HTTP, charge a card). Author handlers above or in Modules . Spawn Create and start a child thread in the same run. Emit Append an event or signal to the run stream. Wait Suspend until a matching event, child completion, or timer. Details in Waits & replay . {`import { emit, invoke, spawn, wait } from '@looms/core' // Domain helpers lower into the instruction set: invoke(charge, { amount: 40 }) spawn({ kind: 'agent', definitionName: 'researcher', input: { question: 'why?' } }) emit({ type: 'approval.requested', payload: { approvalId: 'appr_1', title: 'Refund' } }) wait({ waitId: 'appr_1', on: { type: 'approval.decided', match: { approvalId: 'appr_1' } }, }) wait({ waitId: 'sleep_1', on: { timerAt: Date.now() + 60_000 } })`} Lifecycle events The runtime also appends its own lifecycle facts alongside module events: runtime.run.started / completed runtime.thread.started / completed / failed / cancelled runtime.wait.registered / satisfied runtime.timer.set / fired runtime.signal.received Next: Type safety , Waits & replay , or Modules for full authoring. ) }"
+  },
+  {
+    "path": "/docs/concepts",
+    "title": "Concepts",
+    "description": "Looms is an event-sourced execution runtime. A run is the durability boundary; threads do the work; events are immutable facts; pure reducers request effects that return as new events.",
+    "sections": [
+      {
+        "id": "where-to-go-next",
+        "title": "Where to go next",
+        "level": 2
+      },
+      {
+        "id": "vocabulary",
+        "title": "Vocabulary",
+        "level": 2
+      },
+      {
+        "id": "run",
+        "title": "Run",
+        "level": 3
+      },
+      {
+        "id": "thread",
+        "title": "Thread",
+        "level": 3
+      },
+      {
+        "id": "event",
+        "title": "Event",
+        "level": 3
+      },
+      {
+        "id": "effect",
+        "title": "Effect",
+        "level": 3
+      },
+      {
+        "id": "signal",
+        "title": "Signal",
+        "level": 3
+      },
+      {
+        "id": "durable-wait",
+        "title": "Durable wait",
+        "level": 3
+      },
+      {
+        "id": "projection",
+        "title": "Projection",
+        "level": 3
+      },
+      {
+        "id": "runtime-module",
+        "title": "Runtime module",
+        "level": 3
+      }
+    ],
+    "text": "Concepts Looms is an event-sourced execution runtime. A run is the durability boundary; threads do the work; events are immutable facts; pure reducers request effects that return as new events. Core invariant: Logical runtime state changes only by processing an event. Where to go next Runs & threads — the tree, statuses, custom kinds, and three orthogonal structures. Events & effects — catalogs, signals, effect handlers, and the instruction set. Waits & replay — parking, wake cycles, replay, and snapshots. Modules , Projections , Hosting & storage — how to author, project, and host. Type safety — catalogs through projections and React. Quickstart — run something locally, then Examples . Math — formal specs when you want them. Prior art — event sourcing, reducers, actors, durable execution, and React. Vocabulary Run Durability boundary and event-stream container for one logical operation, identified by runId . Thread Unit of computation inside a run: agents, workflows, and custom kinds share one parent/child tree. Event Immutable past-tense fact appended to the run log (e.g. approval.decided ). Effect Intent returned by a pure reducer: invoke IO, spawn a child, emit, or wait. Signal External event injected into the stream — user messages, approvals, webhooks. Durable wait Parked condition resumed by a matching event or timer. Resource usage depends on the host. Projection Derived read model folded from the stream: chat, ledgers, approval queues, indexes. Runtime module Package that contributes namespaced events, effects, thread definitions, and projections. ) }"
+  },
+  {
+    "path": "/docs/concepts/runs-and-threads",
+    "title": "Runs & threads",
+    "description": "A run is what you start, list, and open in a debugger. Inside it, threads form a tree: a root agent or workflow, plus any children it spawned. Agents, DAG workflows, and custom kinds share the same model; nesting is normal.",
+    "sections": [
+      {
+        "id": "run",
+        "title": "Run",
+        "level": 2
+      },
+      {
+        "id": "thread",
+        "title": "Thread",
+        "level": 2
+      },
+      {
+        "id": "custom-thread-kinds",
+        "title": "Custom thread kinds",
+        "level": 2
+      },
+      {
+        "id": "status",
+        "title": "Status",
+        "level": 2
+      },
+      {
+        "id": "three-orthogonal-structures",
+        "title": "Three orthogonal structures",
+        "level": 2
+      },
+      {
+        "id": "thread-tree",
+        "title": "Thread tree",
+        "level": 3
+      },
+      {
+        "id": "run-stream",
+        "title": "Run stream",
+        "level": 3
+      },
+      {
+        "id": "causation-graph",
+        "title": "Causation graph",
+        "level": 3
+      }
+    ],
+    "text": "Runs & threads A run is what you start, list, and open in a debugger. Inside it, threads form a tree: a root agent or workflow, plus any children it spawned. Agents, DAG workflows, and custom kinds share the same model; nesting is normal. Run The durability boundary and event-stream container for one logical operation. All child threads, signals, and events belong to one canonical log identified by runId . Crash recovery means replaying that log. Thread The unit of computation inside a run. A thread owns a state machine, may have a parent, and has a thread kind : built-in agent / workflow , or a custom kind from a module. Definitions live on modules ( defineAgent , defineWorkflow , or your own). You start work with looms.start(definition, input) ; the runtime creates the root thread and begins appending events. Custom thread kinds A custom kind is a module that registers a thread definition and implements m.thread . The definition is what you pass to start ; the thread is the state machine that handles events for that kind: {`import { z } from 'zod' import { defineEventCatalog, defineModule, type DefinitionRef } from '@looms/core' const AuctionInput = z.object({ item: z.string(), reservePrice: z.number(), }) const auctionCatalog = defineEventCatalog('auction', { bid: z.object({ bidder: z.string(), amount: z.number() }), close: z.object({ reason: z.string().optional() }), }) const vintageWatch = { kind: 'auction' as const, name: 'vintage-watch', input: AuctionInput, } satisfies DefinitionRef const auctionModule = defineModule( { namespace: 'auction', protocolVersion: '1.0.0', events: auctionCatalog }, (m) => ({ definitions: [vintageWatch], threads: { auction: m.thread({ kind: 'auction', input: AuctionInput, initialState: (ctx) => ({ item: ctx.input.item, reservePrice: ctx.input.reservePrice, highestBid: 0, status: 'open' as const, }), step(state, event) { switch (event.type) { case 'auction.bid': return event.payload.amount > state.highestBid ? { ...state, highestBid: event.payload.amount } : state case 'auction.close': return { ...state, status: 'closed' as const } default: return state } }, }), }, }), )`} Start the definition on a host that includes the module. The input type follows the definition's schema: {`import { createLooms } from '@looms/runtime' const looms = createLooms({ modules: [auctionModule] }) const { runId } = await looms.start(vintageWatch, { item: '1968 Chronograph', reservePrice: 250, })`} Wait handling, signaling, and a bids projection live in examples/custom-thread.ts ( bun run --filter @looms/examples custom-thread ). Status A run (and each thread) is in one of: running — actively reducing or dispatching effects waiting — parked on a timer, approval, child completion, or matching event Terminal: completed , failed , or cancelled Three orthogonal structures A run coordinates heterogeneous work by keeping structure, history, and causation separate: Thread tree Parent/child invocation hierarchy (agent &rarr; checkout workflow &rarr; approval gate). Run stream One append-only chronological log across all threads in the run. Causation graph Provenance via causationId and effectId linking events to the effects that produced them. Hierarchy lives in metadata on the same log, so arbitrary nesting stays on one coherent timeline. Formal treatment: Math . Next: Events & effects . ) }"
+  },
+  {
+    "path": "/docs/concepts/type-safety",
+    "title": "Type safety",
+    "description": "Types start in the event catalog and flow through module reducers, effects, projections, and React hooks via EventsOf and LoomsRegister .",
+    "sections": [
+      {
+        "id": "the-chain",
+        "title": "The chain",
+        "level": 2
+      },
+      {
+        "id": "1-catalog",
+        "title": "1. Catalog",
+        "level": 2
+      },
+      {
+        "id": "2-scoped-reducers-and-effects",
+        "title": "2. Scoped reducers and effects",
+        "level": 2
+      },
+      {
+        "id": "3-typed-invoke",
+        "title": "3. Typed invoke",
+        "level": 2
+      },
+      {
+        "id": "4-projection-state",
+        "title": "4. Projection state",
+        "level": 2
+      },
+      {
+        "id": "5-react-register",
+        "title": "5. React register",
+        "level": 2
+      },
+      {
+        "id": "typescript-catches-this",
+        "title": "TypeScript catches this",
+        "level": 2
+      },
+      {
+        "id": "boundaries",
+        "title": "Boundaries",
+        "level": 2
+      }
+    ],
+    "text": "Type safety Types start in the event catalog and flow through module reducers, effects, projections, and React hooks via EventsOf and LoomsRegister . The chain A Zod-backed (or Effect / Standard Schema) event catalog fixes event names and payloads. defineModule scope narrows event in thread.step / projection.reduce and checks effect outputs. Typed invoke(effectDef, input) checks effect input. ProjectionDefinition&lt;S&gt; carries projection state into looms.project and useProjection . EventsOf&lt;typeof modules&gt; plus LoomsRegister gives React hooks the application event union. 1. Catalog Catalog keys become namespaced event types. Payload schemas fix what builders and reducers accept: {`import { z } from 'zod' import { defineEventCatalog } from '@looms/core' const ChargeRequested = z.object({ chargeId: z.string(), amount: z.number(), currency: z.string(), }) export const paymentsCatalog = defineEventCatalog('payments', { 'charge.requested': ChargeRequested, 'charge.authorized': ChargeRequested, 'charge.declined': ChargeRequested.extend({ reason: z.string() }), }) // Event type: 'payments.charge.authorized' paymentsCatalog.input('charge.authorized', { chargeId: 'ch_123', amount: 40, currency: 'USD', })`} 2. Scoped reducers and effects Inside defineModule , event.type is a discriminated union over the module catalog (plus protocol events and any observes catalogs). Effect handlers may only return events from that universe: {`export const payments = defineModule( { namespace: 'payments', protocolVersion: '1.0.0', events: paymentsCatalog, }, (m) => ({ effects: { charge: m.effect({ type: 'payments.charge', input: z.object({ amount: z.number(), currency: z.string().optional() }), execute: (input, ctx) => [ { type: 'payments.charge.requested', payload: { chargeId: ctx.effectId, amount: input.amount, currency: input.currency ?? 'USD', }, }, ], }), }, projections: { ledger: m.projection({ name: 'ledger', shape: z.object({ entries: z.array( z.object({ chargeId: z.string(), amount: z.number(), currency: z.string(), status: z.enum(['requested', 'authorized', 'declined']), }), ), }), initialState: { entries: [] }, reduce(state, event) { switch (event.type) { case 'payments.charge.authorized': return { entries: [ ...state.entries, { chargeId: event.payload.chargeId, amount: event.payload.amount, currency: event.payload.currency, status: 'authorized' as const, }, ], } default: return state } }, }), }, }), ) export const charge = payments.effects.charge export const ledger = payments.projections.ledger`} 3. Typed invoke Pass the effect definition when you want input checking: {`import { invoke } from '@looms/core' invoke(charge, { amount: 40, currency: 'USD' })`} 4. Projection state The projection's shape (or initialState ) is the state type. Server and client share the same definition: {`const book = await looms.project(runId, ledger) // book.entries: { chargeId, amount, currency, status }[]`} 5. React register Augment LoomsRegister with your composed modules so hooks see the same event union as the host: {`import type { EventsOf } from '@looms/core' import type {} from '@looms/react' import { approval } from '@looms/approval' import { workflow } from '@looms/workflow' const modules = [workflow({ definitions: [checkout] }), approval(), payments] as const export type AppEvents = EventsOf declare module '@looms/react' { interface LoomsRegister { events: AppEvents } }`} {`import { useProjection, useRunStore } from '@looms/react' function Ledger({ runId }: { runId: string }) { const store = useRunStore(runId) const book = useProjection(store, ledger) return {book.entries.length} charges }`} TypeScript catches this {`// @ts-expect-error — unknown catalog key paymentsCatalog.input('charge.authorised', { chargeId: 'x', amount: 1, currency: 'USD' }) // @ts-expect-error — wrong payload shape paymentsCatalog.input('charge.authorized', { chargeId: 'x', amount: '40', currency: 'USD' }) // @ts-expect-error — wrong effect input invoke(charge, { amount: '40' })`} Boundaries Zod / Effect / Standard Schema catalog entries validate at runtime on signal and effect boundaries. payload&lt;T&gt;() is compile-time only. Wire events (SSE / HTTP) decode as generic envelopes. LoomsRegister supplies the application event union to React; trust still depends on the host. Scoped m.thread / m.projection / m.effect give stronger event narrowing than standalone defineThread / defineProjection / defineEffect . wait(&#123; on: &#123; type &#125; &#125;) matches on strings; it is not catalog-parameterized. Authoring lives in Modules . Projection folds live in Projections . Catalogs and signals live in Events & effects . ) }"
+  },
+  {
+    "path": "/docs/concepts/waits-and-replay",
+    "title": "Waits & replay",
+    "description": "Progress lives in the log. Processes, workers, and UI caches are disposable. When a thread needs to pause for a human, webhook, child, or timer, it parks with its progress preserved until a matching event arrives. Host scheduling, storage, and connected clients determine resource usage.",
+    "sections": [
+      {
+        "id": "waiting-and-parking",
+        "title": "Waiting & parking",
+        "level": 2
+      },
+      {
+        "id": "wake",
+        "title": "Wake",
+        "level": 2
+      },
+      {
+        "id": "replay",
+        "title": "Replay",
+        "level": 2
+      },
+      {
+        "id": "snapshots",
+        "title": "Snapshots",
+        "level": 2
+      }
+    ],
+    "text": "Waits & replay Progress lives in the log. Processes, workers, and UI caches are disposable. When a thread needs to pause for a human, webhook, child, or timer, it parks with its progress preserved until a matching event arrives. Host scheduling, storage, and connected clients determine resource usage. Waiting & parking Registering a Wait checkpoints state to the log and releases worker resources. Days or weeks later, an approval or webhook signal wakes the thread with the same state. Matching is by event type plus an optional payload subset (e.g. match: &#123; approvalId &#125; ). {`import { wait } from '@looms/core' // Wait for a matching domain event (optional payload subset): wait({ waitId: 'appr_1', on: { type: 'approval.decided', match: { approvalId: 'appr_1' } }, }) // Wait until a wall-clock time (sleep / deadline): wait({ waitId: 'sleep_1', on: { timerAt: Date.now() + 60_000 }, })`} Workflows and approvals compose the same primitive: charge, then wait for payments.charge.authorized ; gate a human, then wait for approval.decided . See Modules and Examples . Wake After a signal or timer lands, the host wakes the run: load snapshot + delta, reduce outstanding events, dispatch effects, then park again if still waiting. Actor cells enforce a single writer per runId , so wake cycles stay simple: no distributed locks inside the execution loop. Replay State is derived by folding events through pure reducers. Replay reconstructs thread state or views without re-executing nondeterministic effects. replayTo(runId, seq) returns state before and after that event. The debugger and @looms/testing use it. Snapshots A snapshot is a persisted projection checkpoint that accelerates reconstruction for long streams. On cold start the cell loads the latest snapshot, then applies the delta of events since that point. How and where the log lives in production: Hosting & storage . Authoring waits and effects: Modules . The systems behind these ideas are listed in Prior art . ) }"
+  },
+  {
+    "path": "/docs/examples",
+    "title": "Runnable examples",
+    "description": "These complete files are imported directly from the examples package, where they are typechecked. Copy a file into your project and run it with Bun. Each example here uses memory and deterministic behavior, so it needs no provider key. For persistence across processes, start with the quickstart.",
+    "sections": [
+      {
+        "id": "approval",
+        "title": "Approve or reject",
+        "level": 2
+      },
+      {
+        "id": "workflow",
+        "title": "Workflow with a child agent",
+        "level": 2
+      },
+      {
+        "id": "custom-thread",
+        "title": "Your own execution kind",
+        "level": 2
+      },
+      {
+        "id": "next",
+        "title": "Build a complete app",
+        "level": 2
+      }
+    ],
+    "text": "Runnable examples These complete files are imported directly from the examples package, where they are typechecked. Copy a file into your project and run it with Bun. Each example here uses memory and deterministic behavior, so it needs no provider key. For persistence across processes, start with the quickstart. {`npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod # Save one of the files below, then: bun approval.ts`} Approve or reject The workflow checks the gate result before marking the change shipped. Change the decision to reject and expect shipped: false. A gate alone does not enforce that branch. Workflow with a child agent Save as workflow.ts. A node doubles the input, another spawns an agent, and a final node combines the results. Both root and child definitions are registered. Your own execution kind Save as custom-thread.ts. This auction registers a new kind, accepts bids, waits for a close event, and returns a winner. It uses neither the agent nor the workflow module. Expected winner: Bob, with a bid of 320 against a reserve of 250. Build a complete app Connect a model , mount an authorized gateway and React UI , or persist and recover a review . Use the restart test to verify both decisions. ) }"
+  },
+  {
+    "path": "/docs/hosting-and-storage",
+    "title": "Hosting & storage",
+    "description": "Choose storage that survives your host, keep one writer per run, and arrange how parked work wakes. Cloudflare Durable Objects supply per-run SQLite and durable alarms. Local Bun hosts are useful for development and services where you operate those responsibilities.",
+    "sections": [
+      {
+        "id": "cloudflare",
+        "title": "Run the quickstart on Cloudflare",
+        "level": 2
+      },
+      {
+        "id": "deploy",
+        "title": "Deploy a private execution service",
+        "level": 2
+      },
+      {
+        "id": "bun",
+        "title": "Host within a Bun application",
+        "level": 2
+      },
+      {
+        "id": "recovery",
+        "title": "Snapshots, recovery, and retention",
+        "level": 2
+      },
+      {
+        "id": "other-hosts",
+        "title": "Other hosts",
+        "level": 2
+      }
+    ],
+    "text": "Hosting & storage Choose storage that survives your host, keep one writer per run, and arrange how parked work wakes. Cloudflare Durable Objects supply per-run SQLite and durable alarms. Local Bun hosts are useful for development and services where you operate those responsibilities. Run the quickstart on Cloudflare Start with review-definition.ts from the quickstart . The same agent, workflow, and approval modules run inside a Durable Object. This example uses deterministic tools and simulated publication, so it requires no model API key. {`npm install @looms/cloudflare @looms/agent @looms/workflow @looms/approval zod npm install --save-dev wrangler typescript @types/bun mkdir cloudflare`} Save this as cloudflare/worker.ts . The environment type is generated from the configuration below. Save this as cloudflare/wrangler.jsonc . The migration creates SQLite-backed objects. Keep migration history when changing an existing deployment; do not replace it with a new initial migration. The Worker has no public route, workers.dev address, or preview URL. Deploy it as a private service and call it from your application Worker after authentication and per-run authorization. Disabling public URLs does not implement tenant authorization inside your application. {`npx wrangler types --config cloudflare/wrangler.jsonc cloudflare/worker-configuration.d.ts npx wrangler dev --config cloudflare/wrangler.jsonc --port 8791`} Wrangler serves the API locally and persists development storage under .wrangler . In another terminal, create a run and keep the returned runId: {`curl -X POST http://localhost:8791/runs \\\\ -H 'content-type: application/json' \\\\ -d '{\"kind\":\"workflow\",\"definitionName\":\"release-v1\",\"input\":{\"topic\":\"Launch\"}}' curl http://localhost:8791/runs/RUN_ID/projections/pendingApprovals`} Stop Wrangler, start it again with the same configuration, and read that pending approval again. Replace RUN_ID with the returned identifier. Inspect the events or send an approval decision through the HTTP API ; the client guide covers application integration. Deploy a private execution service Choose a unique Worker name, validate the bundle, and deploy to your Cloudflare account. This provisions Durable Object storage. Use a separate Worker name and namespace for staging. {`npx wrangler deploy --dry-run --config cloudflare/wrangler.jsonc npx wrangler login npx wrangler deploy --config cloudflare/wrangler.jsonc`} Add a service binding in your calling application's Wrangler configuration: {`{ \"services\": [{ \"binding\": \"EXECUTION\", \"service\": \"looms-review\" }] }`} After validating the current user's permission for the operation and run, forward a Request through env.EXECUTION.fetch(request) . Use the Looms route path, such as /runs/:id/events , even if your application exposes it at a different prefix. Apply the same checks to SSE and read endpoints. For a real model, configure the provider adapter in the Worker and store credentials with npx wrangler secret put OPENROUTER_API_KEY --config cloudflare/wrangler.jsonc . Add local credentials to an ignored cloudflare/.dev.vars . Never place provider keys in browser code. See model integration and Cloudflare's Durable Objects guide . Host within a Bun application For a local HTTP host, install @looms/actor and @looms/core , then use the quickstart's modules. This complete server binds to localhost: {`import { mkdir } from 'node:fs/promises' import { join } from 'node:path' import { createLocalActorHost } from '@looms/actor' import { bunSqliteEventStore } from '@looms/core/bun-sqlite' import { modules } from './review-definition' const runsDir = join(process.cwd(), '.looms', 'runs') await mkdir(runsDir, { recursive: true }) const host = createLocalActorHost({ modules, createStore: async (runId) => bunSqliteEventStore({ path: join(runsDir, encodeURIComponent(runId) + '.sqlite'), }), }) Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(request) })`} Keep the database directory on persistent storage and run one host for those files. The local host rescans timers when a run cell opens; it does not discover every database on startup. Maintain a run index and reopen runs at boot for unattended timer recovery. Durable Objects provide host-managed alarms. Snapshots, recovery, and retention Actor cells recover from a snapshot plus subsequent events. A parked wake cycle writes a snapshot; snapshotEvery defaults to 200 durable events for checkpoints during a wake. Recovery time depends on history size, reducers, and host conditions. trimAfterSnapshot can prune events needed by historical replay and rebuilding projections. Establish retention and backup requirements first. Post-commit projectors can build cross-run indexes and archives, but downstream failures require their own monitoring and recovery policy. See operations and reliability . Other hosts createLooms defaults to an in-memory store; the quickstart configures SQLite explicitly. For another actor platform, use createActorCell and supply storage and wake scheduling while preserving one writer per run. Compatibility with self-hosted Workers runtimes such as celld needs validation against a specific version; this guide does not provide a verified celld deployment. Parking does not imply zero hosting cost. Account for stored events, requests, alarms, and connected clients when estimating capacity. ) }"
+  },
+  {
+    "path": "/docs",
+    "title": "Build work that can resume",
+    "description": "Looms is a TypeScript library for durable execution in your own application. Compose agents, workflows, human decisions, and your own execution types in one run. Their shared event history supports recovery, debugging, and live UI views.",
+    "sections": [
+      {
+        "id": "start",
+        "title": "Start with a real run",
+        "level": 2
+      },
+      {
+        "id": "threads",
+        "title": "Threads are the extension point",
+        "level": 2
+      },
+      {
+        "id": "choose",
+        "title": "Choose your path",
+        "level": 2
+      },
+      {
+        "id": "contract",
+        "title": "Know the contract",
+        "level": 2
+      }
+    ],
+    "text": "Build work that can resume Looms is a TypeScript library for durable execution in your own application. Compose agents, workflows, human decisions, and your own execution types in one run. Their shared event history supports recovery, debugging, and live UI views. Start with a real run The quickstart installs packages from npm, runs an agent and tool inside a workflow, exits while awaiting review, and resumes in a new process. You can approve or reject; the workflow handles both. Threads are the extension point A run owns a durable event log. Inside it, threads execute work. Agent loops and workflow DAGs are built-in thread kinds. A module you write can add a new state machine—such as an auction—and compose it with the built-in kinds. You can use existing kinds without writing reducers yourself. Choose your path Evaluate Looms : tradeoffs, supported hosts, and where it fits your stack. Integrate an existing app : host, client, gateway, and React. Define custom execution : give a domain state machine its own thread kind. Deploy : Durable Objects, storage, and production boundaries. API reference : signatures, lifecycle, HTTP contracts, and packages. Know the contract Historical replay reconstructs state without dispatching effects. Recovery can retry unfinished external actions, so handlers need idempotency or reconciliation. You own authorization and code compatibility for long-lived runs. Read reliability and versioning before production. Looms is in the 0.1 series. Pin matching package versions and validate your workload. Source, release history, and issues are available in the repository . ) }"
+  },
+  {
+    "path": "/docs/integration",
+    "title": "Add Looms to your app",
+    "description": "Keep your application router, authentication, database, and model provider. Choose which long-running operation becomes a Looms run, and store its runId beside the application record that owns it.",
+    "sections": [
+      {
+        "id": "choose-a-boundary",
+        "title": "Choose a boundary",
+        "level": 2
+      },
+      {
+        "id": "install-only-the-capabilities-you-need",
+        "title": "Install only the capabilities you need",
+        "level": 2
+      },
+      {
+        "id": "mount-behind-your-application-gateway",
+        "title": "Mount behind your application gateway",
+        "level": 2
+      },
+      {
+        "id": "connect-a-client",
+        "title": "Connect a client",
+        "level": 2
+      },
+      {
+        "id": "connect-react",
+        "title": "Connect React",
+        "level": 2
+      },
+      {
+        "id": "keep-your-agent-logic",
+        "title": "Keep your agent logic",
+        "level": 2
+      }
+    ],
+    "text": "Add Looms to your app Keep your application router, authentication, database, and model provider. Choose which long-running operation becomes a Looms run, and store its runId beside the application record that owns it. Choose a boundary Use one run for a coherent operation such as a support investigation or procurement request. Its child agents, workflows, and custom threads share one history. Keep independent customers and operations in separate runs. Actor isolation does not replace tenant authorization. Install only the capabilities you need {`npm install @looms/client # React application: npm install @looms/react @looms/agent @looms/approval # Host with workflow and approval support: npm install @looms/runtime @looms/workflow @looms/approval`} Register every named child definition on its owning module. A reference used as a tool does not automatically register the child. Keep server-only provider configuration and secrets out of client imports; export event catalogs and projections from separate shared files. Mount behind your application gateway After authenticating and authorizing a request, forward it to an actor host or call looms.fetch(request) . The embed handler returns null for unrelated paths. Keep the documented paths intact when forwarding, including /api/events . Do not expose raw event ingestion directly to untrusted browsers. {`// Fragment inside an already-authorized server handler: const response = await looms.fetch(request) return response ?? new Response('Not found', { status: 404 })`} Connect a client {`import { createLoomsClient } from '@looms/client' const client = createLoomsClient({ baseUrl: '/execution' }) const { runId } = await client.startRun({ kind: 'workflow', definitionName: 'release-v1', input: { topic: 'Product launch' }, }) const unsubscribe = client.subscribeEvents(runId, (event) => { console.log(event.seq, event.type) }) // On disposal: unsubscribe()`} This assumes your same-origin gateway strips /execution before forwarding and checks both run ownership and allowed actions. Use a custom fetch implementation for service-to-service authentication. Preserve streaming responses and disable proxy buffering for SSE. Connect React {`import { LoomsProvider, useProjection, useRunStore } from '@looms/react' import { pendingApprovals } from '@looms/approval' function Reviews({ runId }: { runId: string }) { const store = useRunStore(runId) const reviews = useProjection(store, pendingApprovals) return {reviews.items.filter((r) => r.status === 'pending').length} pending reviews } export function App({ runId }: { runId: string }) { return }`} Handle decisions through an application endpoint that authorizes the reviewer and constructs the allowed event. See authentication and tenancy before connecting real users. Keep your agent logic Use {'defineAgent({ runTurn })'} to adapt one turn of an existing implementation. Return the assistant message, tool requests, and completion state. The turn can be retried after an interruption; do not hide irreversible operations inside it. Use typed tools or domain effects for those operations. ) }"
+  },
+  {
+    "path": "/docs/math",
+    "title": "Execution model",
+    "description": "This notation describes the execution model. It is not a proof of implementation correctness. Replay assumes deterministic reducers, compatible definitions, and available event history or a compatible snapshot.",
+    "sections": [
+      {
+        "id": "1-the-canonical-run-log",
+        "title": "1. The Canonical Run Log",
+        "level": 2
+      },
+      {
+        "id": "2-thread-universe-and-parent-relation",
+        "title": "2. Thread Universe & Parent Relation",
+        "level": 2
+      },
+      {
+        "id": "3-state-transition-function",
+        "title": "3. State Transition Function",
+        "level": 2
+      },
+      {
+        "id": "4-projections-as-folds",
+        "title": "4. Projections as Folds",
+        "level": 2
+      },
+      {
+        "id": "5-causal-ordering-vs-structural-hierarchy",
+        "title": "5. Causal Ordering vs. Structural Hierarchy",
+        "level": 2
+      },
+      {
+        "id": "6-replay-and-durability-invariant",
+        "title": "6. Replay & Durability Invariant",
+        "level": 2
+      }
+    ],
+    "text": "Execution model This notation describes the execution model. It is not a proof of implementation correctness. Replay assumes deterministic reducers, compatible definitions, and available event history or a compatible snapshot. 1. The Canonical Run Log A Run is a tuple consisting of a globally unique run identity and an ordered, append-only sequence of immutable events : Every agent, DAG workflow, child thread, external signal, and observable effect outcome participates in this single, canonical event stream. 2. Thread Universe & Parent Relation The units of computation participating in Run form a thread universe with a partial parent relation: The root thread has . Every child thread references its parent, inducing a strict tree hierarchy over threads within the run. 3. State Transition Function Each thread kind (e.g. agent , workflow , or a custom module kind) defines a pure, deterministic state transition function: Given current state and incoming event , the reducer deterministically computes next state and an ordered sequence of requested effects . 4. Projections as Folds State and read models are not primary truths—they are pure derivations folded from the event log: With persisted snapshot checkpoints at event sequence , state reconstruction is accelerated: 5. Causal Ordering vs. Structural Hierarchy While events have a linear physical order in the log, direct causal provenance is explicitly decoupled from execution hierarchy: This decoupling allows concurrent branches within a single Run to record events interleaved in physical time while preserving unambiguous causal ancestry. 6. Replay & Durability Invariant Let denote the projection filtering events relevant to thread . The state at logical step is reproducible under those assumptions: During historical replay, the effect stream is ignored by the runtime kernel. Historical replay does not dispatch effects. Recovery also resumes unfinished work, which may retry external calls. Safe retries require idempotency or reconciliation at the external boundary. See Concepts for the mental model, vocabulary, and event/effect boundary. ) }"
+  },
+  {
+    "path": "/docs/modules",
+    "title": "Modules",
+    "description": "Install capabilities as packages. Built-in modules cover agents, workflows, and approvals; add your own for domain work without forking the runtime. The kernel does not special-case LLM turns or DAG nodes; those are thread kinds contributed by modules, alongside namespaced events, effects, and projections. Vocabulary: Concepts .",
+    "sections": [
+      {
+        "id": "what-you-get-out-of-the-box",
+        "title": "What you get out of the box",
+        "level": 2
+      },
+      {
+        "id": "configuring-modules-on-a-host",
+        "title": "Configuring modules on a host",
+        "level": 2
+      },
+      {
+        "id": "definitions-belong-to-modules",
+        "title": "Definitions belong to modules",
+        "level": 3
+      },
+      {
+        "id": "talk-to-a-running-run",
+        "title": "Talk to a running run",
+        "level": 2
+      },
+      {
+        "id": "add-your-own-module",
+        "title": "Add your own module",
+        "level": 2
+      },
+      {
+        "id": "input-validation",
+        "title": "Input Validation",
+        "level": 3
+      },
+      {
+        "id": "the-effect-context-and-idempotency",
+        "title": "The Effect Context & Idempotency",
+        "level": 3
+      },
+      {
+        "id": "three-execution-styles-sync-async-and-effect-ts",
+        "title": "Three Execution Styles: Sync, Async, and Effect-TS",
+        "level": 3
+      },
+      {
+        "id": "managing-dependencies-with-effect-layers",
+        "title": "Managing Dependencies with Effect Layers",
+        "level": 3
+      },
+      {
+        "id": "live-event-streaming-with-ctx-emit",
+        "title": "Live Event Streaming with ctx.emit",
+        "level": 3
+      },
+      {
+        "id": "retry-policies-and-failure-handling",
+        "title": "Retry Policies & Failure Handling",
+        "level": 3
+      },
+      {
+        "id": "type-safe-invocations-with-invoke",
+        "title": "Type-Safe Invocations with invoke",
+        "level": 3
+      },
+      {
+        "id": "file-layout",
+        "title": "File layout",
+        "level": 2
+      },
+      {
+        "id": "module-composition-principles",
+        "title": "Module Composition Principles",
+        "level": 2
+      }
+    ],
+    "text": "Modules Install capabilities as packages. Built-in modules cover agents, workflows, and approvals; add your own for domain work without forking the runtime. The kernel does not special-case LLM turns or DAG nodes; those are thread kinds contributed by modules, alongside namespaced events, effects, and projections. Vocabulary: Concepts . What you get out of the box Package Use it for SDK @looms/agent Conversational or tool-using LLM agents defineAgent , defineTool , spawn other agents or workflows as tools @looms/workflow DAGs: nodes, deps, sleeps, nested runs defineWorkflow ; a node can return a value, spawn a child, sleep, or emit effects @looms/approval Human gates from agents or workflows gate({'{ title }'}) parks the run until approval.decided Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely. Configuring modules on a host Whether you run inside an in-process host with createLooms , local actors with createLocalActorHost , or edge cells with LoomsDurableObject , modules use the same registration pattern. This composition excerpt assumes the imported application definitions, payments module, and model adapter already exist: {`import { createLooms } from '@looms/runtime' // built-in modules import { agent } from '@looms/agent' import { approval } from '@looms/approval' import { workflow } from '@looms/workflow' // custom module import { payments } from './modules/payments' import { assistant, checkout } from './definitions' import { llm } from './llm' export const looms = createLooms({ modules: [ agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval(), payments, ], }) await looms.start(assistant, 'Charge $40 after approval') await looms.start(checkout, { amount: 150, currency: 'USD' })`} Pass every module you need explicitly — agent() , workflow() , approval() , and any domain modules. Configure modules in that list (e.g. providing an LLM adapter to {'agent({ llm })'} ). Omitting modules leaves the runtime with no built-in kinds. start does not care which module owns the definition. An agent and a workflow are two kinds of thread; a module you write adds a third, and looms.start(myDefinition, input) works the same way. Definitions belong to modules Pass named agents to {'agent({ definitions: [assistant], llm })'} and named workflows to {'workflow({ definitions: [checkout] })'} . The host gathers their definitions automatically. Include child definitions in their owning modules too. Effects-only modules such as payments or approval need no definitions. Initialization rejects duplicate kind/name registrations and definitions whose kind the owning module does not implement. Starting or spawning an unregistered definition fails explicitly. The callback form returns a finished module: only returned members are installed, and they are exposed through its effects, projections, and threads properties. Talk to a running run Every input to a run is an event. Modules export small builders so you never hand-write payloads: {`import { userMessage } from '@looms/agent' import { decision } from '@looms/approval' await looms.signal(runId, [userMessage('Also greet Maya')]) await looms.signal(runId, [decision(approvalId, 'approve')])`} Your module can do the same: export a function that returns an EventInput , and callers use it with signal or store.commit . Add your own module A module declares namespaced events, effects the host should run, and optional projections for the UI. Compose them with defineModule so event types, payloads, and effects are inferred and type-checked. This complete module simulates charges without contacting a payment provider. Real handlers should be safe to retry; use ctx.effectId as an idempotency key. What the scope gives you Catalog through React typing: Type safety . Typed events: event.type and event.payload are narrowed inside thread step and projection reduce based on the module's catalog. Typed returns and emit: execute return values and ctx.emit are checked against the module's catalog events. Typed invoke: invoke(effectDef, input) statically type-checks inputs against the effect's input schema. Compile-time service checks: defineModule requires satisfying the environment requirements ( R ) of all constituent effects via Effect Layers. Runtime payload validation: Events entering the runtime (via signals or effect outcomes) are validated against catalog schemas at runtime. Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, payload{' ()'} from @looms/core declares it without a runtime schema. Workflows invoke payments.charge and wait on payments.charge.authorized . Agents can expose the same charge as a tool. See Examples for runnable definitions and Projections for UI integration. Defining Effects Reducers stay pure. Side effects (APIs, charges, LLMs, emails) are requested as effects ; the host runs them outside the state machine, retries on transient failure, and appends outcome events to the log. Concepts: Events & effects . Anatomy of an Effect Handler Define effects within a module using scope.effect (or standalone with defineEffect from @looms/core ). Using scope.effect constrains the effect's type name to your module's namespace and ensures that both the returned events and any events passed to ctx.emit match your module's event catalog. This handler excerpt assumes a configured server-side Stripe client and a payments catalog containing the authorized event: {`import { z } from 'zod' import { createModuleScope } from '@looms/core' import { paymentsCatalog } from './events' import { stripe } from './stripe' const paymentsScope = createModuleScope({ namespace: 'payments', protocolVersion: '1.0.0', events: paymentsCatalog, }) const ChargeCardInput = z.object({ customerId: z.string(), amount: z.number().positive(), currency: z.string().default('USD'), }) export const chargeCardEffect = paymentsScope.effect({ type: 'payments.chargeCard', input: ChargeCardInput, retry: { maxAttempts: 3, backoffMs: 250, maxBackoffMs: 2000, }, execute: async (input, ctx) => { // 1. input is pre-validated by ChargeCardInput // 2. ctx.effectId is unique and stable across retries — pass as idempotency key const charge = await stripe.charges.create( { customer: input.customerId, amount: Math.round(input.amount * 100), currency: input.currency.toLowerCase(), }, { idempotencyKey: ctx.effectId }, ) // 3. Return event inputs to commit to the log (payloads are validated against catalog) return [ { type: 'payments.charge.authorized', payload: { chargeId: charge.id, amount: input.amount, currency: input.currency, }, }, ] }, })`} Input Validation Pass a Standard Schema V1 validator (Zod, Effect Schema, Valibot, or ArkType) to input . The runtime automatically parses and validates incoming arguments before invoking the handler. If an invalid input is passed, execution fails immediately with an InvalidInputError before calling any external services. The schema also establishes the TypeScript input type for both the handler and caller-side invoke(chargeCardEffect, input) . The Effect Context & Idempotency Every handler receives an EffectContext providing metadata and runtime tools: ctx.effectId : A unique, deterministic identifier for this effect invocation. Always pass ctx.effectId as an idempotency key when communicating with external APIs (Stripe, GitHub, payment gateways) or writing to databases. If an actor cell crashes or fails over mid-execution, the replacement actor may re-run the effect. Deduplication depends on the external service honoring the key, its retention window, or your own durable deduplication mechanism. ctx.runId & ctx.threadId : Identifiers of the enclosing run and calling thread. ctx.causingEventId : The sequence ID of the event that caused this effect to be requested, preserving the causal provenance graph. ctx.emit(event) : Stream intermediate events to the log while the handler is still executing. Three Execution Styles: Sync, Async, and Effect-TS Looms effect handlers can return three shapes depending on your application's needs: 1. Synchronous For pure calculations, token counting, or instantaneous transformations. {`execute: (input, ctx) => [ { type: 'payments.computed', payload: { tax: input.amount * 0.08 }, }, ]`} 2. Async / Promise For standard async/await I/O, fetch requests, or third-party SDK calls. {`execute: async (input, ctx) => { const res = await fetch(...) return [{ ... }] }`} 3. Effect-TS & Services For typed dependencies, structured concurrency, and compile-time service checking. {`execute: (input, ctx) => Effect.gen(function* () { const db = yield* DatabaseTag return [{ ... }] })`} Managing Dependencies with Effect Layers When an effect uses Effect.gen and yields dependencies (e.g. yield* DatabaseTag or yield* LlmTag ), TypeScript tracks the required service environment in the effect's type signature. When you call defineModule , Looms inspects the service requirements of all registered effects. If any required service is missing, the build will fail to compile until you supply a matching Layer : {`import { Context, Effect, Layer } from 'effect' import { defineModule } from '@looms/core' import { z } from 'zod' export interface DatabaseService { insertCharge(chargeId: string, amount: number): Promise } export class DatabaseTag extends Context.Service ()('app/Database') {} export function payments(db: DatabaseService) { return defineModule({ namespace: 'payments', protocolVersion: '1.0.0' }, (m) => ({ effects: { recordInDb: m.effect({ type: 'payments.recordInDb', input: z.object({ amount: z.number() }), execute: (input, ctx) => Effect.gen(function* () { const database = yield* DatabaseTag yield* Effect.tryPromise(() => database.insertCharge(ctx.effectId, input.amount)) return [] }), }), }, services: () => Layer.succeed(DatabaseTag, db), })) }`} Live Event Streaming with ctx.emit Some effects take time to finish and produce a stream of partial results — for example, streaming LLM tokens back to the user or reporting step-by-step progress during a batch migration. Use ctx.emit(event) to append events to the live log before the effect completes: {`const downloadAndProcessEffect = m.effect({ type: 'payments.downloadBatch', input: z.object({ batchUrl: z.string() }), execute: async (input, ctx) => { // Stream progress events as chunks arrive: for await (const chunk of fetchChunks(input.batchUrl)) { await ctx.emit({ type: 'payments.progress', payload: { bytesRead: chunk.length }, }) } return [{ type: 'payments.batchCompleted', payload: { finished: true } }] }, })`} With m.effect , events passed to ctx.emit are checked at compile time against your module's catalog and validated against their schemas at runtime. Retry Policies & Failure Handling External networks and third-party APIs fail. Pass a retry policy to automatically retry transient failures using exponential backoff: {`export const callGatewayEffect = paymentsScope.effect({ type: 'payments.callGateway', retry: { maxAttempts: 4, // Four total attempts, including the first backoffMs: 200, // Initial backoff maxBackoffMs: 3000, // Maximum cap }, execute: async (input, ctx) => { // If this throws or returns a failed Effect, Looms makes up to four total attempts. return await sendWithNetworkTimeout(input) }, })`} If all retry attempts fail, the host converts the error into a durable runtime.effect.failed event on the log containing the effectId and error message. Threads and workflows can match on runtime.effect.failed to transition state, trigger compensations, or escalate to human review. Type-Safe Invocations with invoke To invoke an effect from a thread reducer or a workflow node, pass the effect definition directly to invoke : {`import { invoke } from '@looms/core' import { chargeCardEffect } from './effects' // Inside a thread's effects() method: effects(state, ctx) { if (state.status === 'ready_to_charge') { return [ invoke( chargeCardEffect, { customerId: state.customerId, amount: state.totalAmount, // Statically typed! Missing or mistyped keys fail compilation }, \\`charge_\\${state.orderId}\\`, ), ] } return [] }`} File layout Built-in modules assemble separately authored members with defineModule . Open the folder and the names tell you where to look: {`src/ events.ts # namespaced event catalog scope.ts # createModuleScope for shared typed builders threads.ts # thread kinds (omit if the module has none) effects.ts # host-side effect handlers projections.ts # read models signals.ts # builders for looms.signal / store.commit module.ts # defineModule(options, setup) assembly index.ts # public re-exports`} Small modules can stay in one callback. For larger modules, export a shared createModuleScope(options) from scope.ts , author members across files, and return them from defineModule(options, setup) . Only the finished module is passed to the host. Module Composition Principles Modules from different teams interoperate when they follow these rules: Stable namespaces: Every module defines a unique namespace (e.g. agent , workflow , payments ). Event and effect type names are scoped to prevent collision. Open-world event catalogs: Applications do not maintain a central event union. Installing modules composes their typed event catalogs automatically. Universal thread kinds: The runtime kernel knows nothing about agents or DAGs. Kinds are open-ended; agent and workflow are kinds contributed by modules. Cross-module projections: While behavioral reducers own their thread's state, projection reducers may observe events across multiple modules (for example, a financial ledger observing both payment events and LLM token usage). Idempotent effect execution: Effect handlers receive ctx.effectId . Handlers must use this ID as an idempotency key when interacting with external APIs (like Stripe or GitHub) where the provider supports idempotency; otherwise implement reconciliation for ambiguous outcomes. Inferred define* types: Pass input or shape (a Standard Schema or Effect Schema). The factory infers handler and state types — do not pass generics. ) }"
+  },
+  {
+    "path": "/docs/operations",
+    "title": "Operate Looms",
+    "description": "Operate the execution log, wake mechanism, and downstream read models separately. Each can fail independently. Cloudflare manages the actor infrastructure; you still own application behavior and observability.",
+    "sections": [
+      {
+        "id": "find-runs-and-pending-work",
+        "title": "Find runs and pending work",
+        "level": 2
+      },
+      {
+        "id": "inspect-a-stuck-run",
+        "title": "Inspect a stuck run",
+        "level": 2
+      },
+      {
+        "id": "cancellation-and-intervention",
+        "title": "Cancellation and intervention",
+        "level": 2
+      },
+      {
+        "id": "observe-behavior",
+        "title": "Observe behavior",
+        "level": 2
+      },
+      {
+        "id": "backups-and-retention",
+        "title": "Backups and retention",
+        "level": 2
+      },
+      {
+        "id": "local-hosts-and-timers",
+        "title": "Local hosts and timers",
+        "level": 2
+      }
+    ],
+    "text": "Operate Looms Operate the execution log, wake mechanism, and downstream read models separately. Each can fail independently. Cloudflare manages the actor infrastructure; you still own application behavior and observability. Find runs and pending work Actor hosts intentionally return 501 for global GET /runs. Maintain an application run registry when starting work, or attach a projector that writes a shared index. Store runId, tenant ownership, definition version, and creation time. Use that registry to route a dashboard to each run's current state and authorized event stream. The projectors page shows memory, SQLite, and Postgres index helpers. Actor-local SQLite is not a global index across Durable Objects. A cross-run database or external registry must be reachable by each relevant host. Monitor indexing errors and support rebuilding from retained history. Inspect a stuck run Read /runs/:id and its recorded events. Find the last effect failure, unsatisfied wait, or missing child outcome. Check event type and correlation identifiers against the wait. Check the provider outcome before repeating an external action. Use wake only after resolving the underlying cause; it is not an unconditional retry-all API. A run may report running while it has a pending human review. Inspect thread state and pendingApprovals instead of treating one aggregate status as a complete work queue. Cancellation and intervention Use the embed cancellation API for the whole run or a child thread. Cancellation can abort cooperative work but cannot retract a payment or message already accepted externally. Record operator decisions and use explicit compensating application actions where needed. Observe behavior Correlate logs by runId, threadId, effectId, and sequence. Track failed effects, oldest pending approvals, wake latency, provider errors, stream reconnects, and projector lag. Export metrics through your host's observability stack. Do not log secrets or use estimated token usage as an invoice. Backups and retention Choose a backup strategy for the host's SQLite and snapshot data and practice restoration. Set retention based on recovery, audit, and privacy requirements. Replication to a lake is not automatically a verified backup; confirm completeness and a restore procedure. Trimming old events changes the history available to replay and new projections. Local hosts and timers createLocalActorHost opens run cells lazily. Keep a list of known runs and call getCell for those needing timer recovery after restart, or use a host with durable alarms. The in-memory timeout scheduler does not wake a stopped process. ) }"
+  },
+  {
+    "path": "/docs/prior-art",
+    "title": "Prior art",
+    "description": "Looms combines established patterns from event-sourced systems, reducer architectures, actors, and durable execution. These systems shaped the model and provide useful points of comparison.",
+    "sections": [
+      {
+        "id": "event-sourcing-and-projections",
+        "title": "Event sourcing and projections",
+        "level": 2
+      },
+      {
+        "id": "flux-and-redux",
+        "title": "Flux and Redux",
+        "level": 2
+      },
+      {
+        "id": "actors",
+        "title": "Actors",
+        "level": 2
+      },
+      {
+        "id": "durable-execution",
+        "title": "Durable execution",
+        "level": 2
+      },
+      {
+        "id": "react",
+        "title": "React",
+        "level": 2
+      }
+    ],
+    "text": "Prior art Looms combines established patterns from event-sourced systems, reducer architectures, actors, and durable execution. These systems shaped the model and provide useful points of comparison. Event sourcing and projections Event Sourcing records state changes as an append-only sequence of events. Replaying that sequence reconstructs state; folding it into other shapes produces projections. Looms uses one canonical event stream per run for thread state, debugging, and UI projections. Flux and Redux Flux popularized unidirectional data flow in JavaScript applications. Redux made the reducer form familiar: current state plus an action produces next state. Looms applies a related reducer model to durable event streams. Its events are persisted facts, and thread reducers can return effect instructions for the runtime to execute. Actors Actor systems isolate mutable state and process messages serially. Looms uses that shape at the hosting boundary: one actor cell owns each runId and writes its log. Cloudflare Durable Objects are the primary production host, but the same single-writer contract works with local Bun actors and custom hosts. Durable execution Systems such as Temporal , Restate , and DBOS let application work survive process failure and long waits. Looms shares those goals. Its programming model centers on event streams, pure reducers, explicit effect instructions, and modules that contribute thread kinds and projections. React React made declarative UI and state-derived views common in frontend code. Looms borrows that broad approach: application code describes transitions and projections while the runtime schedules work and recovery. The analogy stops there. A Looms thread is not a React component, and a Looms effect is not useEffect . @looms/react is an adapter for subscribing to run streams and projections. See Concepts for Looms terminology, Events & effects for reducer semantics, and Waits & replay for recovery behavior. ) }"
+  },
+  {
+    "path": "/docs/projectors",
+    "title": "Projections & projectors",
+    "description": "The append-only event log is the only source of truth. Product surfaces (chat, approval queues, ledgers, admin indexes) are projected from that log via @looms/react or cross-run projectors. Scoped projections share types with the host; see Type safety .",
+    "sections": [
+      {
+        "id": "behavioral-vs-projection-reducers",
+        "title": "Behavioral vs projection reducers",
+        "level": 2
+      },
+      {
+        "id": "building-custom-uis",
+        "title": "Building custom UIs",
+        "level": 2
+      },
+      {
+        "id": "step-1-define-your-domain-projection",
+        "title": "Step 1: Define your domain projection",
+        "level": 3
+      },
+      {
+        "id": "step-2-provide-the-host-connection",
+        "title": "Step 2: Provide the host connection",
+        "level": 3
+      },
+      {
+        "id": "step-3-subscribe-reactively-with-useprojection",
+        "title": "Step 3: Subscribe reactively with useProjection",
+        "level": 3
+      },
+      {
+        "id": "step-4-dispatch-user-interactions-via-signals",
+        "title": "Step 4: Dispatch user interactions via signals",
+        "level": 3
+      },
+      {
+        "id": "step-5-time-travel-debugging-in-the-client",
+        "title": "Step 5: Time-travel debugging in the client",
+        "level": 3
+      },
+      {
+        "id": "server-side-projectors-cross-run-storage",
+        "title": "Server-Side Projectors (Cross-Run Storage)",
+        "level": 2
+      },
+      {
+        "id": "attach-projectors-to-the-host",
+        "title": "Attach projectors to the host",
+        "level": 3
+      },
+      {
+        "id": "built-in-index-helpers",
+        "title": "Built-in index helpers",
+        "level": 3
+      },
+      {
+        "id": "custom-webhook-and-fan-out-projectors",
+        "title": "Custom webhook and fan-out projectors",
+        "level": 3
+      }
+    ],
+    "text": "Projections & projectors The append-only event log is the only source of truth. Product surfaces (chat, approval queues, ledgers, admin indexes) are projected from that log via @looms/react or cross-run projectors. Scoped projections share types with the host; see Type safety . Behavioral vs projection reducers Thread kinds use behavioral reducers ( (state, event) &rarr; &#123; state, effects &#125; ). Projections use projection reducers ( (state, event) &rarr; state ): pure observation, no side effects. Full event/effect boundary: Events & effects . Projections are portable; React is an adapter. The same definition folds in-memory on the host, reactively in the browser via @looms/react , or into SQLite, Postgres, or ClickHouse. Building custom UIs The UI subscribes to the run event stream. When events land, client-side projections re-fold. Step 1: Define your domain projection The snippets in this walkthrough use application-specific order events and an ordersModule scope, defined with the module API. They illustrate integration rather than a standalone application; the quickstart provides a complete runnable example. Define a pure read model using ordersModule.projection from your module's scope (or standalone defineProjection from @looms/core ). With scope.projection , event types and payloads are automatically narrowed per case based on the module's registered catalogs. Providing a Zod (or Standard Schema) shape infers the state type automatically without an explicit generic. Export it so both server and client can use it. {`import { z } from 'zod' import { ordersModule } from './scope' export const OrderSchema = z.object({ orderId: z.string().nullable(), items: z.array(z.string()), total: z.number(), status: z.enum(['draft', 'awaiting_approval', 'processing', 'completed', 'failed']), approvalId: z.string().nullable(), paymentId: z.string().nullable(), history: z.array(z.object({ step: z.string(), timestamp: z.number() })), }) export type OrderState = z.infer export const orderTracker = ordersModule.projection({ name: 'orderTracker', shape: OrderSchema, initialState: { orderId: null, items: [], total: 0, status: 'draft', approvalId: null, paymentId: null, history: [], }, reduce(state, event) { // state is inferred from shape; event is narrowed per case by scope switch (event.type) { case 'orders.created': return { ...state, orderId: event.payload.orderId, items: event.payload.items, total: event.payload.total, status: 'draft', history: [...state.history, { step: 'Order Created', timestamp: event.ts }], } case 'approval.requested': return { ...state, status: 'awaiting_approval', approvalId: event.payload.approvalId, history: [...state.history, { step: 'Approval Requested', timestamp: event.ts }], } case 'approval.decided': return { ...state, status: event.payload.outcome === 'approve' ? 'processing' : 'failed', history: [...state.history, { step: \\`Approval \\${event.payload.outcome}d\\`, timestamp: event.ts }], } case 'payments.charge.authorized': return { ...state, status: 'completed', paymentId: event.payload.chargeId, history: [...state.history, { step: 'Payment Authorized', timestamp: event.ts }], } default: return state } }, })`} Step 2: Provide the host connection Wrap your React tree or page with LoomsProvider from @looms/react . Pass the Looms host URL; the client opens /api/events on that host: {`import { LoomsProvider } from '@looms/react' import { OrderDashboard } from './order-dashboard' export function App({ runId }: { runId: string }) { return ( ) }`} Step 3: Subscribe reactively with useProjection In your component, call useRunStore(runId) to connect to the run's event stream, then pass it to useProjection : {`import { useRunStore, useProjection } from '@looms/react' import { orderTracker } from './projections' export function OrderDashboard({ runId }: { runId: string }) { const store = useRunStore(runId) const order = useProjection(store, orderTracker) return ( Order {order.orderId ?? 'Initiating...'} {order.status} Total: \\${order.total} Timeline {order.history.map((h, i) => ( {h.step} &mdash; {new Date(h.timestamp).toLocaleTimeString()} ))} ) }`} useProjection uses React's useSyncExternalStore with an incremental projection cache. When new events append to the run log on the server, the SSE connection receives them and folds only the newly appended events into the cached state, coalescing updates at animation frame rates. Rendering cost still depends on the projection and the components that subscribe to it. Step 4: Dispatch user interactions via signals User actions do not mutate state directly; they post events to the log using store.commit or client.signal : This excerpt is for a trusted internal client behind a gateway that authorizes the run and validates allowed signals. For a public browser UI, send a decision intent to an application endpoint that authenticates the reviewer and constructs the event. See authentication and tenancy . Add pending and error states before using these controls in a product. {`import { decision } from '@looms/approval' import { useRunStore, useProjection } from '@looms/react' import { orderTracker } from './projections' export function OrderControls({ runId }: { runId: string }) { const store = useRunStore(runId) const order = useProjection(store, orderTracker) const handleApprove = () => { if (order.approvalId) { store.commit(decision(order.approvalId, 'approve')) } } const handleReject = () => { if (order.approvalId) { store.commit(decision(order.approvalId, 'reject')) } } if (order.status !== 'awaiting_approval') return null return ( Human approval required for orders over $100 Approve Order Reject Order ) }`} When store.commit runs, the signal lands on the server, wakes the parked thread, and streams back to all subscribers, updating all projections automatically. Step 5: Time-travel debugging in the client Because projections are pure folds over the event array, you can fold any prefix of the log to render a historical UI state: {`import { useState } from 'react' import { foldProjection } from '@looms/core' import { useRunStore } from '@looms/react' import { orderTracker } from './projections' export function TimeTravelSlider({ runId }: { runId: string }) { const store = useRunStore(runId) const events = store.events() const [step, setStep] = useState(events.length) // Reconstruct state at event #step with zero backend round-trips: const pastState = foldProjection(orderTracker, events.slice(0, step)) return ( setStep(Number(e.target.value))} /> Viewing step {step} of {events.length} {JSON.stringify(pastState, null, 2)} ) }`} Server-Side Projectors (Cross-Run Storage) While client-side projections fold the log of a single run , projectors run on the host to watch the entire event store across all runs . Use them to maintain queryable tables, full-text search, or fan out to webhooks and Slack. Attach projectors to the host Wrap the local execution store with withProjectors from @looms/projectors . Events are delivered in log order after each commit. Projection failures are isolated — the cell-local log stays authoritative. {`import { bunSqliteEventStore } from '@looms/core/bun-sqlite' import { withProjectors } from '@looms/projectors' import { sqlite } from '@looms/projectors/sqlite' import { s2Projector, s2ConfigFromEnv } from '@looms/s2' // Local SQLite is the execution store. Index + S2 lake are projectors. const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [ sqlite({ path: './looms-index.db' }), s2Projector(s2ConfigFromEnv(process.env)), ], { onError: (error, projector) => { console.warn(projector.name, error.message) }, })`} On Cloudflare Durable Objects, supply projectors via configure().projectors (see Hosting & storage ). Projectors can populate relational databases, emit webhooks, or replicate events to a centralized data lake via s2Projector . Built-in index helpers Looms includes built-in projectors for Memory, SQLite, and Postgres to keep a searchable run index and an approval index up to date: Helper Import When to use memory() @looms/projectors Unit tests and single-process development sqlite(opts) @looms/projectors/sqlite Local file path or existing db . Defaults to :memory: postgres(opts) @looms/projectors/postgres Production servers. Pass {'{ url }'} or an existing postgres.js client {`import { sqlite } from '@looms/projectors/sqlite' const index = sqlite({ path: './looms.db' }) // Query cross-run indexes from your admin routes: const run = await index.getActor(runId) const pendingReviews = await index.listReviews(runId)`} Custom webhook and fan-out projectors Any object implementing project(events) satisfies the Projector interface: {`import type { Projector } from '@looms/projectors' export function approvalsWebhook(url: string): Projector { return { name: 'approvals-webhook', project: async (events) => { for (const event of events) { if (event.type !== 'approval.requested') continue await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ runId: event.runId, approvalId: event.payload.approvalId, title: event.payload.title, }), }) } }, } }`} Next: see complete working examples of custom projections in Examples , host runs on Durable Objects in Hosting & storage , or browse packages in Modules . ) }"
+  },
+  {
+    "path": "/docs/quickstart",
+    "title": "Run, stop, resume",
+    "description": "Build an agent that drafts a release announcement, then let a workflow wait for a human decision. Exit the process, start a new one, and approve or reject the same run. Its history and pending review survive.",
+    "sections": [
+      {
+        "id": "create-a-project",
+        "title": "Create a project",
+        "level": 2
+      },
+      {
+        "id": "define-the-work",
+        "title": "Define the work",
+        "level": 2
+      },
+      {
+        "id": "resume-with-a-decision",
+        "title": "Resume with a decision",
+        "level": 2
+      },
+      {
+        "id": "make-it-yours",
+        "title": "Make it yours",
+        "level": 2
+      }
+    ],
+    "text": "Run, stop, resume Build an agent that drafts a release announcement, then let a workflow wait for a human decision. Exit the process, start a new one, and approve or reject the same run. Its history and pending review survive. This tutorial uses Bun 1.3 or later and local SQLite. It makes no network calls: the agent uses a deterministic turn function and publishing is simulated. The same definitions can use a real model and a production actor host. Create a project {`mkdir looms-starter cd looms-starter npm init -y npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod`} Packages install from npm; Bun executes the TypeScript and provides SQLite. Keep all @looms/* packages on matching versions and commit your lockfile. Node alone cannot execute the Bun SQLite example. Define the work Save this as review-definition.ts . The workflow spawns a writer agent with a tool, asks for a decision, and checks the outcome before publishing. A rejection completes the workflow with published: false . Add durable storage Save this as durable-review.ts . SQLite holds the event log and snapshots; each invocation opens the same file. Run one command at a time—this is a single-process embed, not a multi-writer server. Start and stop {'bun durable-review.ts start'} The command prints a runId and exits. Copy that ID into the next commands. The pending approval is durable even when an aggregate run status still reads running ; inspect the approval projection to see what needs attention. {'bun durable-review.ts inspect YOUR_RUN_ID'} This is a new process. It should show one pending review and the agent/tool events recorded by the first process. Resume with a decision {'bun durable-review.ts approve YOUR_RUN_ID'} Expect status: \"completed\" and published: true in the output. Inspect it again: the result is still there, with no need to rerun the writer. Start another run and reject it instead: {'bun durable-review.ts reject ANOTHER_RUN_ID'} Expect published: false . A gate waits for a decision; it does not automatically treat rejection as an execution error. Always check the result before a consequential action. Make it yours Connect a real model and keep the review deterministic. Define a custom thread kind with its own state machine. Build a live React view of the same history. Deploy to Cloudflare Durable Objects with one actor per run. These source files are shared with the runnable examples and tested across separate processes. The full examples directory includes smaller patterns. ) }"
+  },
+  {
+    "path": "/docs/reliability",
+    "title": "Reliability and recovery",
+    "description": "Durability depends on the host and storage you choose. In-memory examples lose history on exit. SQLite persists locally; production actor hosts must preserve one writer per run and provide wake scheduling.",
+    "sections": [
+      {
+        "id": "replay-and-recovery-are-different-operations",
+        "title": "Replay and recovery are different operations",
+        "level": 2
+      },
+      {
+        "id": "the-ambiguous-outcome-window",
+        "title": "The ambiguous outcome window",
+        "level": 2
+      },
+      {
+        "id": "retries-and-errors",
+        "title": "Retries and errors",
+        "level": 2
+      },
+      {
+        "id": "signals-and-webhook-delivery",
+        "title": "Signals and webhook delivery",
+        "level": 2
+      },
+      {
+        "id": "interrupted-model-streams",
+        "title": "Interrupted model streams",
+        "level": 2
+      },
+      {
+        "id": "snapshots-retention-and-projections",
+        "title": "Snapshots, retention, and projections",
+        "level": 2
+      },
+      {
+        "id": "verify-your-boundary",
+        "title": "Verify your boundary",
+        "level": 2
+      }
+    ],
+    "text": "Reliability and recovery Durability depends on the host and storage you choose. In-memory examples lose history on exit. SQLite persists locally; production actor hosts must preserve one writer per run and provide wake scheduling. Replay and recovery are different operations Historical replay folds recorded events to reconstruct state and does not dispatch effects. Recovery loads a snapshot and later events, then resumes unfinished work. An effect that lacks a recorded outcome may execute again. Looms does not promise exactly-once actions across arbitrary external services. The ambiguous outcome window Looms requests an external action. The service performs it. The host stops before recording success. Recovery cannot infer success from the local log alone. Pass ctx.effectId as an idempotency key where the external API supports it. Its guarantees and key-retention window must cover your recovery horizon. For unsupported APIs, store a durable operation ID, query the provider for the outcome, or reconcile before retrying. Never assume adding an arbitrary header makes an API idempotent. Retries and errors Effect retry policies count total attempts: maxAttempts: 3 means one initial attempt and up to two retries. Choose backoff and provider timeouts. A thrown error or failed Effect can trigger retries; classify permanent failures in application code. Exhaustion records runtime.effect.failed. Test what the owning thread does with that event rather than assuming every kind reacts identically. Signals and webhook delivery Use the embed start/signal idempotencyKey option with a stable runId for retries of the same logical request. Verify webhook signatures and transform allowed webhook payloads into typed events on the server. Deduplicate by the provider delivery ID and correlate by run, thread, and domain identifiers. Retrying with a fresh key defeats deduplication. Interrupted model streams A model call can produce partial deltas before failing. Those deltas may already be recorded; resuming work may incur another model call and different output. Render partial content as provisional, inspect completion events, and design your application policy for abandoned partial turns. The adapter does not guarantee exactly-once billing or identical regenerated text. Snapshots, retention, and projections A compatible snapshot bounds replay work; it is not a backup or a schema migration. Trimming events removes older audit and time-travel history and can prevent rebuilding new projections from the beginning. Define a retention and archive policy before enabling trimAfterSnapshot. Projectors run after local commit. Their failures do not roll back the execution log. Do not assume an external index or webhook has caught up just because a run succeeded. Track downstream progress and provide a tested backfill/reconciliation path. Verify your boundary Test a restart while parked, an interruption during an external action, duplicate webhook delivery, and a deployment with existing runs. The testing guide provides the local restart test. Review versioning before changing definitions. ) }"
+  },
+  {
+    "path": "/docs/security",
+    "title": "Authentication and tenancy",
+    "description": "Looms hosts expose execution APIs. Your application supplies authentication, authorization, and tenant ownership. A runId is an identifier, not a secret or permission token.",
+    "sections": [
+      {
+        "id": "put-an-application-boundary-in-front-of-the-host",
+        "title": "Put an application boundary in front of the host",
+        "level": 2
+      },
+      {
+        "id": "do-not-expose-unrestricted-event-ingestion",
+        "title": "Do not expose unrestricted event ingestion",
+        "level": 2
+      },
+      {
+        "id": "keep-secrets-and-private-events-server-side",
+        "title": "Keep secrets and private events server-side",
+        "level": 2
+      },
+      {
+        "id": "browser-and-webhook-protections",
+        "title": "Browser and webhook protections",
+        "level": 2
+      },
+      {
+        "id": "approval-authorization",
+        "title": "Approval authorization",
+        "level": 2
+      },
+      {
+        "id": "deployment-boundary",
+        "title": "Deployment boundary",
+        "level": 2
+      }
+    ],
+    "text": "Authentication and tenancy Looms hosts expose execution APIs. Your application supplies authentication, authorization, and tenant ownership. A runId is an identifier, not a secret or permission token. Put an application boundary in front of the host Authenticate a session or service identity. Resolve the run's owner from your authoritative database. Authorize the requested operation: viewing history, sending a message, making a decision, or cancelling work. Validate and construct an allowed event on the server. Forward only the authorized request to Looms. Enforce this for reads and SSE subscriptions as well as writes. Both /runs/:id paths and /api/events?runId=... expose run data. For new runs, generate/assign ownership on the server; do not trust a tenant ID or arbitrary run ID from a browser. Do not expose unrestricted event ingestion A valid schema proves a payload's shape, not its authority. An untrusted client must not forge internal lifecycle events, payment outcomes, or another person's approval. Prefer purpose-specific application endpoints that accept a user intent and construct a narrow set of events. Keep secrets and private events server-side Model keys, credentials, and service modules stay on the host. Share only browser-safe catalogs and projections. A UI projection does not redact its input stream: if you send the full log to a browser, that browser can read every event in it. Filter or serve an authorized read model when events contain private information. Browser and webhook protections With cookie sessions, implement your framework's CSRF and origin protections for mutations. Configure CORS deliberately. Use TLS. Validate webhook signatures before parsing them as commands, cap request sizes, rate-limit starts and signals, and verify provider event IDs against a durable deduplication record. Approval authorization Authorize the actual approver and operation, not merely the existence of an approval ID. Handle race conditions and late replies at the same authoritative boundary. Store enough attribution to explain who decided and what inputs they reviewed without placing secrets in events. Deployment boundary The deployment guide disables the public workers.dev endpoint by default. Call the Worker through a private service binding or configure an authenticated gateway before enabling a public route. A service binding restricts access to the host but does not replace per-user authorization in your gateway. ) }"
+  },
+  {
+    "path": "/docs/testing",
+    "title": "Test execution and recovery",
+    "description": "Test the application's observable behavior: whether a rejected action occurs, whether a pending wait survives restart, and whether replay changes anything outside the runtime.",
+    "sections": [
+      {
+        "id": "use-deterministic-agents",
+        "title": "Use deterministic agents",
+        "level": 2
+      },
+      {
+        "id": "exercise-both-decision-branches",
+        "title": "Exercise both decision branches",
+        "level": 2
+      },
+      {
+        "id": "module-and-replay-helpers",
+        "title": "Module and replay helpers",
+        "level": 2
+      },
+      {
+        "id": "before-deploying",
+        "title": "Before deploying",
+        "level": 2
+      }
+    ],
+    "text": "Test execution and recovery Test the application's observable behavior: whether a rejected action occurs, whether a pending wait survives restart, and whether replay changes anything outside the runtime. Use deterministic agents The quickstart's writer uses runTurn and a typed tool without a model API. This makes approval and recovery tests reproducible. Keep model quality evaluations separate from runtime correctness tests. Exercise both decision branches Start the release workflow, find its pending approval, and send approve or reject. Assert on the publication result, not just workflow completion. Rejection is a valid completed business outcome. Use the complete executable test below in the same directory as the two quickstart files. {'bun test durable-review.test.ts'} Each command runs in a different process against the same temporary SQLite file. The test verifies a pending review survives exit, either decision resumes it, and the final result survives another restart. Module and replay helpers Install @looms/testing for createTestRuntime, assertReplayDeterministic, and moduleConformance. createTestRuntime supplies an in-memory store and a run helper for Effect-based runtime operations. assertReplayDeterministic compares repeated folds of a log; it does not prove external idempotency or compatibility with future code. Before deploying Fault-inject an interrupted effect with a provider-supported idempotency key. Send duplicate and conflicting webhook/approval requests through your gateway. Load a snapshot and history produced by the previous application version. Test authorization for another tenant's run and event stream. Disconnect and reconnect the UI while execution continues. Verify your backup restoration and downstream index backfill. ) }"
+  },
+  {
+    "path": "/docs/troubleshooting",
+    "title": "Troubleshooting",
+    "description": "Start with the recorded events and the host logs. A UI that has stopped updating does not necessarily mean execution stopped.",
+    "sections": [
+      {
+        "id": "unknown-definition-or-kind",
+        "title": "Unknown definition or kind",
+        "level": 2
+      },
+      {
+        "id": "a-gate-never-resumes",
+        "title": "A gate never resumes",
+        "level": 2
+      },
+      {
+        "id": "reject-still-executes-the-next-node",
+        "title": "Reject still executes the next node",
+        "level": 2
+      },
+      {
+        "id": "the-agent-produces-a-stub-response",
+        "title": "The agent produces a stub response",
+        "level": 2
+      },
+      {
+        "id": "sqlite-fails-under-node",
+        "title": "SQLite fails under Node",
+        "level": 2
+      },
+      {
+        "id": "sse-does-not-update",
+        "title": "SSE does not update",
+        "level": 2
+      },
+      {
+        "id": "invalid-input-or-events",
+        "title": "Invalid input or events",
+        "level": 2
+      },
+      {
+        "id": "global-run-listing-returns-501",
+        "title": "Global run listing returns 501",
+        "level": 2
+      },
+      {
+        "id": "timers-do-not-fire-after-a-local-restart",
+        "title": "Timers do not fire after a local restart",
+        "level": 2
+      },
+      {
+        "id": "report-a-reproducible-problem",
+        "title": "Report a reproducible problem",
+        "level": 2
+      }
+    ],
+    "text": "Troubleshooting Start with the recorded events and the host logs. A UI that has stopped updating does not necessarily mean execution stopped. Unknown definition or kind Register the definition on its owning module. Register child definitions as well as roots. Install the module implementing the kind. Check exact names and retain old definitions for parked runs after deployments. A gate never resumes Read pendingApprovals, use the pending approvalId, and send a decision through your authorized gateway. Check correlation fields and event type. A gate has no automatic timeout. An approval.timed_out event alone does not resolve a wait for approval.decided. Reject still executes the next node A completed gate means a decision arrived. Check outcome === 'approve' before requesting the action. The quickstart demonstrates a fail-closed branch and has regression coverage for rejection after a process restart. The agent produces a stub response Supply {'agent({ llm })'} or a runTurn implementation. Omitting the adapter intentionally uses deterministic behavior. Check server-side environment variables and the provider model ID. SQLite fails under Node The @looms/core/bun-sqlite entry uses Bun's native SQLite module. Run this example with Bun, use the Cloudflare storage adapter in Workers, or implement another compatible store for a custom host. SSE does not update Confirm the request reaches /api/events with the correct runId and permission context. Preserve text/event-stream and streaming bodies through the gateway, disable buffering, and check network errors. A disconnected client should resume using its cursor; ensure retention has not removed the requested history. Invalid input or events Compare the payload with the module's runtime schema. Use typed builders rather than handwritten envelopes. Compile-time payload markers do not add runtime validation. Inspect HTTP status and body; different hosts may map routing failures differently. Global run listing returns 501 This is the actor host contract. Use your application registry or a cross-run index; see the operations guide. Switching the UI to poll the same unsupported endpoint will not fix it. Timers do not fire after a local restart Reopen the affected run cell to rescan timers. A stopped Bun process cannot fire in-process timers, and the local actor host does not enumerate persisted files for you. Use Durable Objects for host-managed alarms. Report a reproducible problem Include package versions, host/runtime version, a minimal definition, expected behavior, and sanitized event types/sequence. Remove credentials, prompts containing private data, and personal identifiers before opening a GitHub issue . ) }"
+  },
+  {
+    "path": "/docs/versioning",
+    "title": "Changing deployed code",
+    "description": "A run may outlive the code that started it. Recovery uses the definitions and reducers installed on the host when it resumes. Looms does not automatically pin a historical code bundle for each run.",
+    "sections": [
+      {
+        "id": "keep-old-definitions-available",
+        "title": "Keep old definitions available",
+        "level": 2
+      },
+      {
+        "id": "evolve-events-additively",
+        "title": "Evolve events additively",
+        "level": 2
+      },
+      {
+        "id": "plan-snapshot-changes",
+        "title": "Plan snapshot changes",
+        "level": 2
+      },
+      {
+        "id": "a-deployment-procedure",
+        "title": "A deployment procedure",
+        "level": 2
+      },
+      {
+        "id": "rollback-limits",
+        "title": "Rollback limits",
+        "level": 2
+      }
+    ],
+    "text": "Changing deployed code A run may outlive the code that started it. Recovery uses the definitions and reducers installed on the host when it resumes. Looms does not automatically pin a historical code bundle for each run. Keep old definitions available Use stable versioned names, such as release-v1 and release-v2, for behavior that cannot safely change in place. Register both while old runs remain active, and start new runs with v2. Keep child definition names and module event contracts compatible as well; changing the root name alone does not version shared reducers. Evolve events additively Existing logs contain old payloads. Prefer optional fields with defined defaults or new event names for incompatible meanings. Keep a compatibility test corpus of old logs and snapshots. A module's protocolVersion is descriptive metadata, not an automatic migration engine. Plan snapshot changes Reducers and snapshot state must agree. Test loading existing snapshots before deployment. When a change is incompatible, keep the old implementation routed to old runs, explicitly migrate in application-owned tooling, or drain/finish those runs before retiring the old code. Do not rewrite historical events casually to make a new reducer accept them. A deployment procedure Inventory active and parked runs through your run index. Run old-history and snapshot compatibility tests. Deploy code that can still execute old definitions. Start a canary using the new definition and exercise reject, timeout, and restart paths. Monitor failures and keep the prior deployment available. Retire old definitions only after affected runs and their required retention period are accounted for. Rollback limits A rollback cannot undo external actions. Old code may not understand events written by a new deployment. Plan forward-compatible readers or a controlled recovery procedure before rollout. Restoring a database backup also requires reconciling actions performed since the backup. ) }"
+  },
+  {
+    "path": "/docs/when-to-use",
+    "title": "When to use Looms",
+    "description": "Looms is a TypeScript execution runtime that you deploy in your own infrastructure. Use it when several kinds of work need to share durable state: an agent delegates to a workflow, a custom state machine waits for a webhook, and a human decides what happens next.",
+    "sections": [
+      {
+        "id": "one-run-many-kinds-of-work",
+        "title": "One run, many kinds of work",
+        "level": 2
+      },
+      {
+        "id": "good-fits",
+        "title": "Good fits",
+        "level": 2
+      },
+      {
+        "id": "costs-you-take-on",
+        "title": "Costs you take on",
+        "level": 2
+      },
+      {
+        "id": "when-a-simpler-approach-is-enough",
+        "title": "When a simpler approach is enough",
+        "level": 2
+      },
+      {
+        "id": "how-it-fits-existing-tools",
+        "title": "How it fits existing tools",
+        "level": 2
+      },
+      {
+        "id": "release-status-and-support",
+        "title": "Release status and support",
+        "level": 2
+      }
+    ],
+    "text": "When to use Looms Looms is a TypeScript execution runtime that you deploy in your own infrastructure. Use it when several kinds of work need to share durable state: an agent delegates to a workflow, a custom state machine waits for a webhook, and a human decides what happens next. One run, many kinds of work A thread is a unit of execution with a kind and a state machine. Agents and DAG workflows are built-in kinds. Your own module can define a new kind using the same extension primitives. Threads nest within a run and share its ordered history, recovery, and projections. For example: a procurement agent starts a review workflow, which spawns a custom auction thread. The auction accepts bids until a deadline, records a winner, and returns a result to the workflow. The debugger can show the whole operation without joining logs from unrelated runtimes. Good fits Work that pauses for minutes or days on approvals, webhooks, or child results. Applications that combine model-driven decisions with deterministic business rules. Domain execution types that need more than a fixed agent loop or DAG. Products whose UI, audit history, and runtime state should come from the same events. Costs you take on You choose the host, enforce authorization, operate storage, and design compatible upgrades. Reducers must remain deterministic. External actions need idempotency or reconciliation. A single run has one writer; partition independent work into separate runs rather than treating a run as an unlimited parallel compute cluster. When a simpler approach is enough A single model request, a stateless tool call, or a short request-response API may not need Looms. If your existing durable workflow engine already handles your execution model, adopting another one adds migration and operational work. Start with a specific need for custom thread composition or a shared execution history. How it fits existing tools Vercel AI SDK: keep its model providers. The Looms adapter calls the model while Looms schedules turns and tools. You do not run a second automatic tool loop alongside it. Durable Objects: supply the actor isolation, SQLite, and alarm host. Looms supplies thread composition, event history, effects, and projections. Temporal, Restate, DBOS, and other durable engines: evaluate execution guarantees and operations against your needs. Looms centers its programming model on extensible thread kinds sharing one run log; this is a design distinction, not a claim of feature parity. Your existing agent loop: adapt one turn through runTurn or a model adapter. Arbitrary code does not become durable just by being called; outcomes and externally visible work must cross recorded boundaries. Release status and support Looms is an early 0.1-series library. Expect API evolution, pin package versions, and test recovery before production use. Cloudflare Durable Objects is the recommended production host; Bun with SQLite is the local path. Browser packages provide clients and projections. Custom hosts require you to preserve one writer per run. Try a complete run , then read integration and reliability . Source and issues: ByteSliceHQ/looms . ) }"
+  }
+]

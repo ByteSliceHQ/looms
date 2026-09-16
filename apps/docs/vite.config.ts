@@ -48,12 +48,12 @@ export default defineConfig(({ command, mode }) => {
             ? {
                 preset: 'bun',
               }
-          : {
-              preset: 'cloudflare_module',
-              cloudflare: {
-                deployConfig: true,
+            : {
+                preset: 'cloudflare_module',
+                cloudflare: {
+                  deployConfig: true,
+                },
               },
-            },
       ),
       viteReact(),
       tailwindcss(),

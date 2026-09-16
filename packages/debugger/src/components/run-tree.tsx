@@ -106,6 +106,7 @@ export function RunTree({
   selectedThread,
   onSelectThread,
   formatRunLabel = shortId,
+  showHeading = true,
 }: {
   runId: string
   runStatus: string
@@ -115,6 +116,7 @@ export function RunTree({
   selectedThread?: string
   onSelectThread: (threadId: string | undefined) => void
   formatRunLabel?: (runId: string) => string
+  showHeading?: boolean
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const runCount = totalEventCount ?? eventCounts.get('run') ?? 0
@@ -139,9 +141,11 @@ export function RunTree({
 
   return (
     <div>
-      <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
-        Run tree
-      </h2>
+      {showHeading && (
+        <h2 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
+          Run tree
+        </h2>
+      )}
       <button
         type="button"
         onClick={handleSelectRoot}

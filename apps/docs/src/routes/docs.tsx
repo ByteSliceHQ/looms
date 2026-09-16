@@ -2,6 +2,7 @@ import { Outlet, createFileRoute, Link, useRouterState } from '@tanstack/react-r
 import { Menu, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import pages from '../docs-manifest.json'
 import { docsNav, isDocsNavGroup, type DocsNavGroup, type DocsNavLink } from '../nav'
 
 export const Route = createFileRoute('/docs')({
@@ -126,7 +127,7 @@ function DocsNavigation({
             key={item.to}
             item={item}
             pathname={pathname}
-            exact={item.to === '/docs'}
+            exact
             mobile={mobile}
             onNavigate={onNavigate}
           />
@@ -138,6 +139,7 @@ function DocsNavigation({
 
 function DocsLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const currentPage = pages.find((page) => page.path === pathname.replace(/\/$/, ''))
   const [menuOpen, setMenuOpen] = useState(false)
   const menuDialogRef = useRef<HTMLDialogElement>(null)
 
@@ -210,9 +212,29 @@ function DocsLayout() {
       <nav className="sticky top-8 hidden max-h-[calc(100vh-4rem)] flex-col gap-2.5 self-start overflow-y-auto pt-1 md:flex">
         <DocsNavigation pathname={pathname} />
       </nav>
-      <div className="prose max-w-none">
-        <Outlet />
-      </div>
+      <main id="main-content" className="min-w-0">
+        {currentPage && currentPage.sections.length > 2 && (
+          <details className="docs-contents">
+            <summary>On this page</summary>
+            <nav aria-label="On this page">
+              {currentPage.sections
+                .filter((section) => section.level === 2)
+                .map((section) => (
+                  <a key={section.id} href={`#${section.id}`}>
+                    {section.title}
+                  </a>
+                ))}
+            </nav>
+          </details>
+        )}
+        <article className="prose max-w-none">
+          <Outlet />
+        </article>
+        <footer className="docs-footer">
+          <a href="https://github.com/ByteSliceHQ/looms/issues">Report a docs issue</a>
+          <span>0.1 series · Pin your package versions</span>
+        </footer>
+      </main>
     </div>
   )
 }

@@ -1,6 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import { pageHead } from '../page-head'
+
 export const Route = createFileRoute('/docs/prior-art')({
+  head: () => pageHead('/docs/prior-art'),
   component: PriorArt,
 })
 
@@ -14,7 +17,16 @@ function PriorArt() {
         comparison.
       </p>
 
-      <h2>Event sourcing and projections</h2>
+      <h2 id="event-sourcing-and-projections">
+        Event sourcing and projections
+        <a
+          className="heading-anchor"
+          href="#event-sourcing-and-projections"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         <a
           href="https://martinfowler.com/eaaDev/EventSourcing.html"
@@ -28,7 +40,12 @@ function PriorArt() {
         canonical event stream per run for thread state, debugging, and UI projections.
       </p>
 
-      <h2>Flux and Redux</h2>
+      <h2 id="flux-and-redux">
+        Flux and Redux
+        <a className="heading-anchor" href="#flux-and-redux" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         <a
           href="https://facebookarchive.github.io/flux/docs/in-depth-overview/"
@@ -50,7 +67,12 @@ function PriorArt() {
         and thread reducers can return effect instructions for the runtime to execute.
       </p>
 
-      <h2>Actors</h2>
+      <h2 id="actors">
+        Actors
+        <a className="heading-anchor" href="#actors" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Actor systems isolate mutable state and process messages serially. Looms uses that shape at
         the hosting boundary: one actor cell owns each <code>runId</code> and writes its log.
@@ -66,7 +88,12 @@ function PriorArt() {
         actors and custom hosts.
       </p>
 
-      <h2>Durable execution</h2>
+      <h2 id="durable-execution">
+        Durable execution
+        <a className="heading-anchor" href="#durable-execution" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Systems such as{' '}
         <a href="https://temporal.io/" target="_blank" rel="noreferrer">
@@ -85,7 +112,12 @@ function PriorArt() {
         modules that contribute thread kinds and projections.
       </p>
 
-      <h2>React</h2>
+      <h2 id="react">
+        React
+        <a className="heading-anchor" href="#react" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         React made declarative UI and state-derived views common in frontend code. Looms borrows
         that broad approach: application code describes transitions and projections while the

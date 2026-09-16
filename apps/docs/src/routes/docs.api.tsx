@@ -1,481 +1,224 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import runtimeSource from '../../../../packages/runtime/src/looms.ts?raw'
 import { CodeBlock } from '../components/code-block'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/api')({
+  head: () => pageHead('/docs/api'),
   component: Api,
 })
+
+const options = runtimeSource.slice(
+  runtimeSource.indexOf('export interface CreateLoomsOptions'),
+  runtimeSource.indexOf('export interface StartResult'),
+)
+
+const signatures = runtimeSource.slice(
+  runtimeSource.indexOf('export interface StartResult'),
+  runtimeSource.indexOf('interface Initialized'),
+)
 
 function Api() {
   return (
     <>
-      <h1>API / SDK</h1>
+      <h1>API reference</h1>
       <p>
-        Production hosts are <strong>actor cells</strong> — Cloudflare Durable Objects (
-        <code>@looms/cloudflare</code>), celld with the same bundle, or{' '}
-        <code>createLocalActorHost</code> locally. <code>createLooms</code> is the single-process
-        embed API for scripts, tests, and small apps: start a definition, signal events, project
-        read models, optionally serve HTTP.
+        The embed API runs within one process. Actor hosts expose a similar HTTP contract with one
+        writer per run. Signatures below are extracted from the runtime source; the client returns
+        HTTP response envelopes rather than exactly the same shapes as embed methods.
       </p>
-
-      <h2>Actor hosts (recommended)</h2>
-      <p>
-        See <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link> for Durable Objects,
-        celld, Bun SQLite actors, and bring-your-own single-writer hosts. Package entry points:
-      </p>
-      <ul>
-        <li>
-          <code>@looms/cloudflare</code> — <code>LoomsDurableObject</code>,{' '}
-          <code>routeToDurableObject</code>
-        </li>
-        <li>
-          <code>@looms/actor</code> — <code>createLocalActorHost</code>,{' '}
-          <code>createActorCell</code>
-        </li>
-        <li>
-          <code>@looms/core/bun-sqlite</code> — per-run SQLite <code>EventStore</code> for local
-          actors
-        </li>
-      </ul>
-
-      <h2>
-        <code>createLooms</code>
+      <h2 id="create">
+        Create a runtime
+        <a className="heading-anchor" href="#create" aria-label="Link to this section">
+          #
+        </a>
       </h2>
-      <CodeBlock lang="ts">{`import { agent } from '@looms/agent'
-import { vercelLlm } from '@looms/ai-vercel'
-import { approval } from '@looms/approval'
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { withProjectors } from '@looms/projectors'
-import { createLooms } from '@looms/runtime'
-import { s2Projector, s2ConfigFromEnv } from '@looms/s2'
-import { workflow } from '@looms/workflow'
-import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+import { modules, release } from './review-definition'
 
-const llm = vercelLlm({
-  model: createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY }).chat('openai/gpt-4o-mini'),
-})
-
-// Embed path: local SQLite storage with optional stream replication to an S2 lake.
-const store = withProjectors(bunSqliteEventStore({ path: './looms.sqlite' }), [
-  s2Projector(s2ConfigFromEnv(process.env)),
-])
-
-const looms = createLooms({
-  modules: [
-    agent({ definitions: [echo, assistant], llm }),
-    workflow({ definitions: [checkout] }),
-    approval(),
-    payments,
-  ],
-  store,
-  serve: { port: 8787 },
-})`}</CodeBlock>
-      <table>
-        <thead>
-          <tr>
-            <th>Option</th>
-            <th>Default</th>
-            <th>Purpose</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <code>modules</code>
-            </td>
-            <td>
-              <code>[]</code>
-            </td>
-            <td>
-              Configured modules, including their definitions. Pass{' '}
-              <code>{'agent({ definitions: [echo], llm })'}</code>,{' '}
-              <code>{'workflow({ definitions: [checkout] })'}</code>, <code>approval()</code>,
-              and/or your own — nothing is included unless you pass it
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>store</code>
-            </td>
-            <td>in-memory</td>
-            <td>
-              Execution <code>EventStore</code>. Use in-memory for tests or local SQLite for
-              single-process persistence. For multi-run production durability, deploy virtual actor
-              cells (Cloudflare Durable Objects).
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>snapshotEvery</code>
-            </td>
-            <td>
-              <code>200</code>
-            </td>
-            <td>
-              Durable events between mid-wake snapshots (<code>0</code> disables). Parking always
-              snapshots.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>serve</code>
-            </td>
-            <td>off</td>
-            <td>Start the HTTP host immediately</td>
-          </tr>
-        </tbody>
-      </table>
+const looms = createLooms({ modules })
+try {
+  const { runId, state } = await looms.start(release, { topic: 'Launch' })
+  console.log(runId, state.status)
+} finally {
+  await looms.stop()
+}`}</CodeBlock>
       <p>
-        The LLM adapter lives on the agent module (<code>{'agent({ llm })'}</code>), not on the host
-        — the host does not know what an agent is. Without one, agents run on a deterministic stub.
+        This uses the quickstart definition and an in-memory store. Pass a persistent store before
+        relying on restart recovery. Nothing is installed by default: modules defaults to an empty
+        list, store to memory, and serve to off.
       </p>
-      <p>Common methods:</p>
-      <ul>
-        <li>
-          <code>start(definition, input)</code> — start any definition; the input type follows its
-          schema. <code>startRun({'{ kind, definitionName, input }'})</code> when you only have
-          names.
-        </li>
-        <li>
-          <code>signal(runId, events)</code> — post events into a run. Modules ship builders:{' '}
-          <code>userMessage()</code> from <code>@looms/agent</code>, <code>decision()</code> from{' '}
-          <code>@looms/approval</code>.
-        </li>
-        <li>
-          <code>getRun</code>, <code>getEvents</code>, <code>wake</code>
-        </li>
-        <li>
-          <code>project(runId, conversation)</code> — fold a named read model
-        </li>
-        <li>
-          <code>replayTo(runId, seq)</code> — state before and after an event
-        </li>
-        <li>
-          <code>fetch(request)</code> — handle <code>/runs</code> and <code>/api/events</code>;
-          returns <code>null</code> for other paths so you can mount Looms next to your own UI
-        </li>
-        <li>
-          <code>serve()</code> / <code>stop()</code>
-        </li>
-      </ul>
-
-      <h2>Packages</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Package</th>
-            <th>Import when you need</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <code>@looms/runtime</code>
-            </td>
-            <td>
-              <code>createLooms</code>, HTTP embed host
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/cloudflare</code>
-            </td>
-            <td>
-              <code>LoomsDurableObject</code>, <code>routeToDurableObject</code> — recommended
-              production host
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/actor</code>
-            </td>
-            <td>
-              <code>createLocalActorHost</code>, <code>createActorCell</code>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/agent</code>
-            </td>
-            <td>
-              <code>{'agent({ llm })'}</code>, <code>defineAgent</code>, <code>defineTool</code>,{' '}
-              <code>conversation</code>, <code>userMessage</code>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/workflow</code>
-            </td>
-            <td>
-              <code>defineWorkflow</code>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/approval</code>
-            </td>
-            <td>
-              <code>gate</code>, <code>decision</code>, <code>pendingApprovals</code>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/core</code>
-            </td>
-            <td>
-              <code>defineModule</code>, <code>defineEventCatalog</code>, <code>defineEffect</code>,{' '}
-              <code>invoke</code>, <code>wait</code>, <code>defineThread</code>,{' '}
-              <code>defineProjection</code>, <code>defineRuntimeModule</code>;{' '}
-              <code>@looms/core/bun-sqlite</code> for local execution stores
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/client</code>
-            </td>
-            <td>Typed HTTP client from a browser or another service</td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/react</code>
-            </td>
-            <td>
-              <code>useRunStore</code>, <code>useProjection</code>, <code>useRunEvents</code>,{' '}
-              <code>useRunSummary</code>, <code>useThreadTree</code>, <code>useEventCounts</code>,{' '}
-              <code>useRunSelector</code>, <code>useEventFold</code>, <code>LoomsRegister</code>{' '}
-              (typed event catalogs; see <Link to="/docs/concepts/type-safety">Type safety</Link>)
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/s2</code>
-            </td>
-            <td>
-              <code>s2Projector</code> — replicates committed events to a global S2 stream lake for
-              centralized auditing and analytics. See{' '}
-              <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/ai-vercel</code>
-            </td>
-            <td>Vercel AI SDK models</td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/projectors</code>
-            </td>
-            <td>
-              Cross-run indexes and fan-out. See <Link to="/docs/projectors">Projectors</Link>.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/testing</code>
-            </td>
-            <td>
-              <code>createTestRuntime</code>, replay checks
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>@looms/cli</code>
-            </td>
-            <td>Inspect and approve runs from a terminal</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>
-        Core Module SDK (<code>@looms/core</code>)
+      <CodeBlock lang="ts" code={options} />
+      <p>
+        snapshotEvery defaults to 200 durable events; zero disables mid-wake snapshots, while
+        parking still snapshots. runCacheSize defaults to zero. maxWakeIterations defaults to 100
+        and bounds a wake cycle, not application cost. The default scheduler uses process-local
+        timers. trimAfterSnapshot is opt-in and can remove historical replay data.
+      </p>
+      <h2 id="methods">
+        Embed methods and return types
+        <a className="heading-anchor" href="#methods" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <CodeBlock lang="ts" code={signatures} />
+      <h3 id="start">
+        start and startRun
+        <a className="heading-anchor" href="#start" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        start infers input from a definition; startRun accepts registered names. Both run a wake
+        cycle and resolve with runId, threadId, and state. Resolution is not a promise that all
+        business work is complete: a gate or child may still be pending. They reject on invalid
+        input, missing definitions, storage failures, or execution limits.
+      </p>
+      <p>
+        Use a stable runId and idempotencyKey when retrying creation of the same logical run.
+        Generating a new runId on every retry creates a different run. Register all definitions
+        before starting or spawning them.
+      </p>
+      <h3 id="signal">
+        signal, wake, and cancel
+        <a className="heading-anchor" href="#signal" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        signal validates and appends inputs, then wakes execution and returns state. Its optional
+        idempotencyKey identifies retries of the same request within a run. wake processes pending
+        work without inventing a new domain signal. cancel records cancellation for a run or thread;
+        it cannot undo an external action.
+      </p>
+      <h3 id="read">
+        Read and inspect
+        <a className="heading-anchor" href="#read" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        getRun returns folded RunState. getEvents returns recorded envelopes ordered by sequence,
+        with optional fromSeq and limit. project folds a projection and returns its state. replayTo
+        returns before/after state at a sequence, or null when no matching step is available; it
+        does not execute effects.
+      </p>
+      <p>
+        ready initializes storage and modules. rescanTimers re-registers persisted timers on the
+        configured scheduler. fetch returns a Response or null for unhandled paths. serve starts the
+        Bun HTTP server. stop disposes the runtime scheduler and any server it started; it is not an
+        application-level cancellation or a database backup.
+      </p>
+      <h2 id="http">
+        HTTP contract
+        <a className="heading-anchor" href="#http" aria-label="Link to this section">
+          #
+        </a>
       </h2>
       <p>
-        Building blocks for authoring strongly typed runtime modules. See{' '}
-        <Link to="/docs/modules">Modules</Link> for comprehensive guides.
+        Put authentication and authorization ahead of every route, including event streams. JSON
+        requests use content-type: application/json.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>API</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <code>defineModule(options, setup)</code>
-            </td>
-            <td>
-              Return a finished module from a typed setup callback. Accepts inline event schemas or
-              a catalog; returned effects, threads, projections, and definitions are installed.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>defineEventCatalog(namespace, entries)</code>
-            </td>
-            <td>
-              Declare a namespaced event catalog backed by schemas (Zod, Effect Schema) or{' '}
-              <code>payload&lt;T&gt;()</code> markers.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>scope.effect(def)</code> / <code>defineEffect(def)</code>
-            </td>
-            <td>
-              Define a host-side effect handler with input validation, idempotency key (
-              <code>ctx.effectId</code>), retry policies, and typed returns/emit.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>invoke(effectDef, input, tag?)</code>
-            </td>
-            <td>
-              Request an effect invocation from a reducer or workflow. Statically verifies input
-              against the effect&apos;s schema.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>scope.thread(def)</code> / <code>defineThread(def)</code>
-            </td>
-            <td>
-              Define a state machine thread kind. Narrow events and infer state across the module
-              event universe.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>scope.projection(def)</code> / <code>defineProjection(def)</code>
-            </td>
-            <td>
-              Define a derived read model folded from the event stream. Narrow events automatically
-              without manual type casting.
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <code>scope.input(key, payload)</code> / <code>scope.emit(key, payload)</code>
-            </td>
-            <td>
-              Construct typed <code>EventInput</code> or <code>EmitEffect</code> instances matching
-              catalog keys and payload schemas.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>HTTP</h2>
+      <CodeBlock lang="text">{`GET  /health                         → { ok: true }
+POST /runs                           → { runId, threadId, state }
+GET  /runs                           → { runIds } (embed only)
+GET  /runs/:id                       → { runId, state }
+GET  /runs/:id/events                → { runId, events }
+POST /runs/:id/events                → { runId, state }
+GET  /runs/:id/threads               → { runId, threads }
+POST /runs/:id/wake                  → { runId, state }
+GET  /runs/:id/replay?seq=10          → { runId, step }
+GET  /runs/:id/projections/:name      → { runId, name, value }
+GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
       <p>
-        Point <code>createLoomsClient</code> or curl at a host. JSON in, JSON out. Actor / DO hosts
-        return <code>501</code> for global <code>GET /runs</code> (cells are isolated per{' '}
-        <code>runId</code>).
+        POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
+        POST /runs/:id/events accepts an events array and optionally idempotencyKey. The embed
+        handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and
+        limit; SSE uses cursor and Last-Event-ID for catch-up.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Method</th>
-            <th>Path</th>
-            <th>Purpose</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/health</code>
-            </td>
-            <td>Liveness</td>
-          </tr>
-          <tr>
-            <td>POST</td>
-            <td>
-              <code>/runs</code>
-            </td>
-            <td>
-              Start a run: <code>{'{ kind, definitionName, input }'}</code>
-            </td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs</code>
-            </td>
-            <td>
-              List run ids on shared-store <code>createLooms</code> hosts; <code>501</code> on actor
-              / DO / celld hosts
-            </td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs/:id</code>
-            </td>
-            <td>Current run state</td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs/:id/events</code>
-            </td>
-            <td>
-              Event log. <code>?fromSeq=</code> for catch-up
-            </td>
-          </tr>
-          <tr>
-            <td>POST</td>
-            <td>
-              <code>/runs/:id/events</code>
-            </td>
-            <td>Signal the run (user message, approval, …)</td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs/:id/threads</code>
-            </td>
-            <td>Child threads in the run</td>
-          </tr>
-          <tr>
-            <td>POST</td>
-            <td>
-              <code>/runs/:id/wake</code>
-            </td>
-            <td>Resume processing (timers, outstanding work)</td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs/:id/replay?seq=</code>
-            </td>
-            <td>State before and after that event</td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/runs/:id/projections/:name</code>
-            </td>
-            <td>
-              Named projection (<code>conversation</code>, <code>ledger</code>, …)
-            </td>
-          </tr>
-          <tr>
-            <td>GET</td>
-            <td>
-              <code>/api/events</code>
-            </td>
-            <td>
-              Event pull (<code>?runId=&cursor=</code>) or SSE (<code>live=true</code> /{' '}
-              <code>Accept: text/event-stream</code>)
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <CodeBlock lang="bash">{`curl -X POST http://localhost:8787/runs \\
+  -H 'content-type: application/json' \\
+  -d '{"kind":"workflow","definitionName":"release-v1","input":{"topic":"Launch"}}'`}</CodeBlock>
       <p>
-        Client helpers: <Link to="/docs/examples">Examples</Link>.
+        Actor hosts return 501 for global GET /runs; use an application registry or shared index.
+        The embed handler maps InvalidInputError and InvalidEventError to 400, unknown projections
+        to 404, and other caught execution failures to 500. Routing behavior differs by host;
+        inspect status and body. Client request helpers reject non-success responses. Cancellation
+        is currently an embed runtime method, not a client HTTP endpoint.
+      </p>
+      <h2 id="client">
+        Client and streaming
+        <a className="heading-anchor" href="#client" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        createLoomsClient accepts baseUrl and an optional fetch implementation. getRun and signal
+        resolve to objects containing state; getEvents resolves to an object containing events.
+        subscribeEvents returns an unsubscribe function and reconnects using its last cursor.
+        stream(definition, input) or streamRun(args) returns an async iterable with a runId for
+        events during the initial wake cycle. A stream ending does not mean a parked workflow has
+        finished.
+      </p>
+      <p>
+        The current client start/signal helpers do not expose every embed idempotency option. For
+        retry-sensitive requests, use an application endpoint or explicit HTTP bodies/headers with
+        stable operation identifiers. See <Link to="/docs/integration">integration</Link>.
+      </p>
+      <h2 id="packages">
+        Packages and extension APIs
+        <a className="heading-anchor" href="#packages" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <ul>
+        <li>
+          <code>@looms/core</code>: defineModule, defineEventCatalog, defineThread, defineEffect,
+          defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite entry supplies
+          Bun storage.
+        </li>
+        <li>
+          <code>@looms/runtime</code>: createLooms and lower-level runtime APIs.
+        </li>
+        <li>
+          <code>@looms/agent</code>: agent, defineAgent, defineTool, asThreadTool, asAgentTool,
+          asWorkflowTool, conversation, userMessage.
+        </li>
+        <li>
+          <code>@looms/workflow</code>: workflow and defineWorkflow.
+        </li>
+        <li>
+          <code>@looms/approval</code>: approval, gate, decision, pendingApprovals.
+        </li>
+        <li>
+          <code>@looms/actor</code>: createActorCell and createLocalActorHost.
+        </li>
+        <li>
+          <code>@looms/cloudflare</code>: LoomsDurableObject and routeToDurableObject.
+        </li>
+        <li>
+          <code>@looms/client</code> and <code>@looms/react</code>: HTTP clients, streams,
+          providers, and projection hooks.
+        </li>
+        <li>
+          <code>@looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
+        </li>
+        <li>
+          <code>@looms/projectors</code>: post-commit indexes and fan-out. <code>@looms/s2</code>:
+          stream replication.
+        </li>
+        <li>
+          <code>@looms/testing</code>: deterministic in-memory helpers and conformance checks.
+        </li>
+        <li>
+          <code>@looms/cli</code> and <code>@looms/debugger</code>: inspection tools.
+        </li>
+      </ul>
+      <p>
+        For module authoring, see <Link to="/docs/modules">custom modules</Link>. For agent options
+        and tools, see <Link to="/docs/agents">agents</Link>. Package type declarations remain the
+        exhaustive reference for lower-level interfaces.
       </p>
     </>
   )

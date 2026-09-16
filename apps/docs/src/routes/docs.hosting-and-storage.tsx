@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import workerSource from '../../../../examples/cloudflare/worker.ts?raw'
+import workerConfig from '../../../../examples/cloudflare/wrangler.jsonc?raw'
 import { CodeBlock } from '../components/code-block'
-import { FlowChain } from '../components/flow-chain'
-import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/hosting-and-storage')({
+  head: () => pageHead('/docs/hosting-and-storage'),
   component: HostingAndStorage,
 })
 
@@ -13,305 +15,158 @@ function HostingAndStorage() {
     <>
       <h1>Hosting &amp; storage</h1>
       <p>
-        Production runs execute in a <strong>single-writer actor cell</strong> per{' '}
-        <code>runId</code>: local SQLite for the log, alarms for durable waits, snapshots to bound
-        memory. Waits, wake, and replay are covered in{' '}
-        <Link to="/docs/concepts/waits-and-replay">Waits &amp; replay</Link>; this page is how you
-        host them.
+        Choose storage that survives your host, keep one writer per run, and arrange how parked work
+        wakes. Cloudflare Durable Objects supply per-run SQLite and durable alarms. Local Bun hosts
+        are useful for development and services where you operate those responsibilities.
       </p>
-
-      <ConceptFigure name="log" />
-
-      <FlowChain
-        steps={[
-          'Incoming Request',
-          'Route by runId',
-          'Actor Cell',
-          'Local SQLite Log',
-          'Wake & Reduce',
-        ]}
-      />
-
+      <h2 id="cloudflare">
+        Run the quickstart on Cloudflare
+        <a className="heading-anchor" href="#cloudflare" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        Because only one writer ever processes a run, Looms avoids distributed locking, heartbeats,
-        and consensus leases inside the execution loop. If a worker crashes or deploys, the next
-        request routes to a fresh cell, recovers state by loading <code>snapshot + delta</code>, and
-        continues from that recovered state.
+        Start with <code>review-definition.ts</code> from the{' '}
+        <Link to="/docs/quickstart">quickstart</Link>. The same agent, workflow, and approval
+        modules run inside a Durable Object. This example uses deterministic tools and simulated
+        publication, so it requires no model API key.
       </p>
-
-      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
-        <strong>Recommended for production:</strong> Cloudflare Durable Objects via{' '}
-        <code>@looms/cloudflare</code>. Each run lives in a dedicated Durable Object with private
-        embedded SQLite (<code>ctx.storage.sql</code>) and native timer alarms (
-        <code>ctx.storage.setAlarm</code>).
-      </div>
-
-      <h2>Deployment Targets</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Target</th>
-            <th>Package</th>
-            <th>Durability Model</th>
-            <th>Best For</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <strong>Cloudflare Durable Objects</strong>
-            </td>
-            <td>
-              <code>@looms/cloudflare</code>
-            </td>
-            <td>
-              Per-run SQLite via <code>ctx.storage.sql</code> + durable alarms
-            </td>
-            <td>Production serverless and edge deployments (recommended)</td>
-          </tr>
-          <tr>
-            <td>
-              <strong>celld</strong>
-            </td>
-            <td>
-              Same DO bundle + <code>denoland/celld</code>
-            </td>
-            <td>Per-run SQLite with S3-compatible bucket replication</td>
-            <td>Self-hosted virtual actors without Cloudflare infrastructure</td>
-          </tr>
-          <tr>
-            <td>
-              <strong>Local Bun Actors</strong>
-            </td>
-            <td>
-              <code>@looms/actor</code> + <code>@looms/core/bun-sqlite</code>
-            </td>
-            <td>
-              Per-run SQLite files (e.g. <code>.looms/runs/&lt;id&gt;.sqlite</code>)
-            </td>
-            <td>Local development and standalone server apps</td>
-          </tr>
-          <tr>
-            <td>
-              <strong>In-Memory Embed</strong>
-            </td>
-            <td>
-              <code>@looms/runtime</code> (<code>createLooms</code>)
-            </td>
-            <td>Shared in-memory event store</td>
-            <td>Unit tests, CLI scripts, and ephemeral simulations</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>Cloudflare Durable Objects (Recommended)</h2>
+      <CodeBlock lang="bash">{`npm install @looms/cloudflare @looms/agent @looms/workflow @looms/approval zod
+npm install --save-dev wrangler typescript @types/bun
+mkdir cloudflare`}</CodeBlock>
       <p>
-        Cloudflare Durable Objects fit Looms runs well: strongly consistent, globally routable by
-        name, migrate during infrastructure maintenance, and scale to zero idle cost when a run
-        parks.
+        Save this as <code>cloudflare/worker.ts</code>. The environment type is generated from the
+        configuration below.
       </p>
+      <CodeBlock lang="ts" code={workerSource} />
       <p>
-        To run on Cloudflare, subclass <code>LoomsDurableObject</code> from{' '}
-        <code>@looms/cloudflare</code>, configure your modules and definitions, and route incoming
-        requests using <code>routeToDurableObject</code>:
+        Save this as <code>cloudflare/wrangler.jsonc</code>. The migration creates SQLite-backed
+        objects. Keep migration history when changing an existing deployment; do not replace it with
+        a new initial migration.
       </p>
-      <CodeBlock lang="ts">{`import {
-  LoomsDurableObject,
-  routeToDurableObject,
-  type LoomsDurableObjectConfig,
-} from '@looms/cloudflare'
-import { definitions } from './definitions'
-import { modules } from './modules'
+      <CodeBlock lang="jsonc" code={workerConfig} />
+      <p>
+        The Worker has no public route, workers.dev address, or preview URL. Deploy it as a private
+        service and call it from your application Worker after authentication and per-run
+        authorization. Disabling public URLs does not implement tenant authorization inside your
+        application.
+      </p>
+      <CodeBlock lang="bash">{`npx wrangler types --config cloudflare/wrangler.jsonc cloudflare/worker-configuration.d.ts
+npx wrangler dev --config cloudflare/wrangler.jsonc --port 8791`}</CodeBlock>
+      <p>
+        Wrangler serves the API locally and persists development storage under{' '}
+        <code>.wrangler</code>. In another terminal, create a run and keep the returned runId:
+      </p>
+      <CodeBlock lang="bash">{`curl -X POST http://localhost:8791/runs \\
+  -H 'content-type: application/json' \\
+  -d '{"kind":"workflow","definitionName":"release-v1","input":{"topic":"Launch"}}'
 
-export interface Env {
-  readonly LOOMS_RUN: DurableObjectNamespace<LoomsRun>
-}
-
-export class LoomsRun extends LoomsDurableObject<Env> {
-  override configure(env: Env): LoomsDurableObjectConfig {
-    return {
-      modules: modules(env),
-      definitions,
-      // Optional: attach projectors for cross-run databases or lakes
-      // projectors: [s2Projector(s2ConfigFromEnv(env))],
-    }
-  }
-}
-
-export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    const res = await routeToDurableObject(env.LOOMS_RUN, req)
-    return res ?? new Response('Not Found', { status: 404 })
-  },
+curl http://localhost:8791/runs/RUN_ID/projections/pendingApprovals`}</CodeBlock>
+      <p>
+        Stop Wrangler, start it again with the same configuration, and read that pending approval
+        again. Replace RUN_ID with the returned identifier. Inspect the events or send an approval
+        decision through the <Link to="/docs/api">HTTP API</Link>; the{' '}
+        <Link to="/docs/integration">client guide</Link> covers application integration.
+      </p>
+      <h2 id="deploy">
+        Deploy a private execution service
+        <a className="heading-anchor" href="#deploy" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Choose a unique Worker name, validate the bundle, and deploy to your Cloudflare account.
+        This provisions Durable Object storage. Use a separate Worker name and namespace for
+        staging.
+      </p>
+      <CodeBlock lang="bash">{`npx wrangler deploy --dry-run --config cloudflare/wrangler.jsonc
+npx wrangler login
+npx wrangler deploy --config cloudflare/wrangler.jsonc`}</CodeBlock>
+      <p>Add a service binding in your calling application's Wrangler configuration:</p>
+      <CodeBlock lang="jsonc">{`{
+  "services": [{ "binding": "EXECUTION", "service": "looms-review" }]
 }`}</CodeBlock>
-
-      <h3>How Durable Objects execute runs</h3>
-      <ul>
-        <li>
-          <strong>Isolated SQLite databases:</strong> Each run gets a dedicated SQLite database
-          managed by <code>ctx.storage.sql</code>. Appends execute in single-digit milliseconds with
-          strict serializability.
-        </li>
-        <li>
-          <strong>Native alarm scheduling:</strong> When an agent or workflow waits on a timer (
-          <code>ctx.effects.wait({'{ timer }'})</code>), the cell schedules a Durable Object alarm
-          via <code>ctx.storage.setAlarm</code>. The run unloads from memory until the alarm fires.
-        </li>
-        <li>
-          <strong>Live event streaming:</strong> Real-time UI subscriptions (SSE via{' '}
-          <code>/api/events</code>) connect directly to the Durable Object owning that run. Events
-          push over SSE; there is no poll loop.
-        </li>
-      </ul>
-
       <p>
-        Try the full Cloudflare setup in <code>apps/demo-worker</code>:
+        After validating the current user's permission for the operation and run, forward a Request
+        through <code>env.EXECUTION.fetch(request)</code>. Use the Looms route path, such as{' '}
+        <code>/runs/:id/events</code>, even if your application exposes it at a different prefix.
+        Apply the same checks to SSE and read endpoints.
       </p>
-      <CodeBlock lang="bash">{`bun run dev:cloudflare
-# Starts the TanStack demo UI on :8787 and proxies runs to the DO worker on :8788`}</CodeBlock>
-
-      <h2>Self-Hosting with celld</h2>
       <p>
-        If your organization runs on private cloud infrastructure (AWS, GCP, bare metal) but wants
-        the same virtual-actor ergonomics, you can run the exact same worker bundle on{' '}
-        <a href="https://github.com/denoland/celld" target="_blank" rel="noreferrer">
-          celld
+        For a real model, configure the provider adapter in the Worker and store credentials with{' '}
+        <code>npx wrangler secret put OPENROUTER_API_KEY --config cloudflare/wrangler.jsonc</code>.
+        Add local credentials to an ignored <code>cloudflare/.dev.vars</code>. Never place provider
+        keys in browser code. See <Link to="/docs/agents">model integration</Link> and Cloudflare's{' '}
+        <a href="https://developers.cloudflare.com/durable-objects/get-started/">
+          Durable Objects guide
         </a>
         .
       </p>
+      <h2 id="bun">
+        Host within a Bun application
+        <a className="heading-anchor" href="#bun" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        <code>celld</code> is a self-hosted virtual actor server that implements the Workers and
-        Durable Objects runtime while replicating SQLite state to S3-compatible object storage.
-        Because <code>LoomsDurableObject</code> targets the standard Durable Objects API, zero code
-        changes are required:
+        For a local HTTP host, install <code>@looms/actor</code> and <code>@looms/core</code>, then
+        use the quickstart's modules. This complete server binds to localhost:
       </p>
-      <CodeBlock lang="bash">{`# Develop locally with celld:
-celld dev .
-
-# Deploy to your Kubernetes cluster or VMs with S3 backup:
-celld deploy . --bucket $CELLD_BUCKET`}</CodeBlock>
-
-      <h2>Local Development with Bun Actor Hosts</h2>
-      <p>
-        When developing locally or running inside a traditional Node/Bun backend, use{' '}
-        <code>createLocalActorHost</code> from <code>@looms/actor</code>. It provides the same
-        per-run isolation by creating a dedicated SQLite file for every <code>runId</code>:
-      </p>
-      <CodeBlock lang="ts">{`import { createLocalActorHost } from '@looms/actor'
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
+      <CodeBlock lang="ts">{`import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { definitions } from './definitions'
-import { modules } from './modules'
+import { createLocalActorHost } from '@looms/actor'
+import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
+import { modules } from './review-definition'
 
 const runsDir = join(process.cwd(), '.looms', 'runs')
-
-export const host = createLocalActorHost({
-  createStore: async (runId) => {
-    return bunSqliteEventStore({
-      path: join(runsDir, \`\${runId}.sqlite\`),
-    })
-  },
+await mkdir(runsDir, { recursive: true })
+const host = createLocalActorHost({
   modules,
-  definitions,
+  createStore: async (runId) => bunSqliteEventStore({
+    path: join(runsDir, encodeURIComponent(runId) + '.sqlite'),
+  }),
 })
-
-export default {
-  fetch: (req: Request) => host.fetch(req),
-}`}</CodeBlock>
+Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(request) })`}</CodeBlock>
       <p>
-        The local host automatically scans stored runs for pending timers on startup, so interrupted
-        waits resume cleanly across process restarts.
+        Keep the database directory on persistent storage and run one host for those files. The
+        local host rescans timers when a run cell opens; it does not discover every database on
+        startup. Maintain a run index and reopen runs at boot for unattended timer recovery. Durable
+        Objects provide host-managed alarms.
       </p>
-
-      <h2>Custom Runtimes: Bring Your Own Host</h2>
+      <h2 id="recovery">
+        Snapshots, recovery, and retention
+        <a className="heading-anchor" href="#recovery" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        You can embed Looms into existing infrastructure (Kubernetes StatefulSets, Nomad, hash-ring
-        clusters, or custom server frameworks). Any host architecture works as long as it upholds
-        one invariant:{' '}
-        <strong>
-          exactly one process drives a given <code>runId</code> at a time
-        </strong>
-        .
-      </p>
-      <p>
-        The primitive is <code>createActorCell</code> from <code>@looms/actor</code>:
-      </p>
-      <CodeBlock lang="ts">{`import { createActorCell } from '@looms/actor'
-import { sqliteEventStore } from '@looms/core'
-
-// 1. Resolve or allocate an EventStore for this run
-const store = sqliteEventStore({ exec: myDatabaseConnection })
-
-// 2. Instantiate the isolated cell
-const cell = createActorCell({
-  runId: 'run_94819',
-  store,
-  modules: [agent({ llm }), workflow({ definitions: [checkoutWorkflow] }), approval()],
-})
-
-// 3. Dispatch HTTP or internal requests directly to the cell
-const response = await cell.fetch(incomingRequest)`}</CodeBlock>
-      <p>
-        Both <code>LoomsDurableObject</code> and <code>createLocalActorHost</code> are lightweight
-        routers built on top of <code>createActorCell</code>.
-      </p>
-
-      <h2>Cold Starts &amp; Snapshots</h2>
-      <p>
-        Because a run may accumulate thousands of events across prolonged conversations or complex
-        DAGs, Looms uses an efficient <strong>snapshot + delta</strong> recovery strategy:
-      </p>
-      <CodeBlock lang="text">{`Recovery:
-  Latest Snapshot (seq: 400)
-             +
-  Delta Events [401, 402, 403]
-             ↓
-  Reconstructed State at seq: 403 in <1ms`}</CodeBlock>
-      <ul>
-        <li>
-          <strong>Automatic snapshot on park:</strong> Whenever a run finishes a wake cycle and
-          parks (waiting on a human decision, timer, or external webhook), Looms writes a snapshot
-          at the log tail. The next activation only folds events that landed since that snapshot.
-        </li>
-        <li>
-          <strong>Mid-wake checkpoints:</strong> For long-running turns, <code>snapshotEvery</code>{' '}
-          (default 200 events) takes snapshots mid-wake to bound recovery time in case of worker
-          termination.
-        </li>
-        <li>
-          <strong>Log retention:</strong> By configuring <code>trimAfterSnapshot</code>, older
-          events and obsolete snapshots can be automatically pruned to conserve local storage.
-        </li>
-      </ul>
-
-      <h2>Replicating Events to Data Lakes (S2)</h2>
-      <p>
-        While actor cells own local event storage for fast execution, you often want a centralized
-        stream of all events across all runs for auditing, business intelligence, or compliance.
+        Actor cells recover from a snapshot plus subsequent events. A parked wake cycle writes a
+        snapshot; snapshotEvery defaults to 200 durable events for checkpoints during a wake.
+        Recovery time depends on history size, reducers, and host conditions.
       </p>
       <p>
-        Use <code>s2Projector</code> from <code>@looms/s2</code> to replicate committed events to a
-        global S2 stream lake without coupling your runtime to external network latencies:
+        trimAfterSnapshot can prune events needed by historical replay and rebuilding projections.
+        Establish retention and backup requirements first. Post-commit projectors can build
+        cross-run indexes and archives, but downstream failures require their own monitoring and
+        recovery policy. See <Link to="/docs/operations">operations</Link> and{' '}
+        <Link to="/docs/reliability">reliability</Link>.
       </p>
-      <CodeBlock lang="ts">{`import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { withProjectors } from '@looms/projectors'
-import { s2Projector, s2ConfigFromEnv } from '@looms/s2'
-
-// Execution appends to local SQLite; committed events stream asynchronously to S2
-const store = withProjectors(
-  bunSqliteEventStore({ path: './runs/order_123.sqlite' }),
-  [s2Projector(s2ConfigFromEnv(process.env))],
-)`}</CodeBlock>
+      <h2 id="other-hosts">
+        Other hosts
+        <a className="heading-anchor" href="#other-hosts" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        Projectors run after events commit locally. If downstream lake ingestion hits a temporary
-        network hiccup, execution continues and local durability is unchanged.
+        createLooms defaults to an in-memory store; the quickstart configures SQLite explicitly. For
+        another actor platform, use createActorCell and supply storage and wake scheduling while
+        preserving one writer per run. Compatibility with self-hosted Workers runtimes such as celld
+        needs validation against a specific version; this guide does not provide a verified celld
+        deployment.
       </p>
-
-      <h2>Next steps</h2>
       <p>
-        Author capabilities in <Link to="/docs/modules">Modules</Link>, fold events into UI in{' '}
-        <Link to="/docs/projectors">Projections</Link>, or spin up with the{' '}
-        <Link to="/docs/quickstart">Quickstart</Link>.
+        Parking does not imply zero hosting cost. Account for stored events, requests, alarms, and
+        connected clients when estimating capacity.
       </p>
     </>
   )

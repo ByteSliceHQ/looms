@@ -6,23 +6,26 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "bun run build:worker && bun run build:prerender && bun scripts/merge-prerender-output.ts",
+    "dev": "bun run index-docs && vite dev",
+    "build": "bun run index-docs && bun run build:worker && bun run build:prerender && bun scripts/merge-prerender-output.ts",
     "build:worker": "bun --bun vite build",
     "build:prerender": "bun --bun vite build --mode prerender",
     "preview": "wrangler dev --config .output/server/wrangler.json",
     "deploy": "bun run build && wrangler deploy --config .output/server/wrangler.json",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
     "test": "bun test src",
-    "illustrations:export": "bun scripts/export-illustrations.tsx"
+    "illustrations:export": "bun scripts/export-illustrations.tsx",
+    "index-docs": "bun scripts/index-docs.ts"
   },
   "dependencies": {
     "@looms/core": "workspace:*",
     "@looms/debugger": "workspace:*",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",
+    "cmdk": "^1.1.1",
     "katex": "^0.18.7",
     "lucide-react": "^1.43.0",
+    "radix-ui": "^1.6.7",
     "react": "19",
     "react-dom": "19",
     "shiki": "^4.4.3"

@@ -1,170 +1,75 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import approvalExample from '../../../../examples/approval.ts?raw'
+import customThread from '../../../../examples/custom-thread.ts?raw'
+import workflowExample from '../../../../examples/workflow.ts?raw'
 import { CodeBlock } from '../components/code-block'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/examples')({
+  head: () => pageHead('/docs/examples'),
   component: Examples,
 })
 
 function Examples() {
   return (
     <>
-      <h1>Examples</h1>
+      <h1>Runnable examples</h1>
       <p>
-        Practical patterns for common application architectures: delegating tools to sub-agents,
-        orchestrating DAG workflows with human review gates, subscribing to reactive projections in
-        React, and interacting over HTTP or the CLI.
+        These complete files are imported directly from the examples package, where they are
+        typechecked. Copy a file into your project and run it with Bun. Each example here uses
+        memory and deterministic behavior, so it needs no provider key. For persistence across
+        processes, start with the quickstart.
       </p>
+      <CodeBlock lang="bash">{`npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod
+# Save one of the files below, then:
+bun approval.ts`}</CodeBlock>
+      <h2 id="approval">
+        Approve or reject
+        <a className="heading-anchor" href="#approval" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        Prefer the small scripts in the repo <code>examples/</code> folder when you want a minimal{' '}
-        <code>createLooms</code> host (<code>bun run examples</code>). The demo app combines these
-        patterns into a complete system — run it with Bun actors (<code>bun run demo</code>) or
-        deploy it to Cloudflare Durable Objects (<code>bun run dev:cloudflare</code>).
+        The workflow checks the gate result before marking the change shipped. Change the decision
+        to reject and expect shipped: false. A gate alone does not enforce that branch.
       </p>
-
-      <h2>Agent with tools</h2>
-      <CodeBlock lang="ts">{`import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
-import { gate } from '@looms/approval'
-import { z } from 'zod'
-
-const greet = defineTool({
-  name: 'greet',
-  description: 'Return a greeting',
-  input: z.object({ name: z.string() }),
-  handler: ({ name }) => ({ greeting: \`Hello, \${name}!\` }),
-})
-
-const specialist = defineAgent({
-  name: 'specialist',
-  instructions: 'Do a short task and return the result.',
-  input: z.object({ task: z.string() }),
-})
-
-const askApproval = asEffectsTool({
-  name: 'ask_approval',
-  description: 'Ask a human to approve or reject',
-  effects: (input) =>
-    gate({ title: typeof input.title === 'string' ? input.title : 'Approve?' }),
-  waitOn: { type: 'approval.decided' },
-})
-
-export const assistant = defineAgent({
-  name: 'assistant',
-  conversational: true,
-  instructions: 'Greet people, delegate work, or ask for approval.',
-  input: z.string(),
-  tools: [greet, asAgentTool({ agent: specialist }), askApproval, checkout],
-})`}</CodeBlock>
+      <CodeBlock lang="ts" code={approvalExample} />
+      <h2 id="workflow">
+        Workflow with a child agent
+        <a className="heading-anchor" href="#workflow" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        A tool can be a function, another agent, a workflow, or a human gate. The parent run waits
-        until the child or approval finishes.
+        Save as workflow.ts. A node doubles the input, another spawns an agent, and a final node
+        combines the results. Both root and child definitions are registered.
       </p>
-
-      <h2>Workflow with approval and a domain module</h2>
-      <CodeBlock lang="ts">{`import { gate } from '@looms/approval'
-import { createWaitId, invoke, wait } from '@looms/core'
-import { defineWorkflow } from '@looms/workflow'
-import { z } from 'zod'
-import { chargeCardEffect } from './modules/payments'
-
-export const checkout = defineWorkflow({
-  name: 'checkout',
-  input: z.object({
-    amount: z.number().default(150),
-    currency: z.string().default('USD'),
-  }),
-  nodes: [
-    {
-      id: 'gate',
-      run: (ctx) => {
-        if (ctx.input.amount < 100) return { skipped: true }
-        return ctx.effects(gate({ title: \`Approve \${ctx.input.amount}?\` }))
-      },
-    },
-    {
-      id: 'charge',
-      deps: ['gate'],
-      run: (ctx) =>
-        ctx.effects([
-          // Typed invoke statically verifies arguments against chargeCardEffect's input schema:
-          invoke(chargeCardEffect, {
-            amount: ctx.input.amount,
-            currency: ctx.input.currency,
-          }),
-          wait({ waitId: createWaitId(), on: { type: 'payments.charge.authorized' } }),
-          wait({ waitId: createWaitId(), on: { type: 'payments.charge.declined' } }),
-        ]),
-    },
-  ],
-})`}</CodeBlock>
+      <CodeBlock lang="ts" code={workflowExample} />
+      <h2 id="custom-thread">
+        Your own execution kind
+        <a className="heading-anchor" href="#custom-thread" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        Nodes run after their <code>deps</code>. <code>ctx.effects</code> parks the node until
-        matching events land. Author the payments module in <Link to="/docs/modules">Modules</Link>.
+        Save as custom-thread.ts. This auction registers a new kind, accepts bids, waits for a close
+        event, and returns a winner. It uses neither the agent nor the workflow module. Expected
+        winner: Bob, with a bid of 320 against a reserve of 250.
       </p>
-
-      <h2>React: chat and approvals</h2>
-      <CodeBlock lang="tsx">{`import {
-  LoomsProvider,
-  useRunStore,
-  useProjection,
-} from '@looms/react'
-import { conversation, userMessage } from '@looms/agent'
-import { decision, pendingApprovals } from '@looms/approval'
-import { ledger } from './modules/payments'
-
-function RunView({ runId }: { runId: string }) {
-  const store = useRunStore(runId)
-  const convo = useProjection(store, conversation)
-  const approvals = useProjection(store, pendingApprovals)
-  const charges = useProjection(store, ledger)
-
-  const send = (text: string) => store.commit(userMessage(text))
-  const approve = (approvalId: string) => store.commit(decision(approvalId, 'approve'))
-
-  return (
-    <>
-      {convo.lines.map((m, i) => (
-        <p key={i}>{m.role}: {m.content}</p>
-      ))}
-      {approvals.items.filter((a) => a.status === 'pending').map((a) => (
-        <button key={a.approvalId} onClick={() => approve(a.approvalId)}>
-          {a.title}
-        </button>
-      ))}
-      <input onKeyDown={(e) => e.key === 'Enter' && send(e.currentTarget.value)} />
-    </>
-  )
-}`}</CodeBlock>
+      <CodeBlock lang="ts" code={customThread} />
+      <h2 id="next">
+        Build a complete app
+        <a className="heading-anchor" href="#next" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        The same projection reducers run on the host and in the browser, so the UI matches the log.
+        <Link to="/docs/agents">Connect a model</Link>,{' '}
+        <Link to="/docs/integration">mount an authorized gateway and React UI</Link>, or{' '}
+        <Link to="/docs/quickstart">persist and recover a review</Link>. Use{' '}
+        <Link to="/docs/testing">the restart test</Link> to verify both decisions.
       </p>
-
-      <h2>HTTP client</h2>
-      <CodeBlock lang="ts">{`import { userMessage } from '@looms/agent'
-import { decision } from '@looms/approval'
-import { createLoomsClient } from '@looms/client'
-import { assistant, checkout } from './definitions'
-
-const client = createLoomsClient({ baseUrl: 'https://runs.example.com' })
-
-const { runId } = await client.start(checkout, { amount: 150, currency: 'USD' })
-await client.signal(runId, [decision(approvalId, 'approve')])
-
-const { runId: chatId } = await client.start(assistant, 'Charge $40')
-await client.signal(chatId, [userMessage('Also greet Maya')])
-client.subscribeEvents(chatId, (event) => console.log(event.type))`}</CodeBlock>
-      <p>
-        The client has two verbs for input — <code>start</code> a definition and <code>signal</code>{' '}
-        events — and modules provide the event builders. When you only have names (no definition
-        object), use <code>startRun({'{ kind, definitionName, input }'})</code>.
-      </p>
-
-      <h2>CLI</h2>
-      <CodeBlock lang="bash">{`export LOOMS_URL=http://127.0.0.1:8787
-bun run --filter @looms/cli looms -- start agent echo '{"text":"hi"}'
-bun run --filter @looms/cli looms -- events <runId>
-bun run --filter @looms/cli looms -- approve <runId> <approvalId> --approve
-bun run --filter @looms/cli looms -- replay <runId> 4`}</CodeBlock>
     </>
   )
 }

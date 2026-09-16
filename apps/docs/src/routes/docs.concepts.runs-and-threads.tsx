@@ -2,8 +2,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { CodeBlock } from '../components/code-block'
 import { ConceptFigure } from '../illustrations/illustration'
+import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/concepts/runs-and-threads')({
+  head: () => pageHead('/docs/concepts/runs-and-threads'),
   component: RunsAndThreads,
 })
 
@@ -19,14 +21,24 @@ function RunsAndThreads() {
 
       <ConceptFigure name="threads" />
 
-      <h2>Run</h2>
+      <h2 id="run">
+        Run
+        <a className="heading-anchor" href="#run" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         The durability boundary and event-stream container for one logical operation. All child
         threads, signals, and events belong to one canonical log identified by <code>runId</code>.
         Crash recovery means replaying that log.
       </p>
 
-      <h2>Thread</h2>
+      <h2 id="thread">
+        Thread
+        <a className="heading-anchor" href="#thread" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         The unit of computation inside a run. A thread owns a state machine, may have a parent, and
         has a <strong>thread kind</strong>: built-in <code>agent</code> / <code>workflow</code>, or
@@ -38,7 +50,12 @@ function RunsAndThreads() {
         the root thread and begins appending events.
       </p>
 
-      <h2>Custom thread kinds</h2>
+      <h2 id="custom-thread-kinds">
+        Custom thread kinds
+        <a className="heading-anchor" href="#custom-thread-kinds" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         A custom kind is a module that registers a thread definition and implements{' '}
         <code>m.thread</code>. The definition is what you pass to <code>start</code>; the thread is
@@ -111,7 +128,12 @@ const { runId } = await looms.start(vintageWatch, {
         <code>bun run --filter @looms/examples custom-thread</code>).
       </p>
 
-      <h2>Status</h2>
+      <h2 id="status">
+        Status
+        <a className="heading-anchor" href="#status" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>A run (and each thread) is in one of:</p>
       <ul>
         <li>
@@ -125,26 +147,50 @@ const { runId } = await looms.start(vintageWatch, {
         </li>
       </ul>
 
-      <h2>Three orthogonal structures</h2>
+      <h2 id="three-orthogonal-structures">
+        Three orthogonal structures
+        <a
+          className="heading-anchor"
+          href="#three-orthogonal-structures"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
         A run coordinates heterogeneous work by keeping structure, history, and causation separate:
       </p>
 
       <div className="my-8 mb-14 grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-x-14">
         <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
-          <h3>Thread tree</h3>
+          <h3 id="thread-tree">
+            Thread tree
+            <a className="heading-anchor" href="#thread-tree" aria-label="Link to this section">
+              #
+            </a>
+          </h3>
           <p>
             Parent/child invocation hierarchy (agent &rarr; checkout workflow &rarr; approval gate).
           </p>
         </article>
 
         <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
-          <h3>Run stream</h3>
+          <h3 id="run-stream">
+            Run stream
+            <a className="heading-anchor" href="#run-stream" aria-label="Link to this section">
+              #
+            </a>
+          </h3>
           <p>One append-only chronological log across all threads in the run.</p>
         </article>
 
         <article className="[&_h3]:text-foreground [&_p]:text-muted m-0 p-0 [&_h3]:mt-0 [&_h3]:mb-1.5 [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mb-0 [&_p]:text-[0.88rem] [&_p]:leading-snug">
-          <h3>Causation graph</h3>
+          <h3 id="causation-graph">
+            Causation graph
+            <a className="heading-anchor" href="#causation-graph" aria-label="Link to this section">
+              #
+            </a>
+          </h3>
           <p>
             Provenance via <code>causationId</code> and <code>effectId</code> linking events to the
             effects that produced them.

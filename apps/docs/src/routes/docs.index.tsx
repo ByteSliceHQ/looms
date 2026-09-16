@@ -1,58 +1,90 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import { pageHead } from '../page-head'
+
 export const Route = createFileRoute('/docs/')({
-  component: DocsIndex,
+  head: () => pageHead('/docs'),
+  component: Introduction,
 })
 
-function DocsIndex() {
+function Introduction() {
   return (
     <>
-      <h1>Introduction</h1>
+      <h1>Build work that can resume</h1>
       <p>
-        Looms is an event-sourced execution runtime for long-running work inside your application:
-        LLM agents, DAG workflows, human approvals, and domain modules you own. You compose the
-        capabilities you need, start a <strong>run</strong>, and every worker and client observes
-        the same durable event log.
+        Looms is a TypeScript library for durable execution in your own application. Compose agents,
+        workflows, human decisions, and your own execution types in one run. Their shared event
+        history supports recovery, debugging, and live UI views.
       </p>
-
-      <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
-        <strong>Core invariant:</strong> Logical runtime state changes only by processing an event.
-        Effects request IO; IO returns as new events. Replay reconstructs state without re-running
-        the world.
-      </div>
-
+      <h2 id="start">
+        Start with a real run
+        <a className="heading-anchor" href="#start" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
-        The mental model, vocabulary, and event/effect boundary live in{' '}
-        <Link to="/docs/concepts">Concepts</Link>. Formal specs are in{' '}
-        <Link to="/docs/math">Math</Link>.
+        The <Link to="/docs/quickstart">quickstart</Link> installs packages from npm, runs an agent
+        and tool inside a workflow, exits while awaiting review, and resumes in a new process. You
+        can approve or reject; the workflow handles both.
       </p>
-
-      <h2>How to read these docs</h2>
-      <ol>
+      <h2 id="threads">
+        Threads are the extension point
+        <a className="heading-anchor" href="#threads" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        A run owns a durable event log. Inside it, threads execute work. Agent loops and workflow
+        DAGs are built-in thread kinds. A module you write can add a new state machine—such as an
+        auction—and compose it with the built-in kinds. You can use existing kinds without writing
+        reducers yourself.
+      </p>
+      <h2 id="choose">
+        Choose your path
+        <a className="heading-anchor" href="#choose" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <ul>
         <li>
-          <Link to="/docs/concepts">Concepts</Link> — runs, threads, events, effects, type safety,
-          waits.
+          <Link to="/docs/when-to-use">Evaluate Looms</Link>: tradeoffs, supported hosts, and where
+          it fits your stack.
         </li>
         <li>
-          <Link to="/docs/quickstart">Quickstart</Link> and{' '}
-          <Link to="/docs/examples">Examples</Link> — run the demo, then copy patterns.
+          <Link to="/docs/integration">Integrate an existing app</Link>: host, client, gateway, and
+          React.
         </li>
         <li>
-          <Link to="/docs/modules">Modules</Link> — agents, workflows, approvals, and your own
+          <Link to="/docs/concepts/runs-and-threads">Define custom execution</Link>: give a domain
+          state machine its own thread kind.
+        </li>
+        <li>
+          <Link to="/docs/hosting-and-storage">Deploy</Link>: Durable Objects, storage, and
+          production boundaries.
+        </li>
+        <li>
+          <Link to="/docs/api">API reference</Link>: signatures, lifecycle, HTTP contracts, and
           packages.
         </li>
-        <li>
-          <Link to="/docs/projectors">Projections</Link> — reactive UI and cross-run indexes.
-        </li>
-        <li>
-          <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link> — Cloudflare DOs, celld,
-          Bun actors, and hosting before you ship.
-        </li>
-        <li>
-          <Link to="/docs/api">API / SDK</Link> and <Link to="/docs/math">Math</Link> — reference
-          when you need them.
-        </li>
-      </ol>
+      </ul>
+      <h2 id="contract">
+        Know the contract
+        <a className="heading-anchor" href="#contract" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Historical replay reconstructs state without dispatching effects. Recovery can retry
+        unfinished external actions, so handlers need idempotency or reconciliation. You own
+        authorization and code compatibility for long-lived runs. Read{' '}
+        <Link to="/docs/reliability">reliability</Link> and{' '}
+        <Link to="/docs/versioning">versioning</Link> before production.
+      </p>
+      <p>
+        Looms is in the 0.1 series. Pin matching package versions and validate your workload.
+        Source, release history, and issues are available in the{' '}
+        <a href="https://github.com/ByteSliceHQ/looms">repository</a>.
+      </p>
     </>
   )
 }
