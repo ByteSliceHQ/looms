@@ -32,7 +32,7 @@ Because state is derived from events, you can inspect any point in a run. `repla
 ## Hosting
 
 ```ts
-import { createLooms } from '@looms/runtime'
+import { createLooms } from '@swirls/looms/runtime'
 
 const looms = createLooms({
   modules: [
@@ -49,6 +49,6 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })
 
 The host has one verb for starting work. An agent and a workflow are just different thread kinds, so `start` takes the definition and infers the input type from its schema.
 
-`createLooms` is the single-process embed path (one runtime, one store). For one writer per `runId`, use `createLocalActorHost` (`@looms/actor`) locally or `LoomsDurableObject` (`@looms/cloudflare`) on Workers / celld — see [snapshots.md](./snapshots.md).
+`createLooms` is the single-process embed path (one runtime, one store). For one writer per `runId`, use `createLocalActorHost` (`@swirls/looms/actor`) locally or `LoomsDurableObject` (`@swirls/looms/cloudflare`) on Workers / celld — see [snapshots.md](./snapshots.md).
 
 See [modules.md](./modules.md) to compose capabilities, and [protocol.md](./protocol.md) for event types and HTTP.

@@ -1,7 +1,7 @@
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useState } from 'react'
 
-import { DebuggerSplit, defaultEventCatalog, projectRunView } from '@looms/debugger'
+import { DebuggerSplit, defaultEventCatalog, projectRunView } from '@swirls/looms/debugger'
 
 import { landingOrchestrationEvents } from '../landing/orchestration-run'
 import {

@@ -1,5 +1,5 @@
 import { loomsClient } from '@/lib/looms-client'
-import { EventInspector as EventInspectorView, type ReplayStep } from '@looms/debugger'
+import { EventInspector as EventInspectorView, type ReplayStep } from '@swirls/looms/debugger'
 
 import type { DemoEvents } from '../../runtime'
 

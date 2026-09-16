@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import { createWaitId, defineModule, invoke, wait } from '@looms/core'
-import { createLooms } from '@looms/runtime'
-import { defineWorkflow, workflow } from '@looms/workflow'
+import { createWaitId, defineModule, invoke, wait } from '@swirls/looms/core'
+import { createLooms } from '@swirls/looms/runtime'
+import { defineWorkflow, workflow } from '@swirls/looms/workflow'
 
 // Domain module: events, an effect, a projection — then a workflow that uses them.
 // bun run --filter @looms/examples custom-module

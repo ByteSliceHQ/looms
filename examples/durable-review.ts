@@ -1,9 +1,9 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { decision, pendingApprovals } from '@looms/approval'
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { createLooms } from '@looms/runtime'
+import { decision, pendingApprovals } from '@swirls/looms/approval'
+import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
+import { createLooms } from '@swirls/looms/runtime'
 
 import { modules, release } from './review-definition'
 

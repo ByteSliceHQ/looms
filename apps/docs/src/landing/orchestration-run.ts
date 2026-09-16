@@ -1,4 +1,4 @@
-import { createEvent, type EventEnvelope, type JsonValue } from '@looms/core'
+import { createEvent, type EventEnvelope, type JsonValue } from '@swirls/looms/core'
 
 export const LANDING_RUN_ID = 'run_landing_incident'
 export const COMMANDER_THREAD_ID = 'thr_commander'

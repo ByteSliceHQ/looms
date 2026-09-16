@@ -1,6 +1,6 @@
 {
   "name": "@looms/demo",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Looms demo runtime with TanStack Start UI and s2-lite sync",
   "license": "Apache-2.0",
@@ -30,19 +30,8 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@looms/actor": "workspace:*",
-    "@looms/agent": "workspace:*",
-    "@looms/ai-vercel": "workspace:*",
-    "@looms/approval": "workspace:*",
-    "@looms/client": "workspace:*",
-    "@looms/core": "workspace:*",
-    "@looms/debugger": "workspace:*",
-    "@looms/projectors": "workspace:*",
-    "@looms/react": "workspace:*",
-    "@looms/runtime": "workspace:*",
-    "@looms/s2": "workspace:*",
-    "@looms/workflow": "workspace:*",
     "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@swirls/looms": "workspace:*",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",
     "ai": "^7.0.0",

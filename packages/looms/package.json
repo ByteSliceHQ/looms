@@ -1,0 +1,183 @@
+{
+  "name": "@swirls/looms",
+  "version": "0.0.0",
+  "description": "Pluggable event-sourced runtime for durable agents and workflows",
+  "homepage": "https://github.com/ByteSliceHQ/looms#readme",
+  "bugs": {
+    "url": "https://github.com/ByteSliceHQ/looms/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ByteSliceHQ/looms.git",
+    "directory": "packages/looms"
+  },
+  "bin": {
+    "looms": "dist/cli/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./actor": {
+      "types": "./dist/actor/index.d.ts",
+      "import": "./dist/actor/index.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent/index.js"
+    },
+    "./ai-vercel": {
+      "types": "./dist/ai-vercel/index.d.ts",
+      "import": "./dist/ai-vercel/index.js"
+    },
+    "./approval": {
+      "types": "./dist/approval/index.d.ts",
+      "import": "./dist/approval/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./debugger": {
+      "types": "./dist/debugger/index.d.ts",
+      "import": "./dist/debugger/index.js"
+    },
+    "./projectors": {
+      "types": "./dist/projectors/index.d.ts",
+      "import": "./dist/projectors/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./s2": {
+      "types": "./dist/s2/index.d.ts",
+      "import": "./dist/s2/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow/index.d.ts",
+      "import": "./dist/workflow/index.js"
+    },
+    "./core/sqlite-store": {
+      "types": "./dist/core/sqlite-store.d.ts",
+      "import": "./dist/core/sqlite-store.js"
+    },
+    "./core/bun-sqlite": {
+      "types": "./dist/core/bun-sqlite.d.ts",
+      "import": "./dist/core/bun-sqlite.js"
+    },
+    "./projectors/postgres": {
+      "types": "./dist/projectors/postgres.d.ts",
+      "import": "./dist/projectors/postgres.js"
+    },
+    "./projectors/sqlite": {
+      "types": "./dist/projectors/sqlite.d.ts",
+      "import": "./dist/projectors/sqlite.js"
+    },
+    "./s2/projector": {
+      "types": "./dist/s2/projector.d.ts",
+      "import": "./dist/s2/projector.js"
+    },
+    "./debugger/styles.css": "./dist/debugger/styles.css",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run scripts/assemble.ts",
+    "check-types": "bun -e \"void 0\"",
+    "test": "bun -e \"void 0\""
+  },
+  "dependencies": {
+    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/platform-node-shared": "4.0.0-rc.112",
+    "@noble/hashes": "^2.0.1",
+    "@s2-dev/streamstore": "^0.23.0",
+    "@standard-schema/spec": "^1.1.0",
+    "@tanstack/react-virtual": "^3.14.11",
+    "clsx": "^2.1.1",
+    "effect": "4.0.0-rc.112",
+    "lucide-react": "^1.43.0",
+    "radix-ui": "^1.6.7",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260914.1",
+    "@looms/actor": "workspace:*",
+    "@looms/agent": "workspace:*",
+    "@looms/ai-vercel": "workspace:*",
+    "@looms/approval": "workspace:*",
+    "@looms/cli": "workspace:*",
+    "@looms/client": "workspace:*",
+    "@looms/cloudflare": "workspace:*",
+    "@looms/core": "workspace:*",
+    "@looms/debugger": "workspace:*",
+    "@looms/projectors": "workspace:*",
+    "@looms/react": "workspace:*",
+    "@looms/runtime": "workspace:*",
+    "@looms/s2": "workspace:*",
+    "@looms/testing": "workspace:*",
+    "@looms/workflow": "workspace:*",
+    "@types/bun": "^1.3.9",
+    "ai": "^7.0.92",
+    "postgres": "^3.4.0",
+    "react": "19",
+    "react-dom": "19",
+    "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@cloudflare/workers-types": "^5.20260914.1",
+    "ai": "^7.0.0",
+    "postgres": "^3.4.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    },
+    "postgres": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "@cloudflare/workers-types": {
+      "optional": true
+    }
+  }
+}

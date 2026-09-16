@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
 import { z } from 'zod'
 
-import { agent, asEffectsTool, defineAgent } from '@looms/agent'
-import { decision, gate, pendingApprovals } from '@looms/approval'
+import { agent, asEffectsTool, defineAgent } from '@swirls/looms/agent'
+import { decision, gate, pendingApprovals } from '@swirls/looms/approval'
 import {
   defineEffect,
   defineRuntimeModule,
@@ -13,9 +13,9 @@ import {
   threadTree,
   toThreadTree,
   treeFromRun,
-} from '@looms/core'
-import { createLooms } from '@looms/runtime'
-import { workflow } from '@looms/workflow'
+} from '@swirls/looms/core'
+import { createLooms } from '@swirls/looms/runtime'
+import { workflow } from '@swirls/looms/workflow'
 
 import { assistant, checkout, echo, orchestrator, pipeline } from './definitions'
 import { demoModules } from './runtime'

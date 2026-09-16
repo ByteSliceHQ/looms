@@ -9,12 +9,12 @@ Without `llm`, the agent module uses a stub suitable for tests and scripted `run
 Any AI SDK `LanguageModel` works (OpenAI, Anthropic, OpenRouter, Gateway):
 
 ```ts
-import { agent } from '@looms/agent'
-import { vercelLlm } from '@looms/ai-vercel'
-import { approval } from '@looms/approval'
+import { agent } from '@swirls/looms/agent'
+import { vercelLlm } from '@swirls/looms/ai-vercel'
+import { approval } from '@swirls/looms/approval'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { createLooms } from '@looms/runtime'
-import { workflow } from '@looms/workflow'
+import { createLooms } from '@swirls/looms/runtime'
+import { workflow } from '@swirls/looms/workflow'
 import { assistant, checkout } from './definitions'
 
 const llm = vercelLlm({
@@ -36,7 +36,7 @@ Streaming tokens land on the run so a chat UI can render them as they arrive.
 ## Conversational agents and stopping
 
 ```ts
-import { defineAgent, hasToolCall, stepCountIs } from '@looms/agent'
+import { defineAgent, hasToolCall, stepCountIs } from '@swirls/looms/agent'
 
 defineAgent({
   name: 'researcher',

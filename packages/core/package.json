@@ -1,6 +1,7 @@
 {
   "name": "@looms/core",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "private": true,
   "description": "Event-sourced thread kernel: envelopes, catalogs, effects, fold, replay, projections",
   "license": "Apache-2.0",
   "repository": {
@@ -31,25 +32,6 @@
       "import": "./src/bun-sqlite.ts",
       "default": "./src/bun-sqlite.ts"
     }
-  },
-  "publishConfig": {
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      },
-      "./sqlite-store": {
-        "types": "./dist/sqlite-store.d.ts",
-        "import": "./dist/sqlite-store.js"
-      },
-      "./bun-sqlite": {
-        "types": "./dist/bun-sqlite.d.ts",
-        "import": "./dist/bun-sqlite.js"
-      }
-    },
-    "access": "public"
   },
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",

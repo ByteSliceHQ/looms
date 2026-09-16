@@ -45,7 +45,7 @@ if (!approved.safeParse(ctx.results.review).success) {
           #
         </a>
       </h2>
-      <CodeBlock lang="ts">{`import { decision, pendingApprovals } from '@looms/approval'
+      <CodeBlock lang="ts">{`import { decision, pendingApprovals } from '@swirls/looms/approval'
 
 const reviews = await looms.project(runId, pendingApprovals)
 const pending = reviews.items.find((review) => review.status === 'pending')

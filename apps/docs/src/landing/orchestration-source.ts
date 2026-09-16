@@ -8,7 +8,7 @@ export const orchestrationSourceFiles: readonly OrchestrationSourceFile[] = [
   {
     name: 'actors.ts',
     language: 'tsx',
-    source: `import { asAgentTool, defineAgent } from '@looms/agent'
+    source: `import { asAgentTool, defineAgent } from '@swirls/looms/agent'
 import { z } from 'zod'
 
 import { lookupPolicy, queryMetrics, requestApproval, searchWeb } from './tools'
@@ -58,7 +58,7 @@ export const incidentCommander = defineAgent({
   {
     name: 'events.ts',
     language: 'tsx',
-    source: `import { payload, defineEventCatalog } from '@looms/core'
+    source: `import { payload, defineEventCatalog } from '@swirls/looms/core'
 
 export const incidentEvents = defineEventCatalog('incident', {
   detected: payload<{
@@ -82,8 +82,8 @@ export const incidentEvents = defineEventCatalog('incident', {
   {
     name: 'run.ts',
     language: 'tsx',
-    source: `import { agent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
+    source: `import { agent } from '@swirls/looms/agent'
+import { createLooms } from '@swirls/looms/runtime'
 
 import { incidentCommander } from './actors'
 

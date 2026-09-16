@@ -1,7 +1,7 @@
 import { getRouteApi } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { useRunStore, useRunSummary } from '@looms/react'
+import { useRunStore, useRunSummary } from '@swirls/looms/react'
 
 import { catalog, findRunType } from '../../catalog'
 import { EventStream } from '../events/event-stream'

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { defineEventCatalog, defineModule, type EventOf } from '@looms/core'
+import { defineEventCatalog, defineModule, type EventOf } from '@swirls/looms/core'
 
 const ChargeRequested = z.object({
   chargeId: z.string(),

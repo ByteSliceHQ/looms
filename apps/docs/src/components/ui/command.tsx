@@ -6,7 +6,7 @@ import { Search } from 'lucide-react'
 import * as React from 'react'
 import type { ComponentProps } from 'react'
 
-import { cn } from '@looms/debugger'
+import { cn } from '@swirls/looms/debugger'
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './dialog'
 

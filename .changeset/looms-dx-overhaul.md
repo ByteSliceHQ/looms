@@ -1,12 +1,5 @@
 ---
-'@looms/core': minor
-'@looms/agent': minor
-'@looms/workflow': minor
-'@looms/runtime': minor
-'@looms/react': minor
-'@looms/s2': minor
-'@looms/client': minor
-'@looms/cli': minor
+'@swirls/looms': patch
 ---
 
 Looms DX overhaul:

@@ -1,9 +1,16 @@
 import { z } from 'zod'
 
-import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@looms/agent'
-import { gate } from '@looms/approval'
-import { createWaitId, invoke, isJsonObject, isJsonString, wait, type JsonValue } from '@looms/core'
-import { defineWorkflow } from '@looms/workflow'
+import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@swirls/looms/agent'
+import { gate } from '@swirls/looms/approval'
+import {
+  createWaitId,
+  invoke,
+  isJsonObject,
+  isJsonString,
+  wait,
+  type JsonValue,
+} from '@swirls/looms/core'
+import { defineWorkflow } from '@swirls/looms/workflow'
 
 function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
   for (let i = messages.length - 1; i >= 0; i--) {

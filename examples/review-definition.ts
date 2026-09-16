@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import { agent, defineAgent, defineTool } from '@looms/agent'
-import { approval, gate } from '@looms/approval'
-import { defineWorkflow, workflow } from '@looms/workflow'
+import { agent, defineAgent, defineTool } from '@swirls/looms/agent'
+import { approval, gate } from '@swirls/looms/approval'
+import { defineWorkflow, workflow } from '@swirls/looms/workflow'
 
 // A deterministic agent makes the first run reproducible without an API key.
 // Replace runTurn with a model adapter when you are ready to use an LLM.

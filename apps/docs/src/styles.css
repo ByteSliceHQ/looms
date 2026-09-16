@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
-@import '@looms/debugger/styles.css';
+@import '@swirls/looms/debugger/styles.css';
 @source '../../../packages/debugger/src/**/*.{ts,tsx}';
 
 @plugin '@tailwindcss/typography';

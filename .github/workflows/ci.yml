@@ -30,6 +30,8 @@ jobs:
         run: bun run lint
       - name: Check formatting
         run: bun run fmt:check
+      - name: Check published package
+        run: bun run check:package
       - name: Upload docs build
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4

@@ -1,5 +1,5 @@
-import { RunTree as RunTreeView } from '@looms/debugger'
-import { useEventCounts, useRunStore, useRunSummary, useThreadTree } from '@looms/react'
+import { RunTree as RunTreeView } from '@swirls/looms/debugger'
+import { useEventCounts, useRunStore, useRunSummary, useThreadTree } from '@swirls/looms/react'
 
 export function RunTree({
   runId,

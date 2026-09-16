@@ -17,6 +17,11 @@ function Page() {
         installed on the host when it resumes. Looms does not automatically pin a historical code
         bundle for each run.
       </p>
+      <p>
+        This durability contract is separate from the SemVer version of <code>@swirls/looms</code>.
+        A compatible package upgrade can still require a durable-definition or event migration for
+        your application.
+      </p>
       <h2 id="keep-old-definitions-available">
         Keep old definitions available
         <a

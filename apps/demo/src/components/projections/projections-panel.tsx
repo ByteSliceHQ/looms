@@ -1,11 +1,11 @@
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 
-import { conversation, tokenUsage } from '@looms/agent'
-import { pendingApprovals } from '@looms/approval'
-import { asJson } from '@looms/core'
-import { useProjection, useRunSelector, useRunStore } from '@looms/react'
-import { nodes } from '@looms/workflow'
+import { conversation, tokenUsage } from '@swirls/looms/agent'
+import { pendingApprovals } from '@swirls/looms/approval'
+import { asJson } from '@swirls/looms/core'
+import { useProjection, useRunSelector, useRunStore } from '@swirls/looms/react'
+import { nodes } from '@swirls/looms/workflow'
 
 import { ledger } from '../../modules/payments'
 import { JsonView } from '../json-view'

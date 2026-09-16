@@ -33,8 +33,8 @@ export default defineConfig(({ mode }) => {
         srcDirectory: 'src',
         importProtection: {
           client: {
-            // Allow `@looms/react` and `@looms/client` in the browser; block host packages.
-            specifiers: [/^@looms\/(runtime|s2)(\/|$)/],
+            // Allow `@swirls/looms/react` and `@swirls/looms/client` in the browser; block host packages.
+            specifiers: [/^@swirls\/looms\/(runtime|s2)(\/|$)/],
           },
         },
       }),

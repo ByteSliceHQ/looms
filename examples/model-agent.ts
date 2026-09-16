@@ -1,9 +1,9 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 
-import { agent, defineAgent, defineTool } from '@looms/agent'
-import { vercelLlm } from '@looms/ai-vercel'
-import { createLooms } from '@looms/runtime'
+import { agent, defineAgent, defineTool } from '@swirls/looms/agent'
+import { vercelLlm } from '@swirls/looms/ai-vercel'
+import { createLooms } from '@swirls/looms/runtime'
 
 const apiKey = process.env.OPENROUTER_API_KEY
 const modelId = process.env.LOOMS_MODEL

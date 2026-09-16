@@ -1,6 +1,6 @@
 import { statusClass } from '@/lib/status'
-import { useProjection, useRunStore } from '@looms/react'
-import { nodes } from '@looms/workflow'
+import { useProjection, useRunStore } from '@swirls/looms/react'
+import { nodes } from '@swirls/looms/workflow'
 
 import { JsonView } from '../json-view'
 import { StatusDot } from '../status-dot'

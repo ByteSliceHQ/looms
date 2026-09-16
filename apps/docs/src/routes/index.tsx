@@ -46,9 +46,7 @@ function Landing() {
             </Link>
             <Link to="/docs/when-to-use">Is Looms a fit?</Link>
           </div>
-          <CodeBlock lang="bash">
-            {'npm install @looms/runtime @looms/agent @looms/workflow'}
-          </CodeBlock>
+          <CodeBlock lang="bash">{'npm install @swirls/looms'}</CodeBlock>
         </div>
         <GuidedRun />
       </div>
@@ -121,10 +119,10 @@ function Landing() {
           </p>
           <Link to="/docs/modules">Write a module →</Link>
         </div>
-        <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
-import { agent } from '@looms/agent'
-import { workflow } from '@looms/workflow'
-import { approval } from '@looms/approval'
+        <CodeBlock lang="ts">{`import { createLooms } from '@swirls/looms/runtime'
+import { agent } from '@swirls/looms/agent'
+import { workflow } from '@swirls/looms/workflow'
+import { approval } from '@swirls/looms/approval'
 import { auction } from './auction'
 import { buyer, purchase, llm } from './definitions'
 

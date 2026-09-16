@@ -16,7 +16,7 @@ bun run demo            # turbo run dev --filter=@looms/demo (auto-starts s2-lit
 
 ```bash
 bun run build                              # all packages
-turbo run build --filter=@looms/runtime... # runtime + deps
+turbo run build --filter=@looms/runtime... # internal runtime + deps
 turbo run test --filter=@looms/core
 turbo run dev --filter=@looms/demo
 ```
@@ -42,14 +42,17 @@ flox activate -- bun run doctor
 ## PR checklist
 
 - [ ] `bun run verify` passes
-- [ ] Changeset added if publishing packages change (`bun run changeset`)
+- [ ] Changeset added if `@swirls/looms` behavior changes (`bun run changeset`)
 - [ ] Docs updated for API / architecture changes
+
+See [`RELEASE.md`](./RELEASE.md) for versioning and publishing.
 
 ## Layout
 
-| Path         | Role                                                       |
-| ------------ | ---------------------------------------------------------- |
-| `packages/*` | Publishable libraries (`@looms/*`)                         |
-| `apps/*`     | Private apps (demo UI, docs)                               |
-| `examples/`  | Small runnable `createLooms` scripts (`bun run examples`)  |
-| `turbo.json` | Task graph (`build` → `^build`, cached outputs in `dist/`) |
+| Path             | Role                                                       |
+| ---------------- | ---------------------------------------------------------- |
+| `packages/*`     | Private module workspaces (`@looms/*`)                     |
+| `packages/looms` | Assembled public package (`@swirls/looms`)                 |
+| `apps/*`         | Private apps (demo UI, docs)                               |
+| `examples/`      | Small runnable `createLooms` scripts (`bun run examples`)  |
+| `turbo.json`     | Task graph (`build` → `^build`, cached outputs in `dist/`) |

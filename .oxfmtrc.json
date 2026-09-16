@@ -3,7 +3,7 @@
   "semi": false,
   "singleQuote": true,
   "sortImports": {
-    "internalPattern": ["~/", "@/", "#", "@looms/"]
+    "internalPattern": ["~/", "@/", "#", "@looms/", "@swirls/looms"]
   },
   "sortTailwindcss": {
     "functions": ["clsx", "cn", "cva", "twMerge"]

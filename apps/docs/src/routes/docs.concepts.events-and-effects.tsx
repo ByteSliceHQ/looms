@@ -112,7 +112,7 @@ function EventsAndEffects() {
         <code>payments.charge.authorized</code>). Builders fix the payload type at the call site:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { defineEventCatalog } from '@looms/core'
+import { defineEventCatalog } from '@swirls/looms/core'
 
 const Charge = z.object({
   chargeId: z.string(),
@@ -164,7 +164,7 @@ paymentsCatalog.input('charge.authorized', {
         your module namespace and checks returned event types against the catalog:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { defineModule } from '@looms/core'
+import { defineModule } from '@swirls/looms/core'
 
 const Charge = z.object({
   chargeId: z.string(),
@@ -260,7 +260,7 @@ const { charge } = payments.effects`}</CodeBlock>
         </div>
       </div>
 
-      <CodeBlock lang="ts">{`import { emit, invoke, spawn, wait } from '@looms/core'
+      <CodeBlock lang="ts">{`import { emit, invoke, spawn, wait } from '@swirls/looms/core'
 
 // Domain helpers lower into the instruction set:
 invoke(charge, { amount: 40 })

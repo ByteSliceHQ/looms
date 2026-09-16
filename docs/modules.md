@@ -4,21 +4,21 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 
 ## Built-in
 
-| Package           | Use it for                              | SDK                                                                                |
-| ----------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
-| `@looms/agent`    | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
-| `@looms/workflow` | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
-| `@looms/approval` | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
+| Package                  | Use it for                              | SDK                                                                                |
+| ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@swirls/looms/agent`    | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
+| `@swirls/looms/workflow` | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
+| `@swirls/looms/approval` | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 
 ## Start a host
 
 ```ts
-import { agent } from '@looms/agent'
-import { approval } from '@looms/approval'
-import { workflow } from '@looms/workflow'
-import { createLooms } from '@looms/runtime'
+import { agent } from '@swirls/looms/agent'
+import { approval } from '@swirls/looms/approval'
+import { workflow } from '@swirls/looms/workflow'
+import { createLooms } from '@swirls/looms/runtime'
 import { payments } from './modules/payments'
 import { assistant, checkout } from './definitions'
 import { llm } from './llm' // an LlmAdapter, see ai-providers.md
@@ -51,8 +51,8 @@ Modules that implement a custom thread kind can return `definitions` alongside `
 Every input to a run is an event. Modules export small builders so you never hand-write event payloads:
 
 ```ts
-import { userMessage } from '@looms/agent'
-import { decision } from '@looms/approval'
+import { userMessage } from '@swirls/looms/agent'
+import { decision } from '@swirls/looms/approval'
 
 await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])
@@ -65,7 +65,7 @@ Your module can do the same: export a function that returns an `EventInput`, and
 A module declares namespaced events, effects the host should run, and optional projections for the UI. Handlers should be safe to retry — use `ctx.effectId` as an idempotency key.
 
 ```ts
-import { defineModule } from '@looms/core'
+import { defineModule } from '@swirls/looms/core'
 import { z } from 'zod'
 
 const Charge = z.object({
@@ -122,13 +122,13 @@ export const { charge } = payments.effects
 export const { ledger } = payments.projections
 ```
 
-Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
+Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@swirls/looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
 
 Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Agents can expose the same charge as a tool.
 
 ## File layout
 
-Built-in modules (`@looms/agent`, `@looms/workflow`, `@looms/approval`) use separate files for larger modules. Open the folder and the names tell you where to look:
+Built-in modules (`@swirls/looms/agent`, `@swirls/looms/workflow`, `@swirls/looms/approval`) use separate files for larger modules. Open the folder and the names tell you where to look:
 
 ```
 src/
@@ -156,7 +156,11 @@ Conventions that keep modules composable:
 ## Testing
 
 ```ts
-import { createTestRuntime, assertReplayDeterministic, moduleConformance } from '@looms/testing'
+import {
+  createTestRuntime,
+  assertReplayDeterministic,
+  moduleConformance,
+} from '@swirls/looms/testing'
 
 expect(moduleConformance(payments)).toEqual([])
 const test = await createTestRuntime([payments])

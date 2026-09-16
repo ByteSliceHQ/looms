@@ -3,21 +3,33 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [],
-  "linked": [
-    [
-      "@looms/core",
-      "@looms/s2",
-      "@looms/runtime",
-      "@looms/agent",
-      "@looms/workflow",
-      "@looms/client",
-      "@looms/react",
-      "@looms/cli",
-      "@looms/projectors"
-    ]
-  ],
+  "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@looms/demo", "@looms/examples"]
+  "ignore": [
+    "@looms/actor",
+    "@looms/agent",
+    "@looms/ai-vercel",
+    "@looms/approval",
+    "@looms/cli",
+    "@looms/client",
+    "@looms/cloudflare",
+    "@looms/core",
+    "@looms/debugger",
+    "@looms/projectors",
+    "@looms/react",
+    "@looms/runtime",
+    "@looms/s2",
+    "@looms/testing",
+    "@looms/workflow",
+    "@looms/demo",
+    "@looms/demo-worker",
+    "@looms/docs",
+    "@looms/examples"
+  ],
+  "privatePackages": {
+    "version": false,
+    "tag": false
+  }
 }

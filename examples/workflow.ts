@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import { agent, defineAgent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
-import { defineWorkflow, workflow } from '@looms/workflow'
+import { agent, defineAgent } from '@swirls/looms/agent'
+import { createLooms } from '@swirls/looms/runtime'
+import { defineWorkflow, workflow } from '@swirls/looms/workflow'
 
 // DAG workflow: nodes with deps, and a child agent spawn.
 // bun run --filter @looms/examples workflow

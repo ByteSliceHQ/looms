@@ -1,5 +1,5 @@
 import { statusClass } from '@/lib/status'
-import { useProjection, useRunStore } from '@looms/react'
+import { useProjection, useRunStore } from '@swirls/looms/react'
 
 import { ledger } from '../../modules/payments'
 import { StatusDot } from '../status-dot'

@@ -1,7 +1,5 @@
 ---
-'@looms/projectors': minor
-'@looms/runtime': minor
-'@looms/s2': minor
+'@swirls/looms': patch
 ---
 
-Replace `@looms/postgres` with a generic `@looms/projectors` package. Implement `Projector` or use `memory()`, `postgres({ url })`, and `sqlite({ path })`. `createLooms({ projectors })` inits, wraps append, and disposes. S2 helpers now take an explicit env bag; `serveHttp` no longer reads `PORT`.
+Replace `@swirls/looms/projectors/postgres` with a generic `@swirls/looms/projectors` package. Implement `Projector` or use `memory()`, `postgres({ url })`, and `sqlite({ path })`. `createLooms({ projectors })` inits, wraps append, and disposes. S2 helpers now take an explicit env bag; `serveHttp` no longer reads `PORT`.

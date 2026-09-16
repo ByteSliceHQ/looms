@@ -26,9 +26,13 @@ Minimal hosts live in [`examples/`](./examples) (echo agent, workflow, approval,
 
 Host it in your app:
 
+```bash
+bun add @swirls/looms
+```
+
 ```ts
-import { agent, defineAgent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
+import { agent, defineAgent } from '@swirls/looms/agent'
+import { createLooms } from '@swirls/looms'
 import { z } from 'zod'
 
 const echo = defineAgent({
@@ -55,9 +59,9 @@ const { runId } = await looms.start(echo, { text: 'hi' })
 React client:
 
 ```ts
-import { LoomsProvider, useRunStore, useProjection } from '@looms/react'
-import { conversation, userMessage } from '@looms/agent'
-import { decision } from '@looms/approval'
+import { LoomsProvider, useRunStore, useProjection } from '@swirls/looms/react'
+import { conversation, userMessage } from '@swirls/looms/agent'
+import { decision } from '@swirls/looms/approval'
 
 const store = useRunStore(runId)
 const convo = useProjection(store, conversation)
@@ -68,8 +72,8 @@ await store.commit(decision(approvalId, 'approve'))
 HTTP client:
 
 ```ts
-import { createLoomsClient } from '@looms/client'
-import { decision } from '@looms/approval'
+import { createLoomsClient } from '@swirls/looms/client'
+import { decision } from '@swirls/looms/approval'
 
 const client = createLoomsClient()
 const { runId } = await client.start(echo, { text: 'hi' })
@@ -92,24 +96,28 @@ Canonical docs: `bun run docs` → http://127.0.0.1:8788 (`apps/docs`)
 
 Repo markdown under [`docs/`](./docs) is supplementary (protocol tables, snapshots notes, AI providers). Prefer the site for the mental model and builder path.
 
-## Packages
+## Package modules
 
-| Package             | Import when you need                        |
-| ------------------- | ------------------------------------------- |
-| `@looms/runtime`    | `createLooms`, HTTP host                    |
-| `@looms/actor`      | `createLocalActorHost`, per-run actor cells |
-| `@looms/cloudflare` | Durable Object / celld actor host           |
-| `@looms/agent`      | `defineAgent`, tools, `conversation`        |
-| `@looms/workflow`   | `defineWorkflow`                            |
-| `@looms/approval`   | `gate`, `pendingApprovals`                  |
-| `@looms/core`       | Custom modules: `defineModule`, `invoke`    |
-| `@looms/client`     | HTTP client                                 |
-| `@looms/react`      | `useRunStore` / `useProjection`             |
-| `@looms/s2`         | Durable event log                           |
-| `@looms/ai-vercel`  | Vercel AI SDK models                        |
-| `@looms/projectors` | Cross-run indexes                           |
-| `@looms/testing`    | `createTestRuntime`, replay checks          |
-| `@looms/cli`        | Inspect and approve runs from a terminal    |
+Looms publishes as one package. Explicit subpaths keep browser, server, provider, and storage
+boundaries clear. Migrate an old import by changing `@looms/<module>` to
+`@swirls/looms/<module>`; install only `@swirls/looms`.
+
+| Module                     | Import when you need                        |
+| -------------------------- | ------------------------------------------- |
+| `@swirls/looms/runtime`    | `createLooms`, HTTP host                    |
+| `@swirls/looms/actor`      | `createLocalActorHost`, per-run actor cells |
+| `@swirls/looms/cloudflare` | Durable Object / celld actor host           |
+| `@swirls/looms/agent`      | `defineAgent`, tools, `conversation`        |
+| `@swirls/looms/workflow`   | `defineWorkflow`                            |
+| `@swirls/looms/approval`   | `gate`, `pendingApprovals`                  |
+| `@swirls/looms/core`       | Custom modules: `defineModule`, `invoke`    |
+| `@swirls/looms/client`     | HTTP client                                 |
+| `@swirls/looms/react`      | `useRunStore` / `useProjection`             |
+| `@swirls/looms/s2`         | Durable event log                           |
+| `@swirls/looms/ai-vercel`  | Vercel AI SDK models                        |
+| `@swirls/looms/projectors` | Cross-run indexes                           |
+| `@swirls/looms/testing`    | `createTestRuntime`, replay checks          |
+| `@swirls/looms/cli`        | Inspect and approve runs from a terminal    |
 
 ## License
 

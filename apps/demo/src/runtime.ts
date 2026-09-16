@@ -1,8 +1,8 @@
-import { agent, type AgentDefinition, type LlmAdapter } from '@looms/agent'
-import { approval } from '@looms/approval'
-import type { EventsOf } from '@looms/core'
-import type {} from '@looms/react'
-import { workflow } from '@looms/workflow'
+import { agent, type AgentDefinition, type LlmAdapter } from '@swirls/looms/agent'
+import { approval } from '@swirls/looms/approval'
+import type { EventsOf } from '@swirls/looms/core'
+import type {} from '@swirls/looms/react'
+import { workflow } from '@swirls/looms/workflow'
 
 import { definitions } from './definitions'
 import { demoLlm } from './demo-llm'
@@ -25,7 +25,7 @@ export function demoModules(
 
 export type DemoEvents = EventsOf<typeof demoModules>
 
-declare module '@looms/react' {
+declare module '@swirls/looms/react' {
   interface LoomsRegister {
     events: DemoEvents
   }

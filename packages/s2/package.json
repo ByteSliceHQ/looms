@@ -1,6 +1,7 @@
 {
   "name": "@looms/s2",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "private": true,
   "description": "S2 streamstore EventStore adapter for Looms",
   "license": "Apache-2.0",
   "repository": {
@@ -26,21 +27,6 @@
       "import": "./src/projector.ts",
       "default": "./src/projector.ts"
     }
-  },
-  "publishConfig": {
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      },
-      "./projector": {
-        "types": "./dist/projector.d.ts",
-        "import": "./dist/projector.js"
-      }
-    },
-    "access": "public"
   },
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",

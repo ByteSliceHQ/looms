@@ -22,7 +22,7 @@ Typical wait: a workflow node invokes `payments.charge` and waits on `payments.c
 
 Matching is by event `type` plus an optional payload subset (`match: { approvalId }`).
 
-`replayTo(runId, seq)` returns state before and after that event — the debugger and `@looms/testing` use it.
+`replayTo(runId, seq)` returns state before and after that event — the debugger and `@swirls/looms/testing` use it.
 
 ## HTTP
 
@@ -42,4 +42,4 @@ Matching is by event `type` plus an optional payload subset (`match: { approvalI
 
 `looms.fetch(request)` handles these paths. It returns `null` for everything else so you can mount Looms next to your own UI.
 
-Use `@looms/client` (`createLoomsClient`) instead of hand-rolling fetch when you can.
+Use `@swirls/looms/client` (`createLoomsClient`) instead of hand-rolling fetch when you can.

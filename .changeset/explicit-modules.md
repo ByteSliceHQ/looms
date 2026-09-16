@@ -1,12 +1,5 @@
 ---
-'@looms/core': minor
-'@looms/runtime': minor
-'@looms/agent': minor
-'@looms/workflow': minor
-'@looms/approval': minor
-'@looms/actor': minor
-'@looms/cloudflare': minor
-'@looms/testing': minor
+'@swirls/looms': patch
 ---
 
 **BREAKING**: Modules own their definitions. Pass `workflow({ definitions: [checkout] })` / `agent({ definitions: [...] })` instead of a top-level `definitions` list on `createLooms`, `createRuntime`, actor cells/hosts, or Durable Objects. Omitting `modules` installs none (no longer defaults to agent/workflow/approval).

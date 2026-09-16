@@ -67,7 +67,7 @@ function Page() {
         </a>
       </h2>
       <p>
-        Install @looms/testing for createTestRuntime, assertReplayDeterministic, and
+        Install @swirls/looms/testing for createTestRuntime, assertReplayDeterministic, and
         moduleConformance. createTestRuntime supplies an in-memory store and a run helper for
         Effect-based runtime operations. assertReplayDeterministic compares repeated folds of a log;
         it does not prove external idempotency or compatibility with future code.

@@ -1,16 +1,16 @@
 import { compactJson } from '@/lib/utils'
-import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
+import { isJsonObject, isJsonString, type JsonValue } from '@swirls/looms/core'
 import {
   DEFAULT_FAMILIES,
   familyClass,
   familyFromPrefix,
   type EventStreamCatalog,
   type EventSummary,
-} from '@looms/debugger'
+} from '@swirls/looms/debugger'
 
 import type { DemoEvents } from '../../runtime'
 
-export type { EventFamily, EventSummary } from '@looms/debugger'
+export type { EventFamily, EventSummary } from '@swirls/looms/debugger'
 export { familyClass, familyFromPrefix as eventFamily }
 
 function obj(value: JsonValue | null): { [key: string]: JsonValue } {
