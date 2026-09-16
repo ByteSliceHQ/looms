@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security issue privately
+    url: https://github.com/ByteSliceHQ/looms/blob/main/SECURITY.md
+    about: Email security@swirls.ai for suspected vulnerabilities. Please do not disclose them in public issues.
+  - name: Documentation and troubleshooting
+    url: https://looms.sh/docs/troubleshooting
+    about: Check the documentation for setup and usage guidance. You can also open a blank issue for a question.
