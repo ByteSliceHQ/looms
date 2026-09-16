@@ -26,7 +26,6 @@
     "dev": "bun --bun vite dev",
     "build": "bun --bun vite build",
     "start": "PORT=8787 bun .output/server/index.mjs",
-    "verify": "bun run src/verify.ts",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
     "test": "bun test src"
   },

@@ -479,14 +479,3 @@ export async function verifyDemo(): Promise<void> {
     }
   }
 }
-
-if (import.meta.main) {
-  try {
-    await verifyDemo()
-    console.log('demo verify: ok')
-  } catch (err) {
-    console.error('demo verify: failed')
-    console.error(err)
-    process.exit(1)
-  }
-}

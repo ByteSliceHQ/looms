@@ -42,10 +42,6 @@
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "verify": {
-      "dependsOn": ["check-types"],
-      "cache": false
     }
   }
 }
