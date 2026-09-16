@@ -9,35 +9,21 @@ export const Route = createFileRoute('/docs')({
   component: DocsLayout,
 })
 
-function linkIsActive(pathname: string, to: string, exact: boolean): boolean {
-  if (exact) {
-    return pathname === to || pathname === `${to}/`
-  }
-
-  return pathname === to || pathname.startsWith(`${to}/`)
-}
-
 function DocsNavLinkItem({
   item,
-  pathname,
-  exact = false,
   nested = false,
   mobile = false,
   onNavigate,
 }: {
   item: DocsNavLink
-  pathname: string
-  exact?: boolean
   nested?: boolean
   mobile?: boolean
   onNavigate?: () => void
 }) {
-  const active = linkIsActive(pathname, item.to, exact)
-
   return (
     <Link
       to={item.to}
-      activeOptions={{ exact }}
+      activeOptions={{ exact: true }}
       className={
         mobile
           ? 'text-muted hover:text-foreground data-[status=active]:text-foreground block py-2 text-lg no-underline transition-colors data-[status=active]:font-medium'
@@ -45,7 +31,6 @@ function DocsNavLinkItem({
             ? 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.82rem] no-underline transition-colors data-[status=active]:font-medium'
             : 'text-muted hover:text-foreground data-[status=active]:text-foreground text-[0.88rem] no-underline transition-colors data-[status=active]:font-medium'
       }
-      aria-current={active ? 'page' : undefined}
       onClick={onNavigate}
     >
       {item.label}
@@ -55,28 +40,24 @@ function DocsNavLinkItem({
 
 function DocsNavGroupItem({
   group,
-  pathname,
   mobile = false,
   onNavigate,
 }: {
   group: DocsNavGroup
-  pathname: string
   mobile?: boolean
   onNavigate?: () => void
 }) {
-  const childActive = group.children.some((child) =>
-    linkIsActive(pathname, child.to, child.to === '/docs/concepts'),
-  )
-
   return (
-    <div className={mobile ? 'flex w-full flex-col gap-2' : 'flex w-full flex-col gap-1.5'}>
+    <div
+      className={
+        mobile ? 'flex w-full flex-col gap-2' : 'docs-nav-group flex w-full flex-col gap-1.5'
+      }
+    >
       <span
         className={
           mobile
             ? 'text-foreground text-sm font-medium tracking-wide uppercase'
-            : childActive
-              ? 'text-foreground text-[0.88rem] font-medium'
-              : 'text-muted text-[0.88rem] font-medium'
+            : 'text-muted text-[0.88rem] font-medium'
         }
       >
         {group.label}
@@ -86,8 +67,6 @@ function DocsNavGroupItem({
           <DocsNavLinkItem
             key={child.to}
             item={child}
-            pathname={pathname}
-            exact={child.to === '/docs/concepts'}
             nested
             mobile={mobile}
             onNavigate={onNavigate}
@@ -99,11 +78,9 @@ function DocsNavGroupItem({
 }
 
 function DocsNavigation({
-  pathname,
   mobile = false,
   onNavigate,
 }: {
-  pathname: string
   mobile?: boolean
   onNavigate?: () => void
 }) {
@@ -115,23 +92,13 @@ function DocsNavigation({
             <DocsNavGroupItem
               key={item.label}
               group={item}
-              pathname={pathname}
               mobile={mobile}
               onNavigate={onNavigate}
             />
           )
         }
 
-        return (
-          <DocsNavLinkItem
-            key={item.to}
-            item={item}
-            pathname={pathname}
-            exact
-            mobile={mobile}
-            onNavigate={onNavigate}
-          />
-        )
+        return <DocsNavLinkItem key={item.to} item={item} mobile={mobile} onNavigate={onNavigate} />
       })}
     </>
   )
@@ -205,12 +172,12 @@ function DocsLayout() {
           </button>
         </div>
         <nav className="flex h-[calc(100dvh-5.1rem)] flex-col gap-5 overflow-y-auto px-6 py-6">
-          <DocsNavigation pathname={pathname} mobile onNavigate={() => setMenuOpen(false)} />
+          <DocsNavigation mobile onNavigate={() => setMenuOpen(false)} />
         </nav>
       </dialog>
 
       <nav className="sticky top-8 hidden max-h-[calc(100vh-4rem)] flex-col gap-2.5 self-start overflow-y-auto pt-1 md:flex">
-        <DocsNavigation pathname={pathname} />
+        <DocsNavigation />
       </nav>
       <main id="main-content" className="min-w-0">
         {currentPage && currentPage.sections.length > 2 && (
