@@ -1,6 +1,6 @@
 {
   "name": "@swirls/looms",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Pluggable event-sourced runtime for durable agents and workflows",
   "homepage": "https://github.com/ByteSliceHQ/looms#readme",
   "bugs": {
