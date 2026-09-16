@@ -40,7 +40,6 @@ export interface ActorCell<
   dispose(): void
 }
 
-
 /**
  * Creates an in-process actor cell that owns a single `runId`.
  * Encapsulates single-writer concurrency, local storage, and HTTP routing.

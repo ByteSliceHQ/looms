@@ -27,7 +27,6 @@ describe('ActorCell', () => {
       runId,
       store,
       modules: [workflow({ definitions: [flow] })],
-      
     })
 
     // Start run through cell.fetch
@@ -112,7 +111,6 @@ describe('ActorCell', () => {
       store,
       scheduler: fakeScheduler,
       modules: [workflow({ definitions: [sleeper] })],
-      
     })
 
     const startRes = await cell.fetch(

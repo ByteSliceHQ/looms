@@ -114,6 +114,7 @@ describe('composeModules', () => {
 
   test('collects definitions owned by modules', () => {
     const checkout = { kind: 'ping', name: 'checkout' }
+
     const module = defineRuntimeModule({
       namespace: 'flows',
       protocolVersion: '1.0.0',
@@ -122,6 +123,7 @@ describe('composeModules', () => {
     })
 
     const composed = composeModules([module])
+
     expect(composed.definitions).toEqual([
       { kind: 'ping', name: 'checkout', input: undefined, value: checkout },
     ])
@@ -129,12 +131,14 @@ describe('composeModules', () => {
 
   test('rejects duplicate definitions across modules', () => {
     const def = { kind: 'ping', name: 'shared' }
+
     const a = defineRuntimeModule({
       namespace: 'a',
       protocolVersion: '1.0.0',
       definitions: [def],
       threads: { ping },
     })
+
     const b = defineRuntimeModule({
       namespace: 'b',
       protocolVersion: '1.0.0',

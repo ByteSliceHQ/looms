@@ -89,7 +89,6 @@ interface Initialized {
   readonly fetchHandler: (req: Request) => Promise<Response | null>
 }
 
-
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
   let initPromise: Promise<Initialized> | undefined

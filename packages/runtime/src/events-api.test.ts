@@ -51,7 +51,7 @@ describe('handleEventsApi SSE', () => {
       }),
     })
 
-    const looms = createLooms({  modules: [agent({ definitions: [echo] })] })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })] })
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
@@ -78,7 +78,7 @@ describe('handleEventsApi SSE', () => {
       }),
     })
 
-    const looms = createLooms({  modules: [agent({ definitions: [echo] })] })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })] })
     const { runId } = await looms.start(echo, { text: 'hi' })
     const events = await looms.getEvents(runId)
     expect(events.length).toBeGreaterThan(1)
@@ -106,7 +106,7 @@ describe('handleEventsApi SSE', () => {
       }),
     })
 
-    const looms = createLooms({  modules: [agent({ definitions: [echo] })] })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })] })
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
@@ -136,7 +136,7 @@ describe('handleEventsApi SSE', () => {
       }),
     })
 
-    const looms = createLooms({  modules: [agent({ definitions: [echo] })] })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })] })
 
     const res = await looms.fetch(
       new Request('http://looms.test/runs?stream=true', {

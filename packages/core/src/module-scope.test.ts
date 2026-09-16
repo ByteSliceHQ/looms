@@ -353,17 +353,18 @@ describe('defineModule scope', () => {
 
     expect(built.namespace).toBe('orders')
     expect(built.protocolVersion).toBe('1.0.0')
-    expect((built as any).thread).toBeUndefined()
-    expect((built as any).effect).toBeUndefined()
-    expect((built as any).projection).toBeUndefined()
-    expect((built as any).input).toBeUndefined()
-    expect((built as any).emit).toBeUndefined()
+    expect(built).not.toHaveProperty('thread')
+    expect(built).not.toHaveProperty('effect')
+    expect(built).not.toHaveProperty('projection')
+    expect(built).not.toHaveProperty('input')
+    expect(built).not.toHaveProperty('emit')
   })
 
   test('preserves observes and dependencies when finished from scope', () => {
     const billingCatalog = defineEventCatalog('billing', {
       invoiced: payload<{ invoiceId: string }>(),
     })
+
     const shippingScope = createModuleScope({
       namespace: 'shipping',
       protocolVersion: '1.0.0',

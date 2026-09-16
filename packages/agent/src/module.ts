@@ -19,6 +19,7 @@ export interface AgentModuleOptions {
 
 export function agent(options: AgentModuleOptions = {}) {
   const definitions = options.definitions ?? []
+
   const llmLayer = options.llm
     ? Layer.succeed(LlmTag, llmFromAdapter(options.llm))
     : StubLlmLive(options.llmPolicy)

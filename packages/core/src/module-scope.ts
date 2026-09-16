@@ -216,6 +216,7 @@ export type ModuleCatalog<N extends string, E> = E extends EventCatalog
     : undefined
 
 /** Construct a complete module. Only members returned by setup are installed. */
+/* oxlint-disable anti-slop/no-runtime-typeof, anti-slop/no-chained-type-assertions, anti-slop/no-conditional-empty-object-spread, anti-slop/require-safety-comment-for-type-assertion -- This compatibility boundary normalizes either a module builder or its finished catalog while preserving its generic member types. */
 export function defineModule<
   const N extends string,
   E extends EventCatalog | CatalogEntries | undefined = undefined,
@@ -238,15 +239,23 @@ export function defineModule<
   readonly projections: PR
 } {
   const source = options.events
+
   // SAFETY: catalogs have an input builder; inline entries are normalized once here.
   const events = (source &&
     (typeof (source as any).input === 'function'
       ? source
       : defineEventCatalog(options.namespace, source as CatalogEntries))) as ModuleCatalog<N, E>
+
   const scope =
     typeof (options as any).effect === 'function'
-      ? (options as unknown as ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>)
+      ? (options as unknown as ModuleScope<
+          N,
+          ScopeUniverse<ModuleCatalog<N, E>, O>,
+          ModuleCatalog<N, E>,
+          O
+        >)
       : createModuleScope({ ...options, events })
+
   const members = setup(scope)
 
   return {
@@ -264,3 +273,4 @@ export function defineModule<
     projections: (members.projections ?? {}) as PR,
   }
 }
+/* oxlint-enable anti-slop/no-runtime-typeof, anti-slop/no-chained-type-assertions, anti-slop/no-conditional-empty-object-spread, anti-slop/require-safety-comment-for-type-assertion */

@@ -71,7 +71,6 @@ export function getLocalRuntime(): Promise<LocalActorHost> {
       createLocalActorHost({
         createStore: createRunStore,
         modules: demoModules({ llm: resolveDemoLlm(env) }),
-
       }),
     )
   }

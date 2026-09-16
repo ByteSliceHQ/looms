@@ -1,4 +1,5 @@
 import { defineModule } from '@looms/core'
+
 import { requestApprovalEffect } from './effects'
 import { pendingApprovals } from './projections'
 import { approvalModule } from './scope'

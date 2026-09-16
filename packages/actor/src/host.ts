@@ -1,11 +1,6 @@
 import { Effect } from 'effect'
 
-import type {
-  AnyRuntimeModule,
-  EventStore,
-  RunState,
-  SnapshotStore,
-} from '@looms/core'
+import type { AnyRuntimeModule, EventStore, RunState, SnapshotStore } from '@looms/core'
 import { EventStoreTag } from '@looms/core'
 import { createTimeoutScheduler, isLoomsApiPath } from '@looms/runtime'
 

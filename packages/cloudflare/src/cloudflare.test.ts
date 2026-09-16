@@ -109,7 +109,6 @@ describe('@looms/cloudflare', () => {
         return store
       },
       modules: [workflow({ definitions: [flow] })],
-      
     })
 
     const fakeNamespace = {

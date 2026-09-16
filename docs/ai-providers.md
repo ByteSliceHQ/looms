@@ -23,7 +23,11 @@ const llm = vercelLlm({
 })
 
 const looms = createLooms({
-  modules: [agent({ definitions: [assistant], llm }), workflow({ definitions: [checkout] }), approval()],
+  modules: [
+    agent({ definitions: [assistant], llm }),
+    workflow({ definitions: [checkout] }),
+    approval(),
+  ],
 })
 ```
 

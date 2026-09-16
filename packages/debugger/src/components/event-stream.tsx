@@ -37,7 +37,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
   loadReplayStep?: ReplayLoader
   renderInspector?: (selected: TEvent) => ReactNode
 }) {
-  const eventCatalog = catalog ?? (defaultEventCatalog as EventStreamCatalog<TEvent>)
+  const eventCatalog = catalog ?? defaultEventCatalog
   const [query, setQuery] = useState('')
   const [follow, setFollow] = useState(true)
   const [families, setFamilies] = useState(() => new Set(eventCatalog.families))

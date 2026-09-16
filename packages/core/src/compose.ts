@@ -4,7 +4,12 @@ import type { CatalogEvent, EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
-import type { AnyRuntimeModule, EffectMiddleware, RuntimeModule, RegisteredDefinition } from './module'
+import type {
+  AnyRuntimeModule,
+  EffectMiddleware,
+  RuntimeModule,
+  RegisteredDefinition,
+} from './module'
 import type { ProjectionDefinition } from './projection'
 import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
@@ -72,14 +77,25 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
 
     for (const definition of module.definitions ?? []) {
       const key = `${definition.kind}:${definition.name}`
+
       if (definitionKeys.has(key)) {
         throw new ModuleCompositionError(`Duplicate definition: ${key}`)
       }
+
       if (!module.threads || !Object.hasOwn(module.threads, definition.kind)) {
-        throw new ModuleCompositionError(`Module ${module.namespace} registers definition ${key} but does not implement thread kind ${definition.kind}`)
+        throw new ModuleCompositionError(
+          `Module ${module.namespace} registers definition ${key} but does not implement thread kind ${definition.kind}`,
+        )
       }
+
       definitionKeys.add(key)
-      definitions.push({ kind: definition.kind, name: definition.name, input: definition.input, value: definition })
+
+      definitions.push({
+        kind: definition.kind,
+        name: definition.name,
+        input: definition.input,
+        value: definition,
+      })
     }
 
     const moduleThreads = module.threads

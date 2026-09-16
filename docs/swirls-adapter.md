@@ -36,7 +36,12 @@ import { createLooms } from '@looms/runtime'
 import { s2 } from '@looms/s2'
 
 const looms = createLooms({
-  modules: [agent({ definitions: agents }), workflow({ definitions: workflows }), approval(), swirlsBilling()],
+  modules: [
+    agent({ definitions: agents }),
+    workflow({ definitions: workflows }),
+    approval(),
+    swirlsBilling(),
+  ],
   store: s2({
     basin: process.env.LOOMS_S2_BASIN!,
     accessToken: process.env.LOOMS_S2_ACCESS_TOKEN!,

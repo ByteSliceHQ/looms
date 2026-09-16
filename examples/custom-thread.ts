@@ -1,12 +1,6 @@
 import { z } from 'zod'
 
-import {
-  complete,
-  defineEventCatalog,
-  defineModule,
-  wait,
-  type DefinitionRef,
-} from '@looms/core'
+import { complete, defineEventCatalog, defineModule, wait, type DefinitionRef } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 
 // Custom thread: define your own state machine / actor kind using defineModule.
@@ -195,15 +189,11 @@ const { runId, state: initialState } = await looms.start(vintageWatch, {
 console.log('started auction run:', runId, 'status:', initialState.status)
 
 // Send signals (bids) into the running auction
-await looms.signal(runId, [
-  auctionCatalog.input('bid', { bidder: 'Alice', amount: 200 }),
-])
+await looms.signal(runId, [auctionCatalog.input('bid', { bidder: 'Alice', amount: 200 })])
 
 console.log('placed bid from Alice ($200)')
 
-await looms.signal(runId, [
-  auctionCatalog.input('bid', { bidder: 'Bob', amount: 320 }),
-])
+await looms.signal(runId, [auctionCatalog.input('bid', { bidder: 'Bob', amount: 320 })])
 
 console.log('placed bid from Bob ($320)')
 

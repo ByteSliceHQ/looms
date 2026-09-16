@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+
 import { Effect, Schema } from 'effect'
 
 import { threadStartedEvents } from './runtime-helpers'
@@ -10,6 +11,7 @@ describe('threadStartedEvents', () => {
       name: 'checkout',
       value: { kind: 'workflow', name: 'checkout' },
     }
+
     const definitions = new Map([['workflow:checkout', def]])
 
     const events = await Effect.runPromise(
@@ -24,6 +26,7 @@ describe('threadStartedEvents', () => {
 
     expect(events).toHaveLength(1)
     expect(events[0]?.type).toBe('runtime.thread.started')
+
     expect(events[0]?.payload).toEqual({
       threadId: 'thr_1',
       kind: 'workflow',
@@ -36,7 +39,7 @@ describe('threadStartedEvents', () => {
   test('rejects unknown definitions with explicit error', async () => {
     const definitions = new Map()
 
-    await expect(
+    expect(
       Effect.runPromise(
         threadStartedEvents(definitions, {
           kind: 'workflow',
@@ -56,6 +59,7 @@ describe('threadStartedEvents', () => {
       input: Schema.Struct({ amount: Schema.Number }),
       value: { kind: 'workflow', name: 'checkout' },
     }
+
     const definitions = new Map([['workflow:checkout', def]])
 
     const events = await Effect.runPromise(

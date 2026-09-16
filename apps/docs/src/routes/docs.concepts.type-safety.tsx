@@ -11,8 +11,8 @@ function TypeSafety() {
     <>
       <h1>Type safety</h1>
       <p>
-        Types start in the event catalog and flow through module reducers, effects, projections,
-        and React hooks via <code>EventsOf</code> and <code>LoomsRegister</code>.
+        Types start in the event catalog and flow through module reducers, effects, projections, and
+        React hooks via <code>EventsOf</code> and <code>LoomsRegister</code>.
       </p>
 
       <h2>The chain</h2>

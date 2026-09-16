@@ -30,7 +30,6 @@ import {
   type EventStore,
   type JsonValue,
   type ProjectionDefinition,
-  type RegisteredDefinition,
   type ReplayStep,
   type RunCursor,
   type RunState,

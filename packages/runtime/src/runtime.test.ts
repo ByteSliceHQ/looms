@@ -27,6 +27,14 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 import { createLooms } from './looms'
 import { DuplicateEffectDispatchError, MaxWakeIterationsError, type WakeScheduler } from './runtime'
 
+async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (!predicate() && Date.now() < deadline) {
+    await Bun.sleep(10)
+  }
+}
+
 describe('createLooms', () => {
   test('runs a deterministic echo agent to completion', async () => {
     const echo = defineAgent({
@@ -39,7 +47,7 @@ describe('createLooms', () => {
       }),
     })
 
-    const looms = createLooms({  modules: [agent({ definitions: [echo] })] })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })] })
     const result = await looms.start(echo, { text: 'hi' })
     expect(result.state.status).toBe('completed')
 
@@ -58,7 +66,7 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({ modules: [workflow()] })
-    await expect(looms.start(checkout, {})).rejects.toThrow(/Unknown definition workflow:checkout/)
+    expect(looms.start(checkout, {})).rejects.toThrow(/Unknown definition workflow:checkout/)
 
     const store = await looms.store
     expect(await Effect.runPromise(store.listRuns())).toEqual([])
@@ -81,7 +89,7 @@ describe('createLooms', () => {
       ],
     })
 
-    const looms = createLooms({  modules: [workflow({ definitions: [boom] })] })
+    const looms = createLooms({ modules: [workflow({ definitions: [boom] })] })
     const { runId, state } = await looms.start(boom, {})
     expect(state.status).toBe('failed')
     const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
@@ -135,7 +143,7 @@ describe('createLooms', () => {
       ],
     })
 
-    const looms = createLooms({  modules: [workflow({ definitions: [child, parent] })] })
+    const looms = createLooms({ modules: [workflow({ definitions: [child, parent] })] })
     const { runId, state } = await looms.start(parent, {})
     expect(state.status).toBe('completed')
 
@@ -177,7 +185,7 @@ describe('createLooms', () => {
       ],
     })
 
-    const looms = createLooms({  modules: [workflow({ definitions: [child, parent] })] })
+    const looms = createLooms({ modules: [workflow({ definitions: [child, parent] })] })
     const { state } = await looms.start(parent, {})
     expect(state.status).toBe('failed')
 
@@ -225,9 +233,9 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [caller] }), workflow({ definitions: [child] })],
     })
+
     const { runId, state } = await looms.start(caller, 'go')
     expect(state.status).toBe('completed')
 
@@ -291,7 +299,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [asker] }), workflow(), failing],
     })
 
@@ -332,8 +339,7 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
-      modules: [agent({ definitions: [bot],  llm })],
+      modules: [agent({ definitions: [bot], llm })],
     })
 
     const { runId } = await looms.start(bot, 'hi')
@@ -390,8 +396,7 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
-      modules: [agent({ definitions: [bot],  llm })],
+      modules: [agent({ definitions: [bot], llm })],
       store: delayed,
     })
 
@@ -437,7 +442,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [bot] }), auditModule],
     })
 
@@ -485,7 +489,6 @@ describe('createLooms', () => {
       },
     })
 
-
     const looms = createLooms({
       modules: [testModule],
     })
@@ -518,7 +521,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [sleeper] })],
     })
 
@@ -528,7 +530,7 @@ describe('createLooms', () => {
     expect(wokeUp).toBe(false)
 
     // Wait for the automatic timer scheduler to fire wake(runId)
-    await new Promise((resolve) => setTimeout(resolve, 80))
+    await waitFor(() => wokeUp)
 
     const finalRun = await looms.getRun(runId)
     expect(wokeUp).toBe(true)
@@ -561,7 +563,6 @@ describe('createLooms', () => {
 
     // First process starts the sleeping workflow then stops (simulating shutdown)
     const looms1 = createLooms({
-      
       modules: [workflow({ definitions: [sleeper] })],
       store: sharedStore,
     })
@@ -576,14 +577,13 @@ describe('createLooms', () => {
 
     // Second process boots up with the same persistent store
     const looms2 = createLooms({
-      
       modules: [workflow({ definitions: [sleeper] })],
       store: sharedStore,
     })
 
     // Wait for the restored timer to wake up in the second process
     await looms2.ready()
-    await new Promise((resolve) => setTimeout(resolve, 80))
+    await waitFor(() => wokeUp)
 
     const finalRun = await looms2.getRun(runId)
     expect(wokeUp).toBe(true)
@@ -608,7 +608,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [workflowDef] })],
     })
 
@@ -645,7 +644,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [workflowDef] })],
     })
 
@@ -685,7 +683,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [gatedFlow] }), approval()],
     })
 
@@ -770,8 +767,7 @@ describe('createLooms', () => {
     )
 
     const looms = createLooms({
-      
-      modules: [agent({ definitions: [bot],  llm })],
+      modules: [agent({ definitions: [bot], llm })],
       store: truncatedStore,
     })
 
@@ -818,7 +814,6 @@ describe('createLooms', () => {
         }),
       },
     })
-
 
     const looms = createLooms({
       modules: [workModule],
@@ -892,7 +887,6 @@ describe('createLooms', () => {
       },
     })
 
-
     const looms = createLooms({
       modules: [pingPongModule],
       maxWakeIterations: 5,
@@ -954,8 +948,7 @@ describe('createLooms', () => {
     const bot = defineAgent({ name: 'read-count', instructions: 'stream' })
 
     const looms = createLooms({
-      
-      modules: [agent({ definitions: [bot],  llm })],
+      modules: [agent({ definitions: [bot], llm })],
       store: countingStore,
     })
 
@@ -978,7 +971,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
       snapshotEvery: 1,
@@ -1015,7 +1007,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
       snapshotStore: snapshots,
@@ -1032,7 +1023,6 @@ describe('createLooms', () => {
     }
 
     const looms2 = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
       snapshotStore: snapshots,
@@ -1076,7 +1066,6 @@ describe('createLooms', () => {
     const echo = defineAgent({ name: 'trim-echo', instructions: 'echo' })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
     })
@@ -1123,7 +1112,6 @@ describe('createLooms', () => {
     )
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
     })
@@ -1152,7 +1140,6 @@ describe('createLooms', () => {
     const echo = defineAgent({ name: 'cache-trim', instructions: 'echo' })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
       snapshotStore: snapshots,
@@ -1203,7 +1190,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [stepper] })],
       store,
       snapshotStore: snapshots,
@@ -1243,7 +1229,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [slow] })],
       store,
     })
@@ -1324,7 +1309,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store,
     })
@@ -1360,8 +1344,6 @@ describe('createLooms', () => {
       },
     })
 
-
-
     const looms = createLooms({
       modules: [waiterModule],
       store,
@@ -1379,9 +1361,6 @@ describe('createLooms', () => {
       expect(parked.value.cursor).toBe(tailAfterPark)
       expect(parked.value.state.status).toBe('running')
     }
-
-
-
 
     const readFrom: number[] = []
 
@@ -1453,7 +1432,6 @@ describe('createLooms', () => {
     const echo = defineAgent({ name: 'recreated', instructions: 'echo' })
 
     const looms = createLooms({
-      
       modules: [agent({ definitions: [echo] })],
       store: swappable,
       runCacheSize: 10,
@@ -1500,7 +1478,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [sleeper] })],
       scheduler: fakeScheduler,
       rescanTimers: false,
@@ -1525,11 +1502,14 @@ describe('createLooms', () => {
       }),
     })
 
-    const testMod = defineModule({
-      namespace: 'testmod',
-      protocolVersion: '1.0.0',
-      events: testCatalog,
-    }, () => ({}))
+    const testMod = defineModule(
+      {
+        namespace: 'testmod',
+        protocolVersion: '1.0.0',
+        events: testCatalog,
+      },
+      () => ({}),
+    )
 
     const echo = defineAgent({
       name: 'echo-test',
@@ -1542,7 +1522,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [testMod, agent({ definitions: [echo] })],
     })
 
@@ -1613,7 +1592,6 @@ describe('createLooms', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [worker] }), mod],
     })
 

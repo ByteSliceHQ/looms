@@ -200,8 +200,7 @@ export const { charge } = payments.effects
 export const { ledger } = payments.projections`}</CodeBlock>
       <h3>What the scope gives you</h3>
       <p>
-        Catalog through React typing:{' '}
-        <Link to="/docs/concepts/type-safety">Type safety</Link>.
+        Catalog through React typing: <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
       <ul>
         <li>

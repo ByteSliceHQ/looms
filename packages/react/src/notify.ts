@@ -22,7 +22,7 @@ export interface NotifyScheduler {
 
 function nowMs(): number {
   const perf = globalThis.performance
-  return perf !== undefined && Predicate.isFunction(perf.now) ? perf.now() : Date.now()
+  return perf === undefined ? Date.now() : perf.now()
 }
 
 export function createNotifyScheduler(

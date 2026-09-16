@@ -25,7 +25,6 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [flow] })],
     })
 
@@ -95,7 +94,6 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [flow] })],
     })
 
@@ -163,7 +161,6 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [flow] })],
     })
 
@@ -216,11 +213,14 @@ describe('server HTTP idempotency', () => {
       }),
     })
 
-    const billingModule = defineModule({
-      namespace: 'billing',
-      protocolVersion: '1.0.0',
-      events: catalog,
-    }, () => ({}))
+    const billingModule = defineModule(
+      {
+        namespace: 'billing',
+        protocolVersion: '1.0.0',
+        events: catalog,
+      },
+      () => ({}),
+    )
 
     const flow = defineWorkflow({
       name: 'billing-flow',
@@ -233,7 +233,6 @@ describe('server HTTP idempotency', () => {
     })
 
     const looms = createLooms({
-      
       modules: [workflow({ definitions: [flow] }), billingModule],
     })
 
