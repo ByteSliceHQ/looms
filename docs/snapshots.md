@@ -42,8 +42,8 @@ Snapshot failures are swallowed; the log stays authoritative.
 ### Providers
 
 - `makeMemorySnapshotStore` — default when nothing is attached.
-- `bunSqliteEventStore()` (`@looms/core/bun-sqlite`) — Bun native SQLite engine.
-- `sqliteEventStore({ exec })` (`@looms/core/sqlite-store`) — engine-agnostic embedded SQLite, used directly by Cloudflare Durable Object storage (`sqlStorageExec(ctx.storage.sql)`).
+- `bunSqliteEventStore()` (`@swirls/looms/core/bun-sqlite`) — Bun native SQLite engine.
+- `sqliteEventStore({ exec })` (`@swirls/looms/core/sqlite-store`) — engine-agnostic embedded SQLite, used directly by Cloudflare Durable Object storage (`sqlStorageExec(ctx.storage.sql)`).
 - `s2SnapshotStore` — optional lake-side snapshots (`snapshots/{runId}`).
 
 ## S2 is a projector
@@ -53,9 +53,9 @@ S2 is no longer the execution store. `s2Projector(config)` implements
 stream lake, ETL, and replay.
 
 ```ts
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { withProjectors } from '@looms/projectors'
-import { s2Projector } from '@looms/s2/projector'
+import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
+import { withProjectors } from '@swirls/looms/projectors'
+import { s2Projector } from '@swirls/looms/s2/projector'
 
 const store = withProjectors(bunSqliteEventStore(), [s2Projector(config)])
 ```
@@ -68,8 +68,8 @@ itself.
 
 Looms supports pluggable runtime hosts for actor single-writer execution:
 
-1. **Bun process (`@looms/actor` + `@looms/core/bun-sqlite`)**: Local `createLocalActorHost` with one SQLite file and one actor cell per `runId`, plus in-process timer scheduling (`createTimeoutScheduler`).
-2. **Cloudflare Durable Objects (`@looms/cloudflare`)**: Named actor cells on Cloudflare. Each cell owns a private SQLite database via `ctx.storage.sql` and schedules durable timer wakes via `ctx.storage.setAlarm()`.
+1. **Bun process (`@swirls/looms/actor` + `@swirls/looms/core/bun-sqlite`)**: Local `createLocalActorHost` with one SQLite file and one actor cell per `runId`, plus in-process timer scheduling (`createTimeoutScheduler`).
+2. **Cloudflare Durable Objects (`@swirls/looms/cloudflare`)**: Named actor cells on Cloudflare. Each cell owns a private SQLite database via `ctx.storage.sql` and schedules durable timer wakes via `ctx.storage.setAlarm()`.
 3. **celld (`denoland/celld`)**: Self-hosted virtual actor daemon running the same Workers / Durable Objects bundle with S3-compatible bucket replication (`celld dev .` or `celld deploy . --bucket $CELLD_BUCKET`).
 
 ### Swapping backends in the demo

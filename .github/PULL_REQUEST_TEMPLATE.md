@@ -9,7 +9,7 @@
 ## Existing contributor checklist
 
 - [ ] `bun run verify` passes
-- [ ] Changeset added if publishing packages change (`bun run changeset`)
+- [ ] Changeset added if `@swirls/looms` behavior changes (`bun run changeset`)
 - [ ] Docs updated for API / architecture changes
 
 <!-- Mark inapplicable items as N/A. See CONTRIBUTING.md for guidance. Report undisclosed vulnerabilities privately to security@swirls.ai instead of opening a public PR. -->

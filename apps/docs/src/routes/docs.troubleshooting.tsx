@@ -87,9 +87,9 @@ function Page() {
         </a>
       </h2>
       <p>
-        The @looms/core/bun-sqlite entry uses Bun's native SQLite module. Run this example with Bun,
-        use the Cloudflare storage adapter in Workers, or implement another compatible store for a
-        custom host.
+        The @swirls/looms/core/bun-sqlite entry uses Bun's native SQLite module. Run this example
+        with Bun, use the Cloudflare storage adapter in Workers, or implement another compatible
+        store for a custom host.
       </p>
       <h2 id="sse-does-not-update">
         SSE does not update

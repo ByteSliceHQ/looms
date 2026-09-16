@@ -33,11 +33,11 @@ function Quickstart() {
       <CodeBlock lang="bash">{`mkdir looms-starter
 cd looms-starter
 npm init -y
-npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod`}</CodeBlock>
+npm install @swirls/looms zod`}</CodeBlock>
       <p>
-        Packages install from npm; Bun executes the TypeScript and provides SQLite. Keep all{' '}
-        <code>@looms/*</code> packages on matching versions and commit your lockfile. Node alone
-        cannot execute the Bun SQLite example.
+        The package installs from npm; Bun executes the TypeScript and provides SQLite. Pin{' '}
+        <code>@swirls/looms</code> deliberately and commit your lockfile. Node alone cannot execute
+        the Bun SQLite example.
       </p>
       <h2 id="define-the-work">
         Define the work

@@ -55,7 +55,7 @@ function TypeSafety() {
         accept:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { defineEventCatalog } from '@looms/core'
+import { defineEventCatalog } from '@swirls/looms/core'
 
 const ChargeRequested = z.object({
   chargeId: z.string(),
@@ -161,7 +161,7 @@ export const ledger = payments.projections.ledger`}</CodeBlock>
         </a>
       </h2>
       <p>Pass the effect definition when you want input checking:</p>
-      <CodeBlock lang="ts">{`import { invoke } from '@looms/core'
+      <CodeBlock lang="ts">{`import { invoke } from '@swirls/looms/core'
 
 invoke(charge, { amount: 40, currency: 'USD' })`}</CodeBlock>
 
@@ -188,21 +188,21 @@ invoke(charge, { amount: 40, currency: 'USD' })`}</CodeBlock>
         Augment <code>LoomsRegister</code> with your composed modules so hooks see the same event
         union as the host:
       </p>
-      <CodeBlock lang="ts">{`import type { EventsOf } from '@looms/core'
-import type {} from '@looms/react'
-import { approval } from '@looms/approval'
-import { workflow } from '@looms/workflow'
+      <CodeBlock lang="ts">{`import type { EventsOf } from '@swirls/looms/core'
+import type {} from '@swirls/looms/react'
+import { approval } from '@swirls/looms/approval'
+import { workflow } from '@swirls/looms/workflow'
 
 const modules = [workflow({ definitions: [checkout] }), approval(), payments] as const
 
 export type AppEvents = EventsOf<typeof modules>
 
-declare module '@looms/react' {
+declare module '@swirls/looms/react' {
   interface LoomsRegister {
     events: AppEvents
   }
 }`}</CodeBlock>
-      <CodeBlock lang="tsx">{`import { useProjection, useRunStore } from '@looms/react'
+      <CodeBlock lang="tsx">{`import { useProjection, useRunStore } from '@swirls/looms/react'
 
 function Ledger({ runId }: { runId: string }) {
   const store = useRunStore(runId)

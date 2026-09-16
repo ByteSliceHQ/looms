@@ -15,11 +15,11 @@ function Modules() {
     <>
       <h1>Modules</h1>
       <p>
-        Install capabilities as packages. Built-in modules cover agents, workflows, and approvals;
-        add your own for domain work without forking the runtime. The kernel does not special-case
-        LLM turns or DAG nodes; those are <strong>thread kinds</strong> contributed by modules,
-        alongside namespaced events, effects, and projections. Vocabulary:{' '}
-        <Link to="/docs/concepts">Concepts</Link>.
+        Install <code>@swirls/looms</code>, then import only the module subpaths your application
+        needs. Built-in modules cover agents, workflows, and approvals; add your own for domain work
+        without forking the runtime. The kernel does not special-case LLM turns or DAG nodes; those
+        are <strong>thread kinds</strong> contributed by modules, alongside namespaced events,
+        effects, and projections. Vocabulary: <Link to="/docs/concepts">Concepts</Link>.
       </p>
 
       <ConceptFigure name="modules" />
@@ -45,7 +45,7 @@ function Modules() {
         <tbody>
           <tr>
             <td>
-              <code>@looms/agent</code>
+              <code>@swirls/looms/agent</code>
             </td>
             <td>Conversational or tool-using LLM agents</td>
             <td>
@@ -55,7 +55,7 @@ function Modules() {
           </tr>
           <tr>
             <td>
-              <code>@looms/workflow</code>
+              <code>@swirls/looms/workflow</code>
             </td>
             <td>DAGs: nodes, deps, sleeps, nested runs</td>
             <td>
@@ -65,7 +65,7 @@ function Modules() {
           </tr>
           <tr>
             <td>
-              <code>@looms/approval</code>
+              <code>@swirls/looms/approval</code>
             </td>
             <td>Human gates from agents or workflows</td>
             <td>
@@ -95,12 +95,12 @@ function Modules() {
         modules use the same registration pattern. This composition excerpt assumes the imported
         application definitions, payments module, and model adapter already exist:
       </p>
-      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+      <CodeBlock lang="ts">{`import { createLooms } from '@swirls/looms/runtime'
 
 // built-in modules
-import { agent } from '@looms/agent'
-import { approval } from '@looms/approval'
-import { workflow } from '@looms/workflow'
+import { agent } from '@swirls/looms/agent'
+import { approval } from '@swirls/looms/approval'
+import { workflow } from '@swirls/looms/workflow'
 
 // custom module
 import { payments } from './modules/payments'
@@ -166,8 +166,8 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
         Every input to a run is an event. Modules export small builders so you never hand-write
         payloads:
       </p>
-      <CodeBlock lang="ts">{`import { userMessage } from '@looms/agent'
-import { decision } from '@looms/approval'
+      <CodeBlock lang="ts">{`import { userMessage } from '@swirls/looms/agent'
+import { decision } from '@swirls/looms/approval'
 
 await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
@@ -230,7 +230,7 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <p>
         Prefer a Zod (or other Standard Schema) object for each event so the payload is validated.
         When you only need a type, <code>payload{'<{ chargeId: string }>()'}</code> from{' '}
-        <code>@looms/core</code> declares it without a runtime schema.
+        <code>@swirls/looms/core</code> declares it without a runtime schema.
       </p>
       <p>
         Workflows invoke <code>payments.charge</code> and wait on{' '}
@@ -264,14 +264,14 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       </h3>
       <p>
         Define effects within a module using <code>scope.effect</code> (or standalone with{' '}
-        <code>defineEffect</code> from <code>@looms/core</code>). Using <code>scope.effect</code>{' '}
-        constrains the effect&apos;s type name to your module&apos;s namespace and ensures that both
-        the returned events and any events passed to <code>ctx.emit</code> match your module&apos;s
-        event catalog. This handler excerpt assumes a configured server-side Stripe client and a
-        payments catalog containing the authorized event:
+        <code>defineEffect</code> from <code>@swirls/looms/core</code>). Using{' '}
+        <code>scope.effect</code> constrains the effect&apos;s type name to your module&apos;s
+        namespace and ensures that both the returned events and any events passed to{' '}
+        <code>ctx.emit</code> match your module&apos;s event catalog. This handler excerpt assumes a
+        configured server-side Stripe client and a payments catalog containing the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { createModuleScope } from '@looms/core'
+import { createModuleScope } from '@swirls/looms/core'
 import { paymentsCatalog } from './events'
 import { stripe } from './stripe'
 
@@ -458,7 +458,7 @@ export const chargeCardEffect = paymentsScope.effect({
         you supply a matching <code>Layer</code>:
       </p>
       <CodeBlock lang="ts">{`import { Context, Effect, Layer } from 'effect'
-import { defineModule } from '@looms/core'
+import { defineModule } from '@swirls/looms/core'
 import { z } from 'zod'
 
 export interface DatabaseService {
@@ -566,7 +566,7 @@ export function payments(db: DatabaseService) {
         To invoke an effect from a thread reducer or a workflow node, pass the effect definition
         directly to <code>invoke</code>:
       </p>
-      <CodeBlock lang="ts">{`import { invoke } from '@looms/core'
+      <CodeBlock lang="ts">{`import { invoke } from '@swirls/looms/core'
 import { chargeCardEffect } from './effects'
 
 // Inside a thread's effects() method:

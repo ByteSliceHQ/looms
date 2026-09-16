@@ -20,7 +20,7 @@ import { createLoomsClient } from '@looms/client'
 import type { JsonValue } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 
-const VERSION = '0.1.0'
+const VERSION = '0.0.1'
 
 const urlFlag = Flag.string('url').pipe(
   Flag.withDescription('Looms host base URL (env LOOMS_URL)'),

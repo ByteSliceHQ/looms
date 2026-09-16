@@ -62,7 +62,7 @@ function RunsAndThreads() {
         the state machine that handles events for that kind:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { defineEventCatalog, defineModule, type DefinitionRef } from '@looms/core'
+import { defineEventCatalog, defineModule, type DefinitionRef } from '@swirls/looms/core'
 
 const AuctionInput = z.object({
   item: z.string(),
@@ -114,7 +114,7 @@ const auctionModule = defineModule(
         Start the definition on a host that includes the module. The input type follows the
         definition&apos;s schema:
       </p>
-      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+      <CodeBlock lang="ts">{`import { createLooms } from '@swirls/looms/runtime'
 
 const looms = createLooms({ modules: [auctionModule] })
 

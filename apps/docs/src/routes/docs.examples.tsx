@@ -21,7 +21,7 @@ function Examples() {
         memory and deterministic behavior, so it needs no provider key. For persistence across
         processes, start with the quickstart.
       </p>
-      <CodeBlock lang="bash">{`npm install @looms/runtime @looms/core @looms/agent @looms/workflow @looms/approval zod
+      <CodeBlock lang="bash">{`npm install @swirls/looms zod
 # Save one of the files below, then:
 bun approval.ts`}</CodeBlock>
       <h2 id="approval">

@@ -34,7 +34,7 @@ function Api() {
           #
         </a>
       </h2>
-      <CodeBlock lang="ts">{`import { createLooms } from '@looms/runtime'
+      <CodeBlock lang="ts">{`import { createLooms } from '@swirls/looms/runtime'
 import { modules, release } from './review-definition'
 
 const looms = createLooms({ modules })
@@ -167,52 +167,53 @@ GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
         stable operation identifiers. See <Link to="/docs/integration">integration</Link>.
       </p>
       <h2 id="packages">
-        Packages and extension APIs
+        Package modules and extension APIs
         <a className="heading-anchor" href="#packages" aria-label="Link to this section">
           #
         </a>
       </h2>
       <ul>
         <li>
-          <code>@looms/core</code>: defineModule, defineEventCatalog, defineThread, defineEffect,
-          defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite entry supplies
-          Bun storage.
+          <code>@swirls/looms/core</code>: defineModule, defineEventCatalog, defineThread,
+          defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite
+          entry supplies Bun storage.
         </li>
         <li>
-          <code>@looms/runtime</code>: createLooms and lower-level runtime APIs.
+          <code>@swirls/looms/runtime</code>: createLooms and lower-level runtime APIs.
         </li>
         <li>
-          <code>@looms/agent</code>: agent, defineAgent, defineTool, asThreadTool, asAgentTool,
-          asWorkflowTool, conversation, userMessage.
+          <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
+          asAgentTool, asWorkflowTool, conversation, userMessage.
         </li>
         <li>
-          <code>@looms/workflow</code>: workflow and defineWorkflow.
+          <code>@swirls/looms/workflow</code>: workflow and defineWorkflow.
         </li>
         <li>
-          <code>@looms/approval</code>: approval, gate, decision, pendingApprovals.
+          <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
         </li>
         <li>
-          <code>@looms/actor</code>: createActorCell and createLocalActorHost.
+          <code>@swirls/looms/actor</code>: createActorCell and createLocalActorHost.
         </li>
         <li>
-          <code>@looms/cloudflare</code>: LoomsDurableObject and routeToDurableObject.
+          <code>@swirls/looms/cloudflare</code>: LoomsDurableObject and routeToDurableObject.
         </li>
         <li>
-          <code>@looms/client</code> and <code>@looms/react</code>: HTTP clients, streams,
-          providers, and projection hooks.
+          <code>@swirls/looms/client</code> and <code>@swirls/looms/react</code>: HTTP clients,
+          streams, providers, and projection hooks.
         </li>
         <li>
-          <code>@looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
+          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
         </li>
         <li>
-          <code>@looms/projectors</code>: post-commit indexes and fan-out. <code>@looms/s2</code>:
-          stream replication.
+          <code>@swirls/looms/projectors</code>: post-commit indexes and fan-out.{' '}
+          <code>@swirls/looms/s2</code>: stream replication.
         </li>
         <li>
-          <code>@looms/testing</code>: deterministic in-memory helpers and conformance checks.
+          <code>@swirls/looms/testing</code>: deterministic in-memory helpers and conformance
+          checks.
         </li>
         <li>
-          <code>@looms/cli</code> and <code>@looms/debugger</code>: inspection tools.
+          <code>@swirls/looms/cli</code> and <code>@swirls/looms/debugger</code>: inspection tools.
         </li>
       </ul>
       <p>

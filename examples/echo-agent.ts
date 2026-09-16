@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-import { agent, defineAgent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
+import { agent, defineAgent } from '@swirls/looms/agent'
+import { createLooms } from '@swirls/looms/runtime'
 
 // Minimal agent host: one definition, one module, start a run.
 // bun run --filter @looms/examples echo-agent

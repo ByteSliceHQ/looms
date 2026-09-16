@@ -1,10 +1,10 @@
+import { resolveDemoLlm, resolveDemoProjectors } from '@looms/demo/demo-config'
+import { demoModules } from '@looms/demo/runtime'
 import {
   LoomsDurableObject,
   routeToDurableObject,
   type LoomsDurableObjectConfig,
-} from '@looms/cloudflare'
-import { resolveDemoLlm, resolveDemoProjectors } from '@looms/demo/demo-config'
-import { demoModules } from '@looms/demo/runtime'
+} from '@swirls/looms/cloudflare'
 
 export interface Env {
   readonly LOOMS_RUN: DurableObjectNamespace<LoomsRun>

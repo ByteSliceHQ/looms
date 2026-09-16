@@ -3,9 +3,15 @@ import { useState } from 'react'
 import { rememberRun } from '@/hooks/use-recent-runs'
 import { loomsClient } from '@/lib/looms-client'
 import { cn, compactJson } from '@/lib/utils'
-import { conversation, userMessage } from '@looms/agent'
-import { createRunId } from '@looms/core'
-import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
+import { conversation, userMessage } from '@swirls/looms/agent'
+import { createRunId } from '@swirls/looms/core'
+import {
+  createFold,
+  useEventFold,
+  useProjection,
+  useRunStore,
+  useRunSummary,
+} from '@swirls/looms/react'
 
 import type { AgentRunType } from '../../catalog'
 import { Button } from '../ui/button'

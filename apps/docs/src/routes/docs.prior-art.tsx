@@ -122,8 +122,9 @@ function PriorArt() {
         React made declarative UI and state-derived views common in frontend code. Looms borrows
         that broad approach: application code describes transitions and projections while the
         runtime schedules work and recovery. The analogy stops there. A Looms thread is not a React
-        component, and a Looms effect is not <code>useEffect</code>. <code>@looms/react</code> is an
-        adapter for subscribing to run streams and projections.
+        component, and a Looms effect is not <code>useEffect</code>.{' '}
+        <code>@swirls/looms/react</code> is an adapter for subscribing to run streams and
+        projections.
       </p>
 
       <p>

@@ -1,6 +1,6 @@
 {
   "name": "@looms/demo-worker",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Cloudflare Durable Objects and celld execution host for Looms demo",
   "license": "Apache-2.0",
@@ -13,15 +13,9 @@
     "check-types": "bun x tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@looms/actor": "workspace:*",
-    "@looms/ai-vercel": "workspace:*",
-    "@looms/cloudflare": "workspace:*",
-    "@looms/core": "workspace:*",
     "@looms/demo": "workspace:*",
-    "@looms/projectors": "workspace:*",
-    "@looms/runtime": "workspace:*",
-    "@looms/s2": "workspace:*",
-    "@openrouter/ai-sdk-provider": "^3.0.0"
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@swirls/looms": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260914.1",

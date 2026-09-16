@@ -23,9 +23,9 @@ function Introduction() {
         </a>
       </h2>
       <p>
-        The <Link to="/docs/quickstart">quickstart</Link> installs packages from npm, runs an agent
-        and tool inside a workflow, exits while awaiting review, and resumes in a new process. You
-        can approve or reject; the workflow handles both.
+        The <Link to="/docs/quickstart">quickstart</Link> installs the package from npm, runs an
+        agent and tool inside a workflow, exits while awaiting review, and resumes in a new process.
+        You can approve or reject; the workflow handles both.
       </p>
       <h2 id="threads">
         Threads are the extension point
@@ -64,7 +64,7 @@ function Introduction() {
         </li>
         <li>
           <Link to="/docs/api">API reference</Link>: signatures, lifecycle, HTTP contracts, and
-          packages.
+          package modules.
         </li>
       </ul>
       <h2 id="contract">
@@ -81,8 +81,8 @@ function Introduction() {
         <Link to="/docs/versioning">versioning</Link> before production.
       </p>
       <p>
-        Looms is in the 0.1 series. Pin matching package versions and validate your workload.
-        Source, release history, and issues are available in the{' '}
+        Looms is in the 0.0.x series. Pin the package version and validate your workload. Source,
+        release history, and issues are available in the{' '}
         <a href="https://github.com/ByteSliceHQ/looms">repository</a>.
       </p>
     </>

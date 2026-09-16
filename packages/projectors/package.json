@@ -1,6 +1,7 @@
 {
   "name": "@looms/projectors",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "private": true,
   "description": "Pluggable event projectors and first-party memory, Postgres, and SQLite index helpers",
   "license": "Apache-2.0",
   "repository": {
@@ -31,25 +32,6 @@
       "import": "./src/sqlite.ts",
       "default": "./src/sqlite.ts"
     }
-  },
-  "publishConfig": {
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      },
-      "./postgres": {
-        "types": "./dist/postgres.d.ts",
-        "import": "./dist/postgres.js"
-      },
-      "./sqlite": {
-        "types": "./dist/sqlite.d.ts",
-        "import": "./dist/sqlite.js"
-      }
-    },
-    "access": "public"
   },
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",

@@ -25,7 +25,7 @@ function Page() {
           #
         </a>
       </h2>
-      <CodeBlock lang="bash">{`npm install @looms/runtime @looms/agent @looms/ai-vercel @openrouter/ai-sdk-provider zod
+      <CodeBlock lang="bash">{`npm install @swirls/looms @openrouter/ai-sdk-provider zod
 export OPENROUTER_API_KEY=your-key
 export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
       <p>
@@ -47,9 +47,9 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
       </h2>
       <p>
         <code>vercelLlm</code> enables streaming by default when the turn supplies a text-delta
-        callback. Subscribe through <code>@looms/client</code> or React projections while work
-        executes. An awaited start result arrives after its wake cycle; use a streaming start or
-        subscribe to a known run ID if you need events before it returns.
+        callback. Subscribe through <code>@swirls/looms/client</code> or React projections while
+        work executes. An awaited start result arrives after its wake cycle; use a streaming start
+        or subscribe to a known run ID if you need events before it returns.
       </p>
       <p>
         Set <code>conversational: true</code> for an agent that should accept later user messages.

@@ -1,11 +1,11 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { createLocalActorHost, type LocalActorHost } from '@looms/actor'
-import type { EventStore } from '@looms/core'
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { withProjectors } from '@looms/projectors'
-import { s2Projector, startS2Lite } from '@looms/s2'
+import { createLocalActorHost, type LocalActorHost } from '@swirls/looms/actor'
+import type { EventStore } from '@swirls/looms/core'
+import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
+import { withProjectors } from '@swirls/looms/projectors'
+import { s2Projector, startS2Lite } from '@swirls/looms/s2'
 
 import { demoEnvFromProcess, resolveDemoLlm, resolveDemoProjectors } from './demo-config'
 import { demoModules } from './runtime'

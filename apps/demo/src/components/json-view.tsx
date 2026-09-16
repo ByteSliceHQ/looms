@@ -1,1 +1,1 @@
-export { JsonView } from '@looms/debugger'
+export { JsonView } from '@swirls/looms/debugger'

@@ -1,1 +1,1 @@
-export { StatusDot } from '@looms/debugger'
+export { StatusDot } from '@swirls/looms/debugger'

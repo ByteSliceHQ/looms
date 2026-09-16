@@ -232,7 +232,7 @@ function DocsLayout() {
         </article>
         <footer className="docs-footer">
           <a href="https://github.com/ByteSliceHQ/looms/issues">Report a docs issue</a>
-          <span>0.1 series · Pin your package versions</span>
+          <span>0.0.x series · Pin your package version</span>
         </footer>
       </main>
     </div>

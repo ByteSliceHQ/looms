@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { defineModule } from '@looms/core'
+import { defineModule } from '@swirls/looms/core'
 
 const Charge = z.object({
   chargeId: z.string(),

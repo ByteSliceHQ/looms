@@ -1,7 +1,7 @@
-import { approval, decision, gate, pendingApprovals } from '@looms/approval'
-import { isJsonObject } from '@looms/core'
-import { createLooms } from '@looms/runtime'
-import { defineWorkflow, workflow } from '@looms/workflow'
+import { approval, decision, gate, pendingApprovals } from '@swirls/looms/approval'
+import { isJsonObject } from '@swirls/looms/core'
+import { createLooms } from '@swirls/looms/runtime'
+import { defineWorkflow, workflow } from '@swirls/looms/workflow'
 
 // Human-in-the-loop: a workflow parks on gate(), then a decision resumes it.
 // bun run --filter @looms/examples approval

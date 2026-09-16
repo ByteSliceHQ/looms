@@ -1,6 +1,6 @@
 {
   "name": "@looms/docs",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Looms documentation site",
   "license": "Apache-2.0",
@@ -18,8 +18,7 @@
     "index-docs": "bun scripts/index-docs.ts"
   },
   "dependencies": {
-    "@looms/core": "workspace:*",
-    "@looms/debugger": "workspace:*",
+    "@swirls/looms": "workspace:*",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",
     "cmdk": "^1.1.1",

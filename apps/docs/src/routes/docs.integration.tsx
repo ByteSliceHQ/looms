@@ -39,15 +39,12 @@ function Page() {
           #
         </a>
       </h2>
-      <CodeBlock lang="bash">{`npm install @looms/client
-# React application:
-npm install @looms/react @looms/agent @looms/approval
-# Host with workflow and approval support:
-npm install @looms/runtime @looms/workflow @looms/approval`}</CodeBlock>
+      <CodeBlock lang="bash">{`npm install @swirls/looms`}</CodeBlock>
       <p>
-        Register every named child definition on its owning module. A reference used as a tool does
-        not automatically register the child. Keep server-only provider configuration and secrets
-        out of client imports; export event catalogs and projections from separate shared files.
+        Import only the subpaths your application needs. Register every named child definition on
+        its owning module. A reference used as a tool does not automatically register the child.
+        Keep server-only provider configuration and secrets out of client imports; export event
+        catalogs and projections from separate shared files.
       </p>
       <h2 id="mount-behind-your-application-gateway">
         Mount behind your application gateway
@@ -74,7 +71,7 @@ return response ?? new Response('Not found', { status: 404 })`}</CodeBlock>
           #
         </a>
       </h2>
-      <CodeBlock lang="ts">{`import { createLoomsClient } from '@looms/client'
+      <CodeBlock lang="ts">{`import { createLoomsClient } from '@swirls/looms/client'
 
 const client = createLoomsClient({ baseUrl: '/execution' })
 const { runId } = await client.startRun({
@@ -99,8 +96,8 @@ unsubscribe()`}</CodeBlock>
           #
         </a>
       </h2>
-      <CodeBlock lang="tsx">{`import { LoomsProvider, useProjection, useRunStore } from '@looms/react'
-import { pendingApprovals } from '@looms/approval'
+      <CodeBlock lang="tsx">{`import { LoomsProvider, useProjection, useRunStore } from '@swirls/looms/react'
+import { pendingApprovals } from '@swirls/looms/approval'
 
 function Reviews({ runId }: { runId: string }) {
   const store = useRunStore(runId)

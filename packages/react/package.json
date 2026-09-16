@@ -1,6 +1,7 @@
 {
   "name": "@looms/react",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "private": true,
   "description": "React bindings and client run store for Looms",
   "license": "Apache-2.0",
   "repository": {
@@ -21,17 +22,6 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     }
-  },
-  "publishConfig": {
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      }
-    },
-    "access": "public"
   },
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",

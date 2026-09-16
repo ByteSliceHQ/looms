@@ -44,7 +44,7 @@ function WaitsAndReplay() {
         Matching is by event <code>type</code> plus an optional payload subset (e.g.{' '}
         <code>match: &#123; approvalId &#125;</code>).
       </p>
-      <CodeBlock lang="ts">{`import { wait } from '@looms/core'
+      <CodeBlock lang="ts">{`import { wait } from '@swirls/looms/core'
 
 // Wait for a matching domain event (optional payload subset):
 wait({
@@ -86,8 +86,8 @@ wait({
       <p>
         State is derived by folding events through pure reducers. Replay reconstructs thread state
         or views without re-executing nondeterministic effects. <code>replayTo(runId, seq)</code>{' '}
-        returns state before and after that event. The debugger and <code>@looms/testing</code> use
-        it.
+        returns state before and after that event. The debugger and{' '}
+        <code>@swirls/looms/testing</code> use it.
       </p>
 
       <h2 id="snapshots">

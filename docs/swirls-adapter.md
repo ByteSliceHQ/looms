@@ -6,34 +6,34 @@ The compile-to-modules framing: Swirls keeps its DSL and product types. An adapt
 
 ## Mapping
 
-| Swirls concept                  | Looms concept                                                    |
-| ------------------------------- | ---------------------------------------------------------------- |
-| `execution_actors` row          | Run `runId` / S2 stream `runs/{id}`                              |
-| `execution_events`              | `EventEnvelope` log (`@looms/core`)                              |
-| `workflow_execution`            | module `@looms/workflow`, kind `workflow`                        |
-| `agent_session`                 | module `@looms/agent`, kind `agent`                              |
-| Temporal `swirlsGraphWorkflow`  | `@looms/workflow` reducer + host wake                            |
-| Temporal signals (`review:*`)   | `@looms/approval` `approval.decided` + `runtime.signal.received` |
-| Durable Object live projection  | `@looms/react` `useRunStore` / `useProjection`                   |
-| Fabric macaroon / Anvil secrets | **Out of Looms** — inject via Swirls Layer adapters              |
-| Daytona / Archil sandboxes      | Tool handlers in Swirls, not in Looms core                       |
+| Swirls concept                  | Looms concept                                                           |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `execution_actors` row          | Run `runId` / S2 stream `runs/{id}`                                     |
+| `execution_events`              | `EventEnvelope` log (`@swirls/looms/core`)                              |
+| `workflow_execution`            | module `@swirls/looms/workflow`, kind `workflow`                        |
+| `agent_session`                 | module `@swirls/looms/agent`, kind `agent`                              |
+| Temporal `swirlsGraphWorkflow`  | `@swirls/looms/workflow` reducer + host wake                            |
+| Temporal signals (`review:*`)   | `@swirls/looms/approval` `approval.decided` + `runtime.signal.received` |
+| Durable Object live projection  | `@swirls/looms/react` `useRunStore` / `useProjection`                   |
+| Fabric macaroon / Anvil secrets | **Out of Looms** — inject via Swirls Layer adapters                     |
+| Daytona / Archil sandboxes      | Tool handlers in Swirls, not in Looms core                              |
 
 ## Suggested dogfood path
 
 1. **Agent sessions first** — `createRuntime({ modules: [agent({ definitions: [support] }), approval()] })` for a single Cloud chat path; keep Temporal graphs.
 2. Event bridge — map Swirls `execution_events` types onto namespaced catalogs.
 3. Projector — write Looms appends into `execution_events` (or dual-write) so existing Cloud UI keeps working.
-4. Workflows second — compile graph nodes to `@looms/workflow` nodes that invoke existing activities as effects.
+4. Workflows second — compile graph nodes to `@swirls/looms/workflow` nodes that invoke existing activities as effects.
 5. Retire Temporal for those paths once crash recovery + HITL + sub-threads match SLOs.
 
 ## Adapter sketch
 
 ```ts
-import { agent } from '@looms/agent'
-import { approval } from '@looms/approval'
-import { workflow } from '@looms/workflow'
-import { createLooms } from '@looms/runtime'
-import { s2 } from '@looms/s2'
+import { agent } from '@swirls/looms/agent'
+import { approval } from '@swirls/looms/approval'
+import { workflow } from '@swirls/looms/workflow'
+import { createLooms } from '@swirls/looms/runtime'
+import { s2 } from '@swirls/looms/s2'
 
 const looms = createLooms({
   modules: [

@@ -1,7 +1,7 @@
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { LoomsProvider } from '@looms/react'
+import { LoomsProvider } from '@swirls/looms/react'
 
 import appCss from '../styles.css?url'
 

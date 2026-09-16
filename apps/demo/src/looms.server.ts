@@ -1,4 +1,4 @@
-import { isLoomsApiPath } from '@looms/runtime'
+import { isLoomsApiPath } from '@swirls/looms/runtime'
 
 type LoomsBackend = 'bun' | 'cloudflare'
 

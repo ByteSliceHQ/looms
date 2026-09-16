@@ -45,7 +45,7 @@ bun run docs            # docs at http://127.0.0.1:8788
 
 ```bash
 bun run build                                  # all packages
-bunx turbo run build --filter=@looms/runtime... # runtime + dependencies
+bunx turbo run build --filter=@looms/runtime... # internal runtime + dependencies
 bunx turbo run test --filter=@looms/core
 bunx turbo run dev --filter=@looms/demo
 ```
@@ -72,7 +72,8 @@ flox activate -- bun run doctor
 
 | Path               | Role                                                        |
 | ------------------ | ----------------------------------------------------------- |
-| `packages/*`       | Libraries in the `@looms/*` namespace                       |
+| `packages/*`       | Private module workspaces (`@looms/*`)                      |
+| `packages/looms`   | Assembled public package (`@swirls/looms`)                  |
 | `apps/demo`        | Interactive demo application                                |
 | `apps/demo-worker` | Cloudflare demo backend                                     |
 | `apps/docs`        | Source for [looms.sh](https://looms.sh)                     |
@@ -94,8 +95,10 @@ You are responsible for understanding and being able to explain the changes you 
 ### Existing PR checklist
 
 - [ ] `bun run verify` passes
-- [ ] Changeset added if publishing packages change (`bun run changeset`)
+- [ ] Changeset added if `@swirls/looms` behavior changes (`bun run changeset`)
 - [ ] Docs updated for API / architecture changes
+
+See [`RELEASE.md`](./RELEASE.md) for versioning and publishing.
 
 ## Review and participation
 

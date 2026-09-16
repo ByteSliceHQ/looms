@@ -17,8 +17,8 @@ function Projectors() {
       <p>
         The append-only event log is the only source of truth. Product surfaces (chat, approval
         queues, ledgers, admin indexes) are <strong>projected</strong> from that log via{' '}
-        <code>@looms/react</code> or cross-run projectors. Scoped projections share types with the
-        host; see <Link to="/docs/concepts/type-safety">Type safety</Link>.
+        <code>@swirls/looms/react</code> or cross-run projectors. Scoped projections share types
+        with the host; see <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
 
       <ConceptFigure name="projections" />
@@ -45,8 +45,8 @@ function Projectors() {
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">
         <strong>Projections are portable; React is an adapter.</strong> The same definition folds
-        in-memory on the host, reactively in the browser via <code>@looms/react</code>, or into
-        SQLite, Postgres, or ClickHouse.
+        in-memory on the host, reactively in the browser via <code>@swirls/looms/react</code>, or
+        into SQLite, Postgres, or ClickHouse.
       </div>
 
       <h2 id="building-custom-uis">
@@ -75,7 +75,7 @@ function Projectors() {
         scope, defined with the module API. They illustrate integration rather than a standalone
         application; the quickstart provides a complete runnable example. Define a pure read model
         using <code>ordersModule.projection</code> from your module&apos;s scope (or standalone{' '}
-        <code>defineProjection</code> from <code>@looms/core</code>). With{' '}
+        <code>defineProjection</code> from <code>@swirls/looms/core</code>). With{' '}
         <code>scope.projection</code>, event types and payloads are automatically narrowed per case
         based on the module&apos;s registered catalogs. Providing a Zod (or Standard Schema){' '}
         <code>shape</code> infers the state type automatically without an explicit generic. Export
@@ -157,10 +157,11 @@ export const orderTracker = ordersModule.projection({
         </a>
       </h3>
       <p>
-        Wrap your React tree or page with <code>LoomsProvider</code> from <code>@looms/react</code>.
-        Pass the Looms host URL; the client opens <code>/api/events</code> on that host:
+        Wrap your React tree or page with <code>LoomsProvider</code> from{' '}
+        <code>@swirls/looms/react</code>. Pass the Looms host URL; the client opens{' '}
+        <code>/api/events</code> on that host:
       </p>
-      <CodeBlock lang="tsx">{`import { LoomsProvider } from '@looms/react'
+      <CodeBlock lang="tsx">{`import { LoomsProvider } from '@swirls/looms/react'
 import { OrderDashboard } from './order-dashboard'
 
 export function App({ runId }: { runId: string }) {
@@ -185,7 +186,7 @@ export function App({ runId }: { runId: string }) {
         In your component, call <code>useRunStore(runId)</code> to connect to the run&apos;s event
         stream, then pass it to <code>useProjection</code>:
       </p>
-      <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@looms/react'
+      <CodeBlock lang="tsx">{`import { useRunStore, useProjection } from '@swirls/looms/react'
 import { orderTracker } from './projections'
 
 export function OrderDashboard({ runId }: { runId: string }) {
@@ -236,8 +237,8 @@ export function OrderDashboard({ runId }: { runId: string }) {
         <Link to="/docs/security">authentication and tenancy</Link>. Add pending and error states
         before using these controls in a product.
       </p>
-      <CodeBlock lang="tsx">{`import { decision } from '@looms/approval'
-import { useRunStore, useProjection } from '@looms/react'
+      <CodeBlock lang="tsx">{`import { decision } from '@swirls/looms/approval'
+import { useRunStore, useProjection } from '@swirls/looms/react'
 import { orderTracker } from './projections'
 
 export function OrderControls({ runId }: { runId: string }) {
@@ -286,8 +287,8 @@ export function OrderControls({ runId }: { runId: string }) {
         to render a historical UI state:
       </p>
       <CodeBlock lang="tsx">{`import { useState } from 'react'
-import { foldProjection } from '@looms/core'
-import { useRunStore } from '@looms/react'
+import { foldProjection } from '@swirls/looms/core'
+import { useRunStore } from '@swirls/looms/react'
 import { orderTracker } from './projections'
 
 export function TimeTravelSlider({ runId }: { runId: string }) {
@@ -342,13 +343,13 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
       </h3>
       <p>
         Wrap the <em>local</em> execution store with <code>withProjectors</code> from{' '}
-        <code>@looms/projectors</code>. Events are delivered in log order after each commit.
+        <code>@swirls/looms/projectors</code>. Events are delivered in log order after each commit.
         Projection failures are isolated — the cell-local log stays authoritative.
       </p>
-      <CodeBlock lang="ts">{`import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
-import { withProjectors } from '@looms/projectors'
-import { sqlite } from '@looms/projectors/sqlite'
-import { s2Projector, s2ConfigFromEnv } from '@looms/s2'
+      <CodeBlock lang="ts">{`import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
+import { withProjectors } from '@swirls/looms/projectors'
+import { sqlite } from '@swirls/looms/projectors/sqlite'
+import { s2Projector, s2ConfigFromEnv } from '@swirls/looms/s2'
 
 // Local SQLite is the execution store. Index + S2 lake are projectors.
 const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
@@ -394,7 +395,7 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
               <code>memory()</code>
             </td>
             <td>
-              <code>@looms/projectors</code>
+              <code>@swirls/looms/projectors</code>
             </td>
             <td>Unit tests and single-process development</td>
           </tr>
@@ -403,7 +404,7 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
               <code>sqlite(opts)</code>
             </td>
             <td>
-              <code>@looms/projectors/sqlite</code>
+              <code>@swirls/looms/projectors/sqlite</code>
             </td>
             <td>
               Local file path or existing <code>db</code>. Defaults to <code>:memory:</code>
@@ -414,7 +415,7 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
               <code>postgres(opts)</code>
             </td>
             <td>
-              <code>@looms/projectors/postgres</code>
+              <code>@swirls/looms/projectors/postgres</code>
             </td>
             <td>
               Production servers. Pass <code>{'{ url }'}</code> or an existing postgres.js client
@@ -422,7 +423,7 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
           </tr>
         </tbody>
       </table>
-      <CodeBlock lang="ts">{`import { sqlite } from '@looms/projectors/sqlite'
+      <CodeBlock lang="ts">{`import { sqlite } from '@swirls/looms/projectors/sqlite'
 
 const index = sqlite({ path: './looms.db' })
 
@@ -444,7 +445,7 @@ const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
         Any object implementing <code>project(events)</code> satisfies the <code>Projector</code>{' '}
         interface:
       </p>
-      <CodeBlock lang="ts">{`import type { Projector } from '@looms/projectors'
+      <CodeBlock lang="ts">{`import type { Projector } from '@swirls/looms/projectors'
 
 export function approvalsWebhook(url: string): Projector {
   return {

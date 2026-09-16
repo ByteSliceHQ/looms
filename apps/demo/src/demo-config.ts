@@ -1,9 +1,9 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
-import type { LlmAdapter } from '@looms/agent'
-import { vercelLlm } from '@looms/ai-vercel'
-import type { Projector } from '@looms/projectors'
-import { s2ConfigFromEnv, s2Projector } from '@looms/s2/projector'
+import type { LlmAdapter } from '@swirls/looms/agent'
+import { vercelLlm } from '@swirls/looms/ai-vercel'
+import type { Projector } from '@swirls/looms/projectors'
+import { s2ConfigFromEnv, s2Projector } from '@swirls/looms/s2/projector'
 
 import { demoLlm } from './demo-llm'
 

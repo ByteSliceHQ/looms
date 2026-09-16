@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { ScrollArea } from '@looms/debugger'
+import { ScrollArea } from '@swirls/looms/debugger'
 
 import { orchestrationSourceFiles } from '../landing/orchestration-source'
 import { highlightCode } from './code-highlight'

@@ -26,6 +26,7 @@ To try the same example from this repository, install [Bun](https://bun.sh) firs
 git clone https://github.com/ByteSliceHQ/looms.git
 cd looms
 bun install --frozen-lockfile
+bunx turbo run build --filter=@swirls/looms...
 bun examples/durable-review.ts start
 ```
 
@@ -45,9 +46,13 @@ See the [example source](./examples/durable-review.ts), its [definitions](./exam
 
 Definitions describe the work; modules register them with a runtime. This small agent echoes its input:
 
+```bash
+bun add @swirls/looms zod
+```
+
 ```ts
-import { agent, defineAgent } from '@looms/agent'
-import { createLooms } from '@looms/runtime'
+import { agent, defineAgent } from '@swirls/looms/agent'
+import { createLooms } from '@swirls/looms'
 import { z } from 'zod'
 
 const echo = defineAgent({
@@ -85,25 +90,27 @@ Your application supplies authentication, per-run authorization, and tenant owne
 
 Recovery may repeat an external action if its outcome was not recorded before a crash. Use provider-supported idempotency and reconciliation where needed. The [reliability guide](https://looms.sh/docs/reliability) explains recovery, retries, snapshots, and retention.
 
-## Packages
+## Package modules
 
-| Package             | Use it for                                             |
-| ------------------- | ------------------------------------------------------ |
-| `@looms/runtime`    | `createLooms`, processing, and the HTTP host           |
-| `@looms/actor`      | Local actor cells and one writer per run               |
-| `@looms/cloudflare` | Cloudflare Durable Object hosting                      |
-| `@looms/agent`      | Agent definitions, tools, and conversation projections |
-| `@looms/workflow`   | DAG workflow definitions                               |
-| `@looms/approval`   | Human approval gates and decisions                     |
-| `@looms/core`       | Custom modules, events, effects, and projections       |
-| `@looms/client`     | HTTP client                                            |
-| `@looms/react`      | React hooks and live run stores                        |
-| `@looms/debugger`   | Reusable run and event inspection UI                   |
-| `@looms/s2`         | S2 event storage, snapshots, and projection support    |
-| `@looms/ai-vercel`  | Vercel AI SDK model adapters                           |
-| `@looms/projectors` | Cross-run indexes                                      |
-| `@looms/testing`    | Runtime and replay helpers for module authors          |
-| `@looms/cli`        | Inspecting and approving runs from a terminal          |
+Looms publishes as one package. Explicit subpaths keep browser, server, provider, and storage boundaries clear. Migrate an old import by changing `@looms/<module>` to `@swirls/looms/<module>`; install only `@swirls/looms`.
+
+| Module                     | Use it for                                             |
+| -------------------------- | ------------------------------------------------------ |
+| `@swirls/looms/runtime`    | `createLooms`, processing, and the HTTP host           |
+| `@swirls/looms/actor`      | Local actor cells and one writer per run               |
+| `@swirls/looms/cloudflare` | Cloudflare Durable Object hosting                      |
+| `@swirls/looms/agent`      | Agent definitions, tools, and conversation projections |
+| `@swirls/looms/workflow`   | DAG workflow definitions                               |
+| `@swirls/looms/approval`   | Human approval gates and decisions                     |
+| `@swirls/looms/core`       | Custom modules, events, effects, and projections       |
+| `@swirls/looms/client`     | HTTP client                                            |
+| `@swirls/looms/react`      | React hooks and live run stores                        |
+| `@swirls/looms/debugger`   | Reusable run and event inspection UI                   |
+| `@swirls/looms/s2`         | S2 event storage, snapshots, and projection support    |
+| `@swirls/looms/ai-vercel`  | Vercel AI SDK model adapters                           |
+| `@swirls/looms/projectors` | Cross-run indexes                                      |
+| `@swirls/looms/testing`    | Runtime and replay helpers for module authors          |
+| `@swirls/looms/cli`        | Inspecting and approving runs from a terminal          |
 
 ## Explore locally
 

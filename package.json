@@ -1,6 +1,6 @@
 {
   "name": "looms",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Pluggable event-sourced thread runtime",
   "license": "Apache-2.0",
@@ -31,7 +31,9 @@
     "setup:s2": "bash scripts/install-s2-cli.sh",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "prepare": "effect-tsgo patch --typescript --oxlint"
+    "prepare": "effect-tsgo patch --typescript --oxlint",
+    "check:package": "bun run scripts/check-package.ts",
+    "release": "bun run verify && bun run check:package && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

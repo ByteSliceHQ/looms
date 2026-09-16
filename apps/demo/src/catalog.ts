@@ -1,6 +1,6 @@
-import type { AgentDefinition } from '@looms/agent'
-import type { JsonValue } from '@looms/core'
-import type { WorkflowDefinition } from '@looms/workflow'
+import type { AgentDefinition } from '@swirls/looms/agent'
+import type { JsonValue } from '@swirls/looms/core'
+import type { WorkflowDefinition } from '@swirls/looms/workflow'
 
 import {
   assistant,

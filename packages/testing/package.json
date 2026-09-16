@@ -1,6 +1,7 @@
 {
   "name": "@looms/testing",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "private": true,
   "description": "Test helpers and module conformance for Looms",
   "license": "Apache-2.0",
   "files": [
@@ -16,9 +17,6 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     }
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",

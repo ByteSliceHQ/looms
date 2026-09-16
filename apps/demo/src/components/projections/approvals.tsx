@@ -1,8 +1,8 @@
 import { useCallback } from 'react'
 
 import { statusClass } from '@/lib/status'
-import { decision, pendingApprovals } from '@looms/approval'
-import { useProjection, useRunStore } from '@looms/react'
+import { decision, pendingApprovals } from '@swirls/looms/approval'
+import { useProjection, useRunStore } from '@swirls/looms/react'
 
 import { StatusDot } from '../status-dot'
 import { Button } from '../ui/button'

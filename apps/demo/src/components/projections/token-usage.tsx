@@ -1,5 +1,5 @@
-import { tokenUsage } from '@looms/agent'
-import { useProjection, useRunStore } from '@looms/react'
+import { tokenUsage } from '@swirls/looms/agent'
+import { useProjection, useRunStore } from '@swirls/looms/react'
 
 export function TokenUsage({ runId }: { runId: string }) {
   const store = useRunStore(runId)

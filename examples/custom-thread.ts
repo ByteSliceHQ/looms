@@ -1,10 +1,16 @@
 import { z } from 'zod'
 
-import { complete, defineEventCatalog, defineModule, wait, type DefinitionRef } from '@looms/core'
-import { createLooms } from '@looms/runtime'
+import {
+  complete,
+  defineEventCatalog,
+  defineModule,
+  wait,
+  type DefinitionRef,
+} from '@swirls/looms/core'
+import { createLooms } from '@swirls/looms/runtime'
 
 // Custom thread: define your own state machine / actor kind using defineModule.
-// Neither @looms/agent nor @looms/workflow is required.
+// Neither @swirls/looms/agent nor @swirls/looms/workflow is required.
 // bun run --filter @looms/examples custom-thread
 
 const AuctionInput = z.object({

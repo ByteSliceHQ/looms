@@ -12,6 +12,8 @@ Audited commit: **9a93d1acd48d5310325e51885882386684f06766**
 
 The findings below describe the audited commit, before the community-documentation updates included alongside this report. Those updates expand the README, contribution guide, and security policy, and add a code of conduct, issue forms, and a PR template. Security and community-conduct reports now use `security@swirls.ai`. The audit evidence remains a record of the original checks; testing, CI, and release-process changes are outside this follow-up. Source links are pinned to the audited commit so the original observations remain reviewable.
 
+Since this audit, `main` has introduced the single `@swirls/looms` package and a release workflow. This PR incorporates those upstream changes. The package-distribution and release findings below refer to the earlier commit, and the recorded verification results do not validate the new packaging or release path.
+
 ## Assessment
 
 **Looms has a credible engineering foundation, but I would not announce a general public release yet.** The largest gaps are the package distribution path, repository access controls, an actionable security contact, and the promises made to first-time users. Adding community files alone would not resolve these.

@@ -31,7 +31,7 @@ function HostingAndStorage() {
         modules run inside a Durable Object. This example uses deterministic tools and simulated
         publication, so it requires no model API key.
       </p>
-      <CodeBlock lang="bash">{`npm install @looms/cloudflare @looms/agent @looms/workflow @looms/approval zod
+      <CodeBlock lang="bash">{`npm install @swirls/looms zod
 npm install --save-dev wrangler typescript @types/bun
 mkdir cloudflare`}</CodeBlock>
       <p>
@@ -109,13 +109,14 @@ npx wrangler deploy --config cloudflare/wrangler.jsonc`}</CodeBlock>
         </a>
       </h2>
       <p>
-        For a local HTTP host, install <code>@looms/actor</code> and <code>@looms/core</code>, then
-        use the quickstart's modules. This complete server binds to localhost:
+        For a local HTTP host, install <code>@swirls/looms</code>, import the <code>actor</code> and{' '}
+        <code>core</code> subpaths, then use the quickstart's modules. This complete server binds to
+        localhost:
       </p>
       <CodeBlock lang="ts">{`import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createLocalActorHost } from '@looms/actor'
-import { bunSqliteEventStore } from '@looms/core/bun-sqlite'
+import { createLocalActorHost } from '@swirls/looms/actor'
+import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
 import { modules } from './review-definition'
 
 const runsDir = join(process.cwd(), '.looms', 'runs')

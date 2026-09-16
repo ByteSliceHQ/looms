@@ -1,6 +1,6 @@
 # React
 
-Subscribe to a run from the browser. `@looms/react` connects to the host's event log over SSE, caches incremental projections, and delivers stable snapshots to React with frame-rate coalescing.
+Subscribe to a run from the browser. `@swirls/looms/react` connects to the host's event log over SSE, caches incremental projections, and delivers stable snapshots to React with frame-rate coalescing.
 
 ## Quick Start
 
@@ -11,9 +11,9 @@ import {
   useProjection,
   useRunSummary,
   useRunEvents,
-} from '@looms/react'
-import { conversation, userMessage } from '@looms/agent'
-import { decision, pendingApprovals } from '@looms/approval'
+} from '@swirls/looms/react'
+import { conversation, userMessage } from '@swirls/looms/agent'
+import { decision, pendingApprovals } from '@swirls/looms/approval'
 
 function RunView({ runId }: { runId: string }) {
   // Acquires the store handle without subscribing the container to event churn
@@ -45,7 +45,7 @@ Wrap your root in `LoomsProvider`:
 </LoomsProvider>
 ```
 
-## Hooks (`@looms/react`)
+## Hooks (`@swirls/looms/react`)
 
 | Hook                                             | Purpose                                                                                                           | Re-renders                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -66,7 +66,7 @@ Wire events arrive as JSON, but your modules already declare typed Effect Schema
 
 ```ts
 // runtime.ts
-import type { EventsOf } from '@looms/core'
+import type { EventsOf } from '@swirls/looms/core'
 
 export function demoModules() {
   return [agent(), workflow(), approval()] as const
@@ -74,7 +74,7 @@ export function demoModules() {
 
 export type DemoEvents = EventsOf<typeof demoModules>
 
-declare module '@looms/react' {
+declare module '@swirls/looms/react' {
   interface LoomsRegister {
     events: DemoEvents // or `modules: typeof demoModules`
   }
@@ -96,8 +96,8 @@ if (completed) {
 For multi-runtime apps, skip global registration and pass an explicit event type to the hooks:
 
 ```tsx
-import type { EventsOf } from '@looms/core'
-import { useRunStore, useRunEvents } from '@looms/react'
+import type { EventsOf } from '@swirls/looms/core'
+import { useRunStore, useRunEvents } from '@swirls/looms/react'
 
 type AppEvents = EventsOf<typeof demoModules>
 
@@ -113,12 +113,12 @@ When LLM agents generate dozens of parallel subthreads and stream thousands of t
 2. **Use Projection Selectors**: Use `useProjection(store, def, (s) => s.specificSlice)` so components skip rendering when other projection fields update.
 3. **Keep Fold Definitions Module-Level**: Define `createFold` objects at module scope so the store's internal `WeakMap` cache can track incremental state across renders.
 4. **Coalesced Notifications**: By default, `createLoomsStore` uses `coalesce: 'adaptive'`: quiet streams notify on the next macrotask so counters can tick +1, while bursts collapse to at most one notify per animation frame. Other options: `'frame'`, `'immediate'`, or `{ delayMs: number }`.
-5. **Virtualize Lists**: For event feeds or dense logs, virtualize the scroll viewport (e.g. `@tanstack/react-virtual` or `@looms/debugger`'s `EventStream`).
+5. **Virtualize Lists**: For event feeds or dense logs, virtualize the scroll viewport (e.g. `@tanstack/react-virtual` or `@swirls/looms/debugger`'s `EventStream`).
 
 ## Standalone Store (Vanilla JS)
 
 ```ts
-import { createLoomsStore } from '@looms/react'
+import { createLoomsStore } from '@swirls/looms/react'
 
 const store = createLoomsStore({
   storeId: runId,

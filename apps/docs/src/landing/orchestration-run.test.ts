@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { project, threadTree, toThreadTree } from '@looms/core'
-import { projectRunView, runStatusFromEvents } from '@looms/debugger'
+import { project, threadTree, toThreadTree } from '@swirls/looms/core'
+import { projectRunView, runStatusFromEvents } from '@swirls/looms/debugger'
 
 import {
   ANALYST_THREAD_ID,

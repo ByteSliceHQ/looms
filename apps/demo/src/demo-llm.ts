@@ -1,5 +1,5 @@
-import type { LlmAdapter, LlmCompleteArgs, AgentTurnResult } from '@looms/agent'
-import { isJsonObject, isJsonString } from '@looms/core'
+import type { LlmAdapter, LlmCompleteArgs, AgentTurnResult } from '@swirls/looms/agent'
+import { isJsonObject, isJsonString } from '@swirls/looms/core'
 
 function extractText(messages: LlmCompleteArgs['messages']): string {
   for (let i = messages.length - 1; i >= 0; i--) {

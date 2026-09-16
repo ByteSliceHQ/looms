@@ -2,7 +2,7 @@ import {
   LoomsDurableObject,
   routeToDurableObject,
   type LoomsDurableObjectConfig,
-} from '@looms/cloudflare'
+} from '@swirls/looms/cloudflare'
 
 import { modules } from '../review-definition'
 

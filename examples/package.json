@@ -1,6 +1,6 @@
 {
   "name": "@looms/examples",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Small runnable Looms examples",
   "license": "Apache-2.0",
@@ -20,14 +20,8 @@
     "cloudflare:check": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc"
   },
   "dependencies": {
-    "@looms/agent": "workspace:*",
-    "@looms/ai-vercel": "workspace:*",
-    "@looms/approval": "workspace:*",
-    "@looms/cloudflare": "workspace:*",
-    "@looms/core": "workspace:*",
-    "@looms/runtime": "workspace:*",
-    "@looms/workflow": "workspace:*",
     "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@swirls/looms": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {

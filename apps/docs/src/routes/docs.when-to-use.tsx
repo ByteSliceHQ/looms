@@ -122,9 +122,9 @@ function Page() {
         </a>
       </h2>
       <p>
-        Looms is an early 0.1-series library. Expect API evolution, pin package versions, and test
+        Looms is an early 0.0.x library. Expect API evolution, pin the package version, and test
         recovery before production use. Cloudflare Durable Objects is the recommended production
-        host; Bun with SQLite is the local path. Browser packages provide clients and projections.
+        host; Bun with SQLite is the local path. Browser subpaths provide clients and projections.
         Custom hosts require you to preserve one writer per run.
       </p>
       <p>

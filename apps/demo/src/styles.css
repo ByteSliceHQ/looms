@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '@looms/debugger/styles.css';
+@import '@swirls/looms/debugger/styles.css';
 @source '../../../packages/debugger/src/**/*.{ts,tsx}';
 
 @custom-variant dark (&:is(.dark *));
