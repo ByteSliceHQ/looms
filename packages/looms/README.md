@@ -7,3 +7,5 @@ bun add @swirls/looms
 ```
 
 Import the core runtime from `@swirls/looms`, or use explicit modules such as `@swirls/looms/agent` and `@swirls/looms/react`. See the [repository README](https://github.com/ByteSliceHQ/looms#readme) for the full guide.
+
+Release notes are available in [`CHANGELOG.md`](./CHANGELOG.md).
