@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.0.2
+
+### Patch Changes
+
+- 9f3fd62: Include the package changelog in published npm artifacts.
+
 ## 0.0.1
 
 ### Patch Changes
