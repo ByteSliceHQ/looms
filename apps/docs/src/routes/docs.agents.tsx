@@ -16,8 +16,8 @@ function Page() {
 
       <p>
         An agent is a built-in thread kind. It can call function tools or spawn workflow, agent, and
-        custom-thread children. Looms owns the turn lifecycle; model providers supply the next
-        message and tool requests.
+        custom-thread children. Looms runs agent turns; model providers return messages and tool
+        requests.
       </p>
       <h2 id="connect-a-model">
         Connect a model
@@ -53,8 +53,8 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
       </p>
       <p>
         Set <code>conversational: true</code> for an agent that should accept later user messages.
-        Use <code>userMessage(text)</code> with signal. Recorded messages are conversation state,
-        not an unlimited context window: design summarization and retention for long conversations.
+        Use <code>userMessage(text)</code> with signal. For long conversations, decide how much
+        history to send to the model and when to summarize it.
       </p>
       <h2 id="tools-and-child-threads">
         Tools and child threads
@@ -72,9 +72,8 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         owning module. Child execution appears in the same run log.
       </p>
       <p>
-        Validate tool inputs and enforce permissions inside your application boundary. A model's
-        request to perform an operation is not authorization. Keep approval checks in deterministic
-        workflow code.
+        Validate tool inputs and check permissions in your application. A model's request to perform
+        an operation is not authorization. Keep approval checks in deterministic workflow code.
       </p>
       <h2 id="limits-failures-and-cancellation">
         Limits, failures, and cancellation

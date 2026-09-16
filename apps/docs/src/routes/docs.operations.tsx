@@ -13,8 +13,8 @@ function Page() {
       <h1>Operate Looms</h1>
 
       <p>
-        Operate the execution log, wake mechanism, and downstream read models separately. Each can
-        fail independently. Cloudflare manages the actor infrastructure; you still own application
+        Monitor the execution log, wake scheduling, and downstream indexes separately; each can fail
+        independently. Cloudflare manages the actor infrastructure; you still own application
         behavior and observability.
       </p>
       <h2 id="find-runs-and-pending-work">
@@ -28,10 +28,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Actor hosts intentionally return 501 for global GET /runs. Maintain an application run
-        registry when starting work, or attach a projector that writes a shared index. Store runId,
-        tenant ownership, definition version, and creation time. Use that registry to route a
-        dashboard to each run's current state and authorized event stream.
+        Actor hosts return 501 for global GET /runs. Maintain an application run registry when
+        starting work, or attach a projector that writes a shared index. Store runId, tenant
+        ownership, definition version, and creation time. Use that registry to route a dashboard to
+        each run's current state and authorized event stream.
       </p>
       <p>
         The projectors page shows memory, SQLite, and Postgres index helpers. Actor-local SQLite is
@@ -72,10 +72,11 @@ function Page() {
       <p>
         Use the embed cancellation API for the whole run or a child thread. Cancellation can abort
         cooperative work but cannot retract a payment or message already accepted externally. Record
-        operator decisions and use explicit compensating application actions where needed.
+        operator decisions. If an external action needs to be reversed, perform and record that
+        reversal separately.
       </p>
       <h2 id="observe-behavior">
-        Observe behavior
+        Monitor execution
         <a className="heading-anchor" href="#observe-behavior" aria-label="Link to this section">
           #
         </a>

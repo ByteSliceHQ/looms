@@ -94,10 +94,7 @@ function MathDocs() {
           #
         </a>
       </h2>
-      <p>
-        State and read models are not primary truths—they are pure derivations folded from the event
-        log:
-      </p>
+      <p>Compute state and read models by folding over the event log:</p>
       <MathBlock math="P(L_{0 \dots n}) = \text{fold}(\text{reduce}, S_0, \langle e_1, \dots, e_n \rangle)" />
       <p>
         With persisted snapshot checkpoints at event sequence <MathInline math="m \le n" />, state
@@ -116,13 +113,12 @@ function MathDocs() {
         </a>
       </h2>
       <p>
-        While events have a linear physical order in the log, direct causal provenance is explicitly
-        decoupled from execution hierarchy:
+        Log order records when events were appended. Causation IDs record which event caused each
+        one:
       </p>
       <MathBlock math="e_i \prec_c e_j \iff \text{causationId}(e_j) = \text{id}(e_i)" />
       <p>
-        This decoupling allows concurrent branches within a single Run to record events interleaved
-        in physical time while preserving unambiguous causal ancestry.
+        Events from concurrent threads can interleave in the log while retaining their causal links.
       </p>
 
       <h2 id="6-replay-and-durability-invariant">
@@ -143,9 +139,8 @@ function MathDocs() {
       <MathBlock math="s_t^x = \text{fold}(\delta_k^{\text{state}}, s_0^x, \pi_x(L_{\le t}))" />
       <p>
         During historical replay, the effect stream <MathInline math="\Phi" /> is ignored by the
-        runtime kernel. Historical replay does not dispatch effects. Recovery also resumes
-        unfinished work, which may retry external calls. Safe retries require idempotency or
-        reconciliation at the external boundary.
+        runtime kernel. Recovery also resumes unfinished work, which may retry external calls. Safe
+        retries require idempotency or reconciliation at the external boundary.
       </p>
 
       <div className="border-line text-body [&_strong]:text-foreground my-8 border-l-2 py-1 pl-5 text-[0.95rem] leading-relaxed [&_strong]:font-semibold">

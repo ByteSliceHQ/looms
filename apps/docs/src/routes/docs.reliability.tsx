@@ -34,7 +34,7 @@ function Page() {
         across arbitrary external services.
       </p>
       <h2 id="the-ambiguous-outcome-window">
-        The ambiguous outcome window
+        A crash after an external action
         <a
           className="heading-anchor"
           href="#the-ambiguous-outcome-window"
@@ -50,10 +50,10 @@ function Page() {
         <li>Recovery cannot infer success from the local log alone.</li>
       </ol>
       <p>
-        Pass ctx.effectId as an idempotency key where the external API supports it. Its guarantees
-        and key-retention window must cover your recovery horizon. For unsupported APIs, store a
-        durable operation ID, query the provider for the outcome, or reconcile before retrying.
-        Never assume adding an arbitrary header makes an API idempotent.
+        Pass ctx.effectId as an idempotency key where the external API supports it. Check that the
+        service retains the key for as long as you may need to retry the action. For unsupported
+        APIs, store a durable operation ID, query the provider for the outcome, or reconcile before
+        retrying. Never assume adding an arbitrary header makes an API idempotent.
       </p>
       <h2 id="retries-and-errors">
         Retries and errors
@@ -97,7 +97,7 @@ function Page() {
       <p>
         A model call can produce partial deltas before failing. Those deltas may already be
         recorded; resuming work may incur another model call and different output. Render partial
-        content as provisional, inspect completion events, and design your application policy for
+        content as provisional, inspect completion events, and decide how your application handles
         abandoned partial turns. The adapter does not guarantee exactly-once billing or identical
         regenerated text.
       </p>
@@ -120,10 +120,11 @@ function Page() {
       <p>
         Projectors run after local commit. Their failures do not roll back the execution log. Do not
         assume an external index or webhook has caught up just because a run succeeded. Track
-        downstream progress and provide a tested backfill/reconciliation path.
+        downstream progress and test how to rebuild missing index entries or reconcile external
+        state.
       </p>
       <h2 id="verify-your-boundary">
-        Verify your boundary
+        Test recovery
         <a
           className="heading-anchor"
           href="#verify-your-boundary"

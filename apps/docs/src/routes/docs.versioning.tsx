@@ -45,8 +45,8 @@ function Page() {
       </h2>
       <p>
         Existing logs contain old payloads. Prefer optional fields with defined defaults or new
-        event names for incompatible meanings. Keep a compatibility test corpus of old logs and
-        snapshots. A module's protocolVersion is descriptive metadata, not an automatic migration
+        event names for incompatible meanings. Keep old logs and snapshots as compatibility test
+        fixtures. A module's protocolVersion is descriptive metadata, not an automatic migration
         engine.
       </p>
       <h2 id="plan-snapshot-changes">
@@ -61,9 +61,9 @@ function Page() {
       </h2>
       <p>
         Reducers and snapshot state must agree. Test loading existing snapshots before deployment.
-        When a change is incompatible, keep the old implementation routed to old runs, explicitly
-        migrate in application-owned tooling, or drain/finish those runs before retiring the old
-        code. Do not rewrite historical events casually to make a new reducer accept them.
+        When a change is incompatible, keep the old implementation routed to old runs, migrate those
+        runs with your own tools, or let them finish before retiring the old code. Do not rewrite
+        historical events casually to make a new reducer accept them.
       </p>
       <h2 id="a-deployment-procedure">
         A deployment procedure
@@ -84,8 +84,8 @@ function Page() {
         </li>
         <li>Monitor failures and keep the prior deployment available.</li>
         <li>
-          Retire old definitions only after affected runs and their required retention period are
-          accounted for.
+          Retire old definitions after their runs finish and you no longer need them for retained
+          history.
         </li>
       </ol>
       <h2 id="rollback-limits">

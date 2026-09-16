@@ -15,9 +15,9 @@ function HostingAndStorage() {
     <>
       <h1>Hosting &amp; storage</h1>
       <p>
-        Choose storage that survives your host, keep one writer per run, and arrange how parked work
-        wakes. Cloudflare Durable Objects supply per-run SQLite and durable alarms. Local Bun hosts
-        are useful for development and services where you operate those responsibilities.
+        Choose persistent storage, keep one writer per run, and configure timers and signals to wake
+        parked work. Cloudflare Durable Objects supply per-run SQLite and durable alarms. With a
+        local Bun host, you manage storage and wake scheduling yourself.
       </p>
       <h2 id="cloudflare">
         Run the quickstart on Cloudflare

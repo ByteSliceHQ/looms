@@ -58,8 +58,8 @@ function Page() {
       </h2>
       <p>
         A completed gate means a decision arrived. Check outcome === 'approve' before requesting the
-        action. The quickstart demonstrates a fail-closed branch and has regression coverage for
-        rejection after a process restart.
+        action. The quickstart publishes only after an explicit approval. Its restart test also
+        checks rejection.
       </p>
       <h2 id="the-agent-produces-a-stub-response">
         The agent produces a stub response
@@ -130,7 +130,7 @@ function Page() {
       </h2>
       <p>
         This is the actor host contract. Use your application registry or a cross-run index; see the
-        operations guide. Switching the UI to poll the same unsupported endpoint will not fix it.
+        operations guide.
       </p>
       <h2 id="timers-do-not-fire-after-a-local-restart">
         Timers do not fire after a local restart

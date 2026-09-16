@@ -54,7 +54,7 @@ function Landing() {
       </div>
 
       <section className="landing-section">
-        <h2>Use the built-in threads. Invent the next one.</h2>
+        <h2>Define your own thread types.</h2>
         <p className="section-intro">
           An agent loop and a workflow DAG are two ways of running work. Looms lets you define
           another: an auction, a review policy, a device controller. Compose them in one run, with
@@ -88,7 +88,7 @@ function Landing() {
           <h2 className="feature-title">Recover recorded progress</h2>
           <p>
             Load durable history after a restart. Historical replay rebuilds state without
-            dispatching effects; interrupted external actions need safe retry handling.
+            dispatching effects; external actions interrupted by a crash need safe retries.
           </p>
           <Link to="/docs/reliability">Understand the guarantees →</Link>
         </div>
@@ -114,7 +114,7 @@ function Landing() {
 
       <section className="landing-section grid items-start gap-10 md:grid-cols-2">
         <div>
-          <h2>Your domain belongs in the runtime.</h2>
+          <h2>Add your own modules.</h2>
           <p>
             Define events, effects, thread kinds, and projections in a module. Built-in modules use
             the same extension model as yours.
@@ -147,7 +147,7 @@ await looms.start(buyer, 'Find a supplier')`}</CodeBlock>
             Follow delegation, tool results, and decisions in one place. Select a thread or event in
             this recorded run to see how the work unfolded.
           </p>
-          <Link to="/docs/operations">Operate and inspect your runs →</Link>
+          <Link to="/docs/operations">Inspect your runs →</Link>
         </div>
         <ClientOnly fallback={<LandingDebuggerFallback />}>
           <LandingDebugger />

@@ -34,7 +34,7 @@ function Page() {
         projections.
       </p>
       <p>
-        For example: a procurement agent starts a review workflow, which spawns a custom auction
+        For example, a procurement agent starts a review workflow, which spawns a custom auction
         thread. The auction accepts bids until a deadline, records a winner, and returns a result to
         the workflow. The debugger can show the whole operation without joining logs from unrelated
         runtimes.
@@ -62,8 +62,7 @@ function Page() {
       <p>
         You choose the host, enforce authorization, operate storage, and design compatible upgrades.
         Reducers must remain deterministic. External actions need idempotency or reconciliation. A
-        single run has one writer; partition independent work into separate runs rather than
-        treating a run as an unlimited parallel compute cluster.
+        single run has one writer. Put independent work in separate runs.
       </p>
       <h2 id="when-a-simpler-approach-is-enough">
         When a simpler approach is enough
@@ -102,15 +101,14 @@ function Page() {
           Looms supplies thread composition, event history, effects, and projections.
         </li>
         <li>
-          <strong>Temporal, Restate, DBOS, and other durable engines:</strong> evaluate execution
-          guarantees and operations against your needs. Looms centers its programming model on
-          extensible thread kinds sharing one run log; this is a design distinction, not a claim of
-          feature parity.
+          <strong>Temporal, Restate, DBOS, and other durable engines:</strong> Looms lets custom
+          thread kinds share one run log. Compare the features and guarantees your application needs
+          before switching.
         </li>
         <li>
           <strong>Your existing agent loop:</strong> adapt one turn through <code>runTurn</code> or
-          a model adapter. Arbitrary code does not become durable just by being called; outcomes and
-          externally visible work must cross recorded boundaries.
+          a model adapter. Record the outcomes of external actions so execution can recover after an
+          interruption.
         </li>
       </ul>
       <h2 id="release-status-and-support">

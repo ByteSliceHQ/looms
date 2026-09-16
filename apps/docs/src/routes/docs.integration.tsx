@@ -19,16 +19,15 @@ function Page() {
         record that owns it.
       </p>
       <h2 id="choose-a-boundary">
-        Choose a boundary
+        Choose what belongs in a run
         <a className="heading-anchor" href="#choose-a-boundary" aria-label="Link to this section">
           #
         </a>
       </h2>
       <p>
-        Use one run for a coherent operation such as a support investigation or procurement request.
-        Its child agents, workflows, and custom threads share one history. Keep independent
-        customers and operations in separate runs. Actor isolation does not replace tenant
-        authorization.
+        Use one run for an operation such as a support investigation or procurement request. Its
+        child agents, workflows, and custom threads share one history. Keep independent customers
+        and operations in separate runs. Actor isolation does not replace tenant authorization.
       </p>
       <h2 id="install-only-the-capabilities-you-need">
         Install only the capabilities you need
@@ -130,8 +129,8 @@ export function App({ runId }: { runId: string }) {
       <p>
         Use <code>{'defineAgent({ runTurn })'}</code> to adapt one turn of an existing
         implementation. Return the assistant message, tool requests, and completion state. The turn
-        can be retried after an interruption; do not hide irreversible operations inside it. Use
-        typed tools or domain effects for those operations.
+        can be retried after an interruption; do not hide irreversible operations inside it. Put
+        those operations in typed tools or domain effects so their outcomes can be recorded.
       </p>
     </>
   )

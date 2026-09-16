@@ -14,8 +14,8 @@ function Page() {
       <h1>Human approvals</h1>
 
       <p>
-        <code>gate()</code> records an approval request and waits for a matching decision. It is a
-        waiting primitive. Your application decides what approval, rejection, and expiration mean.
+        <code>gate()</code> records an approval request and waits for a matching decision. Your
+        application decides what approval, rejection, and expiration mean.
       </p>
       <h2 id="require-an-explicit-approval">
         Require an explicit approval
@@ -56,7 +56,7 @@ await looms.signal(runId, [decision(pending.approvalId, 'reject')], {
       <p>
         Authenticate the reviewer, authorize access to this run and approval, and validate the
         action on the server. Use a unique key per logical request and reuse it for retries of that
-        request. A new key represents a new request; it is not conflict resolution.
+        request. A new key represents a new request and does not resolve conflicting decisions.
       </p>
       <h2 id="concurrent-and-duplicate-decisions">
         Concurrent and duplicate decisions
@@ -70,9 +70,9 @@ await looms.signal(runId, [decision(pending.approvalId, 'reject')], {
       </h2>
       <p>
         Correlate waits by approvalId, not only the event type. Concurrent approvals can otherwise
-        satisfy the wrong wait. Serialize decisions at an authoritative application boundary and
-        reject decisions for already resolved approvals. A read of pendingApprovals followed by a
-        write is not an atomic compare-and-set across multiple clients.
+        satisfy the wrong wait. Serialize decisions on the server and reject decisions for already
+        resolved approvals. A read of pendingApprovals followed by a write is not an atomic
+        compare-and-set across multiple clients.
       </p>
       <p>
         The runtime validates event shape, but does not implement your reviewer identity, permission
@@ -93,8 +93,8 @@ await looms.signal(runId, [decision(pending.approvalId, 'reject')], {
         <code>gate()</code> has no automatic timeout option. To expire approvals, define an
         application workflow or custom thread that records a deadline, waits for a correlated
         decision or timer, and fails closed on timeout. Record expiration explicitly and reject late
-        decisions at the gateway. Merely emitting approval.timed_out does not satisfy a gate waiting
-        for approval.decided.
+        decisions at the gateway. Emitting approval.timed_out does not satisfy a gate waiting for
+        approval.decided.
       </p>
       <h2 id="review-ui">
         Review UI

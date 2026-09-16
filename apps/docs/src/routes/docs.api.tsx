@@ -71,9 +71,9 @@ try {
       </h3>
       <p>
         start infers input from a definition; startRun accepts registered names. Both run a wake
-        cycle and resolve with runId, threadId, and state. Resolution is not a promise that all
-        business work is complete: a gate or child may still be pending. They reject on invalid
-        input, missing definitions, storage failures, or execution limits.
+        cycle and resolve with runId, threadId, and state. A gate or child may still be pending when
+        either method resolves. They reject on invalid input, missing definitions, storage failures,
+        or execution limits.
       </p>
       <p>
         Use a stable runId and idempotencyKey when retrying creation of the same logical run.
@@ -89,7 +89,7 @@ try {
       <p>
         signal validates and appends inputs, then wakes execution and returns state. Its optional
         idempotencyKey identifies retries of the same request within a run. wake processes pending
-        work without inventing a new domain signal. cancel records cancellation for a run or thread;
+        work without appending a new domain signal. cancel records cancellation for a run or thread;
         it cannot undo an external action.
       </p>
       <h3 id="read">
@@ -107,8 +107,8 @@ try {
       <p>
         ready initializes storage and modules. rescanTimers re-registers persisted timers on the
         configured scheduler. fetch returns a Response or null for unhandled paths. serve starts the
-        Bun HTTP server. stop disposes the runtime scheduler and any server it started; it is not an
-        application-level cancellation or a database backup.
+        Bun HTTP server. stop disposes the runtime scheduler and any server it started; it does not
+        cancel runs or back up storage.
       </p>
       <h2 id="http">
         HTTP contract

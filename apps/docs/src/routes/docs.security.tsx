@@ -17,7 +17,7 @@ function Page() {
         and tenant ownership. A runId is an identifier, not a secret or permission token.
       </p>
       <h2 id="put-an-application-boundary-in-front-of-the-host">
-        Put an application boundary in front of the host
+        Authorize requests before forwarding them
         <a
           className="heading-anchor"
           href="#put-an-application-boundary-in-front-of-the-host"
@@ -101,12 +101,11 @@ function Page() {
       </h2>
       <p>
         Authorize the actual approver and operation, not merely the existence of an approval ID.
-        Handle race conditions and late replies at the same authoritative boundary. Store enough
-        attribution to explain who decided and what inputs they reviewed without placing secrets in
-        events.
+        Handle concurrent decisions and late replies in the same server-side approval handler.
+        Record who decided and which inputs they reviewed without placing secrets in events.
       </p>
       <h2 id="deployment-boundary">
-        Deployment boundary
+        Restrict access to the execution host
         <a className="heading-anchor" href="#deployment-boundary" aria-label="Link to this section">
           #
         </a>

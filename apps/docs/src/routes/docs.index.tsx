@@ -17,7 +17,7 @@ function Introduction() {
         history supports recovery, debugging, and live UI views.
       </p>
       <h2 id="start">
-        Start with a real run
+        Run the quickstart
         <a className="heading-anchor" href="#start" aria-label="Link to this section">
           #
         </a>
@@ -68,15 +68,15 @@ function Introduction() {
         </li>
       </ul>
       <h2 id="contract">
-        Know the contract
+        Before production
         <a className="heading-anchor" href="#contract" aria-label="Link to this section">
           #
         </a>
       </h2>
       <p>
         Historical replay reconstructs state without dispatching effects. Recovery can retry
-        unfinished external actions, so handlers need idempotency or reconciliation. You own
-        authorization and code compatibility for long-lived runs. Read{' '}
+        unfinished external actions, so handlers need idempotency or reconciliation. Your
+        application must authorize requests and keep code compatible with existing runs. Read{' '}
         <Link to="/docs/reliability">reliability</Link> and{' '}
         <Link to="/docs/versioning">versioning</Link> before production.
       </p>
