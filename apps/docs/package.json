@@ -7,8 +7,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
-    "start": "PORT=8788 bun .output/server/index.mjs",
+    "build": "bun run build:worker && bun run build:prerender && bun scripts/merge-prerender-output.ts",
+    "build:worker": "vite build",
+    "build:prerender": "vite build --mode prerender",
+    "preview": "wrangler dev --config .output/server/wrangler.json",
+    "deploy": "bun run build && wrangler deploy --config .output/server/wrangler.json",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
     "test": "bun test src",
     "illustrations:export": "bun scripts/export-illustrations.tsx"
@@ -35,6 +38,7 @@
     "nitro": "^3.0.260903-beta",
     "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "wrangler": "^4.132.0"
   }
 }

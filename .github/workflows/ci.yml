@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -17,3 +20,36 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Verify
         run: bun run verify
+      - name: Upload docs build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-output
+          path: apps/docs/.output
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Download docs build
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-output
+          path: apps/docs/.output
+      - name: Deploy docs
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/docs
+          packageManager: bun
+          wranglerVersion: 4.132.0
+          command: deploy --config .output/server/wrangler.json

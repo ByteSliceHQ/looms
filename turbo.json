@@ -23,7 +23,14 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsconfig.json", "package.json", "vite.config.ts"],
+      "inputs": [
+        "src/**",
+        "scripts/**",
+        "tsconfig.json",
+        "package.json",
+        "vite.config.ts",
+        "wrangler.json"
+      ],
       "outputs": ["dist/**", ".output/**"]
     },
     "check-types": {

@@ -18,6 +18,8 @@ coverage/
 dump.rdb
 .output/
 **/.output/
+.prerender/
+**/.prerender/
 .tanstack/
 **/.tanstack/
 .wrangler/

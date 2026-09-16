@@ -1,4 +1,9 @@
-import { createHighlighter } from 'shiki'
+import { createHighlighterCoreSync } from 'shiki/core'
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import bash from 'shiki/langs/bash.mjs'
+import json from 'shiki/langs/json.mjs'
+import tsx from 'shiki/langs/tsx.mjs'
+import yaml from 'shiki/langs/yaml.mjs'
 import poimandres from 'shiki/themes/poimandres.mjs'
 
 export const loomsLight = {
@@ -111,10 +116,17 @@ export const loomsDark = {
   },
 }
 
-export const highlighter = await createHighlighter({
-  langs: ['tsx', 'json', 'bash', 'yaml'],
-  themes: [loomsLight, loomsDark],
-})
+let highlighter: ReturnType<typeof createHighlighterCoreSync> | undefined
+
+function getHighlighter() {
+  highlighter ??= createHighlighterCoreSync({
+    engine: createJavaScriptRegexEngine(),
+    langs: [tsx, json, bash, yaml],
+    themes: [loomsLight, loomsDark],
+  })
+
+  return highlighter
+}
 
 function normalizeLang(lang: string): string {
   switch (lang.toLowerCase()) {
@@ -141,7 +153,7 @@ function normalizeLang(lang: string): string {
 }
 
 export function highlightCode(code: string, lang = 'tsx') {
-  const html = highlighter.codeToHtml(code.trim(), {
+  const html = getHighlighter().codeToHtml(code.trim(), {
     lang: normalizeLang(lang),
     themes: {
       light: 'looms-light',

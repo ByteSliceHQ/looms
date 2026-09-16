@@ -9,24 +9,50 @@ const port = Number(process.env.DOCS_PORT ?? 8788)
 process.env.PORT = String(port)
 process.env.NITRO_PORT = String(port)
 
-export default defineConfig({
-  server: {
-    port,
-    strictPort: true,
-    host: process.env.HOST ?? '127.0.0.1',
-  },
-  optimizeDeps: {
-    include: ['katex'],
-  },
-  worker: {
-    format: 'es',
-  },
-  plugins: [
-    tanstackStart({
-      srcDirectory: 'src',
-    }),
-    nitro({ preset: 'bun' }),
-    viteReact(),
-    tailwindcss(),
-  ],
+export default defineConfig(({ mode }) => {
+  const isPrerenderBuild = mode === 'prerender'
+
+  return {
+    server: {
+      port,
+      strictPort: true,
+      host: process.env.HOST ?? '127.0.0.1',
+    },
+    optimizeDeps: {
+      include: ['katex'],
+    },
+    worker: {
+      format: 'es',
+    },
+    plugins: [
+      tanstackStart({
+        srcDirectory: 'src',
+        prerender: isPrerenderBuild
+          ? {
+              enabled: true,
+              crawlLinks: true,
+              failOnError: true,
+              filter: ({ path }) => !path.includes('.'),
+            }
+          : undefined,
+      }),
+      nitro(
+        isPrerenderBuild
+          ? {
+              preset: 'bun',
+              output: {
+                dir: '.prerender',
+              },
+            }
+          : {
+              preset: 'cloudflare_module',
+              cloudflare: {
+                deployConfig: true,
+              },
+            },
+      ),
+      viteReact(),
+      tailwindcss(),
+    ],
+  }
 })
