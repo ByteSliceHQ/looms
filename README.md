@@ -6,6 +6,8 @@ Looms is a TypeScript SDK for long-running work in your application. Each run ha
 
 [Website](https://looms.sh) · [Documentation](https://looms.sh/docs) · [Quickstart](https://looms.sh/docs/quickstart) · [Contributing](./CONTRIBUTING.md)
 
+Built and maintained by the team at [Swirls](https://swirls.ai).
+
 ## Why Looms
 
 - **Recoverable execution.** With persistent storage, a run can survive a host restart and resume unfinished work.
