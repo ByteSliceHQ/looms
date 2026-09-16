@@ -23,7 +23,7 @@
     "doctor": "react-doctor --verbose -y",
     "test": "turbo run test",
     "test:e2e:npm": "bun run scripts/e2e-npm-package.ts",
-    "verify": "turbo run build && turbo run check-types && turbo run test && bun run lint && bun run fmt:check",
+    "verify": "turbo run build --filter=@swirls/looms... && turbo run check-types && turbo run test && bun run lint && bun run fmt:check",
     "dev": "turbo run dev --filter=@looms/demo --filter=@looms/docs",
     "dev:cloudflare": "LOOMS_BACKEND=cloudflare LOOMS_WORKER_URL=http://127.0.0.1:8788 turbo run dev --filter=@looms/demo --filter=@looms/demo-worker",
     "demo": "turbo run dev --filter=@looms/demo",
@@ -34,7 +34,7 @@
     "version-packages": "changeset version",
     "prepare": "effect-tsgo patch --typescript --oxlint",
     "check:package": "bun run scripts/check-package.ts",
-    "release": "bun run verify && bun run check:package && changeset publish"
+    "release": "bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
