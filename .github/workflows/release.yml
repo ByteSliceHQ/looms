@@ -35,8 +35,8 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: bun run release
-          title: Release @swirls/looms
-          commit: Release @swirls/looms
+          title: 'chore(release): publish @swirls/looms'
+          commit: 'chore(release): publish @swirls/looms'
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
