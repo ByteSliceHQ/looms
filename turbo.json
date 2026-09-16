@@ -34,9 +34,11 @@
       "outputs": ["dist/**", ".output/**"]
     },
     "check-types": {
+      "dependsOn": ["^build"],
       "inputs": ["src/**", "tsconfig.json", "package.json"]
     },
     "test": {
+      "dependsOn": ["^build"],
       "inputs": ["src/**", "tsconfig.json", "package.json"]
     },
     "dev": {
