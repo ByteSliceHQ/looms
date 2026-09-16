@@ -18,8 +18,10 @@ jobs:
           bun-version: 1.3.14
       - name: Install
         run: bun install --frozen-lockfile
-      - name: Build
-        run: bun run build
+      - name: Build workspace
+        run: bun x turbo run build --filter='!@looms/docs'
+      - name: Build docs
+        run: bun run --filter @looms/docs build
       - name: Check types
         run: bun run check-types
       - name: Test
