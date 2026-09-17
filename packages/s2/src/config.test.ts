@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import * as net from 'node:net'
 
-import { Predicate, Schema } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 
 import { EventStoreConflictError, snapshotStoreOf } from '@looms/core'
 
@@ -21,7 +21,7 @@ describe('@looms/s2 config', () => {
   })
 
   test('S2ConfigSchema accepts basin + token', () => {
-    const cfg = Schema.decodeUnknownSync(S2ConfigSchema)({
+    const cfg = Schema.decodeSync(S2ConfigSchema)({
       basin: 'looms-dev',
       accessToken: 'tok_test',
     })
@@ -31,7 +31,7 @@ describe('@looms/s2 config', () => {
   })
 
   test('S2ConfigSchema accepts endpoint string', () => {
-    const cfg = Schema.decodeUnknownSync(S2ConfigSchema)({
+    const cfg = Schema.decodeSync(S2ConfigSchema)({
       basin: 'local',
       accessToken: 'tok',
       endpoint: 'http://127.0.0.1:8080',
@@ -73,7 +73,7 @@ describe('@looms/s2 config', () => {
     expect(Predicate.isFunction(store.read)).toBe(true)
     expect(Predicate.isFunction(store.tail)).toBe(true)
     expect(Predicate.isFunction(store.subscribe)).toBe(true)
-    expect(Predicate.isFunction(store.listRuns)).toBe(true)
+    expect(Effect.isEffect(store.listRuns)).toBe(true)
     expect(snapshotStoreOf(store)).toBeDefined()
   })
 

@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
 
 import { createEvent, type EventEnvelope, type EventInput, type TypedEvent } from './envelope'
-import { asJson, type JsonValue } from './types'
+import type { JsonValue } from './types'
 
 declare const catalogPayloadBrand: unique symbol
 
@@ -20,14 +20,14 @@ export function payload<TPayload>(): CatalogEventSpec<TPayload> {
   return {}
 }
 
-export type CatalogEntry = CatalogEventSpec | Schema.Top | StandardSchemaV1
+export type CatalogEntry = CatalogEventSpec | Schema.ConstraintDecoder<unknown> | StandardSchemaV1
 
 export type CatalogEntries = { readonly [key: string]: CatalogEntry }
 
 export type InferPayload<T> =
   T extends CatalogEventSpec<infer P>
     ? P
-    : T extends Schema.Top
+    : T extends Schema.ConstraintDecoder<unknown>
       ? Schema.Schema.Type<T>
       : T extends StandardSchemaV1<infer _In, infer Out>
         ? Out
@@ -99,19 +99,17 @@ export function defineEventCatalog<TNamespace extends string, TEntries extends C
     entries,
     event(key, eventPayload, meta) {
       const { runId, ...rest } = meta
-      // SAFETY: createEvent returns EventEnvelope with inferred payload type.
       return createEvent(runId, {
         ...rest,
         type: eventType(namespace, key),
-        payload: asJson(eventPayload),
-      }) as EventEnvelope<`${TNamespace}.${typeof key}`, InferPayload<TEntries[typeof key]>>
+        payload: eventPayload,
+      })
     },
     input(key, eventPayload, meta) {
       return {
         ...meta,
         type: eventType(namespace, key),
-        // SAFETY: asJson returns typed payload for catalog event.
-        payload: asJson(eventPayload) as InferPayload<TEntries[typeof key]>,
+        payload: eventPayload,
       }
     },
   }

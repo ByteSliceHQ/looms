@@ -217,7 +217,7 @@ export interface EventStore {
     options?: { fromSeq?: number },
   ) => Stream.Stream<EventEnvelope, EventStoreError>
 
-  readonly listRuns: () => Effect.Effect<string[], EventStoreError>
+  readonly listRuns: Effect.Effect<string[], EventStoreError>
 }
 
 /**
@@ -367,25 +367,23 @@ export const makeMemoryEventStore = Effect.gen(function* () {
       }),
 
     trim: (runId, beforeSeq) =>
-      Effect.gen(function* () {
-        yield* Ref.update(logs, (map) => {
-          const log = map.get(runId)
+      Ref.update(logs, (map) => {
+        const log = map.get(runId)
 
-          if (!log) {
-            return map
-          }
+        if (!log) {
+          return map
+        }
 
-          const next = new Map(map)
-          const retained = log.events.filter((e) => e.seq >= beforeSeq)
+        const next = new Map(map)
+        const retained = log.events.filter((e) => e.seq >= beforeSeq)
 
-          next.set(runId, {
-            ...log,
-            events: retained,
-            head: Math.max(log.head, beforeSeq),
-          })
-
-          return next
+        next.set(runId, {
+          ...log,
+          events: retained,
+          head: Math.max(log.head, beforeSeq),
         })
+
+        return next
       }),
 
     subscribe: (runId, options) =>
@@ -431,11 +429,7 @@ export const makeMemoryEventStore = Effect.gen(function* () {
         }),
       ),
 
-    listRuns: () =>
-      Effect.gen(function* () {
-        const map = yield* Ref.get(logs)
-        return [...map.keys()]
-      }),
+    listRuns: Ref.get(logs).pipe(Effect.map((map) => [...map.keys()])),
   }
 
   return service

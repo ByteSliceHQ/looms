@@ -1,10 +1,14 @@
-import { Predicate } from 'effect'
+import { DateTime, Predicate } from 'effect'
 
 let counter = 0
 
 function token(): string {
   counter += 1
-  return `${Date.now().toString(36)}_${counter.toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  const timestamp = DateTime.toEpochMillis(DateTime.nowUnsafe())
+  // Synchronous ID factories need process-independent entropy without an Effect runtime.
+  // oxlint-disable-next-line effecttsgo/crypto-random-uuid
+  const entropy = globalThis.crypto.randomUUID().replaceAll('-', '')
+  return `${timestamp.toString(36)}_${counter.toString(36)}_${entropy}`
 }
 
 export function createEventId(): string {

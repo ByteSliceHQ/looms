@@ -4,9 +4,21 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+import { Clock, Data, Effect } from 'effect'
+
 import type { EventStore } from '@looms/core'
 
 import { s2 } from './store'
+
+class S2LiteError extends Data.TaggedError('S2LiteError')<{
+  readonly cause?: unknown
+  readonly message: string
+}> {
+  constructor(message: string, cause?: unknown) {
+    super({ cause, message })
+    this.name = 'S2LiteError'
+  }
+}
 
 export interface S2LiteOptions {
   /** Port for local s2-lite process. Defaults to 8080. */
@@ -77,27 +89,24 @@ export function findS2Binary(env: Record<string, string | undefined>): string | 
 }
 
 export function isPortOpen(port: number, host = '127.0.0.1'): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = new net.Socket()
-    socket.setTimeout(200)
+  return Effect.runPromise(
+    Effect.callback<boolean>((resume) => {
+      const socket = new net.Socket()
 
-    socket.once('connect', () => {
-      socket.destroy()
-      resolve(true)
-    })
+      const complete = (open: boolean) => {
+        socket.destroy()
+        resume(Effect.succeed(open))
+      }
 
-    socket.once('timeout', () => {
-      socket.destroy()
-      resolve(false)
-    })
+      socket.setTimeout(200)
+      socket.once('connect', () => complete(true))
+      socket.once('timeout', () => complete(false))
+      socket.once('error', () => complete(false))
+      socket.connect(port, host)
 
-    socket.once('error', () => {
-      socket.destroy()
-      resolve(false)
-    })
-
-    socket.connect(port, host)
-  })
+      return Effect.sync(() => socket.destroy())
+    }),
+  )
 }
 
 export interface StartedS2Lite {
@@ -106,102 +115,83 @@ export interface StartedS2Lite {
   readonly stop: () => void
 }
 
-interface S2ChildProcess {
-  kill(signal?: string): boolean
-  exitCode: number | null
-  stderr: {
-    on(event: string, listener: (chunk: any) => void): void
-  } | null
-}
+let activeProcess: childProcess.ChildProcess | null = null
 
-let activeProcess: S2ChildProcess | null = null
+export function startS2Lite(options: S2LiteOptions = {}): Promise<StartedS2Lite> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const port = options.port ?? 8080
+      const endpoint = `http://127.0.0.1:${port}`
 
-export async function startS2Lite(options: S2LiteOptions = {}): Promise<StartedS2Lite> {
-  const port = options.port ?? 8080
-  const endpoint = `http://127.0.0.1:${port}`
+      if (yield* Effect.promise(() => isPortOpen(port))) {
+        return { port, endpoint, stop: () => undefined }
+      }
 
-  // 1. Check if an s2-lite instance is already responding on this port.
-  const alreadyRunning = await isPortOpen(port)
+      const binaryPath = options.binaryPath ?? findS2Binary(options.env ?? {})
 
-  if (alreadyRunning) {
-    return {
-      port,
-      endpoint,
-      stop: () => {
-        // Did not spawn this process, no-op stop.
-      },
-    }
-  }
-
-  // 2. Locate the s2 binary.
-  const binaryPath = options.binaryPath ?? findS2Binary(options.env ?? {})
-
-  if (!binaryPath) {
-    throw new Error(
-      `s2 CLI binary not found on PATH or in standard locations.
+      if (!binaryPath) {
+        return yield* new S2LiteError(`s2 CLI binary not found on PATH or in standard locations.
 To install s2-lite for local development:
   flox activate          # installs into $FLOX_ENV_CACHE/s2 (preferred)
   bun run setup:s2       # scripts/install-s2-cli.sh
-  https://s2.dev/docs/cli/installation`,
-    )
-  }
-
-  // 3. Spawn s2 lite.
-  // SAFETY: child_process.spawn returns child process matching S2ChildProcess.
-  const child = childProcess.spawn(binaryPath, ['lite', '--port', String(port)], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
-  }) as S2ChildProcess
-
-  activeProcess = child
-
-  const cleanup = () => {
-    if (activeProcess === child) {
-      activeProcess = null
-    }
-
-    try {
-      child.kill('SIGTERM')
-    } catch {
-      // Process may already have exited.
-    }
-  }
-
-  process.once('exit', cleanup)
-  process.once('SIGINT', cleanup)
-  process.once('SIGTERM', cleanup)
-
-  let stderrOutput = ''
-
-  child.stderr?.on('data', (chunk) => {
-    stderrOutput += chunk.toString()
-  })
-
-  // 4. Poll until the port responds or the process exits unexpectedly.
-  const deadline = Date.now() + 5000
-
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(
-        `s2 lite process exited with code ${child.exitCode} before becoming ready: ${stderrOutput}`,
-      )
-    }
-
-    const ready = await isPortOpen(port)
-
-    if (ready) {
-      return {
-        port,
-        endpoint,
-        stop: cleanup,
+  https://s2.dev/docs/cli/installation`)
       }
-    }
 
-    await new Promise((r) => setTimeout(r, 50))
-  }
+      const child = yield* Effect.try({
+        try: () =>
+          childProcess.spawn(binaryPath, ['lite', '--port', String(port)], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            detached: false,
+          }),
+        catch: (cause) => new S2LiteError('Failed to start s2 lite', cause),
+      })
 
-  cleanup()
-  throw new Error(`Timed out waiting for s2 lite to start on port ${port}: ${stderrOutput}`)
+      activeProcess = child
+
+      const cleanup = () => {
+        if (activeProcess === child) {
+          activeProcess = null
+        }
+
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          // The process may already have exited.
+        }
+      }
+
+      process.once('exit', cleanup)
+      process.once('SIGINT', cleanup)
+      process.once('SIGTERM', cleanup)
+
+      let stderrOutput = ''
+
+      child.stderr?.on('data', (chunk) => {
+        stderrOutput += chunk.toString()
+      })
+
+      const deadline = (yield* Clock.currentTimeMillis) + 5_000
+
+      while ((yield* Clock.currentTimeMillis) < deadline) {
+        if (child.exitCode !== null) {
+          return yield* new S2LiteError(
+            `s2 lite process exited with code ${child.exitCode} before becoming ready: ${stderrOutput}`,
+          )
+        }
+
+        if (yield* Effect.promise(() => isPortOpen(port))) {
+          return { port, endpoint, stop: cleanup }
+        }
+
+        yield* Effect.sleep(50)
+      }
+
+      cleanup()
+      return yield* new S2LiteError(
+        `Timed out waiting for s2 lite to start on port ${port}: ${stderrOutput}`,
+      )
+    }),
+  )
 }
 
 /**
@@ -209,12 +199,12 @@ To install s2-lite for local development:
  * and connects an S2 EventStore to it.
  */
 export function s2Lite(options: S2LiteOptions = {}): () => Promise<EventStore> {
-  return async () => {
-    const started = await startS2Lite(options)
-    return s2({
-      basin: options.basin ?? 'looms-demo',
-      accessToken: options.accessToken ?? 's2_local',
-      endpoint: started.endpoint,
-    })
-  }
+  return () =>
+    startS2Lite(options).then((started) =>
+      s2({
+        basin: options.basin ?? 'looms-demo',
+        accessToken: options.accessToken ?? 's2_local',
+        endpoint: started.endpoint,
+      }),
+    )
 }

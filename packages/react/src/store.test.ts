@@ -251,9 +251,11 @@ describe('createLoomsStore reconnect', () => {
     }
 
     const prevEventSource = globalThis.EventSource
-    const MockCtor: unknown = MockEventSource
-    // SAFETY: Mocking global EventSource to test reconnection on CLOSED state.
-    globalThis.EventSource = MockCtor as typeof EventSource
+
+    Object.defineProperty(globalThis, 'EventSource', {
+      configurable: true,
+      value: MockEventSource,
+    })
 
     try {
       const store = createLoomsStore({
@@ -282,7 +284,10 @@ describe('createLoomsStore reconnect', () => {
 
       store.dispose()
     } finally {
-      globalThis.EventSource = prevEventSource
+      Object.defineProperty(globalThis, 'EventSource', {
+        configurable: true,
+        value: prevEventSource,
+      })
     }
   })
 })

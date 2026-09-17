@@ -11,7 +11,7 @@ describe('validateEventInput', () => {
     typedOnly: payload<{ x: number }>(),
     schemaBacked: Schema.Struct({
       id: Schema.String,
-      count: Schema.Number,
+      count: Schema.Finite,
     }),
   })
 

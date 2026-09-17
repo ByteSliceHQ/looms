@@ -1,6 +1,6 @@
-import { Effect, Fiber, Stream } from 'effect'
+import { Effect, Fiber, Schedule, Stream } from 'effect'
 
-import { encodeLoomsEvent, type EventEnvelope, type EventStore } from '@looms/core'
+import { encodeLoomsEvent, stringifyJson, type EventEnvelope, type EventStore } from '@looms/core'
 
 export interface EventStreamOptions {
   signal: AbortSignal
@@ -8,7 +8,10 @@ export interface EventStreamOptions {
   runId: string
   fromSeq?: number
   heartbeatMs?: number
-  onStart?: (write: (text: string) => void, close: () => void) => Promise<void> | void
+  onStart?: (
+    write: (text: string) => void,
+    close: () => void,
+  ) => void | Promise<void> | Effect.Effect<void>
   request?: Request
 }
 
@@ -51,8 +54,9 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
   disableBunSocketTimeout(request)
 
   let closed = false
-  let heartbeat: ReturnType<typeof setInterval> | undefined
-  let fiber: Fiber.Fiber<void, unknown> | undefined
+  let heartbeatFiber: Fiber.Fiber<void> | undefined
+  let startFiber: Fiber.Fiber<void> | undefined
+  let subscriptionFiber: Fiber.Fiber<void, unknown> | undefined
   let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
 
   const close = () => {
@@ -62,12 +66,16 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
 
     closed = true
 
-    if (heartbeat !== undefined) {
-      clearInterval(heartbeat)
+    if (heartbeatFiber) {
+      Effect.runFork(Fiber.interrupt(heartbeatFiber))
     }
 
-    if (fiber) {
-      Effect.runFork(Fiber.interrupt(fiber))
+    if (startFiber) {
+      Effect.runFork(Fiber.interrupt(startFiber))
+    }
+
+    if (subscriptionFiber) {
+      Effect.runFork(Fiber.interrupt(subscriptionFiber))
     }
 
     try {
@@ -94,12 +102,12 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
         }
       }
 
-      fiber = Effect.runFork(
+      subscriptionFiber = Effect.runFork(
         store.subscribe(runId, { fromSeq }).pipe(
           Stream.tap((event: EventEnvelope) =>
             Effect.sync(() => {
               write(
-                `id: ${event.seq}\ndata: ${JSON.stringify({ batch: [encodeLoomsEvent(event)] })}\n\n`,
+                `id: ${event.seq}\ndata: ${stringifyJson({ batch: [encodeLoomsEvent(event)] })}\n\n`,
               )
             }),
           ),
@@ -111,14 +119,25 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
       // preventing dev server proxies and Bun.serve from aborting quiet connections.
       write(': keepalive\n\n')
 
-      heartbeat = setInterval(() => write(': keepalive\n\n'), heartbeatMs)
+      heartbeatFiber = Effect.runFork(
+        Effect.repeat(
+          Effect.sleep(heartbeatMs).pipe(
+            Effect.andThen(Effect.sync(() => write(': keepalive\n\n'))),
+          ),
+          Schedule.forever,
+        ).pipe(Effect.asVoid),
+      )
 
-      if (onStart) {
-        Promise.resolve(onStart(write, close)).catch((cause: unknown) => {
-          const error = cause instanceof Error ? cause.message : String(cause)
-          write(`event: error\ndata: ${JSON.stringify({ error })}\n\n`)
-          close()
-        })
+      const startResult = onStart?.(write, close)
+
+      const startEffect = Effect.isEffect(startResult)
+        ? startResult
+        : startResult
+          ? Effect.promise(() => startResult)
+          : undefined
+
+      if (startEffect) {
+        startFiber = Effect.runFork(startEffect)
       }
 
       if (signal.aborted) {

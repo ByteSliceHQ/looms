@@ -49,8 +49,16 @@ function toolResults(
   return results
 }
 
+function emitDelta(
+  args: LlmCompleteArgs,
+  delta: string,
+  result: AgentTurnResult,
+): Promise<AgentTurnResult> {
+  return Promise.resolve(args.onTextDelta?.(delta)).then(() => result)
+}
+
 export const demoLlm: LlmAdapter = {
-  async complete(args: LlmCompleteArgs): Promise<AgentTurnResult> {
+  complete(args: LlmCompleteArgs): Promise<AgentTurnResult> {
     const results = toolResults(args.messages)
     const taskOrTopic = extractText(args.messages)
 
@@ -60,15 +68,14 @@ export const demoLlm: LlmAdapter = {
         const lower = taskOrTopic.toLowerCase()
 
         if (lower.includes('greet') && hasTool(args.tools, 'greet')) {
-          await args.onTextDelta?.('Calling the greeting tool…')
-          return {
+          return emitDelta(args, 'Calling the greeting tool…', {
             message: {
               role: 'assistant',
               content: '',
               toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
             },
             toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
-          }
+          })
         }
 
         if (
@@ -80,8 +87,7 @@ export const demoLlm: LlmAdapter = {
         ) {
           const amountMatch = lower.match(/\b(\d+(?:\.\d+)?)\b/)
           const amount = amountMatch ? Number(amountMatch[1]) : 150
-          await args.onTextDelta?.(`Starting checkout for ${amount} USD…`)
-          return {
+          return emitDelta(args, `Starting checkout for ${amount} USD…`, {
             message: {
               role: 'assistant',
               content: '',
@@ -92,15 +98,14 @@ export const demoLlm: LlmAdapter = {
             toolCalls: [
               { id: 'tc_checkout', name: 'checkout', arguments: { amount, currency: 'USD' } },
             ],
-          }
+          })
         }
 
         if (
           (lower.includes('approval') || lower.includes('approve')) &&
           hasTool(args.tools, 'ask_approval')
         ) {
-          await args.onTextDelta?.('Requesting human approval…')
-          return {
+          return emitDelta(args, 'Requesting human approval…', {
             message: {
               role: 'assistant',
               content: '',
@@ -119,19 +124,18 @@ export const demoLlm: LlmAdapter = {
                 arguments: { title: 'Approve demo action?' },
               },
             ],
-          }
+          })
         }
 
         // Default for assistant: delegate to the specialist agent to demonstrate hierarchical trees
-        await args.onTextDelta?.('Delegating to the specialist child agent for deep analysis…')
-        return {
+        return emitDelta(args, 'Delegating to the specialist child agent for deep analysis…', {
           message: {
             role: 'assistant',
             content: '',
             toolCalls: [{ id: 'tc_spec', name: 'specialist', arguments: { task: taskOrTopic } }],
           },
           toolCalls: [{ id: 'tc_spec', name: 'specialist', arguments: { task: taskOrTopic } }],
-        }
+        })
       }
 
       // Assistant Turn 2+: Synthesize completed findings
@@ -151,25 +155,32 @@ export const demoLlm: LlmAdapter = {
         ? `Checkout finished. Outcome:\n${details}`
         : `Done. Tool results:\n${details}`
 
-      await args.onTextDelta?.(reply)
-      return {
+      return emitDelta(args, reply, {
         message: { role: 'assistant', content: reply },
         done: true,
         output: { text: reply, result: reply },
-      }
+      })
     }
 
     // 2. Specialist Agent (has researcher, pipeline, calculate)
     if (hasTool(args.tools, 'researcher')) {
       if (results.length === 0) {
-        await args.onTextDelta?.(
+        return emitDelta(
+          args,
           'Specialist coordinating sub-agents: launching researcher and computing metrics…',
-        )
-
-        return {
-          message: {
-            role: 'assistant',
-            content: '',
+          {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [
+                { id: 'tc_res', name: 'researcher', arguments: { topic: taskOrTopic } },
+                {
+                  id: 'tc_calc',
+                  name: 'calculate',
+                  arguments: { operation: 'average', values: [12.4, 15.8, 14.2] },
+                },
+              ],
+            },
             toolCalls: [
               { id: 'tc_res', name: 'researcher', arguments: { topic: taskOrTopic } },
               {
@@ -179,33 +190,23 @@ export const demoLlm: LlmAdapter = {
               },
             ],
           },
-          toolCalls: [
-            { id: 'tc_res', name: 'researcher', arguments: { topic: taskOrTopic } },
-            {
-              id: 'tc_calc',
-              name: 'calculate',
-              arguments: { operation: 'average', values: [12.4, 15.8, 14.2] },
-            },
-          ],
-        }
+        )
       }
 
       // Specialist Turn 2+: Synthesize findings from researcher and calculate
       const details = results.map((r) => r.content).join(' | ')
       const summary = `Specialist completed [${taskOrTopic}]. Sub-agent findings & calculations: ${details}`
-      await args.onTextDelta?.(summary)
-      return {
+      return emitDelta(args, summary, {
         message: { role: 'assistant', content: summary },
         done: true,
         output: { result: summary, text: summary },
-      }
+      })
     }
 
     // 3. Researcher Agent (has query_kb, pipeline)
     if (hasTool(args.tools, 'query_kb')) {
       if (results.length === 0) {
-        await args.onTextDelta?.('Researcher querying telemetry KB and running data pipeline…')
-        return {
+        return emitDelta(args, 'Researcher querying telemetry KB and running data pipeline…', {
           message: {
             role: 'assistant',
             content: '',
@@ -218,27 +219,25 @@ export const demoLlm: LlmAdapter = {
             { id: 'tc_kb', name: 'query_kb', arguments: { topic: taskOrTopic } },
             { id: 'tc_pipe', name: 'pipeline', arguments: { n: 42 } },
           ],
-        }
+        })
       }
 
       // Researcher Turn 2+: Synthesize KB telemetry and pipeline results
       const details = results.map((r) => r.content).join(' | ')
       const summary = `Research verified for [${taskOrTopic}]. Telemetry & pipeline results: ${details}`
-      await args.onTextDelta?.(summary)
-      return {
+      return emitDelta(args, summary, {
         message: { role: 'assistant', content: summary },
         done: true,
         output: { result: summary, text: summary },
-      }
+      })
     }
 
     // Default agent fallback: echo text or produce completed reply
     const text = taskOrTopic.length > 0 ? taskOrTopic : 'done'
-    await args.onTextDelta?.(text)
-    return {
+    return emitDelta(args, text, {
       message: { role: 'assistant', content: text },
       done: true,
       output: { text, result: text },
-    }
+    })
   },
 }

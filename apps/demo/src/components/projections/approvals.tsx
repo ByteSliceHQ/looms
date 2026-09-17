@@ -12,9 +12,8 @@ export function Approvals({ runId }: { runId: string }) {
   const approvals = useProjection(store, pendingApprovals)
 
   const decide = useCallback(
-    async (approvalId: string, outcome: 'approve' | 'reject') => {
-      await store.commit(decision(approvalId, outcome))
-    },
+    (approvalId: string, outcome: 'approve' | 'reject') =>
+      store.commit(decision(approvalId, outcome)),
     [store],
   )
 

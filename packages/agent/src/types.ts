@@ -32,8 +32,8 @@ export const ConversationSchema = Schema.Struct({
 export type ConversationState = Schema.Schema.Type<typeof ConversationSchema>
 
 export const TokenUsageSchema = Schema.Struct({
-  input: Schema.Number,
-  output: Schema.Number,
+  input: Schema.Finite,
+  output: Schema.Finite,
 })
 export type TokenUsage = Schema.Schema.Type<typeof TokenUsageSchema>
 
@@ -82,6 +82,3 @@ export interface AgentState {
   output: JsonValue | null
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
 }
-
-// SAFETY: AgentState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
-export const AgentStateSchema = Schema.Unknown as Schema.Schema<AgentState>

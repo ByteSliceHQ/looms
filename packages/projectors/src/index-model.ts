@@ -175,14 +175,9 @@ export function createIndexProjector(name: string, backend: IndexBackend): Index
     name,
     init: backend.init,
     dispose: backend.dispose,
-    project: async (events) => {
+    project: (events) => {
       const ops = events.flatMap(indexOpsFor)
-
-      if (ops.length === 0) {
-        return
-      }
-
-      await backend.applyOps(ops)
+      return ops.length === 0 ? Promise.resolve() : backend.applyOps(ops)
     },
     getActor: (actorId) => backend.getActor(actorId),
     listReviews: (actorId) => backend.listReviews(actorId),

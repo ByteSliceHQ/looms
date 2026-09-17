@@ -1,3 +1,4 @@
+import { DateTime } from 'effect'
 import { useState } from 'react'
 
 import { rememberRun } from '@/hooks/use-recent-runs'
@@ -73,33 +74,33 @@ export function WorkflowForm({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function start() {
+  function start() {
     setPending(true)
     setError(null)
 
-    try {
-      const input = Object.fromEntries(
-        type.fields.map((field) => [
-          field.name,
-          fieldValue(values[field.name] ?? '', field.type, field.default),
-        ]),
-      )
+    const input = Object.fromEntries(
+      type.fields.map((field) => [
+        field.name,
+        fieldValue(values[field.name] ?? '', field.type, field.default),
+      ]),
+    )
 
-      const result = await loomsClient.start(type.def, input)
+    return loomsClient
+      .start(type.def, input)
+      .then((result) => {
+        rememberRun({
+          runId: result.runId,
+          definitionName: type.name,
+          kind: type.kind,
+          startedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
+        })
 
-      rememberRun({
-        runId: result.runId,
-        definitionName: type.name,
-        kind: type.kind,
-        startedAt: Date.now(),
+        onStarted(result.runId)
       })
-
-      onStarted(result.runId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPending(false)
-    }
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => setPending(false))
   }
 
   return (

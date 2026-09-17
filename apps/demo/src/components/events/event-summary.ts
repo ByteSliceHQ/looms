@@ -170,8 +170,8 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       }
 
     default: {
-      const _exhaustive: never = event
-      return { title: 'event', detail: compactJson(obj(_exhaustive)) }
+      const exhaustiveCheck: never = event
+      return { title: 'event', detail: compactJson(obj(exhaustiveCheck)) }
     }
   }
 }

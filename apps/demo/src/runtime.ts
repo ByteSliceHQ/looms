@@ -1,7 +1,7 @@
 import { agent, type AgentDefinition, type LlmAdapter } from '@swirls/looms/agent'
 import { approval } from '@swirls/looms/approval'
 import type { EventsOf } from '@swirls/looms/core'
-import type {} from '@swirls/looms/react'
+import '@swirls/looms/react'
 import { workflow } from '@swirls/looms/workflow'
 
 import { definitions } from './definitions'

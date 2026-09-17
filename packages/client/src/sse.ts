@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { Data, Effect, Option, Predicate, Queue, Schema, Stream } from 'effect'
 
 import { decodeLoomsEvent, type EventEnvelope } from '@looms/core'
 
@@ -7,6 +7,8 @@ export interface SseFrame {
   event?: string
   data: string
 }
+
+const decodeSseData = Schema.decodeOption(Schema.fromJsonString(Schema.Unknown))
 
 export function parseSseFrame(raw: string): SseFrame | undefined {
   let id: string | undefined
@@ -40,81 +42,106 @@ export function parseSseFrame(raw: string): SseFrame | undefined {
   return { id, event, data: dataLines.join('\n') }
 }
 
-export async function consumeSseStream(
+export class SseStreamError extends Data.TaggedError('SseStreamError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'SseStreamError'
+  }
+}
+
+export function consumeSseStreamEffect(
+  body: ReadableStream<Uint8Array>,
+  onFrame: (frame: SseFrame) => void,
+): Effect.Effect<void, SseStreamError> {
+  const decoder = new TextDecoder()
+
+  return Effect.acquireUseRelease(
+    Effect.sync(() => body.getReader()),
+    (reader) =>
+      Effect.gen(function* () {
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = yield* Effect.tryPromise({
+            try: () => reader.read(),
+            catch: (cause) => new SseStreamError(cause),
+          })
+
+          if (done) {
+            break
+          }
+
+          buffer += decoder.decode(value, { stream: true })
+          const chunks = buffer.split('\n\n')
+          buffer = chunks.pop() ?? ''
+
+          for (const chunk of chunks) {
+            const frame = parseSseFrame(chunk)
+
+            if (frame) {
+              onFrame(frame)
+            }
+          }
+        }
+      }),
+    (reader) =>
+      Effect.promise(() => reader.cancel()).pipe(
+        Effect.ignore,
+        Effect.ensuring(Effect.sync(() => reader.releaseLock()).pipe(Effect.ignore)),
+      ),
+  )
+}
+
+export function sseFrames(
+  body: ReadableStream<Uint8Array>,
+): Stream.Stream<SseFrame, SseStreamError> {
+  return Stream.callback((queue) =>
+    consumeSseStreamEffect(body, (frame) => {
+      Queue.offerUnsafe(queue, frame)
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          Queue.endUnsafe(queue)
+        }),
+      ),
+    ),
+  )
+}
+
+export function consumeSseStream(
   body: ReadableStream<Uint8Array>,
   onFrame: (frame: SseFrame) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  const abort = () => {
-    void reader.cancel()
-  }
-
-  signal?.addEventListener('abort', abort)
-
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        break
-      }
-
-      const { done, value } = await reader.read()
-
-      if (done) {
-        break
-      }
-
-      buffer += decoder.decode(value, { stream: true })
-      const chunks = buffer.split('\n\n')
-      buffer = chunks.pop() ?? ''
-
-      for (const chunk of chunks) {
-        const frame = parseSseFrame(chunk)
-
-        if (frame) {
-          onFrame(frame)
-        }
-      }
-    }
-  } finally {
-    signal?.removeEventListener('abort', abort)
-
-    try {
-      reader.releaseLock()
-    } catch {
-      // reader already cancelled
-    }
-  }
+  return Effect.runPromise(consumeSseStreamEffect(body, onFrame), { signal })
 }
 
 export function eventsFromSseData(data: string, runId: string): EventEnvelope[] {
-  let parsed: unknown
+  const parsed = decodeSseData(data)
 
-  try {
-    parsed = JSON.parse(data)
-  } catch {
+  if (Option.isNone(parsed)) {
     return []
   }
 
-  if (!Predicate.isReadonlyObject(parsed)) {
+  if (!Predicate.isReadonlyObject(parsed.value)) {
     return []
   }
 
-  const batch = 'batch' in parsed && Array.isArray(parsed.batch) ? parsed.batch : []
+  const batch =
+    'batch' in parsed.value && Array.isArray(parsed.value.batch) ? parsed.value.batch : []
+
   const events: EventEnvelope[] = []
 
   for (const item of batch) {
     try {
-      events.push(
-        decodeLoomsEvent(
-          // SAFETY: host SSE batch items are encoded Looms event envelopes.
-          item as Parameters<typeof decodeLoomsEvent>[0],
-          runId,
-        ),
-      )
+      events.push(decodeLoomsEvent(item, runId))
     } catch {
       // skip a malformed item and keep the rest of the batch
     }
@@ -124,21 +151,9 @@ export function eventsFromSseData(data: string, runId: string): EventEnvelope[] 
 }
 
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve()
-      return
-    }
+  if (signal?.aborted) {
+    return Promise.resolve()
+  }
 
-    const timer = setTimeout(resolve, ms)
-
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        resolve()
-      },
-      { once: true },
-    )
-  })
+  return Effect.runPromise(Effect.sleep(ms), { signal }).catch(() => undefined)
 }

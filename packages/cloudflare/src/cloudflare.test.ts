@@ -1,9 +1,9 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { createLocalActorHost } from '@looms/actor'
-import { makeMemoryEventStore } from '@looms/core'
+import { emptyRunState, makeMemoryEventStore } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 // Mock cloudflare:workers for bun test runtime before importing durable-object
@@ -28,26 +28,45 @@ const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
 import type { LoomsDurableObjectConfig } from './durable-object'
 
+const decodeHealth = Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))
+
+const decodeRunResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    runId: Schema.String,
+    state: Schema.Struct({ status: Schema.String }),
+  }),
+)
+
 describe('@looms/cloudflare', () => {
-  test('alarmScheduler schedules and deletes alarms', async () => {
+  test('alarmScheduler schedules and deletes alarms', () => {
     let currentAlarm: number | null = null
 
     const fakeStorage: AlarmStorage = {
-      setAlarm: async (at: number | Date) => {
-        currentAlarm = at instanceof Date ? at.getTime() : at
-      },
-      deleteAlarm: async () => {
-        currentAlarm = null
-      },
+      setAlarm: (at) =>
+        Effect.runPromise(
+          Effect.sync(() => {
+            currentAlarm = at instanceof Date ? +at : at
+          }),
+        ),
+      deleteAlarm: () =>
+        Effect.runPromise(
+          Effect.sync(() => {
+            currentAlarm = null
+          }),
+        ),
     }
 
     const scheduler = alarmScheduler(fakeStorage)
 
-    await scheduler.schedule('run_1', 1234567890)
-    expect(currentAlarm).toBe(1234567890)
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        yield* scheduler.schedule('run_1', 1234567890)
+        expect(currentAlarm).toBe(1234567890)
 
-    await scheduler.cancel('run_1')
-    expect(currentAlarm).toBeNull()
+        yield* scheduler.cancel('run_1')
+        expect(currentAlarm).toBeNull()
+      }),
+    )
   })
 
   test('routeToDurableObject handles health and rejects global runs listing', async () => {
@@ -64,8 +83,7 @@ describe('@looms/cloudflare', () => {
 
     expect(healthRes?.status).toBe(200)
 
-    // SAFETY: health endpoint returns { ok: true }
-    const healthBody = (await healthRes?.json()) as { ok: boolean }
+    const healthBody = decodeHealth(await healthRes?.json())
 
     expect(healthBody.ok).toBe(true)
 
@@ -82,6 +100,26 @@ describe('@looms/cloudflare', () => {
     )
 
     expect(rootRes).toBeNull()
+  })
+
+  test('routeToDurableObject propagates Durable Object failures', async () => {
+    const failure = new Error('backend unavailable')
+
+    const namespace = {
+      getByName: () => ({
+        fetch: () => Promise.reject(failure),
+      }),
+    }
+
+    const caught = await routeToDurableObject(
+      namespace,
+      new Request('http://localhost:8787/runs/run_1'),
+    ).then(
+      () => undefined,
+      (error: Error) => error,
+    )
+
+    expect(caught).toBe(failure)
   })
 
   test('routeToDurableObject routes start and signal to namespace stub', async () => {
@@ -132,8 +170,7 @@ describe('@looms/cloudflare', () => {
 
     expect(startRes?.status).toBe(200)
 
-    // SAFETY: start endpoint returns { runId, state } json
-    const startBody = (await startRes?.json()) as { runId: string; state: { status: string } }
+    const startBody = decodeRunResponse(await startRes?.json())
 
     expect(startBody.runId).toMatch(/^run_/)
     expect(startBody.state.status).toBe('completed')
@@ -146,8 +183,7 @@ describe('@looms/cloudflare', () => {
 
     expect(readRes?.status).toBe(200)
 
-    // SAFETY: getRun endpoint returns { runId } json
-    const readBody = (await readRes?.json()) as { runId: string }
+    const readBody = decodeRunResponse(await readRes?.json())
 
     expect(readBody.runId).toBe(startBody.runId)
 
@@ -169,7 +205,7 @@ describe('@looms/cloudflare', () => {
     expect(firstChunk?.done).toBe(false)
     await reader?.cancel()
 
-    host.dispose()
+    await host.dispose()
   })
 
   test('LoomsDurableObject executes runs and wakes on alarm', async () => {
@@ -215,21 +251,20 @@ describe('@looms/cloudflare', () => {
     // @ts-expect-error mock fakeCtx in unit test
     const doInstance = new TestDO(fakeCtx, {})
 
-    // SAFETY: stub cell on private field for alarm/fetch unit coverage
-    const doAny = doInstance as any
     let alarmWoken = false
 
     const wakeMock = {
       fetch: async () => new Response(JSON.stringify({ ok: true })),
       wake: async () => {
         alarmWoken = true
-        // SAFETY: stub RunState for wake path
-        return {} as any
+        return emptyRunState('run_test_do')
       },
       dispose: () => {},
     }
 
-    doAny.cellPromise = Promise.resolve(wakeMock)
+    Object.defineProperty(doInstance, 'cellPromise', {
+      value: Promise.resolve(wakeMock),
+    })
 
     await doInstance.alarm()
     expect(alarmWoken).toBe(true)

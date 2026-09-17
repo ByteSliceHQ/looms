@@ -6,6 +6,7 @@ import {
   type IndexOp,
   type IndexProjector,
 } from './index-model'
+import { runProjectorSync } from './projector'
 import { SQLITE_SCHEMA_SQL } from './schema'
 
 export { SQLITE_SCHEMA_SQL } from './schema'
@@ -92,66 +93,69 @@ export function sqlite(options: SqliteProjectorOptions = {}): IndexProjector {
   const db = hasDb(options) ? options.db : new Database(options.path ?? ':memory:')
 
   const backend: IndexBackend = {
-    init: async () => {
-      db.exec(SQLITE_SCHEMA_SQL)
-    },
-    applyOps: async (ops) => {
-      const apply = db.transaction((batch: ReadonlyArray<IndexOp>) => {
-        for (const op of batch) {
-          applyOp(db, op)
+    init: () =>
+      runProjectorSync('sqlite', () => {
+        db.exec(SQLITE_SCHEMA_SQL)
+      }),
+    applyOps: (ops) =>
+      runProjectorSync('sqlite', () => {
+        const apply = db.transaction((batch: ReadonlyArray<IndexOp>) => {
+          for (const op of batch) {
+            applyOp(db, op)
+          }
+        })
+
+        apply(ops)
+      }),
+    getActor: (actorId) =>
+      runProjectorSync('sqlite', () => {
+        const row = db
+          .query<SqliteActorRow, [string]>(
+            `SELECT actor_id, kind, status, definition_name, parent_actor_id, updated_at
+             FROM looms_actors WHERE actor_id = ?`,
+          )
+          .get(actorId)
+
+        return row
+          ? {
+              actorId: row.actor_id,
+              kind: row.kind,
+              status: row.status,
+              definitionName: row.definition_name,
+              parentActorId: row.parent_actor_id,
+              updatedAt: row.updated_at,
+            }
+          : null
+      }),
+    listReviews: (actorId) =>
+      runProjectorSync('sqlite', () => {
+        const rows = actorId
+          ? db
+              .query<SqliteReviewRow, [string]>(
+                `SELECT review_id, actor_id, status, title, updated_at
+                 FROM looms_reviews WHERE actor_id = ?`,
+              )
+              .all(actorId)
+          : db
+              .query<SqliteReviewRow, []>(
+                `SELECT review_id, actor_id, status, title, updated_at FROM looms_reviews`,
+              )
+              .all()
+
+        return rows.map((row) => ({
+          reviewId: row.review_id,
+          actorId: row.actor_id,
+          status: row.status,
+          title: row.title,
+          updatedAt: row.updated_at,
+        }))
+      }),
+    dispose: () =>
+      runProjectorSync('sqlite', () => {
+        if (createdDb) {
+          db.close()
         }
-      })
-
-      apply(ops)
-    },
-    getActor: async (actorId) => {
-      const row = db
-        .query<SqliteActorRow, [string]>(
-          `SELECT actor_id, kind, status, definition_name, parent_actor_id, updated_at
-           FROM looms_actors WHERE actor_id = ?`,
-        )
-        .get(actorId)
-
-      if (!row) {
-        return null
-      }
-
-      return {
-        actorId: row.actor_id,
-        kind: row.kind,
-        status: row.status,
-        definitionName: row.definition_name,
-        parentActorId: row.parent_actor_id,
-        updatedAt: row.updated_at,
-      }
-    },
-    listReviews: async (actorId) => {
-      const rows = actorId
-        ? db
-            .query<SqliteReviewRow, [string]>(
-              `SELECT review_id, actor_id, status, title, updated_at
-               FROM looms_reviews WHERE actor_id = ?`,
-            )
-            .all(actorId)
-        : db
-            .query<SqliteReviewRow, []>(
-              `SELECT review_id, actor_id, status, title, updated_at FROM looms_reviews`,
-            )
-            .all()
-
-      return rows.map((row) => ({
-        reviewId: row.review_id,
-        actorId: row.actor_id,
-        status: row.status,
-        title: row.title,
-        updatedAt: row.updated_at,
-      }))
-    },
-    dispose: async () => {
-      if (createdDb) {
-        db.close()
-      }
-    },
+      }),
   }
 
   return createIndexProjector('sqlite', backend)

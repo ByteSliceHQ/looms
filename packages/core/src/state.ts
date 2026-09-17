@@ -1,4 +1,12 @@
-import type { RuntimeEffect, WaitCondition } from './effects'
+import { Schema } from 'effect'
+
+import {
+  RuntimeEffectSchema,
+  WaitConditionSchema,
+  type RuntimeEffect,
+  type WaitCondition,
+} from './effects'
+import { JsonValueSchema } from './envelope'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
 
 export interface ThreadRecord {
@@ -34,10 +42,61 @@ export interface RunState {
   rootThreadId: string | null
   threads: { [threadId: string]: ThreadRecord }
   waits: { [waitId: string]: WaitRecord }
-  outstandingEffects: OutstandingEffect[]
-  completedEffectIds?: string[]
-  processedIdempotencyKeys?: string[]
+  outstandingEffects: readonly OutstandingEffect[]
+  completedEffectIds?: readonly string[]
+  processedIdempotencyKeys?: readonly string[]
 }
+
+export const RunStateSchema = Schema.Struct({
+  runId: Schema.String,
+  status: Schema.Union([
+    Schema.Literal('running'),
+    Schema.Literal('completed'),
+    Schema.Literal('failed'),
+    Schema.Literal('cancelled'),
+  ]),
+  rootThreadId: Schema.NullOr(Schema.String),
+  threads: Schema.Record(
+    Schema.String,
+    Schema.Struct({
+      threadId: Schema.String,
+      kind: Schema.String,
+      definitionName: Schema.String,
+      parentThreadId: Schema.NullOr(Schema.String),
+      status: Schema.Union([
+        Schema.Literal('running'),
+        Schema.Literal('waiting'),
+        Schema.Literal('completed'),
+        Schema.Literal('failed'),
+        Schema.Literal('cancelled'),
+      ]),
+      input: JsonValueSchema,
+      output: Schema.NullOr(JsonValueSchema),
+      error: Schema.NullOr(Schema.String),
+      state: JsonValueSchema,
+    }),
+  ),
+  waits: Schema.Record(
+    Schema.String,
+    Schema.Struct({
+      waitId: Schema.String,
+      threadId: Schema.String,
+      on: WaitConditionSchema,
+      tag: Schema.optional(JsonValueSchema),
+    }),
+  ),
+  outstandingEffects: Schema.Array(
+    Schema.Struct({
+      effectId: Schema.String,
+      threadId: Schema.String,
+      causingSeq: Schema.Finite,
+      causingEventId: Schema.String,
+      effect: RuntimeEffectSchema,
+    }),
+  ),
+  completedEffectIds: Schema.optional(Schema.Array(Schema.String)),
+  processedIdempotencyKeys: Schema.optional(Schema.Array(Schema.String)),
+})
 
 export function emptyRunState(runId: string): RunState {
   return {

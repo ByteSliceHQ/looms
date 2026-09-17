@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { defineEventCatalog, type RuntimeEffect } from '@looms/core'
+import { defineEventCatalog, RuntimeEffectSchema } from '@looms/core'
 
 import { MessageSchema, TokenUsageSchema, ToolCallSchema } from './types'
 
@@ -9,27 +9,27 @@ export const AgentMessageReceivedPayloadSchema = Schema.Struct({
 })
 
 export const AgentTurnStartedPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
 })
 
 export const AgentTurnTextDeltaPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   delta: Schema.String,
 })
 
 export const AgentMessageEventPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   message: MessageSchema,
   usage: Schema.optional(TokenUsageSchema),
 })
 
 export const AgentToolCallRequestedPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   toolCall: ToolCallSchema,
 })
 
 export const AgentToolResultPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   toolCallId: Schema.String,
   name: Schema.String,
   result: Schema.NullOr(Schema.Json),
@@ -37,7 +37,7 @@ export const AgentToolResultPayloadSchema = Schema.Struct({
 })
 
 export const AgentSteeredPayloadSchema = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   message: MessageSchema,
   interrupt: Schema.optional(Schema.Boolean),
 })
@@ -52,8 +52,7 @@ export const AgentSpawnRequestedPayloadSchema = Schema.Struct({
 
 export const AgentEffectsRequestedPayloadSchema = Schema.Struct({
   toolCallId: Schema.String,
-  // SAFETY: RuntimeEffect represents serializable requested effect instructions.
-  effects: Schema.Array(Schema.Unknown as Schema.Schema<RuntimeEffect>),
+  effects: Schema.Array(RuntimeEffectSchema),
   waitOn: Schema.optional(
     Schema.Struct({
       type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),

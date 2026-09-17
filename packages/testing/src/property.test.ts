@@ -14,15 +14,22 @@ import {
   type RuntimeModule,
 } from '@looms/core'
 
+const decodeCounterState = Schema.decodeUnknownSync(
+  Schema.Struct({
+    count: Schema.Finite,
+    history: Schema.Array(Schema.String),
+  }),
+)
+
 describe('Property-based testing for Looms core invariants', () => {
   const testModule: RuntimeModule = {
     namespace: 'counter',
     protocolVersion: '1.0.0',
-    threads: [
-      defineThread({
+    threads: {
+      counter: defineThread({
         kind: 'counter',
         shape: Schema.Struct({
-          count: Schema.Number,
+          count: Schema.Finite,
           history: Schema.mutable(Schema.Array(Schema.String)),
         }),
         initialState: () => ({ count: 0, history: [] }),
@@ -58,7 +65,7 @@ describe('Property-based testing for Looms core invariants', () => {
           return state
         },
       }),
-    ],
+    },
   }
 
   const registry = composeModules([testModule])
@@ -150,17 +157,8 @@ describe('Property-based testing for Looms core invariants', () => {
             runId,
           })
 
-          // SAFETY: counter thread state schema is { count: number; history: string[] }
-          const fullThread = fullState.threads[threadId]?.state as {
-            count: number
-            history: string[]
-          }
-
-          // SAFETY: counter thread state schema is { count: number; history: string[] }
-          const restoredThread = restoredState.threads[threadId]?.state as {
-            count: number
-            history: string[]
-          }
+          const fullThread = decodeCounterState(fullState.threads[threadId]?.state)
+          const restoredThread = decodeCounterState(restoredState.threads[threadId]?.state)
 
           expect(restoredThread.count).toBe(fullThread.count)
           expect(restoredThread.history).toEqual(fullThread.history)

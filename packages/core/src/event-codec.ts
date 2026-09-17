@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { DateTime, Predicate, Schema } from 'effect'
 
 import type { AppendableEvent, EventEnvelope, EventOrigin } from './envelope'
 import { createEvent, payloadAsJson } from './envelope'
@@ -7,6 +7,9 @@ import type { JsonValue } from './types'
 
 /** JSON-safe event envelope for SSE and pull responses. */
 export type EncodedLoomsEvent = EventEnvelope
+type EventWireInput = JsonValue | Partial<EncodedLoomsEvent>
+
+const decodeJsonValue = Schema.decodeUnknownSync(Schema.Json)
 
 export function encodeLoomsEvent(event: EventEnvelope): EncodedLoomsEvent {
   return {
@@ -20,7 +23,7 @@ export function encodeAppendableEvent(event: AppendableEvent): EncodedLoomsEvent
     id: event.id ?? createEventId(),
     runId: event.runId,
     seq: event.seq ?? 0,
-    ts: event.ts ?? Date.now(),
+    ts: event.ts ?? DateTime.toEpochMillis(DateTime.nowUnsafe()),
     type: event.type,
     payload: payloadAsJson(event.payload),
     threadId: event.threadId ?? null,
@@ -33,7 +36,11 @@ export function encodeAppendableEvent(event: AppendableEvent): EncodedLoomsEvent
   }
 }
 
-function readOrigin(raw: { [key: string]: JsonValue } | EventOrigin): EventOrigin {
+function readOrigin(raw: JsonValue | EventOrigin): EventOrigin {
+  if (!Predicate.isReadonlyObject(raw)) {
+    return { type: 'system' }
+  }
+
   if ('type' in raw && raw.type === 'thread') {
     const threadId = 'threadId' in raw && Predicate.isString(raw.threadId) ? raw.threadId : ''
     return { type: 'thread', threadId }
@@ -47,17 +54,21 @@ function readOrigin(raw: { [key: string]: JsonValue } | EventOrigin): EventOrigi
   return { type: 'system' }
 }
 
-export function decodeLoomsEvent(raw: JsonValue | EncodedLoomsEvent, runId: string): EventEnvelope {
+export function decodeLoomsEvent(raw: EventWireInput, runId: string): EventEnvelope {
   if (!Predicate.isReadonlyObject(raw)) {
     throw new Error('Invalid event payload: expected object')
   }
 
   if ('type' in raw && Predicate.isString(raw.type)) {
     const rawPayload = 'payload' in raw ? raw.payload : {}
-    // SAFETY: payload is JSON-compatible.
-    const payload = rawPayload
+    const payload = decodeJsonValue(rawPayload)
     const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : createEventId()
-    const ts = 'ts' in raw && Predicate.isNumber(raw.ts) ? raw.ts : Date.now()
+
+    const ts =
+      'ts' in raw && Predicate.isNumber(raw.ts)
+        ? raw.ts
+        : DateTime.toEpochMillis(DateTime.nowUnsafe())
+
     const seq = 'seq' in raw && Predicate.isNumber(raw.seq) ? raw.seq : 0
 
     const ephemeral =
@@ -101,7 +112,7 @@ export function decodeLoomsEvent(raw: JsonValue | EncodedLoomsEvent, runId: stri
 }
 
 export function decodeAppendableEvent(
-  raw: JsonValue | EncodedLoomsEvent,
+  raw: EventWireInput,
   runId: string,
 ): AppendableEvent | undefined {
   try {

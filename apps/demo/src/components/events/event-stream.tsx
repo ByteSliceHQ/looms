@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { loomsClient } from '@/lib/looms-client'
-import { EventStream as EventStreamView, type ReplayStep } from '@swirls/looms/debugger'
+import { EventStream as EventStreamView } from '@swirls/looms/debugger'
 import { useRunEvents, useRunSelector, useRunStore } from '@swirls/looms/react'
 
 import { demoEventCatalog } from './event-summary'
@@ -26,11 +26,7 @@ export function EventStream({
   )
 
   const handleLoadReplayStep = useCallback(
-    async ({ seq }: { seq: number }) => {
-      const res = await loomsClient.replayTo(runId, seq)
-      // SAFETY: host replay payload is ReplayStep | null.
-      return res.step as ReplayStep | null
-    },
+    ({ seq }: { seq: number }) => loomsClient.replayTo(runId, seq).then((res) => res.step),
     [runId],
   )
 

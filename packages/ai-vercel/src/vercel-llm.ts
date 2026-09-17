@@ -1,20 +1,51 @@
-import { generateText, jsonSchema, streamText, tool, type LanguageModel } from 'ai'
+import {
+  generateText,
+  jsonSchema,
+  streamText,
+  tool,
+  type JSONSchema7,
+  type LanguageModel,
+} from 'ai'
+import { Data, Effect, Option, Predicate, Stream } from 'effect'
 
 import type { AgentTurnResult, LlmAdapter, LlmToolSpec } from '@looms/agent'
-import type { JsonValue } from '@looms/core'
+import { asJson, type JsonValue } from '@looms/core'
 
 import { toLoomsToolCalls, toModelMessages } from './messages'
 
+class VercelLlmError extends Data.TaggedError('VercelLlmError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'VercelLlmError'
+  }
+}
+
+function isJsonSchema(value: unknown): value is JSONSchema7 {
+  return Predicate.isReadonlyObject(value) && !Array.isArray(value)
+}
+
 function toAiTools(specs: ReadonlyArray<LlmToolSpec>) {
   return Object.fromEntries(
-    specs.map((spec) => [
-      spec.name,
-      tool({
-        description: spec.description,
-        // SAFETY: LlmToolSpec.inputJsonSchema is JSON Schema produced by toolJsonSchema.
-        inputSchema: jsonSchema(spec.inputJsonSchema as Parameters<typeof jsonSchema>[0]),
-      }),
-    ]),
+    specs.map((spec) => {
+      if (!isJsonSchema(spec.inputJsonSchema)) {
+        throw new VercelLlmError(`Invalid JSON Schema for tool "${spec.name}"`)
+      }
+
+      return [
+        spec.name,
+        tool({
+          description: spec.description,
+          inputSchema: jsonSchema(spec.inputJsonSchema),
+        }),
+      ]
+    }),
   )
 }
 
@@ -26,54 +57,107 @@ export interface VercelLlmOptions {
 
 function toolCallInput(call: { input?: unknown }): JsonValue {
   const input = 'input' in call ? call.input : {}
-  // SAFETY: AI SDK tool-call input is JSON produced by the model against our schema.
-  return (input ?? {}) as JsonValue
+  return asJson(input ?? {})
 }
 
 export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
   const streamEnabled = options.stream !== false
 
   return {
-    async complete(args): Promise<AgentTurnResult> {
-      const messages = toModelMessages(args.messages)
+    complete: (args): Promise<AgentTurnResult> =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const messages = toModelMessages(args.messages)
 
-      const tools =
-        args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined
+          const tools =
+            args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined
 
-      const shouldStream = streamEnabled && args.onTextDelta !== undefined
+          if (streamEnabled && args.onTextDelta) {
+            const result = tools
+              ? streamText({
+                  model: options.model,
+                  instructions: args.instructions,
+                  messages,
+                  abortSignal: args.signal,
+                  tools,
+                })
+              : streamText({
+                  model: options.model,
+                  instructions: args.instructions,
+                  messages,
+                  abortSignal: args.signal,
+                })
 
-      if (shouldStream) {
-        const result = tools
-          ? streamText({
-              model: options.model,
-              instructions: args.instructions,
-              messages,
-              abortSignal: args.signal,
-              // SAFETY: VercelAiTool values are `tool()` instances from the AI SDK.
-              tools: tools,
-            })
-          : streamText({
-              model: options.model,
-              instructions: args.instructions,
-              messages,
-              abortSignal: args.signal,
-            })
+            yield* Stream.fromAsyncIterable(
+              result.fullStream,
+              (cause) => new VercelLlmError(cause),
+            ).pipe(
+              Stream.runForEach((part) => {
+                const delta = part.type === 'text-delta' && 'text' in part ? part.text : ''
+                return delta
+                  ? Effect.tryPromise({
+                      try: () => Promise.resolve(args.onTextDelta?.(delta)),
+                      catch: (cause) => new VercelLlmError(cause),
+                    })
+                  : Effect.void
+              }),
+            )
 
-        for await (const part of result.fullStream) {
-          if (part.type === 'text-delta') {
-            const delta = 'text' in part ? part.text : ''
+            const streamed = yield* Effect.tryPromise({
+              try: () => Promise.all([result.text, result.toolCalls]),
+              catch: (cause) => new VercelLlmError(cause),
+            }).pipe(
+              Effect.asSome,
+              Effect.catchIf(
+                (error) => error.message.includes('No output generated'),
+                () => Effect.succeedNone,
+              ),
+            )
 
-            if (delta) {
-              await args.onTextDelta?.(delta)
+            if (Option.isSome(streamed)) {
+              const [text, rawToolCalls] = streamed.value
+
+              const toolCalls = toLoomsToolCalls(
+                rawToolCalls.map((call) => ({
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  input: toolCallInput(call),
+                })),
+              )
+
+              return {
+                message: { role: 'assistant', content: text, toolCalls },
+                toolCalls,
+                usage: { input: 0, output: text.length },
+              }
             }
           }
-        }
 
-        try {
-          const [text, rawToolCalls] = await Promise.all([result.text, result.toolCalls])
+          const result = tools
+            ? yield* Effect.tryPromise({
+                try: () =>
+                  generateText({
+                    model: options.model,
+                    instructions: args.instructions,
+                    messages,
+                    abortSignal: args.signal,
+                    tools,
+                  }),
+                catch: (cause) => new VercelLlmError(cause),
+              })
+            : yield* Effect.tryPromise({
+                try: () =>
+                  generateText({
+                    model: options.model,
+                    instructions: args.instructions,
+                    messages,
+                    abortSignal: args.signal,
+                  }),
+                catch: (cause) => new VercelLlmError(cause),
+              })
 
           const toolCalls = toLoomsToolCalls(
-            rawToolCalls.map((call) => ({
+            result.toolCalls.map((call) => ({
               toolCallId: call.toolCallId,
               toolName: call.toolName,
               input: toolCallInput(call),
@@ -81,49 +165,14 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
           )
 
           return {
-            message: { role: 'assistant', content: text, toolCalls },
+            message: { role: 'assistant', content: result.text, toolCalls },
             toolCalls,
-            usage: { input: 0, output: text.length },
+            usage: {
+              input: result.usage?.inputTokens ?? 0,
+              output: result.usage?.outputTokens ?? result.text.length,
+            },
           }
-        } catch (err) {
-          if (!(err instanceof Error) || !err.message.includes('No output generated')) {
-            throw err
-          }
-        }
-      }
-
-      const result = tools
-        ? await generateText({
-            model: options.model,
-            instructions: args.instructions,
-            messages,
-            abortSignal: args.signal,
-            // SAFETY: VercelAiTool values are `tool()` instances from the AI SDK.
-            tools: tools,
-          })
-        : await generateText({
-            model: options.model,
-            instructions: args.instructions,
-            messages,
-            abortSignal: args.signal,
-          })
-
-      const toolCalls = toLoomsToolCalls(
-        result.toolCalls.map((call) => ({
-          toolCallId: call.toolCallId,
-          toolName: call.toolName,
-          input: toolCallInput(call),
-        })),
-      )
-
-      return {
-        message: { role: 'assistant', content: result.text, toolCalls },
-        toolCalls,
-        usage: {
-          input: result.usage?.inputTokens ?? 0,
-          output: result.usage?.outputTokens ?? result.text.length,
-        },
-      }
-    },
+        }),
+      ),
   }
 }

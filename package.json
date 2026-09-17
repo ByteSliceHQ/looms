@@ -19,7 +19,7 @@
     "check-types": "turbo run check-types",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "oxlint .",
+    "lint": "oxlint . --deny-warnings",
     "doctor": "react-doctor --verbose -y",
     "test": "turbo run test",
     "test:e2e:npm": "bun run scripts/e2e-npm-package.ts",

@@ -26,6 +26,8 @@ function makeEvent(
   }
 }
 
+const offlineFetch: typeof fetch = () => Promise.reject(new Error('offline'))
+
 describe('ProjectionCache', () => {
   test('folds only new events and reuses previous state reference when unchanged', () => {
     let reducerCalls = 0
@@ -163,13 +165,10 @@ describe('EventIndex', () => {
 
 describe('Store snapshots and coalescing', () => {
   test('events snapshot has stable reference between batches', () => {
-    // SAFETY: mock fetch simulates offline network without real I/O.
-    const mockOfflineFetch = (() => Promise.reject(new Error('offline'))) as typeof fetch
-
     const store = createLoomsStore({
       storeId: 'test_run',
       endpoint: 'http://127.0.0.1:9999',
-      fetch: mockOfflineFetch,
+      fetch: offlineFetch,
       coalesce: 'immediate',
     })
 
@@ -184,13 +183,10 @@ describe('Store snapshots and coalescing', () => {
   test('coalesces notifications with flush', async () => {
     let notifyCount = 0
 
-    // SAFETY: mock fetch simulates offline network without real I/O.
-    const mockOfflineFetch = (() => Promise.reject(new Error('offline'))) as typeof fetch
-
     const store = createLoomsStore({
       storeId: 'test_run',
       endpoint: 'http://127.0.0.1:9999',
-      fetch: mockOfflineFetch,
+      fetch: offlineFetch,
       coalesce: { delayMs: 100 },
     })
 
@@ -211,13 +207,10 @@ describe('Store snapshots and coalescing', () => {
   test('adaptive coalesce defaults and flush collapses pending notify', async () => {
     let notifyCount = 0
 
-    // SAFETY: mock fetch simulates offline network without real I/O.
-    const mockOfflineFetch = (() => Promise.reject(new Error('offline'))) as typeof fetch
-
     const store = createLoomsStore({
       storeId: 'test_run_adaptive',
       endpoint: 'http://127.0.0.1:9999',
-      fetch: mockOfflineFetch,
+      fetch: offlineFetch,
     })
 
     store.subscribe(() => {

@@ -1,6 +1,11 @@
-import { Data, Effect, Option, Predicate } from 'effect'
+import { Clock, Data, Effect, ManagedRuntime, Option, Predicate } from 'effect'
 
-import type { EventStoreError, EventStoreFencedError, EventStoreTruncationError } from '@looms/core'
+import type {
+  EventStoreAppendError,
+  EventStoreError,
+  EventStoreFencedError,
+  EventStoreTruncationError,
+} from '@looms/core'
 import {
   advanceCursor,
   assignSequences,
@@ -34,7 +39,6 @@ import {
   type RunCursor,
   type RunState,
   type SnapshotStore,
-  type WaitOnTimer,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -49,10 +53,11 @@ import {
   stripSeq,
   synthesizedThreadFailed,
   threadStartedEvents,
+  UnknownDefinitionError,
   validateAndCreateEvents,
   waitSatisfiedEvents,
 } from './runtime-helpers'
-import { createTimeoutScheduler, toEffectVoid, type WakeScheduler } from './wake-scheduler'
+import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
 
 export type { RegisteredDefinition } from '@looms/core'
 export type { WakeScheduler } from './wake-scheduler'
@@ -92,6 +97,15 @@ export class MaxWakeIterationsError extends Data.TaggedError('MaxWakeIterationsE
   }
 }
 
+class LiveAppendError extends Data.TaggedError('LiveAppendError')<{
+  readonly message: string
+}> {
+  constructor() {
+    super({ message: 'Cannot append live events without a store' })
+    this.name = 'LiveAppendError'
+  }
+}
+
 export type WakeError =
   | DuplicateEffectDispatchError
   | MaxWakeIterationsError
@@ -125,7 +139,7 @@ export interface CreateRuntimeOptions<
   readonly runCacheSize?: number
   /**
    * Pluggable wake scheduler for timer waits.
-   * Defaults to an in-process setTimeout scheduler.
+   * Defaults to an in-process Effect fiber scheduler.
    */
   readonly scheduler?: WakeScheduler
 }
@@ -180,17 +194,50 @@ export interface LoomsRuntime<
     runId: string,
     threadId?: string,
   ): Effect.Effect<RunState, Error | EventStoreError, EventStoreTag>
-  listRuns(): Effect.Effect<string[], EventStoreError, EventStoreTag>
-  rescanTimers(): Effect.Effect<
+  readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
+  readonly rescanTimers: Effect.Effect<
     number,
     EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
     EventStoreTag
   >
-  dispose(): void
+  readonly dispose: Effect.Effect<void>
 }
 
 const DEFAULT_RUN_CACHE_SIZE = 0
 const DEFAULT_KEEP_SNAPSHOTS = 1
+
+function readRemaining(
+  store: EventStore,
+  runId: string,
+  events: EventEnvelope[],
+  expectedTail?: number,
+): Effect.Effect<EventEnvelope[], EventStoreError> {
+  return Effect.gen(function* () {
+    let collected = events
+
+    while (collected.length > 0) {
+      const lastSeq = collected[collected.length - 1]!.seq
+      const target = expectedTail ?? (yield* store.tail(runId))
+
+      if (lastSeq >= target) {
+        break
+      }
+
+      const more = yield* store.read(runId, {
+        fromSeq: lastSeq + 1,
+        limit: expectedTail !== undefined ? Math.max(0, target - lastSeq) : undefined,
+      })
+
+      if (more.length === 0 || more[0]!.seq <= lastSeq) {
+        break
+      }
+
+      collected = [...collected, ...more]
+    }
+
+    return collected
+  })
+}
 
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
@@ -202,7 +249,9 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     registeredDefinitions.map((def) => [`${def.kind}:${def.name}`, def] as const),
   )
 
-  const services = moduleServices(options.modules)
+  // Module composition erases the heterogeneous service identifier union at this host boundary.
+  // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context
+  const services = ManagedRuntime.make(moduleServices(options.modules))
   const waking = new Set<string>()
   /** Coalesce wake requests that arrive while a wake is in flight for the same run. */
   const wakeAgain = new Set<string>()
@@ -215,56 +264,25 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   let liveStore = options.store
   const liveCount = new Map<string, number>()
 
-  const liveAppends = createCoalescingAppender<AppendableEvent, EventStoreError | Error>(
-    (runId, batch) => {
-      const store = liveStore
+  const liveAppends = createCoalescingAppender<
+    AppendableEvent,
+    EventStoreAppendError | LiveAppendError
+  >((runId, batch) => {
+    const store = liveStore
 
-      if (!store) {
-        return Effect.fail(new Error('Cannot append live events without a store'))
-      }
+    if (!store) {
+      return Effect.fail(new LiveAppendError())
+    }
 
-      return store.append(runId, batch).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            liveCount.set(runId, (liveCount.get(runId) ?? 0) + result.sequences.length)
-          }),
-        ),
-        Effect.asVoid,
-      )
-    },
-  )
-
-  const readRemaining = (
-    store: EventStore,
-    runId: string,
-    events: EventEnvelope[],
-    expectedTail?: number,
-  ): Effect.Effect<EventEnvelope[], EventStoreError> =>
-    Effect.gen(function* () {
-      let collected = events
-
-      while (collected.length > 0) {
-        const lastSeq = collected[collected.length - 1]!.seq
-        const target = expectedTail ?? (yield* store.tail(runId))
-
-        if (lastSeq >= target) {
-          break
-        }
-
-        const more = yield* store.read(runId, {
-          fromSeq: lastSeq + 1,
-          limit: expectedTail !== undefined ? Math.max(0, target - lastSeq) : undefined,
-        })
-
-        if (more.length === 0 || more[0]!.seq <= lastSeq) {
-          break
-        }
-
-        collected = [...collected, ...more]
-      }
-
-      return collected
-    })
+    return store.append(runId, batch).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          liveCount.set(runId, (liveCount.get(runId) ?? 0) + result.sequences.length)
+        }),
+      ),
+      Effect.asVoid,
+    )
+  })
 
   const catchUp = (
     store: EventStore,
@@ -295,10 +313,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           const bounds = yield* store.bounds(runId)
 
           if (bounds.head > fromSeq) {
-            return yield* Effect.fail(new EventStoreTrimmedError(runId, bounds.head, fromSeq))
+            return yield* new EventStoreTrimmedError(runId, bounds.head, fromSeq)
           }
         } else {
-          return yield* Effect.fail(new EventStoreTrimmedError(runId, firstSeq, fromSeq))
+          return yield* new EventStoreTrimmedError(runId, firstSeq, fromSeq)
         }
       }
 
@@ -318,9 +336,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       let cursor = emptyCursor(runId)
 
       if (snapshotStore) {
-        const snap = yield* snapshotStore
-          .loadLatest(runId)
-          .pipe(Effect.catch(() => Effect.succeed(Option.none())))
+        const snap = yield* snapshotStore.loadLatest(runId).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning(`Snapshot load failed for run "${runId}"; replaying the log`, error),
+          ),
+          Effect.orElseSucceed(() => Option.none()),
+        )
 
         if (Option.isSome(snap)) {
           cursor = {
@@ -339,10 +360,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           const bounds = yield* store.bounds(runId)
 
           if (bounds.head > 1) {
-            return yield* Effect.fail(new EventStoreTrimmedError(runId, bounds.head, 1))
+            return yield* new EventStoreTrimmedError(runId, bounds.head, 1)
           }
         } else {
-          return yield* Effect.fail(new EventStoreTrimmedError(runId, delta[0].seq, 1))
+          return yield* new EventStoreTrimmedError(runId, delta[0].seq, 1)
         }
       }
 
@@ -407,11 +428,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         return cursor
       }
 
+      const takenAt = yield* Clock.currentTimeMillis
+
       yield* snapshotStore.save({
         runId,
         cursor: cursor.seq,
         stateHash: hashRunState(cursor.state),
-        takenAt: Date.now(),
+        takenAt,
         state: cursor.state,
       })
 
@@ -429,7 +452,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       }
 
       return { ...cursor, durableSinceSnapshot: 0 }
-    }).pipe(Effect.catch(() => Effect.succeed(cursor)))
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning(`Snapshot persistence failed for run "${runId}"`, error),
+      ),
+      Effect.orElseSucceed(() => cursor),
+    )
 
   const applyAppend = (
     store: EventStore,
@@ -475,11 +503,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     modules: options.modules,
     registry,
 
-    listRuns: () =>
-      Effect.gen(function* () {
-        const store = yield* EventStoreTag
-        return yield* store.listRuns()
-      }),
+    listRuns: Effect.gen(function* () {
+      const store = yield* EventStoreTag
+      return yield* store.listRuns
+    }),
 
     getEvents: (runId, readOptions) =>
       Effect.gen(function* () {
@@ -506,44 +533,41 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         return replayTo(events, registry, seq)
       }),
 
-    rescanTimers: () =>
-      Effect.gen(function* () {
-        const store = yield* EventStoreTag
-        const runIds = yield* store.listRuns()
-        let count = 0
+    rescanTimers: Effect.gen(function* () {
+      const store = yield* EventStoreTag
+      const runIds = yield* store.listRuns
+      let count = 0
 
-        for (const runId of runIds) {
-          const runState = yield* runtime.getRun(runId)
+      for (const runId of runIds) {
+        const runState = yield* runtime.getRun(runId)
 
-          if (isRunTerminal(runState)) {
-            continue
-          }
+        if (isRunTerminal(runState)) {
+          continue
+        }
 
-          let earliestTimerAt: number | null = null
+        let earliestTimerAt: number | null = null
 
-          for (const waitRecord of Object.values(runState.waits)) {
-            if (isWaitOnTimer(waitRecord.on)) {
-              if (earliestTimerAt === null || waitRecord.on.timerAt < earliestTimerAt) {
-                earliestTimerAt = waitRecord.on.timerAt
-              }
+        for (const waitRecord of Object.values(runState.waits)) {
+          if (isWaitOnTimer(waitRecord.on)) {
+            if (earliestTimerAt === null || waitRecord.on.timerAt < earliestTimerAt) {
+              earliestTimerAt = waitRecord.on.timerAt
             }
-          }
-
-          if (earliestTimerAt !== null) {
-            yield* toEffectVoid(scheduler.schedule(runId, earliestTimerAt))
-            count += 1
           }
         }
 
-        return count
-      }),
+        if (earliestTimerAt !== null) {
+          yield* scheduler.schedule(runId, earliestTimerAt)
+          count += 1
+        }
+      }
+
+      return count
+    }),
 
     startRun: (args) =>
       Effect.gen(function* () {
         if (!definitions.get(`${args.kind}:${args.definitionName}`)) {
-          return yield* Effect.fail(
-            new Error(`Unknown definition ${args.kind}:${args.definitionName}`),
-          )
+          return yield* new UnknownDefinitionError(args.kind, args.definitionName)
         }
 
         const store = yield* EventStoreTag
@@ -674,6 +698,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         waking.add(runId)
 
         const store = yield* EventStoreTag
+        const runInContext = Effect.runPromiseWith(yield* Effect.context())
         liveStore = store
 
         try {
@@ -693,12 +718,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
             while (!isRunTerminal(cursor.state)) {
               if (guard >= maxWakeIterations) {
-                return yield* Effect.fail(new MaxWakeIterationsError(runId, maxWakeIterations))
+                return yield* new MaxWakeIterationsError(runId, maxWakeIterations)
               }
 
               guard += 1
               const state = cursor.state
-              const now = Date.now()
+              const now = yield* Clock.currentTimeMillis
 
               const due = Object.values(state.waits).filter(
                 (record) => isWaitOnTimer(record.on) && record.on.timerAt <= now + 5,
@@ -747,8 +772,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
               for (const item of outstanding) {
                 if (dispatchedEffectIds.has(item.effectId)) {
-                  return yield* Effect.fail(
-                    new DuplicateEffectDispatchError(runId, item.effectId, item.threadId),
+                  return yield* new DuplicateEffectDispatchError(
+                    runId,
+                    item.effectId,
+                    item.threadId,
                   )
                 }
               }
@@ -779,17 +806,17 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                         continue
                       }
 
-                      const appendLive = async (input: EventInput) => {
-                        const validated = await Effect.runPromise(
-                          validateEventInput(registry.catalogs, input),
+                      const appendLive = (input: EventInput) =>
+                        runInContext(
+                          Effect.gen(function* () {
+                            const validated = yield* validateEventInput(registry.catalogs, input)
+                            const liveEvent = createLiveEvent(runId, item, validated)
+
+                            if (liveEvent) {
+                              yield* liveAppends.push(runId, liveEvent)
+                            }
+                          }),
                         )
-
-                        const liveEvent = createLiveEvent(runId, item, validated)
-
-                        if (liveEvent) {
-                          await Effect.runPromise(liveAppends.push(runId, liveEvent))
-                        }
-                      }
 
                       const outcomes = yield* dispatchEffect(
                         registry,
@@ -890,20 +917,18 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
             // Snapshot on park: the next wake (on any instance) starts from here.
             cursor = yield* persistSnapshot(store, runId, cursor)
+            const parkedAt = yield* Clock.currentTimeMillis
 
-            const pendingTimers = Object.values(cursor.state.waits).filter(
-              (record) => isWaitOnTimer(record.on) && record.on.timerAt > Date.now(),
+            const pendingTimerTimes = Object.values(cursor.state.waits).flatMap((record) =>
+              isWaitOnTimer(record.on) && record.on.timerAt > parkedAt ? [record.on.timerAt] : [],
             )
 
-            if (pendingTimers.length > 0 && !isRunTerminal(cursor.state)) {
-              // SAFETY: pendingTimers is filtered by isWaitOnTimer above.
-              const earliestTimerAt = Math.min(
-                ...pendingTimers.map((r) => (r.on as WaitOnTimer).timerAt),
-              )
+            if (pendingTimerTimes.length > 0 && !isRunTerminal(cursor.state)) {
+              const earliestTimerAt = Math.min(...pendingTimerTimes)
 
-              yield* toEffectVoid(scheduler.schedule(runId, earliestTimerAt))
+              yield* scheduler.schedule(runId, earliestTimerAt)
             } else {
-              yield* toEffectVoid(scheduler.cancel(runId))
+              yield* scheduler.cancel(runId)
             }
 
             if (isRunTerminal(cursor.state)) {
@@ -934,22 +959,22 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         }
       }),
 
-    dispose: () => {
-      scheduler.dispose?.()
-    },
+    dispose: Effect.sync(() => scheduler.dispose?.()).pipe(Effect.andThen(services.disposeEffect)),
   }
 
   scheduler =
     options.scheduler ??
-    createTimeoutScheduler((runId) => {
-      if (options.store) {
-        Effect.runPromise(
-          Effect.provideService(runtime.wake(runId), EventStoreTag, options.store),
-        ).catch((err) => {
-          console.error('[timer wake error]', err)
-        })
-      }
-    })
+    createTimeoutScheduler((runId) =>
+      options.store
+        ? runtime
+            .wake(runId)
+            .pipe(
+              Effect.provideService(EventStoreTag, options.store),
+              Effect.tapError(Effect.logError),
+              Effect.ignore,
+            )
+        : Effect.void,
+    )
 
   return runtime
 }

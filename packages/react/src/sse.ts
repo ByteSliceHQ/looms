@@ -1,5 +1,6 @@
 export {
   consumeSseStream,
+  consumeSseStreamEffect,
   delay,
   eventsFromSseData,
   parseSseFrame,

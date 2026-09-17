@@ -25,13 +25,11 @@ export function CodeBlock({ code, children, lang = 'tsx', className = '' }: Code
           type="button"
           className="border-line text-foreground cursor-pointer rounded-sm border px-2 py-1"
           aria-label="Copy code"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(rawCode)
-              setCopyState('Copied')
-            } catch {
-              setCopyState('Select code to copy')
-            }
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(rawCode)
+              .then(() => setCopyState('Copied'))
+              .catch(() => setCopyState('Select code to copy'))
           }}
         >
           {copyState}

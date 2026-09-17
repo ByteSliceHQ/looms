@@ -154,7 +154,8 @@ export function createCoalescingAppender<T, E = Error>(
 
           default: {
             const exhaustiveCheck: never = taken
-            return exhaustiveCheck
+            void exhaustiveCheck
+            return
           }
         }
       }
@@ -219,12 +220,13 @@ export function createCoalescingAppender<T, E = Error>(
             yield* Deferred.await(result.deferred)
           }
 
-          return
+          return undefined
         }
 
         default: {
           const exhaustiveCheck: never = result
-          return exhaustiveCheck
+          void exhaustiveCheck
+          return undefined
         }
       }
     })

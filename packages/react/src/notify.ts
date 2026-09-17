@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { DateTime, Effect, Fiber, Predicate } from 'effect'
 
 /**
  * How store→subscriber notifications are scheduled after events land.
@@ -22,7 +22,7 @@ export interface NotifyScheduler {
 
 function nowMs(): number {
   const perf = globalThis.performance
-  return perf === undefined ? Date.now() : perf.now()
+  return perf === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : perf.now()
 }
 
 export function createNotifyScheduler(
@@ -30,7 +30,7 @@ export function createNotifyScheduler(
   onNotify: () => void,
 ): NotifyScheduler {
   let notifyScheduled = false
-  let notifyTimer: ReturnType<typeof setTimeout> | undefined
+  let notifyTimer: Fiber.Fiber<void> | undefined
   let notifyRaf: number | undefined
   let lastNotifyAt = Number.NEGATIVE_INFINITY
 
@@ -42,11 +42,15 @@ export function createNotifyScheduler(
     onNotify()
   }
 
+  const scheduleTimer = (delayMs: number) => {
+    notifyTimer = Effect.runFork(Effect.sleep(delayMs).pipe(Effect.andThen(Effect.sync(fire))))
+  }
+
   const scheduleFrame = () => {
     if (Predicate.isFunction(globalThis.requestAnimationFrame)) {
       notifyRaf = requestAnimationFrame(fire)
     } else {
-      notifyTimer = setTimeout(fire, 0)
+      scheduleTimer(0)
     }
   }
 
@@ -58,7 +62,7 @@ export function createNotifyScheduler(
     notifyScheduled = false
 
     if (notifyTimer !== undefined) {
-      clearTimeout(notifyTimer)
+      Effect.runFork(Fiber.interrupt(notifyTimer))
       notifyTimer = undefined
     }
 
@@ -86,7 +90,7 @@ export function createNotifyScheduler(
       if (inBurst) {
         scheduleFrame()
       } else {
-        notifyTimer = setTimeout(fire, 0)
+        scheduleTimer(0)
       }
 
       return
@@ -99,12 +103,12 @@ export function createNotifyScheduler(
 
     if (Predicate.isObject(coalesce) && 'delayMs' in coalesce) {
       const delayMs = Predicate.isNumber(coalesce.delayMs) ? Math.max(0, coalesce.delayMs) : 0
-      notifyTimer = setTimeout(fire, delayMs)
+      scheduleTimer(delayMs)
       return
     }
 
-    const _exhaustive: never = coalesce
-    void _exhaustive
+    const exhaustiveCheck: never = coalesce
+    void exhaustiveCheck
   }
 
   const flush = () => {

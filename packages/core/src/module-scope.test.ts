@@ -36,7 +36,7 @@ describe('defineModule scope', () => {
       orderId: Schema.String,
       status: Schema.String,
       note: Schema.optional(Schema.String),
-      deliveredAt: Schema.optional(Schema.Number),
+      deliveredAt: Schema.optional(Schema.Finite),
     })
 
     type OrderThreadState = Schema.Schema.Type<typeof OrderStateSchema>
@@ -215,7 +215,7 @@ describe('defineModule scope', () => {
   test('scope.effect enforces return event types and ctx.emit', () => {
     const createEffect = ordersModule.effect({
       type: 'orders.create',
-      input: Schema.Struct({ orderId: Schema.String, amount: Schema.Number }),
+      input: Schema.Struct({ orderId: Schema.String, amount: Schema.Finite }),
       execute: async (input, ctx) => {
         await ctx.emit({
           type: 'orders.created',
@@ -237,7 +237,7 @@ describe('defineModule scope', () => {
   test('typed invoke accepts effect definition and verifies input', () => {
     const createEffect = ordersModule.effect({
       type: 'orders.create',
-      input: Schema.Struct({ orderId: Schema.String, amount: Schema.Number }),
+      input: Schema.Struct({ orderId: Schema.String, amount: Schema.Finite }),
       execute: (input) => [
         {
           type: 'orders.created',
@@ -338,7 +338,7 @@ describe('defineModule scope', () => {
     // 7. Typed invoke rejects mismatched input shape
     const effectWithSchema = ordersModule.effect({
       type: 'orders.testInput',
-      input: Schema.Struct({ count: Schema.Number }),
+      input: Schema.Struct({ count: Schema.Finite }),
       execute: () => [],
     })
 

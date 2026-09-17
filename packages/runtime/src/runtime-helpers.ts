@@ -1,4 +1,4 @@
-import { Effect, Layer, Predicate } from 'effect'
+import { Data, Effect, Layer, Predicate, type Context } from 'effect'
 
 import {
   asJson,
@@ -8,7 +8,7 @@ import {
   snapshotStoreOf,
   validateEventInput,
   validateEventsEffect,
-  validateInput,
+  validateInputEffect,
   withSnapshotStore,
   type AnyRuntimeModule,
   type AppendableEvent,
@@ -24,6 +24,22 @@ import {
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
+
+export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{
+  readonly kind: string
+  readonly definitionName: string
+  readonly message: string
+}> {
+  constructor(kind: string, definitionName: string) {
+    super({
+      kind,
+      definitionName,
+      message: `Unknown definition ${kind}:${definitionName}`,
+    })
+
+    this.name = 'UnknownDefinitionError'
+  }
+}
 
 export function resolveSnapshotStore(
   explicit: SnapshotStore | undefined,
@@ -96,17 +112,21 @@ export function stripSeq(events: ReadonlyArray<EventEnvelope>): AppendableEvent[
   return events.map(({ seq: _seq, ...rest }) => rest)
 }
 
-export function moduleServices(modules: readonly AnyRuntimeModule[]): Layer.Layer<any> {
-  // SAFETY: Empty layer serves as seed; module service layers are merged in.
-  let merged: Layer.Layer<any> = Layer.empty as Layer.Layer<any>
+// Heterogeneous module service identifiers are intentionally erased after composition.
+// oxlint-disable-next-line effecttsgo/any-unknown-in-error-context
+export function moduleServices(
+  modules: readonly AnyRuntimeModule[],
+): Layer.Layer<Context.Service.Any> {
+  const layers = modules.flatMap((module) => (module.services ? [module.services()] : []))
+  const [first, ...rest] = layers
 
-  for (const module of modules) {
-    if (module.services) {
-      merged = Layer.merge(merged, module.services())
-    }
+  if (!first) {
+    // SAFETY: An empty service set satisfies the erased registry boundary.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return Layer.empty as Layer.Layer<Context.Service.Any>
   }
 
-  return merged
+  return rest.reduce((merged, layer) => Layer.merge(merged, layer), first)
 }
 
 export function groupOutstanding(
@@ -144,12 +164,12 @@ export function threadStartedEvents(
     threadId: string
     parentThreadId: string | null
   },
-): Effect.Effect<ReadonlyArray<EventInput>, Error> {
+): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError> {
   return Effect.gen(function* () {
     const def = definitions.get(`${args.kind}:${args.definitionName}`)
 
     if (!def) {
-      return yield* Effect.fail(new Error(`Unknown definition ${args.kind}:${args.definitionName}`))
+      return yield* new UnknownDefinitionError(args.kind, args.definitionName)
     }
 
     const raw = args.input ?? null
@@ -157,15 +177,11 @@ export function threadStartedEvents(
     let validationError: string | undefined
 
     if (def?.input) {
-      const validated = yield* Effect.tryPromise({
-        try: () => {
-          // SAFETY: RegisteredDefinition.input is a Standard Schema when present.
-          return validateInput(def.input as never, raw)
-        },
-        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
-      }).pipe(
-        Effect.map((value) => ({ ok: true as const, value })),
-        Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+      const validated = yield* validateInputEffect(def.input, raw).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false as const, error: error.message }),
+          onSuccess: (value) => ({ ok: true as const, value }),
+        }),
       )
 
       if (validated.ok) {

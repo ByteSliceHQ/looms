@@ -1,19 +1,8 @@
 import { Schema } from 'effect'
 
 import { defineEventCatalog, type EventInputOf, type EventsOfCatalog } from './catalog'
-import type { WaitCondition } from './effects'
+import { WaitConditionSchema, type WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
-
-const WaitOnEventSchema = Schema.Struct({
-  type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
-  match: Schema.optional(JsonValueSchema),
-})
-
-const WaitOnTimerSchema = Schema.Struct({
-  timerAt: Schema.Number,
-})
-
-export const WaitConditionSchema = Schema.Union([WaitOnEventSchema, WaitOnTimerSchema])
 
 export const protocolCatalog = defineEventCatalog('runtime', {
   'run.started': Schema.Struct({
@@ -63,7 +52,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'timer.set': Schema.Struct({
     timerId: Schema.String,
     waitId: Schema.String,
-    wakeAt: Schema.Number,
+    wakeAt: Schema.Finite,
   }),
   'timer.fired': Schema.Struct({
     timerId: Schema.String,
@@ -74,7 +63,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     error: Schema.String,
   }),
   'snapshot.taken': Schema.Struct({
-    seq: Schema.Number,
+    seq: Schema.Finite,
     stateHash: Schema.String,
     state: Schema.optional(JsonValueSchema),
   }),

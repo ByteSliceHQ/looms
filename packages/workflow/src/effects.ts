@@ -1,4 +1,4 @@
-import { Effect, Predicate, Schema } from 'effect'
+import { Clock, Data, Effect, Predicate, Schema } from 'effect'
 
 import { createThreadId, createWaitId, type EventInputOf, type JsonValue } from '@looms/core'
 
@@ -23,6 +23,20 @@ const RunNodeInput = Schema.Struct({
   input: Schema.optional(Schema.Json),
   results: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(Schema.Json))),
 })
+
+class WorkflowNodeError extends Data.TaggedError('WorkflowNodeError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'WorkflowNodeError'
+  }
+}
 
 function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
   if (!Predicate.isObject(raw) || !('type' in raw)) {
@@ -61,12 +75,7 @@ export const scheduleEffect = workflowModule.effect({
         }
       }
 
-      // SAFETY: Workflow input is validated and serialized as JsonValue.
-      return scheduleEvents(
-        definition,
-        { nodes, input: (input.input as JsonValue) ?? null },
-        threadId,
-      )
+      return scheduleEvents(definition, { nodes, input: input.input ?? null }, threadId)
     }),
 })
 
@@ -160,8 +169,7 @@ export const runNodeEffect = workflowModule.effect({
 
       return yield* runNode(
         definition,
-        // SAFETY: Workflow input is validated and serialized as JsonValue.
-        { input: (input.input as JsonValue) ?? null, results },
+        { input: input.input ?? null, results },
         input.nodeId,
         threadId,
       )
@@ -176,7 +184,7 @@ function runNode(
   },
   nodeId: string,
   threadId: string,
-): Effect.Effect<ReadonlyArray<EventInputOf<WorkflowEvent>>, Error> {
+): Effect.Effect<ReadonlyArray<EventInputOf<WorkflowEvent>>> {
   return Effect.gen(function* () {
     const nodeDef = definition.nodes.find((node) => node.id === nodeId)
 
@@ -205,7 +213,7 @@ function runNode(
             effects: (effects) => ({ type: 'effects', effects }),
           }),
         ),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+      catch: (cause) => new WorkflowNodeError(cause),
     }).pipe(
       Effect.map((value) => ({ ok: true as const, value })),
       Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
@@ -252,18 +260,22 @@ function runNode(
         ]
       }
 
-      case 'sleep':
+      case 'sleep': {
+        const now = yield* Clock.currentTimeMillis
+
         return [
           {
             type: 'workflow.sleep.requested',
             payload: {
               nodeId,
               waitId: createWaitId(threadId, `sleep_${nodeId}`),
-              wakeAt: Date.now() + result.ms,
+              wakeAt: now + result.ms,
             },
             threadId,
           },
         ]
+      }
+
       case 'effects':
         return [
           {

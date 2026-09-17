@@ -7,6 +7,7 @@ import {
   Option,
   Path,
   Queue,
+  Schema,
   Stdio,
   Stream,
   Terminal,
@@ -17,7 +18,7 @@ import { ChildProcessSpawner } from 'effect/unstable/process'
 import { steer as steerEvent } from '@looms/agent'
 import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
-import type { JsonValue } from '@looms/core'
+import { stringifyJson, stringifyJsonPretty, type JsonValue } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 
 const VERSION = '0.0.1'
@@ -34,12 +35,10 @@ function parseJsonArg(raw: Option.Option<string>): JsonValue {
     return null
   }
 
-  try {
-    // SAFETY: CLI JSON args decode to JsonValue; parse failures fall back to the raw string
-    return JSON.parse(raw.value) as JsonValue
-  } catch {
-    return raw.value
-  }
+  return Option.getOrElse(
+    Schema.decodeOption(Schema.fromJsonString(Schema.Json))(raw.value),
+    () => raw.value,
+  )
 }
 
 function clientFor(url: string) {
@@ -101,7 +100,7 @@ const start = Command.make(
       clientFor(url).startRun({ kind, definitionName: name, input: parseJsonArg(json) }),
     )
 
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(
   Command.withDescription(
@@ -118,7 +117,7 @@ const events = Command.make(
   Effect.fn('events')(function* ({ runId }) {
     const { url } = yield* loomsBase
     const result = yield* tryClient(() => clientFor(url).getEvents(runId))
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(
   Command.withDescription('List events for a run'),
@@ -133,7 +132,7 @@ const state = Command.make(
   Effect.fn('state')(function* ({ runId }) {
     const { url } = yield* loomsBase
     const result = yield* tryClient(() => clientFor(url).getRun(runId))
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(Command.withDescription('Show run state'), Command.withShortDescription('Show run state'))
 
@@ -168,7 +167,8 @@ const approve = Command.make(
       clientFor(url).signal(runId, [decision(approvalId, outcome)]),
     )
 
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
+    return undefined
   }),
 ).pipe(
   Command.withDescription('Approve or reject a pending approval'),
@@ -184,7 +184,7 @@ const replay = Command.make(
   Effect.fn('replay')(function* ({ runId, seq }) {
     const { url } = yield* loomsBase
     const result = yield* tryClient(() => clientFor(url).replayTo(runId, seq))
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(
   Command.withDescription('Replay a run to a sequence'),
@@ -208,7 +208,7 @@ const signal = Command.make(
       clientFor(url).signal(runId, [{ type, payload: parseJsonArg(json) }]),
     )
 
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(
   Command.withDescription('Append an external event and wake the run'),
@@ -235,7 +235,7 @@ const steer = Command.make(
       clientFor(url).signal(runId, [steerEvent(message.join(' '), { interrupt })]),
     )
 
-    yield* Console.log(JSON.stringify(result, null, 2))
+    yield* Console.log(stringifyJsonPretty(result))
   }),
 ).pipe(
   Command.withDescription('Send a steering message to a running agent'),
@@ -260,7 +260,7 @@ const tail = Command.make(
         yield* Effect.acquireRelease(
           Effect.sync(() =>
             client.subscribeEvents(runId, (event) => {
-              Queue.offerUnsafe(queue, JSON.stringify(event))
+              Queue.offerUnsafe(queue, stringifyJson(event))
             }),
           ),
           (stop) => Effect.sync(() => stop()),

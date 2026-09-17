@@ -13,20 +13,19 @@ describe('createEventStreamResponse', () => {
 
     let timeoutCalledWith: [unknown, number] | undefined
 
-    // SAFETY: Mocking Bun request with runtime.bun.server for testing.
-    const mockReq = new Request('http://test/stream') as Request & {
-      runtime: { bun: { server: { timeout: (r: Request, s: number) => void } } }
-    }
+    const mockReq = new Request('http://test/stream')
 
-    mockReq.runtime = {
-      bun: {
-        server: {
-          timeout: (r: Request, s: number) => {
-            timeoutCalledWith = [r, s]
+    Object.defineProperty(mockReq, 'runtime', {
+      value: {
+        bun: {
+          server: {
+            timeout: (request: Request, seconds: number) => {
+              timeoutCalledWith = [request, seconds]
+            },
           },
         },
       },
-    }
+    })
 
     const res = createEventStreamResponse({
       signal: abort.signal,

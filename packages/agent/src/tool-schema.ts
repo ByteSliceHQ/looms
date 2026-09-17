@@ -49,8 +49,7 @@ function fromEffectSchema(schema: SchemaCandidate): JsonValue | undefined {
   }
 
   try {
-    // SAFETY: Effect Schema values used as tool input codecs produce Standard JSON Schema.
-    const standard = Schema.toStandardJSONSchemaV1(schema as Schema.Codec<JsonValue, JsonValue>)
+    const standard = Schema.toStandardJSONSchemaV1(schema)
 
     return fromStandardJsonSchema(standard)
   } catch {

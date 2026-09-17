@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Data, Effect } from 'effect'
+import { Data, Effect, Predicate, Schema } from 'effect'
 
 import type { CatalogEntries, CatalogEntry, EventCatalog } from './catalog'
 import type { EventInput } from './envelope'
@@ -43,6 +43,14 @@ function findCatalogAndEntry(
   return undefined
 }
 
+function isStandardSchema(entry: CatalogEntry): entry is StandardSchemaV1 {
+  return Predicate.isReadonlyObject(entry) && '~standard' in entry
+}
+
+function isEffectSchema(entry: CatalogEntry): entry is Schema.ConstraintDecoder<unknown> {
+  return Schema.isSchema(entry)
+}
+
 export function validateEventInput(
   catalogs: readonly EventCatalog[],
   input: EventInput,
@@ -55,11 +63,16 @@ export function validateEventInput(
 
   const cleanedPayload = cleanUndefined(input.payload)
 
-  // SAFETY: match.entry is a catalog entry (Schema, StandardSchema, or payload marker).
-  return validateInputEffect(match.entry as never, cleanedPayload).pipe(
+  const validated = isEffectSchema(match.entry)
+    ? validateInputEffect(match.entry, cleanedPayload)
+    : isStandardSchema(match.entry)
+      ? validateInputEffect(match.entry, cleanedPayload)
+      : Effect.succeed(cleanedPayload)
+
+  return validated.pipe(
     Effect.map((validatedPayload) => ({
       ...input,
-      payload: validatedPayload,
+      payload: cleanUndefined(validatedPayload),
     })),
     Effect.mapError(
       (err) =>

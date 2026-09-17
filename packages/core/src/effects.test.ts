@@ -41,7 +41,7 @@ describe('defineEffect', () => {
   test('preserves validateInput error messages', async () => {
     const effect = defineEffect({
       type: 'demo.charge',
-      input: Schema.Struct({ amount: Schema.Number }),
+      input: Schema.Struct({ amount: Schema.Finite }),
       execute: () => [],
     })
 
@@ -62,7 +62,7 @@ describe('defineEffect', () => {
   test('infers input type from input schema', async () => {
     const effect = defineEffect({
       type: 'demo.charge',
-      input: Schema.Struct({ amount: Schema.Number }),
+      input: Schema.Struct({ amount: Schema.Finite }),
       execute: (input) => [{ type: 'demo.charged', payload: { amount: input.amount } }],
     })
 
@@ -73,7 +73,7 @@ describe('defineEffect', () => {
   })
 
   test('validateInputEffect returns typed InvalidInputError with issues catchable by catchTag', async () => {
-    const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
+    const schema = Schema.Struct({ name: Schema.String, age: Schema.Finite })
 
     const result = await Effect.runPromise(
       // SAFETY: invalid age is a fixture that must fail schema validation.

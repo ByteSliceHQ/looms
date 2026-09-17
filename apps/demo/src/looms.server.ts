@@ -13,11 +13,11 @@ function parseBackend(raw?: string): LoomsBackend {
 const backend = parseBackend(process.env.LOOMS_BACKEND)
 const workerUrl = process.env.LOOMS_WORKER_URL ?? 'http://127.0.0.1:8788'
 
-async function forwardToWorker(req: Request): Promise<Response | null> {
+function forwardToWorker(req: Request): Promise<Response | null> {
   const url = new URL(req.url)
 
   if (!isLoomsApiPath(url.pathname)) {
-    return null
+    return Promise.resolve(null)
   }
 
   const target = new URL(url.pathname + url.search, workerUrl)
@@ -37,27 +37,28 @@ async function forwardToWorker(req: Request): Promise<Response | null> {
     body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
   }
 
-  try {
-    const upstream = await fetch(target.toString(), init)
-    const responseHeaders = new Headers(upstream.headers)
-    responseHeaders.delete('content-encoding')
-    responseHeaders.delete('content-length')
+  return fetch(target.toString(), init)
+    .then((upstream) => {
+      const responseHeaders = new Headers(upstream.headers)
+      responseHeaders.delete('content-encoding')
+      responseHeaders.delete('content-length')
 
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders,
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders,
+      })
     })
-  } catch (cause) {
-    const error = cause instanceof Error ? cause.message : String(cause)
+    .catch((cause: unknown) => {
+      const error = cause instanceof Error ? cause.message : String(cause)
 
-    return Response.json(
-      {
-        error: `Failed to proxy to Cloudflare Worker backend at ${workerUrl}: ${error}`,
-      },
-      { status: 502 },
-    )
-  }
+      return Response.json(
+        {
+          error: `Failed to proxy to Cloudflare Worker backend at ${workerUrl}: ${error}`,
+        },
+        { status: 502 },
+      )
+    })
 }
 
 /**
@@ -67,14 +68,14 @@ async function forwardToWorker(req: Request): Promise<Response | null> {
  * `bun:sqlite` when LOOMS_BACKEND=cloudflare.
  */
 export const looms = {
-  fetch: async (req: Request): Promise<Response | null> => {
+  fetch: (req: Request): Promise<Response | null> => {
     switch (backend) {
       case 'bun': {
         // SAFETY: dynamic + @vite-ignore keeps bun:sqlite out of Vite's Node SSR
         // graph when LOOMS_BACKEND=cloudflare (Vite's bin shebang is Node).
-        const { getLocalRuntime } = await import(/* @vite-ignore */ './looms.bun')
-        const runtime = await getLocalRuntime()
-        return runtime.fetch(req)
+        return import(/* @vite-ignore */ './looms.bun').then(({ getLocalRuntime }) =>
+          getLocalRuntime().then((runtime) => runtime.fetch(req)),
+        )
       }
 
       case 'cloudflare': {

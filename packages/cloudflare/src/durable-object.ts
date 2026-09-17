@@ -25,9 +25,9 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
   abstract configure(env: Env): LoomsDurableObjectConfig | Promise<LoomsDurableObjectConfig>
 
-  private async getCell(): Promise<ActorCell> {
+  private getCell(): Promise<ActorCell> {
     if (!this.cellPromise) {
-      this.cellPromise = (async () => {
+      this.cellPromise = Promise.resolve(this.configure(this.env)).then((config) => {
         const runId = this.ctx.id.name
 
         if (!runId) {
@@ -36,7 +36,6 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
           )
         }
 
-        const config = await this.configure(this.env)
         const store = durableObjectEventStore(this.ctx, { projectors: config.projectors })
         const scheduler = alarmScheduler(this.ctx.storage)
 
@@ -49,19 +48,19 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
           maxWakeIterations: config.maxWakeIterations,
           trimAfterSnapshot: config.trimAfterSnapshot,
         })
-      })()
+      })
     }
 
     return this.cellPromise
   }
 
-  override async fetch(req: Request): Promise<Response> {
-    const cell = await this.getCell()
-    return cell.fetch(req)
+  override fetch(req: Request): Promise<Response> {
+    return this.getCell().then((cell) => cell.fetch(req))
   }
 
-  override async alarm(): Promise<void> {
-    const cell = await this.getCell()
-    await cell.wake()
+  override alarm(): Promise<void> {
+    return this.getCell()
+      .then((cell) => cell.wake())
+      .then(() => undefined)
   }
 }

@@ -37,7 +37,7 @@ export interface ActorCell<
   readonly store: EventStore
   fetch(req: Request): Promise<Response>
   wake(): Promise<RunState>
-  dispose(): void
+  dispose(): Promise<void>
 }
 
 /**
@@ -66,26 +66,18 @@ export function createActorCell<
     runtime,
     store,
 
-    fetch: async (req: Request) => {
+    fetch: (req: Request) => {
       const targetRunId = runIdFromRequest(req)
 
       if (targetRunId && targetRunId !== runId) {
-        return new Response('Not Found', { status: 404 })
+        return Promise.resolve(new Response('Not Found', { status: 404 }))
       }
 
-      const res = await fetchHandler(req)
-
-      if (res === null) {
-        return new Response('Not Found', { status: 404 })
-      }
-
-      return res
+      return fetchHandler(req).then((res) => res ?? new Response('Not Found', { status: 404 }))
     },
 
     wake: () => Effect.runPromise(Effect.provideService(runtime.wake(runId), EventStoreTag, store)),
 
-    dispose: () => {
-      runtime.dispose()
-    },
+    dispose: () => Effect.runPromise(runtime.dispose),
   }
 }

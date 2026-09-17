@@ -12,6 +12,14 @@ interface TestRecord {
   readonly body: string
 }
 
+function fetchNullPage(): Promise<null> {
+  return Promise.resolve(null)
+}
+
+function fetchEmptyPage(): Promise<S2ReadBatchLike<TestRecord>> {
+  return Promise.resolve({ records: [], tail: { seqNum: 0 } })
+}
+
 describe('readAllPages', () => {
   test('reads all pages until tail is reached across multiple chunks', async () => {
     const total = 2500
@@ -149,13 +157,10 @@ describe('readAllPages', () => {
   })
 
   test('returns empty array when stream is empty or returns null', async () => {
-    const nullFetch = async () => null
-    const emptyFetch = async () => ({ records: [], tail: { seqNum: 0 } })
-
-    const fromNull = await readAllPages(nullFetch)
+    const fromNull = await readAllPages(fetchNullPage)
     expect(fromNull).toEqual([])
 
-    const fromEmpty = await readAllPages(emptyFetch)
+    const fromEmpty = await readAllPages(fetchEmptyPage)
     expect(fromEmpty).toEqual([])
   })
 

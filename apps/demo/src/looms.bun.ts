@@ -17,45 +17,39 @@ let s2LiteEndpointPromise: Promise<string | undefined> | undefined
 
 function getS2LiteEndpoint(): Promise<string | undefined> {
   if (!s2LiteEndpointPromise) {
-    s2LiteEndpointPromise = (async () => {
-      if (env.LOOMS_S2_ENDPOINT || env.LOOMS_S2_ACCESS_TOKEN) {
-        return undefined
-      }
-
-      const lite = await startS2Lite({ env: process.env })
-      return lite.endpoint
-    })()
+    s2LiteEndpointPromise =
+      env.LOOMS_S2_ENDPOINT || env.LOOMS_S2_ACCESS_TOKEN
+        ? Promise.resolve(undefined)
+        : startS2Lite({ env: process.env }).then((lite) => lite.endpoint)
   }
 
   return s2LiteEndpointPromise
 }
 
-async function createRunStore(runId: string): Promise<EventStore> {
-  await mkdir(runsDir, { recursive: true })
+function createRunStore(runId: string): Promise<EventStore> {
+  return mkdir(runsDir, { recursive: true }).then(() => {
+    const local = bunSqliteEventStore({
+      path: join(runsDir, `${runId}.sqlite`),
+    })
 
-  const local = bunSqliteEventStore({
-    path: join(runsDir, `${runId}.sqlite`),
+    const configured = resolveDemoProjectors(env)
+
+    if (configured.length > 0) {
+      return withProjectors(local, configured)
+    }
+
+    return getS2LiteEndpoint().then((liteEndpoint) =>
+      liteEndpoint
+        ? withProjectors(local, [
+            s2Projector({
+              basin: 'looms-demo',
+              accessToken: 's2_local',
+              endpoint: liteEndpoint,
+            }),
+          ])
+        : local,
+    )
   })
-
-  const configured = resolveDemoProjectors(env)
-
-  if (configured.length > 0) {
-    return withProjectors(local, configured)
-  }
-
-  const liteEndpoint = await getS2LiteEndpoint()
-
-  if (!liteEndpoint) {
-    return local
-  }
-
-  return withProjectors(local, [
-    s2Projector({
-      basin: 'looms-demo',
-      accessToken: 's2_local',
-      endpoint: liteEndpoint,
-    }),
-  ])
 }
 
 let localHostPromise: Promise<LocalActorHost> | undefined

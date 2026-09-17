@@ -16,140 +16,42 @@ export class InvalidInputError extends Data.TaggedError('InvalidInputError')<{
   }
 }
 
-export type SchemaInput =
-  | StandardSchemaV1<any, any>
-  | Schema.Top
-  | Schema.Schema<any>
-  | { _output: any }
+export type SchemaInput = StandardSchemaV1<any, any> | Schema.ConstraintDecoder<unknown>
 
 export type InferSchemaOutput<T> =
   T extends Schema.Schema<infer Out>
     ? Out
-    : T extends Schema.Top
+    : T extends Schema.ConstraintDecoder<unknown>
       ? Schema.Schema.Type<T>
       : T extends StandardSchemaV1<any, infer Out>
         ? Out
-        : T extends { _output: infer Out }
-          ? Out
-          : never
+        : never
 
 /** Output of an optional `input` / `shape` schema, or `TFallback` when the schema is omitted. */
 export type InferDefinedSchema<T, TFallback = JsonValue> = [T] extends [undefined]
   ? TFallback
   : InferSchemaOutput<NonNullable<T>>
 
-type SchemaCandidate<TInput> =
-  | StandardSchemaV1<JsonValue, TInput>
-  | StandardSchemaV1<unknown, TInput>
-  | StandardSchemaV1<any, TInput>
-  | Schema.Schema<TInput>
-  | { _output: TInput }
-  | {
-      input?:
-        | StandardSchemaV1<JsonValue, TInput>
-        | StandardSchemaV1<unknown, TInput>
-        | StandardSchemaV1<any, TInput>
-        | Schema.Schema<TInput>
-        | { _output: TInput }
-      schema?:
-        | StandardSchemaV1<JsonValue, TInput>
-        | StandardSchemaV1<unknown, TInput>
-        | StandardSchemaV1<any, TInput>
-        | Schema.Schema<TInput>
-        | { _output: TInput }
-    }
-  | null
-  | undefined
+type DecodedInput = InferSchemaOutput<SchemaInput>
+type ValidatedInput<TSchema extends SchemaInput | null | undefined> = TSchema extends SchemaInput
+  ? InferSchemaOutput<TSchema>
+  : JsonValue
 
-function toStandard<TInput>(
-  candidate: SchemaCandidate<TInput>,
-): StandardSchemaV1<JsonValue, TInput> | undefined {
-  if (!candidate) {
-    return undefined
+function isStandardSchema(candidate: SchemaInput): candidate is StandardSchemaV1<any, any> {
+  if (!Predicate.isReadonlyObject(candidate) || !('~standard' in candidate)) {
+    return false
   }
 
-  if (Schema.isSchema(candidate)) {
-    // SAFETY: Effect Schema converts to StandardSchemaV1 via official helper.
-    return Schema.toStandardSchemaV1(candidate as Schema.Codec<TInput, TInput>) as StandardSchemaV1<
-      JsonValue,
-      TInput
-    >
-  }
-
-  if (Predicate.isObject(candidate) && '~standard' in candidate) {
-    // SAFETY: verified '~standard' property exists on object.
-    return candidate as StandardSchemaV1<JsonValue, TInput>
-  }
-
-  if (Predicate.isObject(candidate) && 'safeParse' in candidate) {
-    // SAFETY: candidate has safeParse property verified by key check.
-    const safeParse = (candidate as { safeParse?: unknown }).safeParse
-
-    if (Predicate.isFunction(safeParse)) {
-      // SAFETY: verified safeParse is a function matching the Zod safeParse contract.
-      const zodSchema = candidate as {
-        safeParse: (raw: any) =>
-          | { success: true; data: TInput }
-          | {
-              success: false
-              error: { issues: Array<{ message: string; path: (string | number)[] }> }
-            }
-      }
-
-      return {
-        '~standard': {
-          version: 1,
-          vendor: 'zod-compat',
-          validate(raw) {
-            const res = zodSchema.safeParse(raw)
-
-            if (res.success) {
-              return { value: res.data }
-            }
-
-            return {
-              issues: res.error.issues.map((issue) => ({
-                message: issue.message,
-                path: issue.path,
-              })),
-            }
-          },
-        },
-      }
-    }
-  }
-
-  return undefined
+  const standard = candidate['~standard']
+  return (
+    Predicate.isReadonlyObject(standard) &&
+    'validate' in standard &&
+    Predicate.isFunction(standard.validate)
+  )
 }
 
-function extractSchema<TInput>(
-  schemaOrDef: SchemaCandidate<TInput>,
-): StandardSchemaV1<JsonValue, TInput> | undefined {
-  const direct = toStandard<TInput>(schemaOrDef)
-
-  if (direct) {
-    return direct
-  }
-
-  if (schemaOrDef && Predicate.isObject(schemaOrDef)) {
-    if ('schema' in schemaOrDef) {
-      // SAFETY: verified schemaOrDef has schema property.
-      const fromSchema = toStandard<TInput>(
-        (schemaOrDef as { schema?: SchemaCandidate<TInput> }).schema,
-      )
-
-      if (fromSchema) {
-        return fromSchema
-      }
-    }
-
-    if ('input' in schemaOrDef) {
-      // SAFETY: Verified schemaOrDef has input property.
-      return toStandard<TInput>((schemaOrDef as { input?: SchemaCandidate<TInput> }).input)
-    }
-  }
-
-  return undefined
+function toStandard(candidate: SchemaInput): StandardSchemaV1<any, any> {
+  return isStandardSchema(candidate) ? candidate : Schema.toStandardSchemaV1(candidate)
 }
 
 function formatIssue(issue: StandardSchemaV1.Issue): string {
@@ -175,60 +77,75 @@ function formatIssue(issue: StandardSchemaV1.Issue): string {
   return `${pathStr}: ${issue.message}`
 }
 
-export function validateInputEffect<TInput = JsonValue>(
-  schemaOrDef: SchemaCandidate<TInput>,
+function decodeInput(
+  schema: SchemaInput | null | undefined,
   raw: JsonValue,
-): Effect.Effect<TInput, InvalidInputError> {
-  const schema = extractSchema(schemaOrDef)
-
+): Effect.Effect<DecodedInput, InvalidInputError> {
   if (!schema) {
-    // SAFETY: when no schema is provided, raw JsonValue is accepted as TInput.
-    return Effect.succeed(raw as TInput)
+    return Effect.succeed(raw)
   }
 
-  return Effect.gen(function* () {
-    let result = schema['~standard'].validate(raw)
+  const standard = toStandard(schema)
+  return Effect.tryPromise({
+    try: () => Promise.resolve(standard['~standard'].validate(raw)),
+    catch: (cause) =>
+      new InvalidInputError(
+        `Schema validation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+  }).pipe(
+    Effect.flatMap((result) => {
+      if (result.issues !== undefined) {
+        const text = result.issues.map(formatIssue).join(', ')
+        return new InvalidInputError(`Invalid input: ${text}`, result.issues)
+      }
 
-    if (result instanceof Promise) {
-      result = yield* Effect.tryPromise({
-        // SAFETY: Standard Schema validate() returns this Promise when async.
-        try: () => result as Promise<StandardSchemaV1.Result<TInput>>,
-        catch: (cause) =>
-          new InvalidInputError(
-            `Schema validation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-          ),
-      })
-    }
-
-    if (result.issues !== undefined) {
-      const text = result.issues.map(formatIssue).join(', ')
-      return yield* Effect.fail(new InvalidInputError(`Invalid input: ${text}`, result.issues))
-    }
-
-    return result.value
-  })
+      return Effect.succeed(result.value)
+    }),
+  )
 }
 
-export async function validateInput<TInput = JsonValue>(
-  schemaOrDef: SchemaCandidate<TInput>,
+export function validateInputEffect<TSchema extends SchemaInput | null | undefined>(
+  schema: TSchema,
   raw: JsonValue,
-): Promise<TInput> {
-  return Effect.runPromise(validateInputEffect(schemaOrDef, raw))
+): Effect.Effect<ValidatedInput<TSchema>, InvalidInputError>
+
+export function validateInputEffect(
+  schema: SchemaInput | null | undefined,
+  raw: JsonValue,
+): Effect.Effect<DecodedInput, InvalidInputError> {
+  return decodeInput(schema, raw)
 }
 
-export function validateInputSync<TInput = JsonValue>(
-  schemaOrDef: SchemaCandidate<TInput>,
+export function validateInput<TSchema extends SchemaInput>(
+  schema: TSchema,
   raw: JsonValue,
-): TInput {
-  const schema = extractSchema(schemaOrDef)
+): Promise<InferSchemaOutput<TSchema>>
 
+export function validateInput(schema: null | undefined, raw: JsonValue): Promise<JsonValue>
+
+export function validateInput(
+  schema: SchemaInput | null | undefined,
+  raw: JsonValue,
+): Promise<DecodedInput> {
+  return Effect.runPromise(decodeInput(schema, raw))
+}
+
+export function validateInputSync<TSchema extends SchemaInput>(
+  schema: TSchema,
+  raw: JsonValue,
+): InferSchemaOutput<TSchema>
+
+export function validateInputSync(schema: null | undefined, raw: JsonValue): JsonValue
+
+export function validateInputSync(
+  schema: SchemaInput | null | undefined,
+  raw: JsonValue,
+): DecodedInput {
   if (!schema) {
-    // SAFETY: when no schema is provided, raw JsonValue is accepted as TInput.
-    return raw as TInput
+    return raw
   }
 
-  // SAFETY: StandardSchemaV1.validate returns Result<TInput> or Promise<Result<TInput>>.
-  const result = schema['~standard'].validate(raw)
+  const result = toStandard(schema)['~standard'].validate(raw)
 
   if (result instanceof Promise) {
     throw new Error('Async schema validation is not supported in synchronous context')
@@ -239,6 +156,5 @@ export function validateInputSync<TInput = JsonValue>(
     throw new InvalidInputError(`Invalid input: ${text}`, result.issues)
   }
 
-  // SAFETY: When result.issues is undefined, result is SuccessResult.
   return result.value
 }

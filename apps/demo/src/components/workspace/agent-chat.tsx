@@ -1,3 +1,4 @@
+import { DateTime } from 'effect'
 import { useState } from 'react'
 
 import { rememberRun } from '@/hooks/use-recent-runs'
@@ -183,24 +184,23 @@ function FollowUpComposer({
   const canFollowUp = type.conversational && Boolean(rootThreadId)
   const canSend = draft.trim().length > 0 && canFollowUp
 
-  async function send() {
+  function send() {
     const content = draft.trim()
 
     if (!content || !rootThreadId) {
-      return
+      return Promise.resolve()
     }
 
     setPending(true)
     onError(null)
 
-    try {
-      await store.commit(userMessage(content, { threadId: rootThreadId }))
-      onSent()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPending(false)
-    }
+    return store
+      .commit(userMessage(content, { threadId: rootThreadId }))
+      .then(onSent)
+      .catch((cause) => {
+        onError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => setPending(false))
   }
 
   return (
@@ -234,11 +234,11 @@ export function AgentChat({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function start() {
+  function start() {
     const content = draft.trim()
 
     if (!content) {
-      return
+      return Promise.resolve()
     }
 
     setPending(true)
@@ -249,24 +249,23 @@ export function AgentChat({
       runId: nextRunId,
       definitionName: type.name,
       kind: type.kind,
-      startedAt: Date.now(),
+      startedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
     })
 
     setDraft('')
     onStarted(nextRunId)
 
-    try {
-      await loomsClient.startRun({
+    return loomsClient
+      .startRun({
         kind: type.kind,
         definitionName: type.def.name,
         input: type.toInput(content),
         runId: nextRunId,
       })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPending(false)
-    }
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => setPending(false))
   }
 
   return (

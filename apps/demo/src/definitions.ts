@@ -1,3 +1,4 @@
+import { Option, Schema } from 'effect'
 import { z } from 'zod'
 
 import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@swirls/looms/agent'
@@ -11,6 +12,12 @@ import {
   type JsonValue,
 } from '@swirls/looms/core'
 import { defineWorkflow } from '@swirls/looms/workflow'
+
+const decodeJsonValue = Schema.decodeOption(Schema.fromJsonString(Schema.Json))
+
+function parseJsonValue(content: string): JsonValue {
+  return Option.getOrElse(decodeJsonValue(content), () => content)
+}
 
 function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -215,16 +222,7 @@ export const orchestrator = defineAgent({
     }
 
     const toolMsg = findLastToolMessage(messages)
-    let output: JsonValue = null
-
-    if (toolMsg) {
-      try {
-        // SAFETY: JSON.parse output is JsonValue when parsing structured JSON
-        output = JSON.parse(toolMsg.content) as JsonValue
-      } catch {
-        output = toolMsg.content
-      }
-    }
+    const output = toolMsg ? parseJsonValue(toolMsg.content) : null
 
     const strParsed = z.string().safeParse(output)
     const content = strParsed.success ? strParsed.data : JSON.stringify(output)
@@ -273,16 +271,7 @@ export const greeter = defineAgent({
     }
 
     const toolMsg = findLastToolMessage(messages)
-    let output: JsonValue = null
-
-    if (toolMsg) {
-      try {
-        // SAFETY: JSON.parse output is JsonValue when parsing structured JSON
-        output = JSON.parse(toolMsg.content) as JsonValue
-      } catch {
-        output = toolMsg.content
-      }
-    }
+    const output = toolMsg ? parseJsonValue(toolMsg.content) : null
 
     return {
       message: { role: 'assistant', content: toolMsg?.content ?? 'done' },

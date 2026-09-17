@@ -22,7 +22,7 @@ export const S2ConfigSchema = Schema.Struct({
     Schema.Struct({
       retentionPolicy: Schema.optional(
         Schema.Union([
-          Schema.Struct({ ageSecs: Schema.Number }),
+          Schema.Struct({ ageSecs: Schema.Finite }),
           Schema.Struct({ infinite: Schema.Struct({}) }),
         ]),
       ),

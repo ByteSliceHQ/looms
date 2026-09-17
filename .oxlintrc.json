@@ -40,6 +40,53 @@
   ],
   "overrides": [
     {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-error-in-effect-catch": "off",
+        "effecttsgo/global-error-in-effect-failure": "off",
+        "effecttsgo/global-timers": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/node-builtin-import": "off"
+      }
+    },
+    {
+      "files": [
+        "scripts/**/*.ts",
+        "**/scripts/**/*.ts",
+        "**/scripts/**/*.tsx",
+        "apps/demo/src/verify.ts"
+      ],
+      "rules": {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-console": "off",
+        "effecttsgo/global-error-in-effect-failure": "off",
+        "effecttsgo/global-fetch": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/process-env": "off"
+      }
+    },
+    {
+      "files": ["**/*.config.ts"],
+      "rules": {
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/process-env": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/demo/src/looms.bun.ts",
+        "apps/demo/src/looms.server.ts",
+        "packages/s2/src/lite.ts"
+      ],
+      "rules": {
+        "effecttsgo/global-fetch": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/process-env": "off"
+      }
+    },
+    {
       "files": ["packages/core/src/effects.ts"],
       "rules": {
         "effecttsgo/unsafe-effect-type-assertion": "off"
@@ -48,7 +95,9 @@
     {
       "files": ["examples/**"],
       "rules": {
-        "effecttsgo/global-console": "off"
+        "effecttsgo/global-console": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/process-env": "off"
       }
     }
   ],
@@ -71,6 +120,12 @@
     "anti-slop-effect/no-bare-try-promise": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
     "curly": "error",
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["_tag"]
+      }
+    ],
     "typescript/consistent-type-imports": [
       "error",
       {

@@ -1,12 +1,19 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { makeMemoryEventStore, wait } from '@looms/core'
 import type { WakeScheduler } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createActorCell } from './cell'
+
+const decodeRunResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    runId: Schema.String,
+    state: Schema.Struct({ status: Schema.String }),
+  }),
+)
 
 describe('ActorCell', () => {
   test('starts a run and serves HTTP endpoints for its own runId', async () => {
@@ -47,8 +54,7 @@ describe('ActorCell', () => {
 
     expect(startRes.status).toBe(200)
 
-    // SAFETY: start endpoint returns { runId, state } json
-    const startBody = (await startRes.json()) as { runId: string; state: { status: string } }
+    const startBody = decodeRunResponse(await startRes.json())
 
     expect(startBody.runId).toBe(runId)
     expect(startBody.state.status).toBe('completed')
@@ -62,8 +68,7 @@ describe('ActorCell', () => {
 
     expect(getRes.status).toBe(200)
 
-    // SAFETY: getRun endpoint returns { runId, state } json
-    const getBody = (await getRes.json()) as { runId: string; state: { status: string } }
+    const getBody = decodeRunResponse(await getRes.json())
 
     expect(getBody.state.status).toBe('completed')
 
@@ -76,7 +81,7 @@ describe('ActorCell', () => {
 
     expect(foreignRes.status).toBe(404)
 
-    cell.dispose()
+    await cell.dispose()
   })
 
   test('parks on timer and notifies scheduler', async () => {
@@ -88,12 +93,9 @@ describe('ActorCell', () => {
     const cancelled: string[] = []
 
     const fakeScheduler: WakeScheduler = {
-      schedule: (id, at) => {
-        scheduled.push({ runId: id, at })
-      },
-      cancel: (id) => {
-        cancelled.push(id)
-      },
+      schedule: (id, at) =>
+        Effect.sync(() => scheduled.push({ runId: id, at })).pipe(Effect.asVoid),
+      cancel: (id) => Effect.sync(() => cancelled.push(id)).pipe(Effect.asVoid),
     }
 
     const sleeper = defineWorkflow({
@@ -138,6 +140,6 @@ describe('ActorCell', () => {
 
     expect(state.status).toBe('running')
 
-    cell.dispose()
+    await cell.dispose()
   })
 })

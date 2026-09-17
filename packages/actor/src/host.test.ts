@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { makeMemoryEventStore } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLocalActorHost } from './host'
+
+const decodeRunId = Schema.decodeUnknownSync(Schema.Struct({ runId: Schema.String }))
 
 describe('LocalActorHost', () => {
   test('routes start, signals, and reads to distinct isolated cells', async () => {
@@ -46,8 +48,7 @@ describe('LocalActorHost', () => {
 
     expect(start1.status).toBe(200)
 
-    // SAFETY: start run response json contains runId
-    const body1 = (await start1.json()) as { runId: string }
+    const body1 = decodeRunId(await start1.json())
     const runId1 = body1.runId
 
     // Start second run
@@ -61,8 +62,7 @@ describe('LocalActorHost', () => {
 
     expect(start2.status).toBe(200)
 
-    // SAFETY: start run response json contains runId
-    const body2 = (await start2.json()) as { runId: string }
+    const body2 = decodeRunId(await start2.json())
     const runId2 = body2.runId
 
     expect(runId1).not.toBe(runId2)
@@ -89,6 +89,6 @@ describe('LocalActorHost', () => {
 
     expect(listRes?.status).toBe(501)
 
-    host.dispose()
+    await host.dispose()
   })
 })

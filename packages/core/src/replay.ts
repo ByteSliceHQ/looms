@@ -1,15 +1,25 @@
-import type { RuntimeEffect } from './effects'
-import type { EventEnvelope } from './envelope'
+import { Schema } from 'effect'
+
+import { RuntimeEffectSchema, type RuntimeEffect } from './effects'
+import { EventEnvelopeSchema, type EventEnvelope } from './envelope'
 import { foldEvent, foldRun, type FoldRegistry } from './fold'
-import { emptyRunState, type RunState } from './state'
+import { emptyRunState, RunStateSchema, type RunState } from './state'
 
 export interface ReplayStep {
   seq: number
   event: EventEnvelope
   before: RunState
   after: RunState
-  effects: RuntimeEffect[]
+  effects: readonly RuntimeEffect[]
 }
+
+export const ReplayStepSchema = Schema.Struct({
+  seq: Schema.Finite,
+  event: EventEnvelopeSchema,
+  before: RunStateSchema,
+  after: RunStateSchema,
+  effects: Schema.Array(RuntimeEffectSchema),
+})
 
 export function replayTo(
   events: readonly EventEnvelope[],

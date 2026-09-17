@@ -15,6 +15,23 @@ import {
   readEventStream,
 } from './store'
 
+function snapshot(cursor: number) {
+  return {
+    runId: 'run_s',
+    cursor,
+    stateHash: `h${cursor}`,
+    takenAt: cursor,
+    state: {
+      runId: 'run_s',
+      status: 'running' as const,
+      rootThreadId: null,
+      threads: {},
+      waits: {},
+      outstandingEffects: [],
+    },
+  }
+}
+
 describe('memory EventStore', () => {
   test('appends and reads by runId', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
@@ -35,7 +52,7 @@ describe('memory EventStore', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.seq).toBe(1)
     expect(events[0]?.runId).toBe(runId)
-    const runs = await Effect.runPromise(store.listRuns())
+    const runs = await Effect.runPromise(store.listRuns)
     expect(runs).toEqual([runId])
   })
 
@@ -226,23 +243,8 @@ describe('memory SnapshotStore', () => {
   test('saves, loads latest, lists cursors, and prunes', async () => {
     const store = await Effect.runPromise(makeMemorySnapshotStore)
 
-    const snap = (cursor: number) => ({
-      runId: 'run_s',
-      cursor,
-      stateHash: `h${cursor}`,
-      takenAt: cursor,
-      state: {
-        runId: 'run_s',
-        status: 'running' as const,
-        rootThreadId: null,
-        threads: {},
-        waits: {},
-        outstandingEffects: [],
-      },
-    })
-
-    await Effect.runPromise(store.save(snap(10)))
-    await Effect.runPromise(store.save(snap(20)))
+    await Effect.runPromise(store.save(snapshot(10)))
+    await Effect.runPromise(store.save(snapshot(20)))
     const latest = await Effect.runPromise(store.loadLatest('run_s'))
     expect(latest._tag).toBe('Some')
 

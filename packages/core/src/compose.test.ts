@@ -37,7 +37,7 @@ describe('composeModules', () => {
 
     const effect = defineEffect({
       type: 'demo.work',
-      input: Schema.Struct({ n: Schema.Number }),
+      input: Schema.Struct({ n: Schema.Finite }),
       execute: () => [],
     })
 
@@ -204,8 +204,7 @@ describe('EventsOf', () => {
 
     // Protocol events are included for module arrays
     type ProtocolOk = Extract<FromArray, { type: 'runtime.run.started' }>
-    // SAFETY: null placeholder only exercises the ProtocolOk type alias.
-    const started = null as ProtocolOk | null
+    const started: ProtocolOk | null = null
     expect(started).toBeNull()
   })
 })

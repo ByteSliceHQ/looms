@@ -1,26 +1,42 @@
-import { Effect, Predicate, Schema } from 'effect'
+import { Data, Effect, Predicate, Schema } from 'effect'
 
-import { createThreadId, validateInput, type EventInputOf, type JsonValue } from '@looms/core'
+import { createThreadId, validateInputEffect, type EventInputOf, type JsonValue } from '@looms/core'
 
 import { normalizeTools, type ToolLike } from './definitions'
 import { AgentDefinitionsTag } from './definitions-store'
-import { LlmTag } from './llm'
+import { LlmTag, type LlmError } from './llm'
 import { agentModule, type AgentEvent } from './scope'
 import { toolSpecs } from './tool-schema'
 import { MessageSchema, ToolCallSchema, type Message, type ToolCall } from './types'
 
 const CallLlmInput = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   definitionName: Schema.optional(Schema.String),
   messages: Schema.optional(Schema.Array(MessageSchema)),
   input: Schema.optional(Schema.Json),
 })
 
 const ExecuteToolInput = Schema.Struct({
-  turn: Schema.Number,
+  turn: Schema.Finite,
   definitionName: Schema.optional(Schema.String),
   toolCall: ToolCallSchema,
 })
+
+class AgentExecutionError extends Data.TaggedError('AgentExecutionError')<{
+  readonly operation: string
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(operation: string, cause: unknown) {
+    super({
+      operation,
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'AgentExecutionError'
+  }
+}
 
 function findTool(tools: ToolLike[], name: string): ToolLike | undefined {
   return tools.find((tool) => tool.name === name)
@@ -33,8 +49,7 @@ export const callLlmEffect = agentModule.effect({
     runCallLlm({
       turn: input.turn,
       definitionName: input.definitionName,
-      // SAFETY: message arrays in callLLM input are serialized Message objects.
-      messages: (input.messages as Message[]) ?? [],
+      messages: [...(input.messages ?? [])],
       input: input.input ?? null,
       runId: ctx.runId,
       threadId: ctx.threadId,
@@ -50,7 +65,11 @@ function runCallLlm(args: {
   runId: string
   threadId: string
   emit: (event: EventInputOf<AgentEvent>) => Promise<void>
-}): Effect.Effect<ReadonlyArray<EventInputOf<AgentEvent>>, Error, LlmTag | AgentDefinitionsTag> {
+}): Effect.Effect<
+  ReadonlyArray<EventInputOf<AgentEvent>>,
+  AgentExecutionError | LlmError,
+  LlmTag | AgentDefinitionsTag
+> {
   return Effect.gen(function* () {
     const { turn, threadId, emit, definitionName, messages, input } = args
     const agents = yield* AgentDefinitionsTag
@@ -99,7 +118,7 @@ function runCallLlm(args: {
     const result = definition.runTurn
       ? yield* Effect.tryPromise({
           try: () => Promise.resolve(definition.runTurn!(turnCtx)),
-          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+          catch: (cause) => new AgentExecutionError('run agent turn', cause),
         })
       : yield* llm.complete({
           model: definition.model,
@@ -107,14 +126,13 @@ function runCallLlm(args: {
           messages: [{ role: 'system', content: definition.instructions }, ...turnCtx.messages],
           tools,
           toolSpecs: toolSpecs(tools),
-          onTextDelta: async (delta) => {
-            await emit({
+          onTextDelta: (delta) =>
+            emit({
               type: 'agent.turn.text_delta',
               payload: { turn, delta },
               threadId,
               ephemeral: true,
-            })
-          },
+            }),
         })
 
     const toolCalls = result.toolCalls ?? result.message.toolCalls ?? []
@@ -218,12 +236,11 @@ export const executeToolEffect = agentModule.effect({
 
       switch (tool.kind) {
         case 'function': {
-          const validated = yield* Effect.tryPromise({
-            try: () => validateInput(tool.input, input.toolCall.arguments),
-            catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-          }).pipe(
-            Effect.map((value) => ({ ok: true as const, value })),
-            Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+          const validated = yield* validateInputEffect(tool.input, input.toolCall.arguments).pipe(
+            Effect.match({
+              onFailure: (error) => ({ ok: false as const, error: error.message }),
+              onSuccess: (value) => ({ ok: true as const, value }),
+            }),
           )
 
           if (!validated.ok) {
@@ -250,10 +267,12 @@ export const executeToolEffect = agentModule.effect({
                   turn: input.turn,
                 }),
               ),
-            catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+            catch: (cause) => new AgentExecutionError(`run tool ${tool.name}`, cause),
           }).pipe(
-            Effect.map((value) => ({ ok: true as const, value })),
-            Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+            Effect.match({
+              onFailure: (error) => ({ ok: false as const, error: error.message }),
+              onSuccess: (value) => ({ ok: true as const, value }),
+            }),
           )
 
           return [
@@ -273,12 +292,11 @@ export const executeToolEffect = agentModule.effect({
 
         case 'thread': {
           const validated = tool.input
-            ? yield* Effect.tryPromise({
-                try: () => validateInput(tool.input, input.toolCall.arguments),
-                catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-              }).pipe(
-                Effect.map((value) => ({ ok: true as const, value })),
-                Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+            ? yield* validateInputEffect(tool.input, input.toolCall.arguments).pipe(
+                Effect.match({
+                  onFailure: (error) => ({ ok: false as const, error: error.message }),
+                  onSuccess: (value) => ({ ok: true as const, value }),
+                }),
               )
             : { ok: true as const, value: input.toolCall.arguments }
 
@@ -317,12 +335,11 @@ export const executeToolEffect = agentModule.effect({
 
         case 'effects': {
           const validated = tool.input
-            ? yield* Effect.tryPromise({
-                try: () => validateInput(tool.input, input.toolCall.arguments),
-                catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-              }).pipe(
-                Effect.map((value) => ({ ok: true as const, value })),
-                Effect.catch((err) => Effect.succeed({ ok: false as const, error: err.message })),
+            ? yield* validateInputEffect(tool.input, input.toolCall.arguments).pipe(
+                Effect.match({
+                  onFailure: (error) => ({ ok: false as const, error: error.message }),
+                  onSuccess: (value) => ({ ok: true as const, value }),
+                }),
               )
             : { ok: true as const, value: input.toolCall.arguments }
 

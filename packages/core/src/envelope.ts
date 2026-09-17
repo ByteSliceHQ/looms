@@ -1,7 +1,7 @@
-import { Schema } from 'effect'
+import { DateTime, Schema } from 'effect'
 
 import { createEventId } from './ids'
-import type { JsonValue } from './types'
+import { cleanUndefined, type JsonValue } from './types'
 
 export const JsonValueSchema = Schema.Json
 
@@ -24,8 +24,8 @@ export type EventOrigin = Schema.Schema.Type<typeof EventOriginSchema>
 export const EventEnvelopeSchema = Schema.Struct({
   id: Schema.String,
   runId: Schema.String,
-  seq: Schema.Number,
-  ts: Schema.Number,
+  seq: Schema.Finite,
+  ts: Schema.Finite,
   type: Schema.String,
   payload: JsonValueSchema,
   threadId: Schema.NullOr(Schema.String),
@@ -35,6 +35,21 @@ export const EventEnvelopeSchema = Schema.Struct({
   effectId: Schema.optional(Schema.NullOr(Schema.String)),
   origin: EventOriginSchema,
   ephemeral: Schema.optional(Schema.Boolean),
+  idempotencyKey: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+export const EventInputSchema = Schema.Struct({
+  type: Schema.String,
+  payload: JsonValueSchema,
+  threadId: Schema.optional(Schema.NullOr(Schema.String)),
+  parentThreadId: Schema.optional(Schema.NullOr(Schema.String)),
+  causationId: Schema.optional(Schema.NullOr(Schema.String)),
+  correlationId: Schema.optional(Schema.NullOr(Schema.String)),
+  effectId: Schema.optional(Schema.NullOr(Schema.String)),
+  origin: Schema.optional(EventOriginSchema),
+  ephemeral: Schema.optional(Schema.Boolean),
+  id: Schema.optional(Schema.String),
+  ts: Schema.optional(Schema.Finite),
   idempotencyKey: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
@@ -75,8 +90,7 @@ export type EventInput<TType extends string = string, TPayload = JsonValue> = {
 export type AppendableEvent = Omit<EventEnvelope, 'seq'> & { seq?: number }
 
 export function payloadAsJson(payload: JsonValue): JsonValue {
-  // SAFETY: round-trip through JSON yields JsonValue.
-  return JSON.parse(JSON.stringify(payload)) as JsonValue
+  return cleanUndefined(payload)
 }
 
 export function withAssignedSeq(
@@ -87,18 +101,18 @@ export function withAssignedSeq(
   return { ...partial, runId, seq }
 }
 
-export function createEvent<TType extends string>(
+export function createEvent<TType extends string, TPayload = JsonValue>(
   runId: string,
-  input: Omit<EventInput, 'type'> & { type: TType },
+  input: EventInput<TType, TPayload>,
   options?: { seq?: number },
-): EventEnvelope<TType> {
+): EventEnvelope<TType, TPayload> {
   const threadId = input.threadId ?? null
   const parentThreadId = input.parentThreadId ?? null
   return {
     id: input.id ?? createEventId(),
     runId,
     seq: options?.seq ?? 0,
-    ts: input.ts ?? Date.now(),
+    ts: input.ts ?? DateTime.toEpochMillis(DateTime.nowUnsafe()),
     type: input.type,
     payload: input.payload,
     threadId,

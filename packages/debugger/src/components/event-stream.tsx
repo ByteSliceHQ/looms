@@ -1,7 +1,8 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { Effect, Fiber } from 'effect'
 import { Check, Search, SlidersHorizontal } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { DebuggerEvent, EventStreamCatalog, ReplayLoader } from '../contracts'
 import { defaultEventCatalog } from '../events/catalog'
@@ -85,21 +86,27 @@ export function EventStream<TEvent extends DebuggerEvent>({
 
     followLock.current = true
 
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let followRelease: Fiber.Fiber<void> | undefined
 
     const rafId = requestAnimationFrame(() => {
       virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
 
-      timer = setTimeout(() => {
-        followLock.current = false
-      }, 50)
+      followRelease = Effect.runFork(
+        Effect.sleep(50).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              followLock.current = false
+            }),
+          ),
+        ),
+      )
     })
 
     return () => {
       cancelAnimationFrame(rafId)
 
-      if (timer !== undefined) {
-        clearTimeout(timer)
+      if (followRelease !== undefined) {
+        Effect.runFork(Fiber.interrupt(followRelease))
       }
 
       followLock.current = false
@@ -266,14 +273,13 @@ interface EventRowProps<TEvent extends DebuggerEvent> {
   onSelectSeq: (seq: number | undefined) => void
 }
 
-// SAFETY: memoized EventRow preserves generic EventRowProps contract.
-const EventRow = memo(function EventRow({
+function EventRow<TEvent extends DebuggerEvent>({
   event,
   catalog,
   startedAt,
   selected,
   onSelectSeq,
-}: EventRowProps<DebuggerEvent>) {
+}: EventRowProps<TEvent>) {
   const meta = getEventMeta(event, catalog)
   const offset = startedAt !== undefined ? Math.max(0, event.ts - startedAt) : undefined
 
@@ -319,5 +325,4 @@ const EventRow = memo(function EventRow({
       ) : null}
     </button>
   )
-  // SAFETY: memoized EventRow preserves generic EventRowProps contract.
-}) as <TEvent extends DebuggerEvent>(props: EventRowProps<TEvent>) => ReactNode
+}

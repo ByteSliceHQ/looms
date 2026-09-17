@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { TestConsole } from 'effect/testing'
 
 import { cliTestLayer, runCli } from './commands'
 
-const run = (argv: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
+const testLayer = Layer.mergeAll(TestConsole.layer, cliTestLayer)
+
+const run = (argv: ReadonlyArray<string>) => {
+  const program = Effect.gen(function* () {
     const exit = yield* Effect.exit(runCli(argv))
     const logs = yield* TestConsole.logLines
     const errors = yield* TestConsole.errorLines
@@ -15,7 +17,12 @@ const run = (argv: ReadonlyArray<string>) =>
       out: logs.map(String).join('\n'),
       err: errors.map(String).join('\n'),
     }
-  }).pipe(Effect.provide(TestConsole.layer), Effect.provide(cliTestLayer), Effect.runPromise)
+  })
+
+  // This test runner is the lifecycle boundary for its complete test layer.
+  // oxlint-disable-next-line effecttsgo/strict-effect-provide
+  return program.pipe(Effect.provide(testLayer), Effect.runPromise)
+}
 
 describe('@looms/cli', () => {
   test('--help prints usage', async () => {

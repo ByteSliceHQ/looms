@@ -178,6 +178,7 @@ describe('createCoalescingAppender', () => {
         }
 
         flushed.push(...batch)
+        return undefined
       }),
     )
 

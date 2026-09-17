@@ -1,8 +1,9 @@
 import { AppendInput, AppendRecord, S2, S2Endpoints, S2Error } from '@s2-dev/streamstore'
-import { Effect, Layer, Option, Schema } from 'effect'
+import { Effect, Layer, Option, Schema, Stream } from 'effect'
 
 import {
   createKeyedSerializer,
+  RunStateSchema,
   SnapshotStoreError,
   SnapshotStoreTag,
   type RunSnapshot,
@@ -10,6 +11,7 @@ import {
 } from '@looms/core'
 
 import { S2ConfigSchema, type S2Config } from './config'
+import { paginateS2Stream } from './pagination'
 
 const DEFAULT_PREFIX = 'snapshots'
 const DEFAULT_MAX_CHUNK_BYTES = 900 * 1024
@@ -28,13 +30,17 @@ export interface SnapshotFrame {
 const SnapshotFrameSchema = Schema.Struct({
   v: Schema.Literal(1),
   runId: Schema.String,
-  cursor: Schema.Number,
+  cursor: Schema.Finite,
   stateHash: Schema.String,
-  takenAt: Schema.Number,
-  chunk: Schema.Number,
-  chunks: Schema.Number,
+  takenAt: Schema.Finite,
+  chunk: Schema.Finite,
+  chunks: Schema.Finite,
   data: Schema.String,
 })
+
+const SnapshotFrameJson = Schema.fromJsonString(SnapshotFrameSchema)
+const decodeFrame = Schema.decodeSync(SnapshotFrameJson)
+const encodeFrame = Schema.encodeSync(SnapshotFrameJson)
 
 export function frameSnapshot(
   snapshot: RunSnapshot,
@@ -66,6 +72,8 @@ export function assembleSnapshot(frames: readonly SnapshotFrame[]): RunSnapshot 
   }
 
   const first = frames[0]!
+  // Oxlint's immutable alternative requires ES2023; sorting a fresh copy is safe on ES2022.
+  // oxlint-disable-next-line unicorn/no-array-sort
   const ordered = [...frames].sort((a, b) => a.chunk - b.chunk)
 
   for (const frame of ordered) {
@@ -91,8 +99,7 @@ export function assembleSnapshot(frames: readonly SnapshotFrame[]): RunSnapshot 
   }
 
   const json = ordered.map((frame) => frame.data).join('')
-  // SAFETY: frames are produced by `frameSnapshot` from a serialized RunState.
-  const state = JSON.parse(json) as RunSnapshot['state']
+  const state = Schema.decodeSync(Schema.fromJsonString(RunStateSchema))(json)
 
   return {
     runId: first.runId,
@@ -126,7 +133,7 @@ function createClient(config: S2Config): S2 {
 
 function parseFrame(body: string): SnapshotFrame | undefined {
   try {
-    return Schema.decodeUnknownSync(SnapshotFrameSchema)(JSON.parse(body))
+    return decodeFrame(body)
   } catch {
     return undefined
   }
@@ -139,6 +146,15 @@ interface SnapshotRecord {
 
 type SnapshotStream = ReturnType<ReturnType<S2['basin']>['stream']>
 
+function toSnapshotError(cause: unknown, message: string): SnapshotStoreError {
+  return cause instanceof SnapshotStoreError
+    ? cause
+    : new SnapshotStoreError(
+        `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        cause,
+      )
+}
+
 /**
  * Trailing command records (the trim written by `prune`) are skipped by
  * `ignoreCommandRecords`, so a `tailOffset: 1` read can come back empty.
@@ -146,80 +162,69 @@ type SnapshotStream = ReturnType<ReturnType<S2['basin']>['stream']>
  */
 const TAIL_PROBE = 4
 
-async function readFromTail(
+function readFromTail(
   stream: SnapshotStream,
   tailOffset: number,
-): Promise<SnapshotRecord[] | null> {
-  try {
-    const page = await stream.read({
-      start: { from: { tailOffset } },
-      ignoreCommandRecords: true,
-    })
-
-    return [...page.records]
-  } catch (cause) {
-    if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) {
-      return null
-    }
-
-    throw cause
-  }
+): Effect.Effect<SnapshotRecord[], SnapshotStoreError> {
+  return Effect.tryPromise({
+    try: () =>
+      stream.read({
+        start: { from: { tailOffset } },
+        ignoreCommandRecords: true,
+      }),
+    catch: (cause) => toSnapshotError(cause, 'Failed to read snapshot stream tail'),
+  }).pipe(
+    Effect.map((page) => [...page.records]),
+    Effect.catchIf(
+      (error) =>
+        error.cause instanceof S2Error &&
+        (error.cause.status === 404 || error.cause.status === 416),
+      () => Effect.succeed([]),
+    ),
+  )
 }
 
 /** Latest complete data frame near the tail, with its record, or undefined. */
-async function readLatestFrame(
+function readLatestFrame(
   stream: SnapshotStream,
-): Promise<{ record: SnapshotRecord; frame: SnapshotFrame } | undefined> {
-  const records = (await readFromTail(stream, TAIL_PROBE)) ?? []
+): Effect.Effect<{ record: SnapshotRecord; frame: SnapshotFrame } | undefined, SnapshotStoreError> {
+  return readFromTail(stream, TAIL_PROBE).pipe(
+    Effect.map((records) => {
+      for (let i = records.length - 1; i >= 0; i--) {
+        const record = records[i]!
+        const frame = parseFrame(record.body)
 
-  for (let i = records.length - 1; i >= 0; i--) {
-    const record = records[i]!
-    const frame = parseFrame(record.body)
+        if (frame) {
+          return { record, frame }
+        }
+      }
 
-    if (frame) {
-      return { record, frame }
-    }
-  }
-
-  return undefined
+      return undefined
+    }),
+  )
 }
 
-async function readAllSnapshotRecords(stream: SnapshotStream): Promise<SnapshotRecord[]> {
-  const records: SnapshotRecord[] = []
-  let cursor = 0
-
-  while (true) {
-    const page = await stream
-      .read({
-        start: { from: { seqNum: cursor }, clamp: true },
-        stop: { limits: { count: 1000 } },
-        ignoreCommandRecords: true,
-      })
-      .catch((cause: unknown) => {
-        // 404: no stream yet. 416: nothing at or past `cursor` (e.g. only a trim record).
-        if (cause instanceof S2Error && (cause.status === 404 || cause.status === 416)) {
-          return null
-        }
-
-        throw cause
-      })
-
-    if (!page || page.records.length === 0) {
-      break
-    }
-
-    records.push(...page.records)
-    const last = page.records[page.records.length - 1]!
-    const next = last.seqNum + 1
-
-    if (page.tail?.seqNum !== undefined && next >= page.tail.seqNum) {
-      break
-    }
-
-    cursor = next
-  }
-
-  return records
+function readAllSnapshotRecords(
+  stream: SnapshotStream,
+): Effect.Effect<SnapshotRecord[], SnapshotStoreError> {
+  return paginateS2Stream((cursor, count) =>
+    Effect.tryPromise({
+      try: () =>
+        stream.read({
+          start: { from: { seqNum: cursor }, clamp: true },
+          stop: { limits: { count } },
+          ignoreCommandRecords: true,
+        }),
+      catch: (cause) => toSnapshotError(cause, 'Failed to scan snapshot stream'),
+    }).pipe(
+      Effect.catchIf(
+        (error) =>
+          error.cause instanceof S2Error &&
+          (error.cause.status === 404 || error.cause.status === 416),
+        () => Effect.succeed(null),
+      ),
+    ),
+  ).pipe(Stream.runCollect)
 }
 
 function groupCompleteSnapshots(records: readonly SnapshotRecord[]): RunSnapshot[] {
@@ -247,11 +252,13 @@ function groupCompleteSnapshots(records: readonly SnapshotRecord[]): RunSnapshot
     }
   }
 
+  // `assembled` is function-local, so in-place sorting cannot mutate caller-owned data.
+  // oxlint-disable-next-line unicorn/no-array-sort
   return assembled.sort((a, b) => a.cursor - b.cursor)
 }
 
 export function s2SnapshotStore(config: S2Config): SnapshotStore {
-  const parsed = Schema.decodeUnknownSync(S2ConfigSchema)(config)
+  const parsed = Schema.decodeSync(S2ConfigSchema)(config)
   const client = createClient(parsed)
   const basin = client.basin(parsed.basin)
   const prefix = parsed.snapshotPrefix ?? DEFAULT_PREFIX
@@ -261,183 +268,187 @@ export function s2SnapshotStore(config: S2Config): SnapshotStore {
 
   const streamName = (runId: string) => `${prefix}/${runId}`
 
-  const ensureBasin = async () => {
+  const ensureBasin = Effect.suspend(() => {
     if (basinEnsured) {
-      return
+      return Effect.void
     }
 
-    try {
-      await client.basins.create({ basin: parsed.basin })
-    } catch (err) {
-      if (!(err instanceof S2Error && err.status === 409)) {
-        throw err
-      }
-    }
+    return Effect.tryPromise({
+      try: () => client.basins.create({ basin: parsed.basin }),
+      catch: (cause) => toSnapshotError(cause, `Failed to ensure basin ${parsed.basin}`),
+    }).pipe(
+      Effect.catchIf(
+        (error) => error.cause instanceof S2Error && error.cause.status === 409,
+        () => Effect.void,
+      ),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          basinEnsured = true
+        }),
+      ),
+      Effect.asVoid,
+    )
+  })
 
-    basinEnsured = true
-  }
+  const ensureStream = (runId: string): Effect.Effect<SnapshotStream, SnapshotStoreError> =>
+    Effect.gen(function* () {
+      yield* ensureBasin
+      const name = streamName(runId)
 
-  const ensureStream = async (runId: string): Promise<SnapshotStream> => {
-    await ensureBasin()
-    const name = streamName(runId)
-
-    if (!ensured.has(name)) {
-      try {
-        await basin.streams.create({
-          stream: name,
-          config: { retentionPolicy: { infinite: {} } },
-        })
-      } catch (err) {
-        if (
-          !(
-            err instanceof S2Error &&
-            (err.status === 409 || err.status === 404 || err.status === 405)
-          )
-        ) {
-          throw err
-        }
-      }
-
-      ensured.add(name)
-    }
-
-    return basin.stream(name)
-  }
-
-  const toError = (cause: unknown, message: string) =>
-    cause instanceof SnapshotStoreError
-      ? cause
-      : new SnapshotStoreError(
-          `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          cause,
+      if (!ensured.has(name)) {
+        yield* Effect.tryPromise({
+          try: () =>
+            basin.streams.create({
+              stream: name,
+              config: { retentionPolicy: { infinite: {} } },
+            }),
+          catch: (cause) => toSnapshotError(cause, `Failed to ensure stream ${name}`),
+        }).pipe(
+          Effect.catchIf(
+            (error) =>
+              error.cause instanceof S2Error &&
+              (error.cause.status === 409 ||
+                error.cause.status === 404 ||
+                error.cause.status === 405),
+            () => Effect.void,
+          ),
         )
+
+        ensured.add(name)
+      }
+
+      return basin.stream(name)
+    })
 
   const service: SnapshotStore = {
     save: (snapshot) =>
-      Effect.tryPromise({
-        try: async () => {
-          const stream = await ensureStream(snapshot.runId)
-          const frames = frameSnapshot(snapshot)
+      Effect.gen(function* () {
+        const stream = yield* ensureStream(snapshot.runId)
+        const frames = frameSnapshot(snapshot)
 
-          const records = frames.map((frame) =>
-            AppendRecord.string({
-              body: JSON.stringify(frame),
-              headers: [
-                ['looms-cursor', String(frame.cursor)],
-                ['looms-chunk', `${frame.chunk}/${frame.chunks}`],
-              ],
+        const records = frames.map((frame) =>
+          AppendRecord.string({
+            body: encodeFrame(frame),
+            headers: [
+              ['looms-cursor', String(frame.cursor)],
+              ['looms-chunk', `${frame.chunk}/${frame.chunks}`],
+            ],
+          }),
+        )
+
+        yield* Effect.tryPromise({
+          try: () =>
+            appends.run(snapshot.runId, () => {
+              if (records.length === 1) {
+                return stream.append(AppendInput.create(records)).then(() => undefined)
+              }
+
+              let pending = Promise.resolve()
+
+              for (const record of records) {
+                pending = pending.then(() =>
+                  stream.append(AppendInput.create([record])).then(() => undefined),
+                )
+              }
+
+              return pending
             }),
-          )
-
-          await appends.run(snapshot.runId, async () => {
-            if (records.length === 1) {
-              await stream.append(AppendInput.create(records))
-              return
-            }
-
-            for (const record of records) {
-              await stream.append(AppendInput.create([record]))
-            }
-          })
-        },
-        catch: (cause) => toError(cause, `Failed to save snapshot for ${snapshot.runId}`),
+          catch: (cause) => toSnapshotError(cause, `Failed to save snapshot for ${snapshot.runId}`),
+        })
       }),
 
     loadLatest: (runId) =>
-      Effect.tryPromise({
-        try: async () => {
-          const stream = await ensureStream(runId)
-          const tailFrame = await readLatestFrame(stream)
+      Effect.gen(function* () {
+        const stream = yield* ensureStream(runId)
+        const tailFrame = yield* readLatestFrame(stream)
 
-          if (!tailFrame) {
-            return Option.none<RunSnapshot>()
+        if (!tailFrame) {
+          return Option.none<RunSnapshot>()
+        }
+
+        if (tailFrame.frame.chunk === tailFrame.frame.chunks - 1) {
+          const lastFrame = tailFrame.frame
+          const records = (yield* readFromTail(stream, lastFrame.chunks + TAIL_PROBE)) ?? []
+
+          const frames = records
+            .map((record) => parseFrame(record.body))
+            .filter((frame): frame is SnapshotFrame => frame !== undefined)
+            .filter((frame) => frame.cursor === lastFrame.cursor)
+
+          if (frames.length === lastFrame.chunks) {
+            return Option.some(assembleSnapshot(frames))
           }
+        }
 
-          if (tailFrame.frame.chunk === tailFrame.frame.chunks - 1) {
-            const lastFrame = tailFrame.frame
-            const records = (await readFromTail(stream, lastFrame.chunks + TAIL_PROBE)) ?? []
-
-            const frames = records
-              .map((record) => parseFrame(record.body))
-              .filter((frame): frame is SnapshotFrame => frame !== undefined)
-              .filter((frame) => frame.cursor === lastFrame.cursor)
-
-            if (frames.length === lastFrame.chunks) {
-              return Option.some(assembleSnapshot(frames))
-            }
-          }
-
-          // Incomplete or interleaved tail: fall back to scanning the retained stream.
-          const records = await readAllSnapshotRecords(stream)
-          const complete = groupCompleteSnapshots(records)
-          const newest = complete[complete.length - 1]
-          return newest ? Option.some(newest) : Option.none<RunSnapshot>()
-        },
-        catch: (cause) => toError(cause, `Failed to load snapshot for ${runId}`),
+        // Incomplete or interleaved tail: fall back to scanning the retained stream.
+        const records = yield* readAllSnapshotRecords(stream)
+        const complete = groupCompleteSnapshots(records)
+        const newest = complete[complete.length - 1]
+        return newest ? Option.some(newest) : Option.none<RunSnapshot>()
       }),
 
     listCursors: (runId) =>
-      Effect.tryPromise({
-        try: async () => {
-          const stream = await ensureStream(runId)
-          const records = await readAllSnapshotRecords(stream)
-          return groupCompleteSnapshots(records).map((snapshot) => snapshot.cursor)
-        },
-        catch: (cause) => toError(cause, `Failed to list snapshot cursors for ${runId}`),
+      Effect.gen(function* () {
+        const stream = yield* ensureStream(runId)
+        const records = yield* readAllSnapshotRecords(stream)
+        return groupCompleteSnapshots(records).map((snapshot) => snapshot.cursor)
       }),
 
     prune: (runId, keepLatest) =>
-      Effect.tryPromise({
-        try: async () => {
-          const stream = await ensureStream(runId)
+      Effect.gen(function* () {
+        const stream = yield* ensureStream(runId)
 
-          if (keepLatest <= 1) {
-            // Fast path: the latest complete frame tells us where the latest snapshot starts.
-            const latest = await readLatestFrame(stream)
+        if (keepLatest <= 1) {
+          // Fast path: the latest complete frame tells us where the latest snapshot starts.
+          const latest = yield* readLatestFrame(stream)
 
-            if (!latest || latest.frame.chunk !== latest.frame.chunks - 1) {
-              return
-            }
-
-            const start = latest.record.seqNum - latest.frame.chunk
-
-            if (start <= 0) {
-              return
-            }
-
-            await appends.run(runId, () =>
-              stream.append(AppendInput.create([AppendRecord.trim(start)])),
-            )
-
+          if (!latest || latest.frame.chunk !== latest.frame.chunks - 1) {
             return
           }
 
-          const records = await readAllSnapshotRecords(stream)
-          const complete = groupCompleteSnapshots(records)
+          const start = latest.record.seqNum - latest.frame.chunk
 
-          if (complete.length <= keepLatest) {
+          if (start <= 0) {
             return
           }
 
-          const keep = complete[complete.length - keepLatest]
+          yield* Effect.tryPromise({
+            try: () =>
+              appends.run(runId, () =>
+                stream.append(AppendInput.create([AppendRecord.trim(start)])),
+              ),
+            catch: (cause) => toSnapshotError(cause, `Failed to prune snapshots for ${runId}`),
+          })
 
-          if (!keep) {
-            return
-          }
+          return
+        }
 
-          const firstKept = records.find(
-            (record) => parseFrame(record.body)?.cursor === keep.cursor,
-          )
+        const records = yield* readAllSnapshotRecords(stream)
+        const complete = groupCompleteSnapshots(records)
 
-          if (!firstKept) {
-            return
-          }
+        if (complete.length <= keepLatest) {
+          return
+        }
 
-          await appends.run(runId, () =>
-            stream.append(AppendInput.create([AppendRecord.trim(firstKept.seqNum)])),
-          )
-        },
-        catch: (cause) => toError(cause, `Failed to prune snapshots for ${runId}`),
+        const keep = complete[complete.length - keepLatest]
+
+        if (!keep) {
+          return
+        }
+
+        const firstKept = records.find((record) => parseFrame(record.body)?.cursor === keep.cursor)
+
+        if (!firstKept) {
+          return
+        }
+
+        yield* Effect.tryPromise({
+          try: () =>
+            appends.run(runId, () =>
+              stream.append(AppendInput.create([AppendRecord.trim(firstKept.seqNum)])),
+            ),
+          catch: (cause) => toSnapshotError(cause, `Failed to prune snapshots for ${runId}`),
+        })
       }),
   }
 

@@ -1,6 +1,7 @@
 import { Predicate } from 'effect'
 
 import {
+  asJson,
   createWaitId,
   emit,
   invoke,
@@ -15,7 +16,7 @@ import {
 
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
-import { AgentStateSchema, type AgentState, type Message, type ToolCall } from './types'
+import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
   if (input === null) {
@@ -69,9 +70,8 @@ function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[
   return [...lines]
 }
 
-export const agentThread = agentModule.thread({
+export const agentThread = agentModule.thread<AgentState>({
   kind: 'agent',
-  shape: AgentStateSchema,
   initialState: (ctx): AgentState => ({
     definitionName: ctx.definitionName,
     lines: [],
@@ -223,10 +223,7 @@ export const agentThread = agentModule.thread({
       case 'agent.effects.requested': {
         const { toolCallId, effects: rawEffects, waitOn } = event.payload
 
-        // SAFETY: handler serialized RuntimeEffect values into the event payload.
-        const effects: RuntimeEffect[] = Array.isArray(rawEffects)
-          ? [...(rawEffects as RuntimeEffect[])]
-          : []
+        const effects: RuntimeEffect[] = Array.isArray(rawEffects) ? [...rawEffects] : []
 
         const taggedEffects = effects.map((effect, idx) => {
           if (!('tag' in effect && Predicate.isString(effect.tag))) {
@@ -260,8 +257,7 @@ export const agentThread = agentModule.thread({
               waitOn: waitOn
                 ? {
                     type: waitOn.type,
-                    // SAFETY: schema-decoded match is JSON
-                    match: (waitOn.match as JsonValue) ?? undefined,
+                    match: waitOn.match ?? undefined,
                   }
                 : undefined,
             },
@@ -364,11 +360,9 @@ export const agentThread = agentModule.thread({
         const name = Predicate.isString(tag.name) ? tag.name : 'child'
         const error = Predicate.isString(embeddedObj.error) ? embeddedObj.error : null
 
-        // SAFETY: embedded output/payload is JSON
-        const result =
-          (embeddedObj.output as JsonValue) ??
-          (Predicate.isObject(embedded) ? embedded.payload : null) ??
-          null
+        const result = asJson(
+          embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
+        )
 
         return {
           ...state,
@@ -501,11 +495,9 @@ export function satisfiedToToolResult(event: EventEnvelope): RuntimeEffect | nul
   const name = Predicate.isString(tag.name) ? tag.name : 'child'
   const error = Predicate.isString(embeddedPayload.error) ? embeddedPayload.error : null
 
-  // SAFETY: embedded output/payload is JSON
-  const result =
-    (embeddedPayload.output as JsonValue) ??
-    (Predicate.isObject(embedded) ? (embedded.payload as JsonValue) : null) ??
-    null
+  const result = asJson(
+    embeddedPayload.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
+  )
 
   return emit({
     type: 'agent.tool.result',

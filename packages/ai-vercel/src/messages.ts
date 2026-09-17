@@ -1,7 +1,33 @@
 import { type JSONValue, type ModelMessage } from 'ai'
+import { Option, Predicate, Schema } from 'effect'
 
 import type { Message, ToolCall } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
+
+const decodeJson = Schema.decodeOption(Schema.fromJsonString(Schema.Json))
+
+function toAiJson(value: Schema.Json): JSONValue {
+  if (
+    value === null ||
+    Predicate.isString(value) ||
+    Predicate.isNumber(value) ||
+    Predicate.isBoolean(value)
+  ) {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toAiJson)
+  }
+
+  const converted: Record<string, JSONValue> = {}
+
+  for (const [key, nested] of Object.entries(value)) {
+    converted[key] = toAiJson(nested)
+  }
+
+  return converted
+}
 
 export function toModelMessages(messages: Message[]): ModelMessage[] {
   const converted: ModelMessage[] = []
@@ -72,12 +98,10 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
 function parseToolOutput(
   content: string,
 ): { type: 'json'; value: JSONValue } | { type: 'text'; value: string } {
-  try {
-    // SAFETY: tool message content is parsed JSON from JSON.parse.
-    return { type: 'json', value: JSON.parse(content) as JSONValue }
-  } catch {
-    return { type: 'text', value: content }
-  }
+  return Option.match(decodeJson(content), {
+    onNone: () => ({ type: 'text', value: content }),
+    onSome: (value) => ({ type: 'json', value: toAiJson(value) }),
+  })
 }
 
 export function toLoomsToolCalls(

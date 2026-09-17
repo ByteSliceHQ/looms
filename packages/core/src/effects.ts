@@ -1,7 +1,12 @@
-import { Effect, Predicate } from 'effect'
+import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
-import type { EventInput } from './envelope'
-import { validateInputEffect, type InferDefinedSchema, type SchemaInput } from './schema'
+import { EventInputSchema, type EventInput } from './envelope'
+import {
+  validateInputEffect,
+  type InferDefinedSchema,
+  type InvalidInputError,
+  type SchemaInput,
+} from './schema'
 import { asJson, type JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -72,6 +77,51 @@ export type PrimitiveEffect =
 
 export type RuntimeEffect = PrimitiveEffect | InvokeEffect
 
+export const WaitConditionSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+    match: Schema.optional(Schema.Json),
+  }),
+  Schema.Struct({ timerAt: Schema.Finite }),
+])
+
+export const RuntimeEffectSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('runtime.spawn'),
+    childThreadId: Schema.String,
+    kind: Schema.String,
+    definitionName: Schema.String,
+    input: Schema.Json,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.wait'),
+    waitId: Schema.String,
+    on: WaitConditionSchema,
+    tag: Schema.optional(Schema.Json),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.emit'),
+    event: EventInputSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.complete'),
+    output: Schema.Json,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.fail'),
+    error: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.cancel'),
+    threadId: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.String,
+    input: Schema.Json,
+    tag: Schema.optional(Schema.String),
+  }),
+])
+
 export function isPrimitiveEffect(effect: RuntimeEffect): effect is PrimitiveEffect {
   switch (effect.type) {
     case 'runtime.spawn':
@@ -122,29 +172,54 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
 
 export type EffectInputSchema = SchemaInput
 
-export type EffectHandlerResult<R = never, E extends EventInput = EventInput> =
-  | ReadonlyArray<E>
-  | Promise<ReadonlyArray<E>>
-  | Effect.Effect<ReadonlyArray<E>, Error, R>
+export class EffectHandlerError extends Data.TaggedError('EffectHandlerError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
 
-export interface EffectDefinition<TInput = JsonValue, R = any, E extends EventInput = EventInput> {
+    this.name = 'EffectHandlerError'
+  }
+}
+
+export type EffectHandlerResult<
+  R = never,
+  E extends EventInput = EventInput,
+  HandlerError = never,
+> = ReadonlyArray<E> | Promise<ReadonlyArray<E>> | Effect.Effect<ReadonlyArray<E>, HandlerError, R>
+
+declare const effectInputType: unique symbol
+
+export interface EffectDefinition<
+  TInput = JsonValue,
+  R = Context.Service.Any,
+  E extends EventInput = EventInput,
+> {
   readonly type: string
   readonly input?: SchemaInput
   readonly retry?: RetryPolicy
-  execute(input: TInput, ctx: EffectContext): Effect.Effect<ReadonlyArray<E>, Error, R>
+  readonly [effectInputType]?: (input: TInput) => TInput
+  execute(
+    input: JsonValue,
+    ctx: EffectContext,
+  ): Effect.Effect<ReadonlyArray<E>, InvalidInputError | EffectHandlerError, R>
 }
 
-function liftHandlerResult<R, E extends EventInput = EventInput>(
-  result: EffectHandlerResult<R, E>,
-): Effect.Effect<ReadonlyArray<E>, Error, R> {
+function liftHandlerResult<R, E extends EventInput, HandlerError>(
+  result: EffectHandlerResult<R, E, HandlerError>,
+): Effect.Effect<ReadonlyArray<E>, EffectHandlerError, R> {
   if (Effect.isEffect(result)) {
-    return result
+    return result.pipe(Effect.mapError((cause) => new EffectHandlerError(cause)))
   }
 
   if (result instanceof Promise) {
     return Effect.tryPromise({
       try: () => result,
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+      catch: (cause) => new EffectHandlerError(cause),
     })
   }
 
@@ -158,18 +233,39 @@ function liftHandlerResult<R, E extends EventInput = EventInput>(
  * idempotent when they have external side effects.
  */
 export function defineEffect<
-  TSchema = undefined,
-  TInput = InferDefinedSchema<TSchema>,
+  TSchema extends SchemaInput,
   R = never,
   E extends EventInput = EventInput,
+  HandlerError = never,
 >(def: {
   type: string
-  input?: TSchema
+  input: TSchema
   retry?: RetryPolicy
-  execute: (input: TInput, ctx: EffectContext) => EffectHandlerResult<R, E>
-}): EffectDefinition<TInput, R, E> {
+  execute: (
+    input: InferDefinedSchema<TSchema>,
+    ctx: EffectContext,
+  ) => EffectHandlerResult<R, E, HandlerError>
+}): EffectDefinition<InferDefinedSchema<TSchema>, R, E>
+
+export function defineEffect<
+  R = never,
+  E extends EventInput = EventInput,
+  HandlerError = never,
+>(def: {
+  type: string
+  input?: undefined
+  retry?: RetryPolicy
+  execute: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
+}): EffectDefinition<JsonValue, R, E>
+
+export function defineEffect<R, E extends EventInput, HandlerError>(def: {
+  type: string
+  input?: SchemaInput
+  retry?: RetryPolicy
+  execute: (input: any, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
+}): EffectDefinition<any, R, E> {
   const schema = def.input
-  // SAFETY: execute validates raw JsonValue against the optional schema before the typed handler.
+
   return {
     type: def.type,
     input: schema,
@@ -178,10 +274,9 @@ export function defineEffect<
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw
 
-        // SAFETY: input has been validated against schema or is unconstrained raw input
-        return yield* liftHandlerResult(def.execute(input as TInput, ctx))
+        return yield* liftHandlerResult(def.execute(input, ctx))
       }),
-  } as EffectDefinition<TInput, R, E>
+  }
 }
 
 export function spawn(args: {

@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect'
 import {
   createContext,
   createElement,
@@ -38,7 +39,7 @@ const GRACE_MS = 5_000
 interface RegistryEntry {
   store: LoomsClientStore
   refs: number
-  timer: ReturnType<typeof setTimeout> | undefined
+  disposal: Fiber.Fiber<void> | undefined
 }
 
 const registry = new Map<string, RegistryEntry>()
@@ -58,21 +59,26 @@ function disposeEntry(key: string): void {
   registry.delete(key)
 }
 
-function peekStore<TEvent extends AnyEventEnvelope = RegisteredEvent>(
+function scheduleDisposal(key: string): Fiber.Fiber<void> {
+  return Effect.runFork(
+    Effect.sleep(GRACE_MS).pipe(Effect.andThen(Effect.sync(() => disposeEntry(key)))),
+  )
+}
+
+function peekStore(
   runId: string,
   endpoint: string,
   reconnectDelayMs?: number,
   coalesce?: CoalesceOption,
-): LoomsClientStore<TEvent> {
+): LoomsClientStore {
   const key = registryKey(endpoint, runId)
   const existing = registry.get(key)
 
   if (existing) {
-    // SAFETY: registry stores share the app-registered event catalog.
-    return existing.store as LoomsClientStore<TEvent>
+    return existing.store
   }
 
-  const store = createLoomsStore<TEvent>({
+  const store = createLoomsStore({
     storeId: runId,
     endpoint,
     reconnectDelayMs,
@@ -80,10 +86,9 @@ function peekStore<TEvent extends AnyEventEnvelope = RegisteredEvent>(
   })
 
   registry.set(key, {
-    // SAFETY: store is created with TEvent which defaults to RegisteredEvent.
-    store: store as LoomsClientStore,
+    store,
     refs: 0,
-    timer: setTimeout(() => disposeEntry(key), GRACE_MS),
+    disposal: scheduleDisposal(key),
   })
 
   return store
@@ -105,9 +110,9 @@ function retainStore(
 
   entry.refs += 1
 
-  if (entry.timer !== undefined) {
-    clearTimeout(entry.timer)
-    entry.timer = undefined
+  if (entry.disposal !== undefined) {
+    Effect.runFork(Fiber.interrupt(entry.disposal))
+    entry.disposal = undefined
   }
 }
 
@@ -121,8 +126,8 @@ function releaseStore(runId: string, endpoint: string): void {
 
   entry.refs = Math.max(0, entry.refs - 1)
 
-  if (entry.refs === 0 && entry.timer === undefined) {
-    entry.timer = setTimeout(() => disposeEntry(key), GRACE_MS)
+  if (entry.refs === 0 && entry.disposal === undefined) {
+    entry.disposal = scheduleDisposal(key)
   }
 }
 
@@ -143,15 +148,12 @@ export interface UseRunStoreOptions {
  * Retains the store in memory while mounted; does NOT trigger component re-renders.
  * Use data hooks (`useRunEvents`, `useProjection`, `useRunSummary`, etc.) to subscribe.
  */
-export function useRunStore<TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  runId: string,
-  options?: UseRunStoreOptions,
-): LoomsClientStore<TEvent> {
+export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsClientStore {
   const context = useContext(LoomsContext)
   const endpoint = options?.endpoint ?? context.endpoint
   const reconnectDelayMs = options?.reconnectDelayMs
   const coalesce = options?.coalesce ?? context.coalesce
-  const store = peekStore<TEvent>(runId, endpoint, reconnectDelayMs, coalesce)
+  const store = peekStore(runId, endpoint, reconnectDelayMs, coalesce)
 
   useEffect(() => {
     retainStore(runId, endpoint, reconnectDelayMs, coalesce)
@@ -169,53 +171,12 @@ function useStoreSnapshot<T, TEvent extends AnyEventEnvelope>(
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
-function identitySelector<T>(value: T): T {
-  return value
-}
-
-/** Subscribe to incremental projection state, with optional slice selector. */
+/** Subscribe to incremental projection state. */
 export function useProjection<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
   store: LoomsClientStore<TEvent>,
   definition: ProjectionDefinition<S>,
-): S
-export function useProjection<S, Selected, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  store: LoomsClientStore<TEvent>,
-  definition: ProjectionDefinition<S>,
-  selector: (state: S) => Selected,
-  isEqual?: (a: Selected, b: Selected) => boolean,
-): Selected
-
-export function useProjection<S, Selected = S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  store: LoomsClientStore<TEvent>,
-  definition: ProjectionDefinition<S>,
-  selector?: (state: S) => Selected,
-  isEqual: (a: Selected, b: Selected) => boolean = Object.is,
-): Selected {
-  const lastSelected = useRef<Selected | undefined>(undefined)
-  const lastState = useRef<S | undefined>(undefined)
-
-  // SAFETY: When selector is undefined, Selected equals S so identitySelector satisfies the signature.
-  const select = selector ?? (identitySelector as (state: S) => Selected)
-
-  const getSnapshot = useCallback(() => {
-    const state = store.project(definition)
-
-    if (lastState.current === state && lastSelected.current !== undefined) {
-      return lastSelected.current
-    }
-
-    const nextSelected = select(state)
-    lastState.current = state
-
-    if (lastSelected.current !== undefined && isEqual(lastSelected.current, nextSelected)) {
-      return lastSelected.current
-    }
-
-    lastSelected.current = nextSelected
-
-    return nextSelected
-  }, [store, definition, select, isEqual])
-
+): S {
+  const getSnapshot = useCallback(() => store.project(definition), [store, definition])
   return useStoreSnapshot(store, getSnapshot)
 }
 

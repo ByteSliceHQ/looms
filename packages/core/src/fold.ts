@@ -1,6 +1,6 @@
-import { Predicate, Stream, type Effect } from 'effect'
+import { Option, Predicate, Schema, Stream, type Effect } from 'effect'
 
-import { isWithdrawnError, type RuntimeEffect } from './effects'
+import { isWithdrawnError, WaitConditionSchema, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
@@ -11,6 +11,8 @@ import type { JsonValue } from './types'
 export interface FoldRegistry {
   readonly threads: ReadonlyMap<string, ThreadDefinition>
 }
+
+const decodeWaitCondition = Schema.decodeUnknownOption(WaitConditionSchema)
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
   const payload = event.payload
@@ -228,11 +230,16 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         return state
       }
 
-      // SAFETY: wait.registered payload.on is a WaitCondition written by the runtime.
+      const waitCondition = decodeWaitCondition(on)
+
+      if (Option.isNone(waitCondition)) {
+        return state
+      }
+
       const record: WaitRecord = {
         waitId,
         threadId,
-        on: on as WaitRecord['on'],
+        on: waitCondition.value,
       }
 
       if (payload.tag !== undefined) {

@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { Predicate } from 'effect'
 
+import { emptyRunState } from '@looms/core'
+
 import { createLoomsClient } from './client'
+import { consumeSseStream } from './sse'
 
 function hrefOf(input: RequestInfo | URL): string {
   if (Predicate.isString(input)) {
@@ -27,9 +30,16 @@ describe('createLoomsClient', () => {
     const client = createLoomsClient({
       fetch: async (input) => {
         calls.push(hrefOf(input))
-        return new Response(JSON.stringify({ runId: 'run_1', threadId: 'thr_1', state: {} }), {
-          headers: { 'content-type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({
+            runId: 'run_1',
+            threadId: 'thr_1',
+            state: emptyRunState('run_1'),
+          }),
+          {
+            headers: { 'content-type': 'application/json' },
+          },
+        )
       },
     })
 
@@ -184,4 +194,24 @@ describe('createLoomsClient', () => {
 
     expect(types).toEqual(['agent.turn.text_delta', 'agent.message'])
   })
+})
+
+test('consumeSseStream cancels its reader when aborted', async () => {
+  let cancelled = false
+
+  const stream = new ReadableStream<Uint8Array>({
+    pull: () => new Promise(() => undefined),
+    cancel: () => {
+      cancelled = true
+    },
+  })
+
+  const controller = new AbortController()
+  const consuming = consumeSseStream(stream, () => undefined, controller.signal)
+
+  await Promise.resolve()
+  controller.abort()
+  await consuming.catch(() => undefined)
+
+  expect(cancelled).toBe(true)
 })

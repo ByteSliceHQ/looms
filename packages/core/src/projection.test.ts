@@ -12,14 +12,13 @@ function assignSeq<T extends { seq: number }>(events: T[]): T[] {
 }
 
 // Standard schema stub matching StandardSchemaV1
-function mockStandardSchema<T>(_sample: T): StandardSchemaV1<JsonValue, T> {
+function mockStandardSchema<T>(sample: T): StandardSchemaV1<JsonValue, T> {
   return {
     '~standard': {
       version: 1,
       vendor: 'test',
-      validate(raw: JsonValue) {
-        // SAFETY: stub cast for testing purposes.
-        return { value: raw as T }
+      validate(_raw: JsonValue) {
+        return { value: sample }
       },
     },
   }
@@ -62,8 +61,14 @@ describe('defineProjection', () => {
       reduce(state, event) {
         switch (event.type) {
           case 'order.created': {
-            // SAFETY: payload matches the order.created event structure.
-            const payload = event.payload as { orderId: string; items: string[]; total: number }
+            const payload = Schema.decodeUnknownSync(
+              Schema.Struct({
+                orderId: Schema.String,
+                items: Schema.Array(Schema.String),
+                total: Schema.Finite,
+              }),
+            )(event.payload)
+
             return {
               ...state,
               orderId: payload.orderId,
@@ -101,7 +106,7 @@ describe('defineProjection', () => {
 
   test('supports Effect Schema as shape', () => {
     const CounterEffectSchema = Schema.Struct({
-      count: Schema.Number,
+      count: Schema.Finite,
       label: Schema.String,
     })
 
@@ -141,8 +146,10 @@ describe('defineProjection', () => {
       initialState: { count: 0, tags: [] },
       reduce(state, event) {
         if (event.type === 'tag.added') {
-          // SAFETY: payload is string in test event.
-          return { ...state, tags: [...state.tags, event.payload as string] }
+          return {
+            ...state,
+            tags: [...state.tags, Schema.decodeUnknownSync(Schema.String)(event.payload)],
+          }
         }
 
         return state

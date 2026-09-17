@@ -6,6 +6,7 @@ import {
   foldRun,
   makeMemoryEventStore,
   ModuleCompositionError,
+  stringifyJson,
   type AnyRuntimeModule,
   type EventStore,
 } from '@looms/core'
@@ -47,26 +48,31 @@ export interface TestRuntime {
   run<A, E>(effect: Effect.Effect<A, E, EventStoreTag>): Promise<A>
 }
 
-export async function createTestRuntime(
-  modules: readonly AnyRuntimeModule[],
-): Promise<TestRuntime> {
-  const store = await Effect.runPromise(makeMemoryEventStore)
-  const runtime = createRuntime({ modules, store })
-  return {
-    runtime,
-    store,
-    run: (effect) => Effect.runPromise(Effect.provideService(effect, EventStoreTag, store)),
-  }
+export function createTestRuntime(modules: readonly AnyRuntimeModule[]): Promise<TestRuntime> {
+  return Effect.runPromise(
+    makeMemoryEventStore.pipe(
+      Effect.map((store) => {
+        const runtime = createRuntime({ modules, store })
+        return {
+          runtime,
+          store,
+          run: <A, E>(effect: Effect.Effect<A, E, EventStoreTag>) =>
+            Effect.runPromise(Effect.provideService(effect, EventStoreTag, store)),
+        }
+      }),
+    ),
+  )
 }
 
-export async function assertReplayDeterministic(test: TestRuntime, runId: string): Promise<void> {
-  const events = await test.run(test.runtime.getEvents(runId))
-  const first = foldRun(events, test.runtime.registry, { runId })
-  const second = foldRun(events, test.runtime.registry, { runId })
+export function assertReplayDeterministic(test: TestRuntime, runId: string): Promise<void> {
+  return test.run(test.runtime.getEvents(runId)).then((events) => {
+    const first = foldRun(events, test.runtime.registry, { runId })
+    const second = foldRun(events, test.runtime.registry, { runId })
 
-  if (JSON.stringify(first) !== JSON.stringify(second)) {
-    throw new Error(`Replay is not deterministic for run ${runId}`)
-  }
+    if (stringifyJson(first) !== stringifyJson(second)) {
+      throw new Error(`Replay is not deterministic for run ${runId}`)
+    }
+  })
 }
 
 export function moduleConformance(module: AnyRuntimeModule): string[] {

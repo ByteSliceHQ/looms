@@ -15,10 +15,10 @@ import { buildSnapshotEvent, foldFromSnapshots } from './snapshots'
 import { defineThread } from './thread'
 
 const counterCatalog = defineEventCatalog('counter', {
-  incremented: Schema.Struct({ by: Schema.Number }),
+  incremented: Schema.Struct({ by: Schema.Finite }),
 })
 
-const CounterState = Schema.Struct({ count: Schema.Number })
+const CounterState = Schema.Struct({ count: Schema.Finite })
 
 const counter = defineThread({
   kind: 'counter',
@@ -27,7 +27,7 @@ const counter = defineThread({
   step(state, event) {
     switch (event.type) {
       case 'counter.incremented': {
-        const by = Schema.decodeUnknownSync(Schema.Struct({ by: Schema.Number }))(event.payload).by
+        const by = Schema.decodeUnknownSync(Schema.Struct({ by: Schema.Finite }))(event.payload).by
         return { count: state.count + by }
       }
 
@@ -786,7 +786,7 @@ describe('threadTree projection', () => {
   })
 
   test('defineThread with shape infers state type', () => {
-    const threadShape = Schema.Struct({ count: Schema.Number })
+    const threadShape = Schema.Struct({ count: Schema.Finite })
 
     const thread = defineThread({
       kind: 'shaped_counter',
@@ -826,7 +826,7 @@ describe('threadTree projection', () => {
         Schema.Literal('yellow'),
         Schema.Literal('red'),
       ]),
-      ticks: Schema.Number,
+      ticks: Schema.Finite,
     })
 
     const trafficLight = defineThread({

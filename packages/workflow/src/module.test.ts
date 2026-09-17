@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { composeModules, createEvent, foldRun, type JsonValue } from '@looms/core'
+import {
+  composeModules,
+  createEvent,
+  foldRun,
+  isJsonObject,
+  isJsonString,
+  type JsonValue,
+} from '@looms/core'
 
 import { defineWorkflow } from './definitions'
 import { workflow } from './module'
@@ -47,8 +54,10 @@ describe('@looms/workflow module', () => {
       '~standard': {
         version: 1 as const,
         vendor: 'test',
-        // SAFETY: test stub cast.
-        validate: (raw: JsonValue) => ({ value: raw as { target: string } }),
+        validate: (raw: JsonValue) =>
+          isJsonObject(raw) && isJsonString(raw.target)
+            ? { value: { target: raw.target } }
+            : { issues: [{ message: 'target must be a string' }] },
       },
     }
 

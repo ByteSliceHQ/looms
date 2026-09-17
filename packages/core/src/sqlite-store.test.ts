@@ -29,7 +29,7 @@ describe('sqlite EventStore', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.seq).toBe(1)
     expect(events[0]?.runId).toBe(runId)
-    const runs = await Effect.runPromise(store.listRuns())
+    const runs = await Effect.runPromise(store.listRuns)
     expect(runs).toEqual([runId])
   })
 

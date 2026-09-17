@@ -1,6 +1,6 @@
-import { Context, Effect, Layer, Predicate } from 'effect'
+import { Context, Data, Effect, Layer, Predicate } from 'effect'
 
-import type { JsonValue } from '@looms/core'
+import { stringifyJson, type JsonValue } from '@looms/core'
 
 import type { AgentTurnContext, AgentTurnResult, ToolLike } from './definitions'
 import type { Message, ToolCall } from './types'
@@ -22,11 +22,25 @@ export interface LlmCompleteArgs {
 }
 
 export interface LlmService {
-  readonly complete: (args: LlmCompleteArgs) => Effect.Effect<AgentTurnResult, Error>
+  readonly complete: (args: LlmCompleteArgs) => Effect.Effect<AgentTurnResult, LlmError>
 }
 
 export interface LlmAdapter {
   readonly complete: (args: LlmCompleteArgs) => Promise<AgentTurnResult>
+}
+
+export class LlmError extends Data.TaggedError('LlmError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'LlmError'
+  }
 }
 
 export function llmFromAdapter(adapter: LlmAdapter): LlmService {
@@ -34,7 +48,7 @@ export function llmFromAdapter(adapter: LlmAdapter): LlmService {
     complete: (args) =>
       Effect.tryPromise({
         try: () => adapter.complete(args),
-        catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+        catch: (cause) => new LlmError(cause),
       }),
   }
 }
@@ -82,7 +96,7 @@ export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
 
       const content =
         lastUser?.content ??
-        (Predicate.isString(lastContent) ? lastContent : JSON.stringify(lastContent ?? null))
+        (Predicate.isString(lastContent) ? lastContent : stringifyJson(lastContent ?? null))
 
       return {
         message: { role: 'assistant', content },

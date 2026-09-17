@@ -1,4 +1,4 @@
-import type { Effect, Layer } from 'effect'
+import type { Context, Effect, Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
 import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
@@ -59,7 +59,7 @@ export interface RuntimeModule<
   TProjections extends { readonly [key: string]: ProjectionDefinition } = {
     readonly [key: string]: ProjectionDefinition
   },
-  TServices = any,
+  TServices = Context.Service.Any,
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
@@ -81,7 +81,7 @@ export function defineRuntimeModule<
   TEffects extends { readonly [key: string]: EffectDefinition },
   TThreads extends { readonly [key: string]: ThreadDefinition },
   TProjections extends { readonly [key: string]: ProjectionDefinition },
-  TServices = any,
+  TServices = Context.Service.Any,
 >(
   module: RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices>,
 ): RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices> {
@@ -91,7 +91,7 @@ export function defineRuntimeModule<
 export type AnyRuntimeModule = RuntimeModule<
   string,
   EventCatalog,
-  { readonly [name: string]: EffectDefinition },
+  { readonly [name: string]: EffectDefinition<any, any, any> },
   { readonly [kind: string]: ThreadDefinition },
   { readonly [name: string]: ProjectionDefinition }
 >

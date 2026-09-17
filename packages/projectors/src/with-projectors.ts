@@ -8,14 +8,16 @@ import {
   type EventEnvelope,
 } from '@looms/core'
 
-import type { Projector, ProjectorErrorHandler } from './projector'
+import { runProjectorEffect, type Projector, type ProjectorErrorHandler } from './projector'
 
 export interface WithProjectorsOptions {
   onError?: ProjectorErrorHandler
 }
 
 function defaultOnError(error: Error, projector: Projector): void {
-  console.warn(`[@looms/projectors] ${projector.name} failed to project: ${error.message}`)
+  Effect.runFork(
+    Effect.logWarning(`[@looms/projectors] ${projector.name} failed to project`, error),
+  )
 }
 
 /**
@@ -41,19 +43,18 @@ export function withProjectors(
             limit: result.sequences.length,
           })
 
-          yield* Effect.promise(async () => {
-            for (const projector of projectors) {
-              try {
-                await projector.project(written)
-              } catch (cause) {
-                onError(
-                  cause instanceof Error ? cause : new Error(String(cause)),
-                  projector,
-                  written,
-                )
-              }
-            }
-          })
+          yield* Effect.forEach(
+            projectors,
+            (projector) =>
+              runProjectorEffect(projector.name, () => projector.project(written)).pipe(
+                Effect.catch((error) =>
+                  Effect.sync(() => {
+                    onError(error, projector, written)
+                  }),
+                ),
+              ),
+            { discard: true },
+          )
         }
 
         return result
@@ -63,7 +64,7 @@ export function withProjectors(
     bounds: store.bounds ? (runId) => store.bounds!(runId) : undefined,
     trim: store.trim ? (runId, beforeSeq) => store.trim!(runId, beforeSeq) : undefined,
     subscribe: (runId, subscribeOptions) => store.subscribe(runId, subscribeOptions),
-    listRuns: () => store.listRuns(),
+    listRuns: store.listRuns,
   }
 
   const snapshots = snapshotStoreOf(store)
@@ -71,13 +72,17 @@ export function withProjectors(
 }
 
 /** Project events after the fact (e.g. from a runtime hook). */
-export async function projectEvents(
+export function projectEvents(
   projectors: ReadonlyArray<Projector>,
   events: readonly EventEnvelope[],
 ): Promise<void> {
-  for (const projector of projectors) {
-    await projector.project(events)
-  }
+  return Effect.runPromise(
+    Effect.forEach(
+      projectors,
+      (projector) => runProjectorEffect(projector.name, () => projector.project(events)),
+      { discard: true },
+    ),
+  )
 }
 
 /**

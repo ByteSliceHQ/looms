@@ -30,12 +30,9 @@ export function createKeyedSerializer() {
     return next
   }
 
-  const drain = async (key: string): Promise<void> => {
+  const drain = (key: string): Promise<void> => {
     const pending = tails.get(key)
-
-    if (pending) {
-      await pending
-    }
+    return pending ? pending.then(() => undefined) : Promise.resolve()
   }
 
   const clear = (key?: string): void => {

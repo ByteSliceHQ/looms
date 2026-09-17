@@ -69,7 +69,7 @@ describe('createLooms', () => {
     expect(looms.start(checkout, {})).rejects.toThrow(/Unknown definition workflow:checkout/)
 
     const store = await looms.store
-    expect(await Effect.runPromise(store.listRuns())).toEqual([])
+    expect(await Effect.runPromise(store.listRuns)).toEqual([])
     await looms.stop()
   })
 
@@ -167,7 +167,7 @@ describe('createLooms', () => {
   })
 
   test('invalid spawn input fails the child and unblocks the parent', async () => {
-    const RequiredN = Schema.Struct({ n: Schema.Number })
+    const RequiredN = Schema.Struct({ n: Schema.Finite })
 
     const child = defineWorkflow({
       name: 'needs_n',
@@ -200,7 +200,7 @@ describe('createLooms', () => {
   })
 
   test('invalid thread-tool args return a tool error without spawning', async () => {
-    const RequiredN = Schema.Struct({ n: Schema.Number })
+    const RequiredN = Schema.Struct({ n: Schema.Finite })
 
     const child = defineWorkflow({
       name: 'needs_n',
@@ -798,7 +798,7 @@ describe('createLooms', () => {
       threads: {
         worker: defineThread({
           kind: 'worker',
-          shape: Schema.Struct({ count: Schema.Number }),
+          shape: Schema.Struct({ count: Schema.Finite }),
           initialState: () => ({ count: 0 }),
           step: (state, event) => {
             if (event.type === 'work.done') {
@@ -852,7 +852,7 @@ describe('createLooms', () => {
       effects: {
         'pingpong.step': defineEffect({
           type: 'pingpong.step',
-          input: Schema.Struct({ count: Schema.Number }),
+          input: Schema.Struct({ count: Schema.Finite }),
           execute: (input) => {
             stepCalls += 1
             return [
@@ -868,7 +868,7 @@ describe('createLooms', () => {
       threads: {
         pingpong: defineThread({
           kind: 'pingpong',
-          shape: Schema.Struct({ count: Schema.Number }),
+          shape: Schema.Struct({ count: Schema.Finite }),
           initialState: () => ({ count: 0 }),
           step: (state, event) => {
             if (event.type === 'pingpong.stepped' && Predicate.isObject(event.payload)) {
@@ -1232,7 +1232,7 @@ describe('createLooms', () => {
 
     const started = looms.start(slow, {})
     await new Promise((resolve) => setTimeout(resolve, 30))
-    const runId = (await Effect.runPromise(store.listRuns()))[0]
+    const runId = (await Effect.runPromise(store.listRuns))[0]
     expect(runId).toBeDefined()
 
     const overlapping = await looms.wake(runId!)
@@ -1418,12 +1418,12 @@ describe('createLooms', () => {
     let inner = first
 
     const swappable: EventStore = {
-      append: (runId, events, options) => inner.append(runId, events, options),
-      read: (runId, options) => inner.read(runId, options),
-      tail: (runId) => inner.tail(runId),
-      bounds: (runId) => inner.bounds!(runId),
-      subscribe: (runId, options) => inner.subscribe(runId, options),
-      listRuns: () => inner.listRuns(),
+      append: (storeRunId, events, options) => inner.append(storeRunId, events, options),
+      read: (storeRunId, options) => inner.read(storeRunId, options),
+      tail: (storeRunId) => inner.tail(storeRunId),
+      bounds: (storeRunId) => inner.bounds!(storeRunId),
+      subscribe: (storeRunId, options) => inner.subscribe(storeRunId, options),
+      listRuns: inner.listRuns,
     }
 
     const echo = defineAgent({ name: 'recreated', instructions: 'echo' })
@@ -1448,12 +1448,8 @@ describe('createLooms', () => {
     const cancelled: string[] = []
 
     const fakeScheduler: WakeScheduler = {
-      schedule: (runId, at) => {
-        scheduled.push({ runId, at })
-      },
-      cancel: (runId) => {
-        cancelled.push(runId)
-      },
+      schedule: (runId, at) => Effect.sync(() => scheduled.push({ runId, at })).pipe(Effect.asVoid),
+      cancel: (runId) => Effect.sync(() => cancelled.push(runId)).pipe(Effect.asVoid),
     }
 
     const targetTimerAt = Date.now() + 10_000
@@ -1495,7 +1491,7 @@ describe('createLooms', () => {
   test('validates incoming signal events against catalog schemas and rejects invalid payloads', async () => {
     const testCatalog = defineEventCatalog('testmod', {
       ping: Schema.Struct({
-        code: Schema.Number,
+        code: Schema.Finite,
       }),
     })
 
@@ -1556,7 +1552,7 @@ describe('createLooms', () => {
   test('effect handler producing invalid event output becomes runtime.effect.failed', async () => {
     const schemaCatalog = defineEventCatalog('schematest', {
       validated: Schema.Struct({
-        score: Schema.Number,
+        score: Schema.Finite,
       }),
     })
 

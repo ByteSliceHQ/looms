@@ -7,7 +7,7 @@ import {
   type RunSnapshot,
   type SnapshotStore,
 } from './snapshot-store'
-import type { RunState } from './state'
+import { RunStateSchema } from './state'
 import {
   EventStoreConflictError,
   EventStoreError,
@@ -60,8 +60,8 @@ export interface SqliteExec {
 
 const StreamRowSchema = Schema.Struct({
   run_id: Schema.String,
-  head: Schema.Number,
-  tail: Schema.Number,
+  head: Schema.Finite,
+  tail: Schema.Finite,
   fence_token: Schema.NullOr(Schema.String),
 })
 
@@ -71,9 +71,9 @@ const EventRowSchema = Schema.Struct({
 
 const SnapshotRowSchema = Schema.Struct({
   run_id: Schema.String,
-  cursor: Schema.Number,
+  cursor: Schema.Finite,
   state_hash: Schema.String,
-  taken_at: Schema.Number,
+  taken_at: Schema.Finite,
   state: Schema.String,
 })
 
@@ -82,13 +82,13 @@ const RunIdRowSchema = Schema.Struct({
 })
 
 const CursorRowSchema = Schema.Struct({
-  cursor: Schema.Number,
+  cursor: Schema.Finite,
 })
 
 type StreamRow = Schema.Schema.Type<typeof StreamRowSchema>
 
 const decodeEventBody = Schema.decodeUnknownSync(Schema.fromJsonString(EventEnvelopeSchema))
-const decodeRunState = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
+const decodeRunState = Schema.decodeUnknownSync(Schema.fromJsonString(RunStateSchema))
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 const decodeStreamRow = Schema.decodeUnknownSync(StreamRowSchema)
 const decodeEventRow = Schema.decodeUnknownSync(EventRowSchema)
@@ -157,8 +157,7 @@ function parseEvent(body: string): EventEnvelope {
 }
 
 function toSnapshot(row: Schema.Schema.Type<typeof SnapshotRowSchema>): RunSnapshot {
-  // SAFETY: snapshot state is a JSON-encoded RunState written by this store.
-  const state = decodeRunState(row.state) as RunState
+  const state = decodeRunState(row.state)
 
   return {
     runId: row.run_id,
@@ -453,14 +452,13 @@ function createSqliteEventStore(exec: SqliteExec): EventStore {
         }),
       ),
 
-    listRuns: () =>
-      Effect.try({
-        try: () =>
-          exec
-            .rows('SELECT run_id FROM looms_streams ORDER BY run_id ASC')
-            .map((row) => decodeRunIdRow(row).run_id),
-        catch: (cause) => new EventStoreError('listRuns failed', cause),
-      }),
+    listRuns: Effect.try({
+      try: () =>
+        exec
+          .rows('SELECT run_id FROM looms_streams ORDER BY run_id ASC')
+          .map((row) => decodeRunIdRow(row).run_id),
+      catch: (cause) => new EventStoreError('listRuns failed', cause),
+    }),
   }
 
   return service

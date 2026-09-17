@@ -1,58 +1,50 @@
-import { Effect } from 'effect'
+import { Clock, Effect, Fiber } from 'effect'
 
 export interface WakeScheduler {
-  schedule(runId: string, at: number): void | Promise<void>
-  cancel(runId: string): void | Promise<void>
+  schedule(runId: string, at: number): Effect.Effect<void>
+  cancel(runId: string): Effect.Effect<void>
   dispose?(): void
 }
 
 export function createTimeoutScheduler(
-  wake: (runId: string) => Promise<void> | void,
+  wake: (runId: string) => Effect.Effect<void>,
 ): WakeScheduler {
-  const scheduledTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const scheduled = new Map<string, Fiber.Fiber<void>>()
+
+  const cancel = (runId: string): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const existing = scheduled.get(runId)
+
+      if (existing) {
+        scheduled.delete(runId)
+        yield* Fiber.interrupt(existing)
+      }
+    })
 
   return {
-    schedule(runId: string, timerAt: number) {
-      const existing = scheduledTimers.get(runId)
+    schedule: (runId, timerAt) =>
+      Effect.gen(function* () {
+        yield* cancel(runId)
 
-      if (existing) {
-        clearTimeout(existing)
-        scheduledTimers.delete(runId)
-      }
+        const now = yield* Clock.currentTimeMillis
 
-      const delay = Math.max(0, timerAt - Date.now() + 5)
+        const fiber = yield* Effect.sleep(Math.max(0, timerAt - now + 5)).pipe(
+          Effect.andThen(wake(runId)),
+          Effect.ensuring(Effect.sync(() => scheduled.delete(runId))),
+          Effect.forkDetach,
+        )
 
-      const handle = setTimeout(() => {
-        scheduledTimers.delete(runId)
-        void wake(runId)
-      }, delay)
+        scheduled.set(runId, fiber)
+      }),
 
-      scheduledTimers.set(runId, handle)
-    },
-
-    cancel(runId: string) {
-      const existing = scheduledTimers.get(runId)
-
-      if (existing) {
-        clearTimeout(existing)
-        scheduledTimers.delete(runId)
-      }
-    },
+    cancel,
 
     dispose() {
-      for (const handle of scheduledTimers.values()) {
-        clearTimeout(handle)
+      for (const fiber of scheduled.values()) {
+        Effect.runFork(Fiber.interrupt(fiber))
       }
 
-      scheduledTimers.clear()
+      scheduled.clear()
     },
   }
-}
-
-export function toEffectVoid(result: void | Promise<void>): Effect.Effect<void> {
-  if (result instanceof Promise) {
-    return Effect.promise(() => result)
-  }
-
-  return Effect.void
 }

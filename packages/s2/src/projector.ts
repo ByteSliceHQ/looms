@@ -17,9 +17,9 @@ export function s2Projector(config: S2Config): Projector {
 
   return {
     name: 's2',
-    project: async (events) => {
+    project: (events) => {
       if (events.length === 0) {
-        return
+        return Promise.resolve()
       }
 
       const byRun = new Map<string, EventEnvelope[]>()
@@ -30,9 +30,11 @@ export function s2Projector(config: S2Config): Projector {
         byRun.set(event.runId, batch)
       }
 
-      for (const [runId, batch] of byRun) {
-        await Effect.runPromise(store.append(runId, batch))
-      }
+      return Effect.runPromise(
+        Effect.forEach(byRun, ([runId, batch]) => store.append(runId, batch), {
+          discard: true,
+        }),
+      )
     },
   }
 }

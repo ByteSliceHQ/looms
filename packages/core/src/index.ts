@@ -2,10 +2,11 @@ export type * from './types'
 export {
   asJson,
   cleanUndefined,
-  fromJsonStruct,
   isJsonNumber,
   isJsonObject,
   isJsonString,
+  stringifyJson,
+  stringifyJsonPretty,
 } from './types'
 export * from './ids'
 export * from './schema'

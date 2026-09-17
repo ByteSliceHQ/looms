@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 import type { WakeScheduler } from '@looms/runtime'
 
 export interface AlarmStorage {
@@ -10,12 +12,7 @@ export interface AlarmStorage {
  */
 export function alarmScheduler(storage: AlarmStorage): WakeScheduler {
   return {
-    schedule: async (_runId: string, at: number): Promise<void> => {
-      await storage.setAlarm(at)
-    },
-
-    cancel: async (_runId: string): Promise<void> => {
-      await storage.deleteAlarm()
-    },
+    schedule: (_runId, at) => Effect.promise(() => storage.setAlarm(at)),
+    cancel: () => Effect.promise(() => storage.deleteAlarm()),
   }
 }

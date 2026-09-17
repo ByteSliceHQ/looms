@@ -26,13 +26,8 @@ export class LoomsRun extends LoomsDurableObject<Env> {
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    const res = await routeToDurableObject(env.LOOMS_RUN, req)
-
-    if (res === null) {
-      return new Response('Not Found', { status: 404 })
-    }
-
-    return res
-  },
+  fetch: (req: Request, env: Env): Promise<Response> =>
+    routeToDurableObject(env.LOOMS_RUN, req).then(
+      (response) => response ?? new Response('Not Found', { status: 404 }),
+    ),
 }

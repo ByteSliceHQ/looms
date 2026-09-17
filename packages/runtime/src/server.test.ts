@@ -7,6 +7,20 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
 
+const decodeRunResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    runId: Schema.String,
+    state: Schema.Struct({ status: Schema.String }),
+  }),
+)
+
+const decodeValidationError = Schema.decodeUnknownSync(
+  Schema.Struct({
+    error: Schema.String,
+    issues: Schema.Array(Schema.Unknown),
+  }),
+)
+
 describe('server HTTP idempotency', () => {
   test('POST /runs accepts idempotencyKey in body and deduplicates', async () => {
     let runCount = 0
@@ -44,8 +58,7 @@ describe('server HTTP idempotency', () => {
 
     const res1 = await looms.fetch(req1)
     expect(res1?.status).toBe(200)
-    // SAFETY: Response is JSON matching run execution result
-    const json1 = (await res1?.json()) as { runId: string; state: { status: string } }
+    const json1 = decodeRunResponse(await res1?.json())
     expect(json1.runId).toBe(runId)
     expect(json1.state.status).toBe('completed')
     expect(runCount).toBe(1)
@@ -64,8 +77,7 @@ describe('server HTTP idempotency', () => {
 
     const res2 = await looms.fetch(req2)
     expect(res2?.status).toBe(200)
-    // SAFETY: Response is JSON matching run execution result
-    const json2 = (await res2?.json()) as { runId: string; state: { status: string } }
+    const json2 = decodeRunResponse(await res2?.json())
     expect(json2.runId).toBe(runId)
     expect(json2.state.status).toBe('completed')
     expect(runCount).toBe(1)
@@ -115,8 +127,7 @@ describe('server HTTP idempotency', () => {
 
     const res1 = await looms.fetch(req1)
     expect(res1?.status).toBe(200)
-    // SAFETY: Response is JSON matching run execution result
-    const json1 = (await res1?.json()) as { runId: string; state: { status: string } }
+    const json1 = decodeRunResponse(await res1?.json())
     expect(json1.runId).toBe(runId)
     expect(json1.state.status).toBe('completed')
     expect(runCount).toBe(1)
@@ -137,8 +148,7 @@ describe('server HTTP idempotency', () => {
 
     const res2 = await looms.fetch(req2)
     expect(res2?.status).toBe(200)
-    // SAFETY: Response is JSON matching run execution result
-    const json2 = (await res2?.json()) as { runId: string }
+    const json2 = decodeRunResponse(await res2?.json())
     expect(json2.runId).toBe(runId)
     expect(runCount).toBe(1)
 
@@ -209,7 +219,7 @@ describe('server HTTP idempotency', () => {
   test('POST /runs/:id/events returns 400 when event payload fails catalog schema', async () => {
     const catalog = defineEventCatalog('billing', {
       invoice: Schema.Struct({
-        amount: Schema.Number,
+        amount: Schema.Finite,
       }),
     })
 
@@ -251,10 +261,25 @@ describe('server HTTP idempotency', () => {
 
     const res = await looms.fetch(req)
     expect(res?.status).toBe(400)
-    // SAFETY: HTTP 400 validation response body is parsed into an error payload.
-    const json = (await res?.json()) as { error: string; issues: unknown[] }
+    const json = decodeValidationError(await res?.json())
     expect(json.error).toContain('Invalid payload for event "billing.invoice"')
     expect(json.issues.length).toBeGreaterThan(0)
+    await looms.stop()
+  })
+
+  test('POST /runs returns 400 for malformed JSON', async () => {
+    const looms = createLooms({ modules: [] })
+
+    const response = await looms.fetch(
+      new Request('http://looms.test/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{',
+      }),
+    )
+
+    expect(response?.status).toBe(400)
+    expect(await response?.json()).toEqual({ error: 'Invalid JSON request body' })
     await looms.stop()
   })
 })

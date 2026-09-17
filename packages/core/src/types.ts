@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 
 /** JSON-compatible values used in event payloads and effect I/O. */
 export type JsonPrimitive = string | number | boolean | null
@@ -11,44 +11,56 @@ export interface JsonPayload {
   readonly [key: string]: JsonValue | JsonPayload | readonly (JsonValue | JsonPayload)[] | undefined
 }
 
-/**
- * Recursively remove keys with `undefined` values from an object,
- * matching wire JSON serialization behavior where undefined properties drop.
- */
-export function cleanUndefined<T>(value: T): T {
-  if (Array.isArray(value)) {
-    // SAFETY: Mapping recursively over an array preserves array structure.
-    return value.map(cleanUndefined) as T
-  }
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
-  if (value === null || !Predicate.isObject(value)) {
+const encodeUnknownJsonPretty = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Unknown, { space: 2 }),
+)
+
+export const stringifyJson = encodeUnknownJson
+export const stringifyJsonPretty = encodeUnknownJsonPretty
+
+// This recursive serializer is the parser for unknown JSON-like boundary values.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
+function cleanJsonValue(value: unknown): JsonValue | undefined {
+  if (value === null || Predicate.isString(value) || Predicate.isBoolean(value)) {
     return value
   }
 
-  const result: { [key: string]: JsonValue } = {}
+  if (Predicate.isNumber(value)) {
+    return Number.isFinite(value) ? value : null
+  }
 
-  for (const [k, v] of Object.entries(value)) {
-    if (v !== undefined) {
-      // SAFETY: cleanUndefined produces JSON-compatible values from JSON-like inputs.
-      result[k] = cleanUndefined(v) as JsonValue
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanJsonValue(item) ?? null)
+  }
+
+  if (!Predicate.isReadonlyObject(value)) {
+    return undefined
+  }
+
+  const result: Record<string, JsonValue> = {}
+
+  for (const [key, nested] of Object.entries(value)) {
+    const cleaned = cleanJsonValue(nested)
+
+    if (cleaned !== undefined) {
+      result[key] = cleaned
     }
   }
 
-  // SAFETY: Rebuilding an object without undefined keys preserves its record shape.
-  return result as T
+  return result
+}
+
+/** Convert a value to its JSON wire representation, dropping undefined object properties. */
+// Public JSON normalization intentionally accepts unknown input and returns the parsed domain type.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
+export function cleanUndefined(value: unknown): JsonValue {
+  return cleanJsonValue(value) ?? null
 }
 
 /** Mark a JSON-serializable struct as a log payload, stripping undefined fields. */
-export function asJson<T>(payload: T): JsonValue {
-  // SAFETY: cleanUndefined ensures undefined keys drop as they would across the wire.
-  return cleanUndefined(payload as JsonValue)
-}
-
-/** Recover a typed struct previously written as JSON. */
-export function fromJsonStruct<T>(value: JsonValue): T {
-  // SAFETY: value is a JSON struct previously produced as T.
-  return value as T
-}
+export const asJson = cleanUndefined
 
 export function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
   return Predicate.isObject(value) && !Array.isArray(value)

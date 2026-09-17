@@ -15,8 +15,8 @@ export class LoomsRun extends LoomsDurableObject<Env> {
 // Private service: put authentication and per-run authorization in the calling app.
 // The accompanying config disables public workers.dev and preview URLs.
 export default {
-  async fetch(request, env): Promise<Response> {
-    const response = await routeToDurableObject(env.LOOMS_RUN, request)
-    return response ?? new Response('Not Found', { status: 404 })
-  },
+  fetch: (request, env): Promise<Response> =>
+    routeToDurableObject(env.LOOMS_RUN, request).then(
+      (response) => response ?? new Response('Not Found', { status: 404 }),
+    ),
 } satisfies ExportedHandler<Env>

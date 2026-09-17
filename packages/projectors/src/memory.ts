@@ -6,7 +6,7 @@ import {
   type IndexProjector,
   type ReviewIndexRow,
 } from './index-model'
-import type { Projector } from './projector'
+import { runProjectorSync, type Projector } from './projector'
 
 function applyOp(
   actors: Map<string, ActorIndexRow>,
@@ -77,20 +77,23 @@ export function memory(): IndexProjector {
   const reviews = new Map<string, ReviewIndexRow>()
 
   const backend: IndexBackend = {
-    applyOps: async (ops) => {
-      for (const op of ops) {
-        applyOp(actors, reviews, op)
-      }
-    },
-    getActor: async (actorId) => actors.get(actorId) ?? null,
-    listReviews: async (actorId) => {
-      const rows = [...reviews.values()]
-      return actorId ? rows.filter((row) => row.actorId === actorId) : rows
-    },
-    dispose: async () => {
-      actors.clear()
-      reviews.clear()
-    },
+    applyOps: (ops) =>
+      runProjectorSync('memory', () => {
+        for (const op of ops) {
+          applyOp(actors, reviews, op)
+        }
+      }),
+    getActor: (actorId) => runProjectorSync('memory', () => actors.get(actorId) ?? null),
+    listReviews: (actorId) =>
+      runProjectorSync('memory', () => {
+        const rows = [...reviews.values()]
+        return actorId ? rows.filter((row) => row.actorId === actorId) : rows
+      }),
+    dispose: () =>
+      runProjectorSync('memory', () => {
+        actors.clear()
+        reviews.clear()
+      }),
   }
 
   return createIndexProjector('memory', backend)
@@ -100,6 +103,6 @@ export function memory(): IndexProjector {
 export function noop(): Projector {
   return {
     name: 'noop',
-    project: async () => {},
+    project: () => Promise.resolve(),
   }
 }

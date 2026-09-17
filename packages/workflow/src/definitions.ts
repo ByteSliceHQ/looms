@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Schema } from 'effect'
 
-import type { InferDefinedSchema, JsonValue, RuntimeEffect } from '@looms/core'
+import type { JsonValue, RuntimeEffect } from '@looms/core'
 
 export const NodeStatusSchema = Schema.Union([
   Schema.Literal('pending'),
@@ -49,7 +49,7 @@ export interface WorkflowDefinition<
   readonly kind: 'workflow'
   readonly name: TName
   readonly description?: string
-  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
   readonly nodes: WorkflowNodeDefinition<TInput>[]
   readonly concurrency?: number
   output?(ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }): TOutput
@@ -59,29 +59,12 @@ export type AnyWorkflowDefinition = WorkflowDefinition
 
 export function defineWorkflow<
   TName extends string,
-  TSchema = undefined,
-  TInput = InferDefinedSchema<TSchema>,
+  TInput = JsonValue,
   TOutput extends JsonValue = JsonValue,
->(def: {
-  name: TName
-  description?: string
-  input?: TSchema
-  nodes: Array<{
-    id: string
-    deps?: string[]
-    run: (
-      ctx: WorkflowNodeContext<TInput>,
-    ) => Promise<JsonValue | NodeResult> | JsonValue | NodeResult
-  }>
-  concurrency?: number
-  output?: (ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }) => TOutput
-}): WorkflowDefinition<TName, TInput, TOutput> {
-  // SAFETY: factory fields match WorkflowDefinition.
-  return { kind: 'workflow', ...def, input: def.input } as WorkflowDefinition<
-    TName,
-    TInput,
-    TOutput
-  >
+>(
+  def: Omit<WorkflowDefinition<TName, TInput, TOutput>, 'kind'>,
+): WorkflowDefinition<TName, TInput, TOutput> {
+  return { kind: 'workflow', ...def }
 }
 
 export function readyNodes(

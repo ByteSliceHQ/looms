@@ -1,4 +1,4 @@
-import { Effect, Predicate } from 'effect'
+import { Data, Effect, Predicate } from 'effect'
 
 import {
   EventStoreTag,
@@ -36,7 +36,7 @@ export interface CreateLoomsOptions {
   readonly runCacheSize?: number
   /** Scan existing runs for pending timers on boot. Default true. */
   readonly rescanTimers?: boolean
-  /** Pluggable wake scheduler for timer waits. Defaults to an in-process setTimeout scheduler. */
+  /** Pluggable wake scheduler for timer waits. Defaults to an in-process Effect fiber scheduler. */
   readonly scheduler?: WakeScheduler
 }
 
@@ -89,6 +89,20 @@ interface Initialized {
   readonly fetchHandler: (req: Request) => Promise<Response | null>
 }
 
+class LoomsInitializationError extends Data.TaggedError('LoomsInitializationError')<{
+  readonly cause: unknown
+  readonly message: string
+}> {
+  constructor(cause: unknown) {
+    super({
+      cause,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+
+    this.name = 'LoomsInitializationError'
+  }
+}
+
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
   let initPromise: Promise<Initialized> | undefined
@@ -96,56 +110,64 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
 
   const getInit = (): Promise<Initialized> => {
     if (!initPromise) {
-      initPromise = (async () => {
-        let store: EventStore
+      initPromise = Effect.runPromise(
+        Effect.gen(function* () {
+          const configuredStore = options.store
 
-        if (!options.store) {
-          store = await Effect.runPromise(makeMemoryEventStore)
-        } else if (Predicate.isFunction(options.store)) {
-          store = await options.store()
-        } else {
-          store = await options.store
-        }
+          const store = !configuredStore
+            ? yield* makeMemoryEventStore
+            : Predicate.isFunction(configuredStore)
+              ? yield* Effect.tryPromise({
+                  try: configuredStore,
+                  catch: (cause) => new LoomsInitializationError(cause),
+                })
+              : configuredStore instanceof Promise
+                ? yield* Effect.tryPromise({
+                    try: () => configuredStore,
+                    catch: (cause) => new LoomsInitializationError(cause),
+                  })
+                : configuredStore
 
-        const runtime = createRuntime({
-          modules,
-          store,
-          maxWakeIterations: options.maxWakeIterations,
-          snapshotEvery: options.snapshotEvery,
-          snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
-          trimAfterSnapshot: options.trimAfterSnapshot,
-          runCacheSize: options.runCacheSize,
-          scheduler: options.scheduler,
-        })
-
-        if (options.rescanTimers !== false) {
-          await Effect.runPromise(
-            Effect.provideService(runtime.rescanTimers(), EventStoreTag, store),
-          ).catch((err) => {
-            console.error('[rescan timers error]', err)
+          const runtime = createRuntime({
+            modules,
+            store,
+            maxWakeIterations: options.maxWakeIterations,
+            snapshotEvery: options.snapshotEvery,
+            snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
+            trimAfterSnapshot: options.trimAfterSnapshot,
+            runCacheSize: options.runCacheSize,
+            scheduler: options.scheduler,
           })
-        }
 
-        const fetchHandler = createFetchHandler({ runtime, store })
-        return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
-      })()
+          if (options.rescanTimers !== false) {
+            yield* runtime.rescanTimers.pipe(
+              Effect.provideService(EventStoreTag, store),
+              Effect.tapError(Effect.logError),
+              Effect.ignore,
+            )
+          }
+
+          const fetchHandler = createFetchHandler({ runtime, store })
+          return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
+        }),
+      )
     }
 
     return initPromise
   }
 
-  const runEffect = async <A>(
+  const runEffect = <A>(
     fn: (init: Initialized) => Effect.Effect<A, Error, EventStoreTag>,
-  ): Promise<A> => {
-    const init = await getInit()
-    let provided = Effect.provideService(fn(init), EventStoreTag, init.store)
+  ): Promise<A> =>
+    getInit().then((init) => {
+      let provided = Effect.provideService(fn(init), EventStoreTag, init.store)
 
-    if (init.snapshotStore) {
-      provided = Effect.provideService(provided, SnapshotStoreTag, init.snapshotStore)
-    }
+      if (init.snapshotStore) {
+        provided = Effect.provideService(provided, SnapshotStoreTag, init.snapshotStore)
+      }
 
-    return Effect.runPromise(provided)
-  }
+      return Effect.runPromise(provided)
+    })
 
   const looms: Looms = {
     get runtime() {
@@ -154,10 +176,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     get store() {
       return getInit().then((i) => i.store)
     },
-    ready: async () => {
-      const init = await getInit()
-      return { store: init.store, runtime: init.runtime }
-    },
+    ready: () => getInit().then(({ store, runtime }) => ({ store, runtime })),
     startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
     start: (definition, input, startOpts) =>
       runEffect((i) =>
@@ -176,17 +195,16 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     signal: (runId, events, signalOpts) =>
       runEffect((i) => i.runtime.signal(runId, events, signalOpts)),
     wake: (runId) => runEffect((i) => i.runtime.wake(runId)),
-    rescanTimers: () => runEffect((i) => i.runtime.rescanTimers()),
+    rescanTimers: () => runEffect((i) => i.runtime.rescanTimers),
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
-    fetch: async (req) => {
+    fetch: (req) => {
       if (!isLoomsApiPath(new URL(req.url).pathname)) {
-        return null
+        return Promise.resolve(null)
       }
 
-      const { fetchHandler } = await getInit()
-      return fetchHandler(req)
+      return getInit().then(({ fetchHandler }) => fetchHandler(req))
     },
     serve: (serveOpts) => {
       if (runningServer) {
@@ -196,16 +214,15 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
       runningServer = serveHttp((req) => looms.fetch(req), serveOpts)
       return runningServer
     },
-    stop: async () => {
+    stop: () => {
       if (runningServer) {
         runningServer.stop()
         runningServer = undefined
       }
 
-      if (initPromise) {
-        const init = await initPromise
-        init.runtime.dispose()
-      }
+      return initPromise
+        ? initPromise.then(({ runtime }) => Effect.runPromise(runtime.dispose))
+        : Promise.resolve()
     },
   }
 

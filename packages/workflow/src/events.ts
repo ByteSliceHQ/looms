@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { defineEventCatalog, type RuntimeEffect } from '@looms/core'
+import { defineEventCatalog, RuntimeEffectSchema } from '@looms/core'
 
 export const WorkflowNodeStartedPayloadSchema = Schema.Struct({
   nodeId: Schema.String,
@@ -28,13 +28,12 @@ export const WorkflowSpawnRequestedPayloadSchema = Schema.Struct({
 export const WorkflowSleepRequestedPayloadSchema = Schema.Struct({
   nodeId: Schema.String,
   waitId: Schema.String,
-  wakeAt: Schema.Number,
+  wakeAt: Schema.Finite,
 })
 
 export const WorkflowEffectsRequestedPayloadSchema = Schema.Struct({
   nodeId: Schema.String,
-  // SAFETY: RuntimeEffect represents serializable requested effect instructions.
-  effects: Schema.Array(Schema.Unknown as Schema.Schema<RuntimeEffect>),
+  effects: Schema.Array(RuntimeEffectSchema),
 })
 
 export const workflowCatalog = defineEventCatalog('workflow', {

@@ -4,19 +4,19 @@ import { Schema } from 'effect'
 
 import { createEvent, JsonValueSchema, type EventEnvelope } from './envelope'
 import { foldRun, type FoldRegistry } from './fold'
-import { emptyRunState, type RunState } from './state'
-import { asJson, fromJsonStruct, type JsonValue } from './types'
+import { emptyRunState, RunStateSchema, type RunState } from './state'
+import { asJson, stringifyJson, type JsonValue } from './types'
 
 export const DEFAULT_SNAPSHOT_EVERY = 200
 
 export const SnapshotTakenPayloadSchema = Schema.Struct({
-  seq: Schema.Number,
+  seq: Schema.Finite,
   stateHash: Schema.String,
   state: Schema.optional(JsonValueSchema),
 })
 
 export function hashRunState(state: RunState): string {
-  const json = JSON.stringify(state)
+  const json = stringifyJson(state)
   return bytesToHex(sha256(new TextEncoder().encode(json))).slice(0, 16)
 }
 
@@ -48,8 +48,7 @@ export function shouldTakeSnapshot(
 export const DEFAULT_MAX_INLINE_SNAPSHOT_BYTES = 256 * 1024
 
 export function runStateToJson(state: RunState): JsonValue {
-  const raw: unknown = JSON.parse(JSON.stringify(state))
-  return Schema.decodeUnknownSync(JsonValueSchema)(raw)
+  return asJson(state)
 }
 
 export function buildSnapshotEvent(
@@ -68,10 +67,8 @@ export function buildSnapshotEvent(
 
 /**
  * Pointer-only snapshot marker. Inline `state` only when provided and
- * `JSON.stringify(state).length <= maxInlineBytes` (default 256 KiB).
+ * serialized state is at most `maxInlineBytes` (default 256 KiB).
  */
-let warnedInlineSkip = false
-
 export function buildSnapshotMarker(
   runId: string,
   cursor: number,
@@ -83,16 +80,10 @@ export function buildSnapshotMarker(
 
   if (options?.state !== undefined) {
     const encoded = runStateToJson(options.state)
-    const bytes = JSON.stringify(encoded).length
+    const bytes = stringifyJson(encoded).length
 
     if (bytes <= maxInlineBytes) {
       payload = asJson({ seq: cursor, stateHash, state: encoded })
-    } else if (!warnedInlineSkip) {
-      warnedInlineSkip = true
-
-      console.warn(
-        `[looms] snapshot state is ${bytes} bytes (limit ${maxInlineBytes}); writing a pointer-only marker`,
-      )
     }
   }
 
@@ -130,12 +121,12 @@ export function foldFromSnapshots(
     const trailing = events.filter((e) => e.seq > decoded.seq)
 
     if (trailing.length === 0) {
-      return fromJsonStruct<RunState>(decoded.state)
+      return Schema.decodeUnknownSync(RunStateSchema)(decoded.state)
     }
 
     return foldRun(trailing, registry, {
       runId,
-      initial: fromJsonStruct<RunState>(decoded.state),
+      initial: Schema.decodeUnknownSync(RunStateSchema)(decoded.state),
     })
   }
 

@@ -13,7 +13,7 @@ import {
 import { toolJsonSchema, toolSpecs } from './tool-schema'
 
 const CheckoutInput = Schema.Struct({
-  amount: Schema.Number,
+  amount: Schema.Finite,
   currency: Schema.String,
 })
 

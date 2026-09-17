@@ -1,4 +1,5 @@
-import { Effect, Schedule, type Layer } from 'effect'
+import type { Context, ManagedRuntime } from 'effect'
+import { Effect, Schedule } from 'effect'
 
 import {
   asJson,
@@ -15,7 +16,7 @@ import { threadStartedEvents } from './runtime-helpers'
 
 export function dispatchEffect(
   registry: ComposedRegistry,
-  services: Layer.Layer<any>,
+  services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>,
   definitions: ReadonlyMap<string, RegisteredDefinition>,
   effect: RuntimeEffect,
   ctx: EffectContext,
@@ -115,9 +116,10 @@ export function dispatchEffect(
 
     const input = 'input' in eff ? eff.input : {}
 
-    let execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = handler
-      .execute(input, effCtx)
-      .pipe(Effect.provide(services))
+    let execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = Effect.gen(function* () {
+      const serviceContext = yield* services.contextEffect
+      return yield* handler.execute(input, effCtx).pipe(Effect.provide(serviceContext))
+    })
 
     if (handler.retry && handler.retry.maxAttempts > 1) {
       const retryPolicy = handler.retry

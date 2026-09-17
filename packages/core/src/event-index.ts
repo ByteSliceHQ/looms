@@ -1,7 +1,5 @@
 import type { EventEnvelope } from './envelope'
 
-const EMPTY_EVENTS: readonly EventEnvelope[] = Object.freeze([])
-
 /** Thread bucket key used by run-tree counts (`threadId` or `'run'` for run-scoped). */
 export function eventThreadKey(event: { threadId?: string | null }): string {
   return event.threadId ?? 'run'
@@ -77,8 +75,7 @@ export class EventIndex<TEvent extends EventEnvelope = EventEnvelope> {
 
   getByThread(threadId: string): readonly TEvent[] {
     this.publish()
-    // SAFETY: EMPTY_EVENTS is an empty frozen array compatible with any TEvent[].
-    return this.byThreadSnapshots.get(threadId) ?? (EMPTY_EVENTS as readonly TEvent[])
+    return this.byThreadSnapshots.get(threadId) ?? []
   }
 
   getBySeq(seq: number): TEvent | undefined {

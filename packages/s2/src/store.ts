@@ -1,5 +1,5 @@
 import { AppendInput, AppendRecord, S2, S2Endpoints, S2Error } from '@s2-dev/streamstore'
-import { Effect, Layer, Option, Predicate, Queue, Schema, Stream } from 'effect'
+import { DateTime, Effect, Layer, Predicate, Schema, Stream } from 'effect'
 
 import {
   createKeyedSerializer,
@@ -16,6 +16,7 @@ import {
 } from '@looms/core'
 
 import { S2ConfigSchema, streamNameForRun, type S2Config } from './config'
+import { paginateS2Stream, type ReadAllPagesOptions, type S2ReadBatchLike } from './pagination'
 import { s2SnapshotStore } from './snapshot-store'
 
 function toStoreError(cause: unknown, message: string): EventStoreError {
@@ -40,96 +41,9 @@ function isUnsatisfiableCause(cause: unknown): boolean {
   return text.includes('out of range') || text.includes('Range not satisfiable')
 }
 
-export interface S2ReadBatchLike<T> {
-  readonly records: ReadonlyArray<T>
-  readonly tail?: { readonly seqNum: number } | null
-}
+export { paginateS2Stream, type ReadAllPagesOptions, type S2ReadBatchLike }
 
-export interface ReadAllPagesOptions {
-  readonly fromSeq?: number
-  readonly limit?: number
-  readonly maxPageSize?: number
-}
-
-/**
- * Paginate an S2 stream lazily using Effect Streams.
- *
- * Pulls pages on demand until the stream tail is reached, an empty page is returned,
- * or the caller's optional limit is satisfied.
- */
-export function paginateS2Stream<T extends { readonly seqNum: number }>(
-  fetchPage: (
-    cursor: number,
-    count: number,
-  ) => Effect.Effect<S2ReadBatchLike<T> | null, EventStoreError>,
-  options?: ReadAllPagesOptions,
-): Stream.Stream<T, EventStoreError> {
-  const fromSeq = options?.fromSeq ?? 0
-  const userLimit = options?.limit
-  const maxPageSize = options?.maxPageSize ?? 1000
-
-  if (userLimit !== undefined && userLimit <= 0) {
-    return Stream.empty
-  }
-
-  interface PaginatorState {
-    readonly cursor: number
-    readonly remaining?: number
-  }
-
-  const baseStream = Stream.paginate<PaginatorState, T, EventStoreError>(
-    { cursor: fromSeq, remaining: userLimit },
-    (state) =>
-      Effect.gen(function* () {
-        if (state.remaining !== undefined && state.remaining <= 0) {
-          return [[], Option.none()] as const
-        }
-
-        const count =
-          state.remaining !== undefined ? Math.min(maxPageSize, state.remaining) : maxPageSize
-
-        const page = yield* fetchPage(state.cursor, count)
-
-        if (!page || page.records.length === 0) {
-          return [[], Option.none()] as const
-        }
-
-        const records = page.records.filter((r) => r.seqNum >= fromSeq)
-
-        const nextRemaining =
-          state.remaining !== undefined ? state.remaining - records.length : undefined
-
-        const lastRecord = page.records[page.records.length - 1]
-
-        if (!lastRecord || (nextRemaining !== undefined && nextRemaining <= 0)) {
-          return [records, Option.none()] as const
-        }
-
-        const nextCursor = Math.max(state.cursor + 1, lastRecord.seqNum + 1)
-
-        if (nextCursor <= state.cursor) {
-          return [records, Option.none()] as const
-        }
-
-        // A byte-capped page is shorter than `count`. Do not trust `page.tail`
-        // there — S2 may report the batch end, not the stream tail.
-        const shortPage = page.records.length < count
-
-        const reachedTail =
-          !shortPage && page.tail?.seqNum !== undefined && nextCursor >= page.tail.seqNum
-
-        if (reachedTail) {
-          return [records, Option.none()] as const
-        }
-
-        return [records, Option.some({ cursor: nextCursor, remaining: nextRemaining })] as const
-      }),
-  )
-
-  return userLimit !== undefined ? baseStream.pipe(Stream.take(userLimit)) : baseStream
-}
-
-export async function readAllPages<T extends { readonly seqNum: number }>(
+export function readAllPages<T extends { readonly seqNum: number }>(
   fetchPage: (cursor: number, count: number) => Promise<S2ReadBatchLike<T> | null>,
   options?: ReadAllPagesOptions,
 ): Promise<T[]> {
@@ -177,7 +91,7 @@ function createClient(config: S2Config): S2 {
  * Expected tail mismatches during `append` map to `EventStoreConflictError`.
  */
 export function s2(config: S2Config): EventStore {
-  const parsed = Schema.decodeUnknownSync(S2ConfigSchema)(config)
+  const parsed = Schema.decodeSync(S2ConfigSchema)(config)
   const client = createClient(parsed)
   const basin = client.basin(parsed.basin)
   const ensured = new Set<string>()
@@ -185,57 +99,56 @@ export function s2(config: S2Config): EventStore {
 
   let basinEnsured = false
 
-  const ensureBasin = Effect.tryPromise({
-    try: async () => {
-      if (basinEnsured) {
-        return
-      }
+  const ensureBasin = Effect.suspend(() => {
+    if (basinEnsured) {
+      return Effect.void
+    }
 
-      try {
-        await client.basins.create({ basin: parsed.basin })
-      } catch (err) {
-        // 409 = already exists
-        if (!(err instanceof S2Error && err.status === 409)) {
-          throw err
-        }
-      }
-
-      basinEnsured = true
-    },
-    catch: (cause) => toStoreError(cause, `Failed to ensure basin ${parsed.basin}`),
+    return Effect.tryPromise({
+      try: () => client.basins.create({ basin: parsed.basin }),
+      catch: (cause) => toStoreError(cause, `Failed to ensure basin ${parsed.basin}`),
+    }).pipe(
+      Effect.catchIf(
+        (error) => error.cause instanceof S2Error && error.cause.status === 409,
+        () => Effect.void,
+      ),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          basinEnsured = true
+        }),
+      ),
+      Effect.asVoid,
+    )
   })
 
   const ensureStream = (runId: string) =>
     Effect.gen(function* () {
       yield* ensureBasin
-      return yield* Effect.tryPromise({
-        try: async () => {
-          const name = streamNameForRun(runId)
+      const name = streamNameForRun(runId)
 
-          if (ensured.has(name)) {
-            return basin.stream(name)
-          }
-
-          try {
-            await basin.streams.create({
+      if (!ensured.has(name)) {
+        yield* Effect.tryPromise({
+          try: () =>
+            basin.streams.create({
               stream: name,
               config: parsed.streamConfig,
-            })
-          } catch (err) {
-            // 409 = already exists
-            if (!(err instanceof S2Error && err.status === 409)) {
-              // Some local servers may not support create; try using the stream anyway.
-              if (!(err instanceof S2Error && (err.status === 404 || err.status === 405))) {
-                throw err
-              }
-            }
-          }
+            }),
+          catch: (cause) => toStoreError(cause, `Failed to open stream for ${runId}`),
+        }).pipe(
+          Effect.catchIf(
+            (error) =>
+              error.cause instanceof S2Error &&
+              (error.cause.status === 409 ||
+                error.cause.status === 404 ||
+                error.cause.status === 405),
+            () => Effect.void,
+          ),
+        )
 
-          ensured.add(name)
-          return basin.stream(name)
-        },
-        catch: (cause) => toStoreError(cause, `Failed to open stream for ${runId}`),
-      })
+        ensured.add(name)
+      }
+
+      return basin.stream(name)
     })
 
   const service: EventStore = {
@@ -288,8 +201,9 @@ export function s2(config: S2Config): EventStore {
             (message.includes('fenc') || message.includes('token'))
 
           if (isFence) {
-            return yield* Effect.fail(
-              new EventStoreFencedError(runId, options?.fencingToken ?? options?.fence ?? ''),
+            return yield* new EventStoreFencedError(
+              runId,
+              options?.fencingToken ?? options?.fence ?? '',
             )
           }
 
@@ -302,12 +216,10 @@ export function s2(config: S2Config): EventStore {
           ) {
             const tailCheck = yield* Effect.promise(() => stream.checkTail().catch(() => null))
             const actualTail = tailCheck?.tail?.seqNum ?? 0
-            return yield* Effect.fail(
-              new EventStoreConflictError(runId, options?.expectedTail ?? 0, actualTail),
-            )
+            return yield* new EventStoreConflictError(runId, options?.expectedTail ?? 0, actualTail)
           }
 
-          return yield* Effect.fail(toStoreError(cause, `Append failed for ${runId}`))
+          return yield* toStoreError(cause, `Append failed for ${runId}`)
         }
 
         const ack = appendResult.ack
@@ -331,23 +243,19 @@ export function s2(config: S2Config): EventStore {
 
           const fetchPage = (cursor: number, count: number) =>
             Effect.tryPromise({
-              try: async () => {
-                try {
-                  return await stream.read({
-                    start: { from: { seqNum: cursor }, clamp: true },
-                    stop: { limits: { count } },
-                    ignoreCommandRecords: true,
-                  })
-                } catch (cause) {
-                  if (isUnsatisfiableCause(cause)) {
-                    return null
-                  }
-
-                  throw cause
-                }
-              },
+              try: () =>
+                stream.read({
+                  start: { from: { seqNum: cursor }, clamp: true },
+                  stop: { limits: { count } },
+                  ignoreCommandRecords: true,
+                }),
               catch: (cause) => toStoreError(cause, `Read failed for ${runId}`),
-            })
+            }).pipe(
+              Effect.catchIf(
+                (error) => isUnsatisfiableCause(error.cause),
+                () => Effect.succeed(null),
+              ),
+            )
 
           const recordStream = paginateS2Stream(fetchPage, {
             fromSeq: s2From,
@@ -373,10 +281,12 @@ export function s2(config: S2Config): EventStore {
           try: () => stream.checkTail(),
           catch: (cause) => toStoreError(cause, `Tail failed for ${runId}`),
         }).pipe(
-          Effect.catch((err) =>
-            err.cause instanceof S2Error && err.cause.status === 404
-              ? Effect.succeed({ tail: { seqNum: 0, timestamp: new Date(0) } })
-              : Effect.fail(err),
+          Effect.catchIf(
+            (err) => err.cause instanceof S2Error && err.cause.status === 404,
+            () =>
+              Effect.succeed({
+                tail: { seqNum: 0, timestamp: DateTime.toDateUtc(DateTime.makeUnsafe(0)) },
+              }),
           ),
         )
 
@@ -388,23 +298,19 @@ export function s2(config: S2Config): EventStore {
         const stream = yield* ensureStream(runId)
 
         const page = yield* Effect.tryPromise({
-          try: async () => {
-            try {
-              return await stream.read({
-                start: { from: { seqNum: 0 }, clamp: true },
-                stop: { limits: { count: 1 } },
-                ignoreCommandRecords: false,
-              })
-            } catch (cause) {
-              if (isUnsatisfiableCause(cause)) {
-                return null
-              }
-
-              throw cause
-            }
-          },
+          try: () =>
+            stream.read({
+              start: { from: { seqNum: 0 }, clamp: true },
+              stop: { limits: { count: 1 } },
+              ignoreCommandRecords: false,
+            }),
           catch: (cause) => toStoreError(cause, `Bounds failed for ${runId}`),
-        })
+        }).pipe(
+          Effect.catchIf(
+            (error) => isUnsatisfiableCause(error.cause),
+            () => Effect.succeed(null),
+          ),
+        )
 
         const tail = page?.tail?.seqNum ?? 0
         const first = page?.records[0]
@@ -426,63 +332,44 @@ export function s2(config: S2Config): EventStore {
         })
       }),
 
-    subscribe: (runId, options) =>
-      Stream.callback<EventEnvelope, EventStoreError>((queue) =>
-        Effect.callback<void>((resume) => {
-          const fromSeq = options?.fromSeq ?? 1
-          const s2From = Math.max(0, fromSeq - 1)
-          let stopped = false
+    subscribe: (runId, options) => {
+      const fromSeq = options?.fromSeq ?? 1
+      const s2From = Math.max(0, fromSeq - 1)
 
-          const run = async () => {
-            try {
-              const stream = await Effect.runPromise(ensureStream(runId))
+      return Stream.unwrap(
+        Effect.gen(function* () {
+          const stream = yield* ensureStream(runId)
 
-              const session = await stream.readSession({
+          const session = yield* Effect.tryPromise({
+            try: () =>
+              stream.readSession({
                 start: { from: { seqNum: s2From }, clamp: true },
                 ignoreCommandRecords: true,
-              })
-
-              for await (const record of session) {
-                if (stopped) {
-                  break
-                }
-
-                if (record.seqNum < s2From) {
-                  continue
-                }
-
-                Queue.offerUnsafe(queue, parseEvent(record.body, record.seqNum))
-              }
-
-              Queue.endUnsafe(queue)
-              resume(Effect.void)
-            } catch (cause) {
-              await Effect.runPromise(
-                Queue.fail(queue, toStoreError(cause, `Subscribe failed for ${runId}`)),
-              )
-
-              resume(Effect.void)
-            }
-          }
-
-          void run()
-          return Effect.sync(() => {
-            stopped = true
+              }),
+            catch: (cause) => toStoreError(cause, `Subscribe failed for ${runId}`),
           })
-        }),
-      ),
 
-    listRuns: () =>
-      Effect.tryPromise({
-        try: async () => {
-          const listed = await basin.streams.list({ prefix: 'runs/' })
-          return listed.streams
-            .map((s) => s.name)
-            .filter((name) => name.startsWith('runs/'))
-            .map((name) => name.slice('runs/'.length))
-        },
-        catch: (cause) => toStoreError(cause, 'listRuns failed'),
-      }),
+          return Stream.fromAsyncIterable(session, (cause) =>
+            toStoreError(cause, `Subscribe failed for ${runId}`),
+          ).pipe(
+            Stream.filter((record) => record.seqNum >= s2From),
+            Stream.map((record) => parseEvent(record.body, record.seqNum)),
+          )
+        }),
+      )
+    },
+
+    listRuns: Effect.tryPromise({
+      try: () => basin.streams.list({ prefix: 'runs/' }),
+      catch: (cause) => toStoreError(cause, 'listRuns failed'),
+    }).pipe(
+      Effect.map((listed) =>
+        listed.streams
+          .map((stream) => stream.name)
+          .filter((name) => name.startsWith('runs/'))
+          .map((name) => name.slice('runs/'.length)),
+      ),
+    ),
   }
 
   return withSnapshotStore(service, s2SnapshotStore(parsed))

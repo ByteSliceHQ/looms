@@ -9,7 +9,7 @@ export interface CachedEventMeta {
 }
 
 interface CacheEntry {
-  catalog: EventStreamCatalog<DebuggerEvent> | undefined
+  catalog: object | undefined
   meta: CachedEventMeta
 }
 
@@ -35,8 +35,7 @@ export function getEventMeta<TEvent extends DebuggerEvent>(
   const meta: CachedEventMeta = { summary, searchText: text, family }
 
   metaCache.set(event, {
-    // SAFETY: EventStreamCatalog is covariant over event for cache identity compares.
-    catalog: catalog as EventStreamCatalog<DebuggerEvent> | undefined,
+    catalog,
     meta,
   })
 

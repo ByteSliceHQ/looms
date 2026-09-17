@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { Schema } from 'effect'
+
 import { composeModules, createEvent, foldRun } from '@looms/core'
 
 import { defineAgent } from './definitions'
@@ -194,10 +196,11 @@ describe('@looms/agent module', () => {
       registry,
     )
 
-    // SAFETY: Agent thread state holds lines array.
-    const threadState = state.threads[threadId]?.state as {
-      lines: Array<{ role: string; content: string }>
-    }
+    const threadState = Schema.decodeUnknownSync(
+      Schema.Struct({
+        lines: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.String })),
+      }),
+    )(state.threads[threadId]?.state)
 
     expect(threadState.lines[0]?.role).toBe('user')
     expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')

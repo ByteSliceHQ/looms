@@ -9,16 +9,16 @@ import { composeModules, defineRuntimeModule } from './index'
 import { defineThread } from './thread'
 
 const counterCatalog = defineEventCatalog('counter', {
-  incremented: Schema.Struct({ by: Schema.Number }),
+  incremented: Schema.Struct({ by: Schema.Finite }),
 })
 
 const counter = defineThread({
   kind: 'counter',
-  shape: Schema.Struct({ count: Schema.Number }),
+  shape: Schema.Struct({ count: Schema.Finite }),
   initialState: () => ({ count: 0 }),
   step(state, event) {
     if (event.type === 'counter.incremented') {
-      const by = Schema.decodeUnknownSync(Schema.Struct({ by: Schema.Number }))(event.payload).by
+      const by = Schema.decodeUnknownSync(Schema.Struct({ by: Schema.Finite }))(event.payload).by
       return { count: state.count + by }
     }
 

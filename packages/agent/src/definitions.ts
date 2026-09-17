@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
 
-import type { InferDefinedSchema, JsonValue, RuntimeEffect, SchemaInput } from '@looms/core'
+import type { JsonValue, RuntimeEffect, SchemaInput } from '@looms/core'
 
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
@@ -20,7 +20,7 @@ export interface FunctionTool<
   readonly kind: 'function'
   readonly name: TName
   readonly description: string
-  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
   readonly inputSchema?: JsonValue
   handler(input: TInput, ctx: ToolContext): Promise<TOutput> | TOutput
 }
@@ -85,7 +85,7 @@ export interface AgentDefinition<
   readonly name: TName
   readonly model?: string
   readonly instructions: string
-  readonly input?: StandardSchemaV1<any, TInput> | Schema.Schema<TInput>
+  readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
   readonly tools?: ToolLike[]
   readonly maxTurns?: number
   readonly conversational?: boolean
@@ -99,9 +99,16 @@ export type AnyAgentDefinition = AgentDefinition
 
 export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolLike[] {
   return tools.map((entry) => {
-    if (entry.kind === 'function' || entry.kind === 'thread' || entry.kind === 'effects') {
-      // SAFETY: kind discriminant matches ToolLike.
-      return entry as ToolLike
+    if (entry.kind === 'function' && 'handler' in entry) {
+      return entry
+    }
+
+    if (entry.kind === 'thread' && 'child' in entry) {
+      return entry
+    }
+
+    if (entry.kind === 'effects' && 'effects' in entry) {
+      return entry
     }
 
     return asThreadTool({
@@ -119,45 +126,26 @@ export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolL
 
 export function defineTool<
   TName extends string,
-  TSchema = undefined,
-  TInput = InferDefinedSchema<TSchema>,
+  TInput = JsonValue,
   TOutput extends JsonValue = JsonValue,
->(def: {
-  name: TName
-  description: string
-  input?: TSchema
-  inputSchema?: JsonValue
-  handler: (input: TInput, ctx: ToolContext) => Promise<TOutput> | TOutput
-}): FunctionTool<TName, TInput, TOutput> {
-  // SAFETY: factory fields match FunctionTool.
-  return { kind: 'function', ...def, input: def.input } as FunctionTool<TName, TInput, TOutput>
+>(def: Omit<FunctionTool<TName, TInput, TOutput>, 'kind'>): FunctionTool<TName, TInput, TOutput> {
+  return { kind: 'function', ...def }
 }
 
 export function defineAgent<
   TName extends string,
-  TSchema = undefined,
-  TInput = InferDefinedSchema<TSchema>,
+  TInput = JsonValue,
   TOutput extends JsonValue = JsonValue,
->(def: {
-  name: TName
-  model?: string
-  instructions: string
-  input?: TSchema
-  tools?: AgentToolEntry[]
-  maxTurns?: number
-  conversational?: boolean
-  stopWhen?: StopWhen
-  runTurn?: (
-    ctx: AgentTurnContext<TInput>,
-  ) => Promise<AgentTurnResult<TOutput>> | AgentTurnResult<TOutput>
-}): AgentDefinition<TName, TInput, TOutput> {
-  // SAFETY: factory fields match AgentDefinition.
+>(
+  def: Omit<AgentDefinition<TName, TInput, TOutput>, 'kind' | 'tools'> & {
+    readonly tools?: AgentToolEntry[]
+  },
+): AgentDefinition<TName, TInput, TOutput> {
   return {
     kind: 'agent',
     ...def,
-    input: def.input,
     tools: def.tools ? normalizeTools(def.tools) : undefined,
-  } as AgentDefinition<TName, TInput, TOutput>
+  }
 }
 
 export function asThreadTool(def: {

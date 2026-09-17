@@ -1,7 +1,11 @@
-import { Predicate } from 'effect'
+import { Data, Effect, Option, Schema, Stream } from 'effect'
 
 import {
   createRunId,
+  EventEnvelopeSchema,
+  ReplayStepSchema,
+  RunStateSchema,
+  stringifyJson,
   type DefinitionInput,
   type DefinitionRef,
   type EventEnvelope,
@@ -10,7 +14,45 @@ import {
   type RunState,
 } from '@looms/core'
 
-import { consumeSseStream, delay, eventsFromSseData } from './sse'
+import { consumeSseStreamEffect, eventsFromSseData, sseFrames } from './sse'
+
+class LoomsClientError extends Data.TaggedError('LoomsClientError')<{
+  readonly cause?: unknown
+  readonly message: string
+}> {
+  constructor(message: string, cause?: unknown) {
+    super({ cause, message })
+    this.name = 'LoomsClientError'
+  }
+}
+
+const decodeStreamError = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ error: Schema.String })),
+)
+
+const StartResultSchema = Schema.Struct({
+  runId: Schema.String,
+  threadId: Schema.String,
+  state: RunStateSchema,
+})
+
+const RunResultSchema = Schema.Struct({ runId: Schema.String, state: RunStateSchema })
+
+const EventsResultSchema = Schema.Struct({
+  runId: Schema.String,
+  events: Schema.Array(EventEnvelopeSchema),
+})
+
+const ReplayResultSchema = Schema.Struct({
+  runId: Schema.String,
+  step: Schema.NullOr(ReplayStepSchema),
+})
+
+const ProjectionResultSchema = Schema.Struct({
+  runId: Schema.String,
+  name: Schema.String,
+  value: Schema.Unknown,
+})
 
 export interface LoomsClientOptions {
   baseUrl?: string
@@ -31,22 +73,35 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
   const fetchImpl = options.fetch ?? fetch
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  function request<T>(
+    path: string,
+    schema: Schema.ConstraintDecoder<T>,
+    init?: RequestInit,
+  ): Promise<T> {
     const headers = new Headers(init?.headers)
 
     if (!headers.has('content-type')) {
       headers.set('content-type', 'application/json')
     }
 
-    const res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers })
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const res = yield* Effect.tryPromise({
+          try: (signal) => fetchImpl(`${baseUrl}${path}`, { ...init, headers, signal }),
+          catch: (cause) => new LoomsClientError('Request failed', cause),
+        })
 
-    if (!res.ok) {
-      const body = await res.text()
-      throw new Error(body || `HTTP ${res.status}`)
-    }
+        if (!res.ok) {
+          const body = yield* Effect.promise(() => res.text())
+          return yield* new LoomsClientError(body || `HTTP ${res.status}`)
+        }
 
-    // SAFETY: host JSON responses match the generic requested by each route helper.
-    return (await res.json()) as T
+        const body = yield* Effect.promise(() => res.json())
+        return yield* Schema.decodeUnknownEffect(schema)(body).pipe(
+          Effect.mapError((cause) => new LoomsClientError('Invalid response body', cause)),
+        )
+      }),
+    )
   }
 
   const subscribeEvents = (
@@ -57,9 +112,9 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     let fromSeq = 1
     const controller = new AbortController()
 
-    const run = async () => {
+    const run = Effect.gen(function* () {
       while (!controller.signal.aborted) {
-        try {
+        yield* Effect.gen(function* () {
           const cursor = Math.max(0, fromSeq - 1)
           const headers = new Headers({ accept: 'text/event-stream' })
 
@@ -67,40 +122,40 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
             headers.set('last-event-id', String(cursor))
           }
 
-          const res = await fetchImpl(
-            `${baseUrl}/api/events?runId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
-            { headers, signal: controller.signal },
-          )
+          const res = yield* Effect.tryPromise({
+            try: (signal) =>
+              fetchImpl(
+                `${baseUrl}/api/events?runId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
+                { headers, signal },
+              ),
+            catch: (cause) => new LoomsClientError('Event subscription failed', cause),
+          })
 
-          if (!res.ok || !res.body) {
-            throw new Error(res.ok ? 'event stream missing body' : `HTTP ${res.status}`)
-          }
+          const body = res.body
 
-          await consumeSseStream(
-            res.body,
-            (frame) => {
+          if (res.ok && body) {
+            return yield* consumeSseStreamEffect(body, (frame) => {
               for (const event of eventsFromSseData(frame.data, runId)) {
                 onEvent(event)
                 fromSeq = Math.max(fromSeq, event.seq + 1)
               }
-            },
-            controller.signal,
-          )
-        } catch {
-          if (controller.signal.aborted) {
-            return
+            })
           }
-        }
+
+          return yield* new LoomsClientError(
+            res.ok ? 'event stream missing body' : `HTTP ${res.status}`,
+          )
+        }).pipe(Effect.ignore)
 
         if (controller.signal.aborted) {
-          return
+          break
         }
 
-        await delay(reconnectDelayMs, controller.signal)
+        yield* Effect.sleep(reconnectDelayMs)
       }
-    }
+    })
 
-    void run()
+    void Effect.runPromise(run, { signal: controller.signal }).catch(() => undefined)
 
     return () => {
       controller.abort()
@@ -112,7 +167,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     definitionName: string
     input?: JsonValue
     runId?: string
-  }) => request<StartResult>('/runs', { method: 'POST', body: JSON.stringify(args) })
+  }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
   const streamRun = (args: {
     kind: string
@@ -121,103 +176,41 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     runId?: string
   }): StreamHandle => {
     const runId = args.runId ?? createRunId()
-    return {
-      runId,
-      async *[Symbol.asyncIterator]() {
-        const controller = new AbortController()
 
-        const res = await fetchImpl(`${baseUrl}/runs`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            accept: 'text/event-stream',
-          },
-          body: JSON.stringify({ ...args, runId }),
-          signal: controller.signal,
-        })
-
-        if (!res.ok || !res.body) {
-          throw new Error(res.ok ? 'SSE stream missing body' : `HTTP ${res.status}`)
+    const stream = Stream.unwrap(
+      Effect.tryPromise({
+        try: (signal) =>
+          fetchImpl(`${baseUrl}/runs`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'text/event-stream',
+            },
+            body: stringifyJson({ ...args, runId }),
+            signal,
+          }),
+        catch: (cause) => new LoomsClientError('Failed to start event stream', cause),
+      }).pipe(
+        Effect.flatMap((res) =>
+          res.ok && res.body
+            ? Effect.succeed(sseFrames(res.body))
+            : new LoomsClientError(res.ok ? 'SSE stream missing body' : `HTTP ${res.status}`),
+        ),
+      ),
+    ).pipe(
+      Stream.takeWhile((frame) => frame.event !== 'done'),
+      Stream.mapEffect((frame) => {
+        if (frame.event !== 'error') {
+          return Effect.succeed(eventsFromSseData(frame.data, runId))
         }
 
-        const pending: EventEnvelope[] = []
-        let notify: (() => void) | undefined
-        let finished = false
-        let streamError: Error | undefined
+        const decoded = decodeStreamError(frame.data)
+        return new LoomsClientError(Option.isSome(decoded) ? decoded.value.error : frame.data)
+      }),
+      Stream.flatMap(Stream.fromIterable),
+    )
 
-        const consume = consumeSseStream(
-          res.body,
-          (frame) => {
-            if (frame.event === 'error') {
-              try {
-                const parsed: unknown = JSON.parse(frame.data)
-
-                const message =
-                  Predicate.isReadonlyObject(parsed) && Predicate.isString(parsed.error)
-                    ? parsed.error
-                    : frame.data
-
-                streamError = new Error(message)
-              } catch {
-                streamError = new Error(frame.data)
-              }
-
-              return
-            }
-
-            if (frame.event === 'done') {
-              finished = true
-              notify?.()
-              return
-            }
-
-            for (const event of eventsFromSseData(frame.data, runId)) {
-              pending.push(event)
-            }
-
-            notify?.()
-          },
-          controller.signal,
-        )
-          .catch((cause: unknown) => {
-            streamError = cause instanceof Error ? cause : new Error(String(cause))
-          })
-          .finally(() => {
-            finished = true
-            notify?.()
-          })
-
-        try {
-          while (true) {
-            if (pending.length === 0) {
-              if (finished) {
-                break
-              }
-
-              await new Promise<void>((resolve) => {
-                notify = resolve
-              })
-
-              continue
-            }
-
-            const event = pending.shift()
-
-            if (event) {
-              yield event
-            }
-          }
-
-          await consume
-
-          if (streamError) {
-            throw streamError
-          }
-        } finally {
-          controller.abort()
-        }
-      },
-    }
+    return Object.assign(Stream.toAsyncIterable(stream), { runId })
   }
 
   return {
@@ -225,12 +218,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     startRun,
     /** Start a run from a definition object (agent, workflow, or your own kind). */
     start: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>) =>
-      request<StartResult>('/runs', {
+      request('/runs', StartResultSchema, {
         method: 'POST',
-        body: JSON.stringify({ kind: definition.kind, definitionName: definition.name, input }),
+        body: stringifyJson({ kind: definition.kind, definitionName: definition.name, input }),
       }),
-    getRun: (runId: string) => request<{ runId: string; state: RunState }>(`/runs/${runId}`),
-    getState: (runId: string) => request<{ runId: string; state: RunState }>(`/runs/${runId}`),
+    getRun: (runId: string) => request(`/runs/${runId}`, RunResultSchema),
+    getState: (runId: string) => request(`/runs/${runId}`, RunResultSchema),
     getEvents: (runId: string, opts?: { fromSeq?: number; limit?: number }) => {
       const params = new URLSearchParams()
 
@@ -243,23 +236,18 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       }
 
       const q = params.toString()
-      return request<{ runId: string; events: EventEnvelope[] }>(
-        `/runs/${runId}/events${q ? `?${q}` : ''}`,
-      )
+      return request(`/runs/${runId}/events${q ? `?${q}` : ''}`, EventsResultSchema)
     },
     signal: (runId: string, events: ReadonlyArray<EventInput>) =>
-      request<{ runId: string; state: RunState }>(`/runs/${runId}/events`, {
+      request(`/runs/${runId}/events`, RunResultSchema, {
         method: 'POST',
-        body: JSON.stringify({ events }),
+        body: stringifyJson({ events }),
       }),
-    wake: (runId: string) =>
-      request<{ runId: string; state: RunState }>(`/runs/${runId}/wake`, { method: 'POST' }),
+    wake: (runId: string) => request(`/runs/${runId}/wake`, RunResultSchema, { method: 'POST' }),
     replayTo: (runId: string, seq: number) =>
-      request<{ runId: string; step: unknown }>(`/runs/${runId}/replay?seq=${seq}`),
+      request(`/runs/${runId}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>
-      request<{ runId: string; name: string; value: unknown }>(
-        `/runs/${runId}/projections/${name}`,
-      ),
+      request(`/runs/${runId}/projections/${name}`, ProjectionResultSchema),
     subscribeEvents,
     /**
      * Subscribe to the run log, then start execution so deltas arrive live.

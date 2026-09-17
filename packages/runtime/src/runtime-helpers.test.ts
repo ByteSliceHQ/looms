@@ -56,7 +56,7 @@ describe('threadStartedEvents', () => {
     const def = {
       kind: 'workflow',
       name: 'checkout',
-      input: Schema.Struct({ amount: Schema.Number }),
+      input: Schema.Struct({ amount: Schema.Finite }),
       value: { kind: 'workflow', name: 'checkout' },
     }
 

@@ -33,7 +33,7 @@ for (const file of (await readdir(join(root, 'routes'))).toSorted()) {
   const prose = source.replace(/<CodeBlock\b[^>]*(?:\/>|>[\s\S]*?<\/CodeBlock>)/g, '')
 
   const sections = [...prose.matchAll(/<h([23])[^>]*id="([^"]+)"[^>]*>(.*?)<\/h\1>/gs)].map(
-    (match) => ({ id: match[2]!, title: plain(match[3]), level: Number(match[1]) }),
+    (match) => ({ id: match[2], title: plain(match[3]), level: Number(match[1]) }),
   )
 
   const description = plain(source.match(/<p>(.*?)<\/p>/s)?.[1] ?? title)
