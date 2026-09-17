@@ -65,6 +65,10 @@
       "types": "./dist/debugger/index.d.ts",
       "import": "./dist/debugger/index.js"
     },
+    "./jev": {
+      "types": "./dist/jev/index.d.ts",
+      "import": "./dist/jev/index.js"
+    },
     "./projectors": {
       "types": "./dist/projectors/index.d.ts",
       "import": "./dist/projectors/index.js"
@@ -144,6 +148,7 @@
     "@looms/cloudflare": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/debugger": "workspace:*",
+    "@looms/jev": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/react": "workspace:*",
     "@looms/runtime": "workspace:*",
@@ -151,7 +156,7 @@
     "@looms/testing": "workspace:*",
     "@looms/workflow": "workspace:*",
     "@types/bun": "^1.3.9",
-    "ai": "^7.0.92",
+    "ai": "^7.0.105",
     "postgres": "^3.4.0",
     "react": "19",
     "react-dom": "19",

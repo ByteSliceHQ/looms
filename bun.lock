@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "looms",
+      "dependencies": {
+        "ai": "^7.0.105",
+      },
       "devDependencies": {
         "@changesets/cli": "^2.29.8",
         "@cloudflare/workers-types": "^5.20260914.1",
@@ -150,10 +153,11 @@
       "dependencies": {
         "@looms/agent": "workspace:*",
         "@looms/core": "workspace:*",
+        "@looms/jev": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.3.9",
-        "ai": "^7.0.92",
+        "ai": "^7.0.105",
         "typescript": "7.0.2",
       },
       "peerDependencies": {
@@ -258,11 +262,26 @@
         "react-dom": "^19.0.0",
       },
     },
+    "packages/jev": {
+      "name": "@looms/jev",
+      "version": "0.0.1",
+      "dependencies": {
+        "@looms/core": "workspace:*",
+        "@standard-schema/spec": "^1.1.0",
+        "effect": "4.0.0-rc.112",
+      },
+      "devDependencies": {
+        "@looms/runtime": "workspace:*",
+        "@looms/workflow": "workspace:*",
+        "@types/bun": "^1.3.9",
+        "typescript": "7.0.2",
+      },
+    },
     "packages/looms": {
       "name": "@swirls/looms",
       "version": "0.0.2",
       "bin": {
-        "looms": "./dist/cli/cli.js",
+        "looms": "dist/cli/cli.js",
       },
       "dependencies": {
         "@effect/platform-bun": "4.0.0-rc.112",
@@ -288,6 +307,7 @@
         "@looms/cloudflare": "workspace:*",
         "@looms/core": "workspace:*",
         "@looms/debugger": "workspace:*",
+        "@looms/jev": "workspace:*",
         "@looms/projectors": "workspace:*",
         "@looms/react": "workspace:*",
         "@looms/runtime": "workspace:*",
@@ -295,7 +315,7 @@
         "@looms/testing": "workspace:*",
         "@looms/workflow": "workspace:*",
         "@types/bun": "^1.3.9",
-        "ai": "^7.0.92",
+        "ai": "^7.0.105",
         "postgres": "^3.4.0",
         "react": "19",
         "react-dom": "19",
@@ -419,11 +439,11 @@
     },
   },
   "packages": {
-    "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.75", "", { "dependencies": { "@ai-sdk/provider": "4.0.10", "@ai-sdk/provider-utils": "5.0.36", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-HOnhw3oXtBnboBF7kAKipjToCN6+5w6EuukiUKiULcxBitS+vbHRRv9IUBcq+Z1wkXcJjfywKrt5r++I6OYyXg=="],
+    "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.85", "", { "dependencies": { "@ai-sdk/provider": "4.0.17", "@ai-sdk/provider-utils": "5.0.43", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-c8ztST/CslupqO3p7izsAuG3TlKg9mhE6mGJ42iUADsSMJIV5IOKd9AsLG33QCAY7SWs6NDO2giM/rq7bUTNlQ=="],
 
-    "@ai-sdk/provider": ["@ai-sdk/provider@4.0.10", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-fX2ENAc7iDpZ+Wp4+Rk06Usn/Ys7dI9uAkGv0jlF6XVrW13NkRWx5Ou+U6lIM2E1fTLkCs16GGrUAaVvroag7A=="],
+    "@ai-sdk/provider": ["@ai-sdk/provider@4.0.17", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-VYMBxIQdcHqbIf1j+YZlI9Ati6LZ4wJe0GGd4z4a5H/KxTggjeOiyaVYTnfF7LHZK5jMQ+rofmzz4QPqf++NUw=="],
 
-    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.36", "", { "dependencies": { "@ai-sdk/provider": "4.0.10", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8", "undici": "^7.29.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-MFXBn6XDyf37PNQAge/HTatPJE8Vmg/g/w4WPtjSV53jq8FKAzoaN5+43hsdQa9bqgN+/13jxug9ChvsG+godQ=="],
+    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.43", "", { "dependencies": { "@ai-sdk/provider": "4.0.17", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8", "undici": "^7.29.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-gw/bcNseOGSs59TMtV4H1KwqXXe24NHgx+uBYr98pa4Fg6Uvp8hPPxjuckVnfFFyIxHCDew8so0ujpvcSuyMZA=="],
 
     "@astrojs/compiler": ["@astrojs/compiler@4.0.0", "", {}, "sha512-eouss7G8ygdZqHuke033VMcVw5HTZUu+PXd/h06DGDUg/jt5btPYPqh66ENWw/mU78rBrf/oeC4oqoBwMtDMNA=="],
 
@@ -760,6 +780,8 @@
     "@looms/docs": ["@looms/docs@workspace:apps/docs"],
 
     "@looms/examples": ["@looms/examples@workspace:examples"],
+
+    "@looms/jev": ["@looms/jev@workspace:packages/jev"],
 
     "@looms/projectors": ["@looms/projectors@workspace:packages/projectors"],
 
@@ -1365,7 +1387,7 @@
 
     "agent-install": ["agent-install@0.0.5", "", { "dependencies": { "@iarna/toml": "^2.2.5", "commander": "^14.0.0", "jsonc-parser": "^3.3.1", "picocolors": "^1.1.1", "prompts": "^2.4.2", "yaml": "^2.8.3" }, "bin": { "agent-install": "bin/agent-install.mjs" } }, "sha512-nHlms9BkP8ZiY79HrwCGiA2DcNaXrAaJrCM/BEqQ7MEsSKyCk+2A76xPGylIfASZSZE0SaU3T0bNSg4rBPIJAQ=="],
 
-    "ai": ["ai@7.0.93", "", { "dependencies": { "@ai-sdk/gateway": "4.0.75", "@ai-sdk/provider": "4.0.10", "@ai-sdk/provider-utils": "5.0.36" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-CJss6zb9mlltk/mCr8qom20NBnqEQxVawkqwtT62tCwsxilZpXfHNRMRwcS3XRpzdP1kEluVuDBUayYWEEd95g=="],
+    "ai": ["ai@7.0.105", "", { "dependencies": { "@ai-sdk/gateway": "4.0.85", "@ai-sdk/provider": "4.0.17", "@ai-sdk/provider-utils": "5.0.43" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-gkV3W+tTtWwQ41KNV/KjV8wabBrk+bnbnZ3f0AWp/T9LLyljose8uhFViKleVy7tIdEiR2PiS4BpbNdcExf7rQ=="],
 
     "ajv": ["ajv@6.15.0", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw=="],
 

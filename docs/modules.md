@@ -1,6 +1,6 @@
 # Modules
 
-Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, and approvals. Add your own for domain work — charges, tickets, notifications — without forking Looms.
+Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, approvals, and Jev evaluations. Add your own for domain work — charges, tickets, notifications — without forking Looms.
 
 ## Built-in
 
@@ -9,6 +9,7 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 | `@swirls/looms/agent`    | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
 | `@swirls/looms/workflow` | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
 | `@swirls/looms/approval` | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
+| `@swirls/looms/jev`      | Typed evaluations that branch a run     | `defineJev`, `evaluate()`, spawn as a child of an agent or workflow                |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 
@@ -45,6 +46,21 @@ At initialization, Looms rejects duplicate `(kind, name)` registrations and defi
 `defineModule(options, setup)` returns a complete runtime module. The callback receives typed `effect`, `projection`, `thread`, `input`, and `emit` builders. Only returned members are installed; access them through `payments.effects.charge` and `payments.projections.ledger`. Event schemas can be inline or supplied as a reusable `defineEventCatalog`.
 
 Modules that implement a custom thread kind can return `definitions` alongside `threads`. The runtime gathers these for `start`, HTTP starts, and cross-module child spawning.
+
+`defineAgent` and `defineWorkflow` are specialized helpers. For your own kind, stamp the definition with `createKind` (or `defineKind`) instead of assembling `{ kind, name }` by hand:
+
+```ts
+import { createKind } from '@swirls/looms/core'
+
+const auction = createKind('auction')
+
+export const vintageWatch = auction.define({
+  name: 'vintage-watch',
+  input: AuctionInput,
+})
+```
+
+The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`. `defineJev` is that helper bound to `'jev'`, plus questions and routing.
 
 ## Talk to a running run
 
@@ -128,7 +144,7 @@ Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Age
 
 ## File layout
 
-Built-in modules (`@swirls/looms/agent`, `@swirls/looms/workflow`, `@swirls/looms/approval`) use separate files for larger modules. Open the folder and the names tell you where to look:
+Built-in modules (`@swirls/looms/agent`, `@swirls/looms/workflow`, `@swirls/looms/approval`, `@swirls/looms/jev`) use separate files for larger modules. Open the folder and the names tell you where to look:
 
 ```
 src/

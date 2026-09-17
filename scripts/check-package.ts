@@ -118,6 +118,7 @@ try {
     '@swirls/looms/client',
     '@swirls/looms/core',
     '@swirls/looms/debugger',
+    '@swirls/looms/jev',
     '@swirls/looms/projectors',
     '@swirls/looms/react',
     '@swirls/looms/runtime',

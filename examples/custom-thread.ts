@@ -1,15 +1,9 @@
 import { z } from 'zod'
 
-import {
-  complete,
-  defineEventCatalog,
-  defineModule,
-  wait,
-  type DefinitionRef,
-} from '@swirls/looms/core'
+import { complete, createKind, defineEventCatalog, defineModule, wait } from '@swirls/looms/core'
 import { createLooms } from '@swirls/looms/runtime'
 
-// Custom thread: define your own state machine / actor kind using defineModule.
+// Custom thread: createKind stamps the startable definition; defineModule implements the kind.
 // Neither @swirls/looms/agent nor @swirls/looms/workflow is required.
 // bun run --filter @looms/examples custom-thread
 
@@ -32,18 +26,13 @@ const WrappedEventSchema = z.object({
   payload: z.unknown().optional(),
 })
 
-export interface AuctionDefinition extends DefinitionRef {
-  readonly kind: 'auction'
-  readonly name: string
-  readonly input: typeof AuctionInput
-}
+const auction = createKind('auction')
 
-function defineAuction(name: string): AuctionDefinition {
-  return {
-    kind: 'auction',
+function defineAuction(name: string) {
+  return auction.define({
     name,
     input: AuctionInput,
-  }
+  })
 }
 
 // 1. Declare domain events for the thread to observe

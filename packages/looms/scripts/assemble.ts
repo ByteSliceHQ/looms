@@ -16,6 +16,7 @@ const modules = [
   'cloudflare',
   'core',
   'debugger',
+  'jev',
   'projectors',
   'react',
   'runtime',

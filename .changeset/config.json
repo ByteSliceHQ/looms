@@ -17,6 +17,7 @@
     "@looms/cloudflare",
     "@looms/core",
     "@looms/debugger",
+    "@looms/jev",
     "@looms/projectors",
     "@looms/react",
     "@looms/runtime",

@@ -174,22 +174,25 @@ GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
       </h2>
       <ul>
         <li>
-          <code>@swirls/looms/core</code>: defineModule, defineEventCatalog, defineThread,
-          defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite
-          entry supplies Bun storage.
+          <code>@swirls/looms/core</code>: defineModule, defineKind, createKind, defineEventCatalog,
+          defineThread, defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail.
+          The bun-sqlite entry supplies Bun storage.
         </li>
         <li>
           <code>@swirls/looms/runtime</code>: createLooms and lower-level runtime APIs.
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, conversation, userMessage.
+          asAgentTool, asWorkflowTool, asJevTool, conversation, userMessage.
         </li>
         <li>
           <code>@swirls/looms/workflow</code>: workflow and defineWorkflow.
         </li>
         <li>
           <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
+        </li>
+        <li>
+          <code>@swirls/looms/jev</code>: jev, defineJev, defineLogTriage, evaluate, evaluations.
         </li>
         <li>
           <code>@swirls/looms/actor</code>: createActorCell and createLocalActorHost.
@@ -202,7 +205,8 @@ GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
           streams, providers, and projection hooks.
         </li>
         <li>
-          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
+          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers; vercelJev for
+          TypeSafe Jev.
         </li>
         <li>
           <code>@swirls/looms/projectors</code>: post-commit indexes and fan-out.{' '}

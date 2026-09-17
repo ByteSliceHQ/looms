@@ -67,9 +67,9 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         </a>
       </h2>
       <p>
-        A function tool returns JSON. Use <code>asAgentTool</code>, <code>asWorkflowTool</code>, or{' '}
-        <code>asThreadTool</code> to delegate to a child. Register that child's definition in its
-        owning module. Child execution appears in the same run log.
+        A function tool returns JSON. Use <code>asAgentTool</code>, <code>asWorkflowTool</code>,{' '}
+        <code>asJevTool</code>, or <code>asThreadTool</code> to delegate to a child. Register that
+        child's definition in its owning module. Child execution appears in the same run log.
       </p>
       <p>
         Validate tool inputs and check permissions in your application. A model's request to perform
@@ -115,7 +115,8 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         not contact an LLM.
       </p>
       <p>
-        Continue with <Link to="/docs/approvals">human approvals</Link> and{' '}
+        Continue with <Link to="/docs/approvals">human approvals</Link>,{' '}
+        <Link to="/docs/jev">Jev evaluations</Link>, and{' '}
         <Link to="/docs/reliability">interrupted model calls</Link>.
       </p>
     </>
