@@ -39,7 +39,7 @@ export const pendingApprovals = approvalModule.projection({
               description: description || undefined,
               status: 'pending',
               threadId,
-            },
+            } satisfies PendingApproval,
           ],
         }
       }
@@ -49,7 +49,7 @@ export const pendingApprovals = approvalModule.projection({
         const status = outcome === 'reject' ? 'rejected' : 'approved'
         return {
           items: state.items.map((item) =>
-            item.approvalId === approvalId ? { ...item, status } : item,
+            item.approvalId === approvalId ? ({ ...item, status } satisfies PendingApproval) : item,
           ),
         }
       }
@@ -58,7 +58,9 @@ export const pendingApprovals = approvalModule.projection({
         const { approvalId } = event.payload
         return {
           items: state.items.map((item) =>
-            item.approvalId === approvalId ? { ...item, status: 'timed_out' } : item,
+            item.approvalId === approvalId
+              ? ({ ...item, status: 'timed_out' } satisfies PendingApproval)
+              : item,
           ),
         }
       }

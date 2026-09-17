@@ -1,7 +1,7 @@
 import { Predicate, Schema, Stream, type Effect } from 'effect'
 
 import type { EventEnvelope } from './envelope'
-import type { InferSchemaOutput } from './schema'
+import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus } from './types'
@@ -13,18 +13,18 @@ export interface ProjectionDefinition<S = unknown> {
   reduce(state: S, event: EventEnvelope): S
 }
 
-export function defineProjection<TShape>(def: {
-  readonly name: string
-  readonly shape: TShape
-  readonly initialState: InferSchemaOutput<TShape>
-  reduce(state: InferSchemaOutput<TShape>, event: EventEnvelope): InferSchemaOutput<TShape>
-}): ProjectionDefinition<InferSchemaOutput<TShape>>
 export function defineProjection<S = unknown>(def: {
   readonly name: string
-  readonly shape?: unknown
+  readonly shape?: undefined
   readonly initialState: S
   reduce(state: S, event: EventEnvelope): S
 }): ProjectionDefinition<S>
+export function defineProjection<TShape extends SchemaInput>(def: {
+  readonly name: string
+  readonly shape: TShape
+  readonly initialState: InferSchemaOutput<TShape>
+  reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: EventEnvelope): InferSchemaOutput<TShape>
+}): ProjectionDefinition<InferSchemaOutput<TShape>>
 
 export function defineProjection(def: {
   readonly name: string
@@ -104,9 +104,6 @@ export interface TreeBuildState {
   activeWaits?: { [threadId: string]: string[] }
 }
 
-// SAFETY: TreeBuildState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
-export const TreeBuildStateSchema = Schema.Unknown as Schema.Schema<TreeBuildState>
-
 function readPayload(event: EventEnvelope): { [key: string]: JsonValue } {
   if (!Predicate.isObject(event.payload)) {
     return {}
@@ -120,9 +117,8 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
-export const threadTree = defineProjection({
+export const threadTree = defineProjection<TreeBuildState>({
   name: 'threadTree',
-  shape: TreeBuildStateSchema,
   initialState: { runId: '', records: {}, rootThreadId: null } satisfies TreeBuildState,
   reduce(state: TreeBuildState, event): TreeBuildState {
     const payload = readPayload(event)
@@ -327,13 +323,13 @@ export function treeFromRun(state: RunState): ThreadTree {
 }
 
 export const TimelineEntrySchema = Schema.Struct({
-  seq: Schema.Number,
+  seq: Schema.Finite,
   id: Schema.String,
   type: Schema.String,
   threadId: Schema.NullOr(Schema.String),
   causationId: Schema.NullOr(Schema.String),
   effectId: Schema.NullOr(Schema.String),
-  ts: Schema.Number,
+  ts: Schema.Finite,
 })
 export type TimelineEntry = Schema.Schema.Type<typeof TimelineEntrySchema>
 

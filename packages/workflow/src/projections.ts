@@ -1,6 +1,6 @@
 import { Predicate, Schema } from 'effect'
 
-import { NodeStateSchema } from './definitions'
+import { NodeStateSchema, type NodeState } from './definitions'
 import { workflowModule } from './scope'
 
 export const NodesProjectionSchema = Schema.Struct({
@@ -17,7 +17,14 @@ export const nodes = workflowModule.projection({
       case 'workflow.node.started': {
         const { nodeId } = event.payload
         return {
-          nodes: { ...state.nodes, [nodeId]: { status: 'running', result: null, error: null } },
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              status: 'running',
+              result: null,
+              error: null,
+            } satisfies NodeState,
+          },
         }
       }
 
@@ -31,7 +38,7 @@ export const nodes = workflowModule.projection({
               status: failed ? 'failed' : 'completed',
               result: result ?? null,
               error: failed ? error : null,
-            },
+            } satisfies NodeState,
           },
         }
       }
@@ -39,7 +46,14 @@ export const nodes = workflowModule.projection({
       case 'workflow.node.skipped': {
         const { nodeId } = event.payload
         return {
-          nodes: { ...state.nodes, [nodeId]: { status: 'skipped', result: null, error: null } },
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              status: 'skipped',
+              result: null,
+              error: null,
+            } satisfies NodeState,
+          },
         }
       }
 

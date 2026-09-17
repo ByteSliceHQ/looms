@@ -105,7 +105,7 @@ export const payments = defineModule(
               return {
                 entries: [
                   ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-                  { chargeId, amount, currency, status: 'requested' },
+                  { chargeId, amount, currency, status: 'requested' } satisfies LedgerEntry,
                 ],
               }
             }
@@ -115,7 +115,7 @@ export const payments = defineModule(
               return {
                 entries: [
                   ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-                  { chargeId, amount, currency, status: 'authorized' },
+                  { chargeId, amount, currency, status: 'authorized' } satisfies LedgerEntry,
                 ],
               }
             }
@@ -125,7 +125,7 @@ export const payments = defineModule(
               return {
                 entries: [
                   ...state.entries.filter((entry) => entry.chargeId !== chargeId),
-                  { chargeId, amount, currency, status: 'declined' },
+                  { chargeId, amount, currency, status: 'declined' } satisfies LedgerEntry,
                 ],
               }
             }

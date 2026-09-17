@@ -81,43 +81,50 @@ export interface ModuleScope<
   readonly observes?: TObserves
   readonly dependencies?: readonly RuntimeModuleDependency[]
 
-  thread<TShape, TInputSchema extends SchemaInput | undefined = undefined>(def: {
-    readonly kind: string
-    readonly shape: TShape
-    readonly input?: TInputSchema
-    initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): InferSchemaOutput<TShape>
-    step(state: InferSchemaOutput<TShape>, event: U, ctx: ThreadContext): InferSchemaOutput<TShape>
-    effects?(state: InferSchemaOutput<TShape>, ctx: ThreadContext): RuntimeEffect[]
-  }): ThreadDefinition<InferSchemaOutput<TShape>>
-
   thread<S = JsonValue, TInputSchema extends SchemaInput | undefined = undefined>(def: {
     readonly kind: string
-    readonly shape?: unknown
+    readonly shape?: undefined
     readonly input?: TInputSchema
     initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): S
     step(state: S, event: U, ctx: ThreadContext): S
     effects?(state: S, ctx: ThreadContext): RuntimeEffect[]
   }): ThreadDefinition<S>
 
-  projection<TShape>(def: {
-    readonly name: string
+  thread<
+    TShape extends SchemaInput,
+    TInputSchema extends SchemaInput | undefined = undefined,
+  >(def: {
+    readonly kind: string
     readonly shape: TShape
-    readonly initialState: InferSchemaOutput<TShape>
-    reduce(state: InferSchemaOutput<TShape>, event: U): InferSchemaOutput<TShape>
-  }): ProjectionDefinition<InferSchemaOutput<TShape>>
+    readonly input?: TInputSchema
+    initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): InferSchemaOutput<TShape>
+    step(
+      state: NoInfer<InferSchemaOutput<TShape>>,
+      event: U,
+      ctx: ThreadContext,
+    ): InferSchemaOutput<TShape>
+    effects?(state: NoInfer<InferSchemaOutput<TShape>>, ctx: ThreadContext): RuntimeEffect[]
+  }): ThreadDefinition<InferSchemaOutput<TShape>>
 
   projection<S>(def: {
     readonly name: string
-    readonly shape?: unknown
+    readonly shape?: undefined
     readonly initialState: S
     reduce(state: S, event: U): S
   }): ProjectionDefinition<S>
 
+  projection<TShape extends SchemaInput>(def: {
+    readonly name: string
+    readonly shape: TShape
+    readonly initialState: InferSchemaOutput<TShape>
+    reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: U): InferSchemaOutput<TShape>
+  }): ProjectionDefinition<InferSchemaOutput<TShape>>
+
   effect<
-    TSchema = undefined,
+    TSchema extends SchemaInput | undefined = undefined,
     TInput = InferDefinedSchema<TSchema>,
     R = never,
-    E extends EventInputOf<U> = EventInputOf<U>,
+    HandlerError = never,
   >(def: {
     type: `${TNamespace}.${string}`
     input?: TSchema
@@ -125,8 +132,8 @@ export interface ModuleScope<
     execute: (
       input: TInput,
       ctx: ScopedEffectContext<EventInputOf<U>>,
-    ) => EffectHandlerResult<R, EventInputOf<U>>
-  }): NoInfer<EffectDefinition<TInput, R, E>>
+    ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
+  }): NoInfer<EffectDefinition<TInput, R, EventInputOf<U>>>
 
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
@@ -151,16 +158,10 @@ export type ThreadStateOf<T> = T extends ThreadDefinition<infer S> ? S : never
 
 function buildScopeInput(
   namespace: string,
-  events: EventCatalog | undefined,
   key: string,
   payload: JsonValue,
   meta?: Omit<EventInput, 'type' | 'payload'>,
 ): EventInput {
-  if (events) {
-    // SAFETY: catalog input produces typed EventInput for the catalog entry.
-    return events.input(key, payload, meta) as EventInput
-  }
-
   return {
     ...meta,
     type: `${namespace}.${key}`,
@@ -197,11 +198,11 @@ export function createModuleScope<
     },
 
     input(key: any, payload: any, meta?: any): any {
-      return buildScopeInput(namespace, events, key, payload, meta)
+      return buildScopeInput(namespace, key, payload, meta)
     },
 
     emit(key: any, payload: any, meta?: any): any {
-      return emit(buildScopeInput(namespace, events, key, payload, meta))
+      return emit(buildScopeInput(namespace, key, payload, meta))
     },
   }
 
@@ -215,8 +216,19 @@ export type ModuleCatalog<N extends string, E> = E extends EventCatalog
     ? EventCatalog<N, E>
     : undefined
 
+function isEventCatalog(source: EventCatalog | CatalogEntries): source is EventCatalog {
+  return 'namespace' in source && 'entries' in source
+}
+
+function isModuleScope(
+  source:
+    | DefineModuleOptions<string, EventCatalog | undefined>
+    | ModuleScope<string, EventEnvelope, EventCatalog, readonly EventCatalog[]>,
+): source is ModuleScope<string, EventEnvelope, EventCatalog> {
+  return 'thread' in source && 'effect' in source
+}
+
 /** Construct a complete module. Only members returned by setup are installed. */
-/* oxlint-disable anti-slop/no-runtime-typeof, anti-slop/no-chained-type-assertions, anti-slop/no-conditional-empty-object-spread, anti-slop/require-safety-comment-for-type-assertion -- This compatibility boundary normalizes either a module builder or its finished catalog while preserving its generic member types. */
 export function defineModule<
   const N extends string,
   E extends EventCatalog | CatalogEntries | undefined = undefined,
@@ -237,40 +249,49 @@ export function defineModule<
   readonly effects: FX
   readonly threads: TH
   readonly projections: PR
-} {
+}
+
+export function defineModule(options: any, setup: (scope: any) => any): any {
   const source = options.events
 
-  // SAFETY: catalogs have an input builder; inline entries are normalized once here.
-  const events = (source &&
-    (typeof (source as any).input === 'function'
+  const events = source
+    ? isEventCatalog(source)
       ? source
-      : defineEventCatalog(options.namespace, source as CatalogEntries))) as ModuleCatalog<N, E>
+      : defineEventCatalog(options.namespace, source)
+    : undefined
 
-  const scope =
-    typeof (options as any).effect === 'function'
-      ? (options as unknown as ModuleScope<
-          N,
-          ScopeUniverse<ModuleCatalog<N, E>, O>,
-          ModuleCatalog<N, E>,
-          O
-        >)
-      : createModuleScope({ ...options, events })
+  const scope = isModuleScope(options) ? options : createModuleScope({ ...options, events })
 
   const members = setup(scope)
 
-  return {
+  const module: any = {
     namespace: options.namespace,
     protocolVersion: options.protocolVersion,
-    events: events as Extract<ModuleCatalog<N, E>, EventCatalog> | undefined,
-    ...(options.observes ? { observes: options.observes } : {}),
-    ...(options.dependencies ? { dependencies: options.dependencies } : {}),
-    ...(members.definitions ? { definitions: members.definitions } : {}),
-    ...(members.middleware ? { middleware: members.middleware } : {}),
-    ...(members.services ? { services: members.services } : {}),
-    // SAFETY: absent member bags use the corresponding empty-object generic defaults.
-    effects: (members.effects ?? {}) as FX,
-    threads: (members.threads ?? {}) as TH,
-    projections: (members.projections ?? {}) as PR,
+    events,
+    effects: members.effects ?? {},
+    threads: members.threads ?? {},
+    projections: members.projections ?? {},
   }
+
+  if (options.observes) {
+    module.observes = options.observes
+  }
+
+  if (options.dependencies) {
+    module.dependencies = options.dependencies
+  }
+
+  if (members.definitions) {
+    module.definitions = members.definitions
+  }
+
+  if (members.middleware) {
+    module.middleware = members.middleware
+  }
+
+  if (members.services) {
+    module.services = members.services
+  }
+
+  return module
 }
-/* oxlint-enable anti-slop/no-runtime-typeof, anti-slop/no-chained-type-assertions, anti-slop/no-conditional-empty-object-spread, anti-slop/require-safety-comment-for-type-assertion */

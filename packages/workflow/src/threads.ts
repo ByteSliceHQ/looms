@@ -3,65 +3,73 @@ import { Predicate, Schema } from 'effect'
 import {
   asJson,
   createWaitId,
+  EventInputSchema,
   emit,
   fail,
   invoke,
   isWithdrawnError,
+  RuntimeEffectSchema,
   spawn,
   wait,
-  type EventInput,
-  type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
 
-import { type NodeState } from './definitions'
+import { NodeStateSchema, type NodeState } from './definitions'
 import { runNodeEffect, scheduleEffect } from './effects'
 import { workflowModule } from './scope'
 
 export { NodeStateSchema, NodeStatusSchema, type NodeState, type NodeStatus } from './definitions'
 
-export interface WorkflowPendingSpawn {
-  readonly childThreadId: string
-  readonly kind: string
-  readonly definitionName: string
-  readonly nodeId: string
-  readonly input: JsonValue
-}
+export const WorkflowPendingSpawnSchema = Schema.Struct({
+  childThreadId: Schema.String,
+  kind: Schema.String,
+  definitionName: Schema.String,
+  nodeId: Schema.String,
+  input: Schema.Json,
+})
+export type WorkflowPendingSpawn = Schema.Schema.Type<typeof WorkflowPendingSpawnSchema>
 
-export interface WorkflowPendingSleep {
-  readonly waitId: string
-  readonly wakeAt: number
-  readonly nodeId: string
-}
+export const WorkflowPendingSleepSchema = Schema.Struct({
+  waitId: Schema.String,
+  wakeAt: Schema.Finite,
+  nodeId: Schema.String,
+})
+export type WorkflowPendingSleep = Schema.Schema.Type<typeof WorkflowPendingSleepSchema>
 
-export interface WorkflowPendingEffects {
-  readonly nodeId: string
-  readonly effects: RuntimeEffect[]
-}
+export const WorkflowPendingEffectsSchema = Schema.Struct({
+  nodeId: Schema.String,
+  effects: Schema.mutable(Schema.Array(RuntimeEffectSchema)),
+})
+export type WorkflowPendingEffects = Schema.Schema.Type<typeof WorkflowPendingEffectsSchema>
 
-export interface WorkflowPendingEmit {
-  readonly id: string
-  readonly event: EventInput
-}
+export const WorkflowPendingEmitSchema = Schema.Struct({
+  id: Schema.String,
+  event: EventInputSchema,
+})
+export type WorkflowPendingEmit = Schema.Schema.Type<typeof WorkflowPendingEmitSchema>
 
-export interface WorkflowState {
-  definitionName?: string
-  nodes: { [nodeId: string]: NodeState }
-  concurrency: number
-  input: JsonValue
-  nodeIds: string[]
-  needsSchedule: boolean
-  runningNodes: string[]
-  pendingSpawns: WorkflowPendingSpawn[]
-  pendingSleeps: WorkflowPendingSleep[]
-  pendingEffects: WorkflowPendingEffects[]
-  pendingEmits: WorkflowPendingEmit[]
-  status: 'running' | 'completed' | 'failed'
-  error: string | null
-}
+export const WorkflowStateSchema = Schema.Struct({
+  definitionName: Schema.optional(Schema.String),
+  nodes: Schema.Record(Schema.String, NodeStateSchema),
+  concurrency: Schema.Finite,
+  input: Schema.Json,
+  nodeIds: Schema.mutable(Schema.Array(Schema.String)),
+  needsSchedule: Schema.Boolean,
+  runningNodes: Schema.mutable(Schema.Array(Schema.String)),
+  pendingSpawns: Schema.mutable(Schema.Array(WorkflowPendingSpawnSchema)),
+  pendingSleeps: Schema.mutable(Schema.Array(WorkflowPendingSleepSchema)),
+  pendingEffects: Schema.mutable(Schema.Array(WorkflowPendingEffectsSchema)),
+  pendingEmits: Schema.mutable(Schema.Array(WorkflowPendingEmitSchema)),
+  status: Schema.Union([
+    Schema.Literal('running'),
+    Schema.Literal('completed'),
+    Schema.Literal('failed'),
+  ]),
+  error: Schema.NullOr(Schema.String),
+})
+export type WorkflowState = Schema.Schema.Type<typeof WorkflowStateSchema>
 
-// SAFETY: WorkflowState is folded by reducers; Schema.Unknown is a typed placeholder, not a decoder.
-export const WorkflowStateSchema = Schema.Unknown as Schema.Schema<WorkflowState>
+const initialWorkflowStatus: WorkflowState['status'] = 'running'
 
 function scheduleInvocation(state: WorkflowState) {
   return invoke(scheduleEffect, {
@@ -93,7 +101,7 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
 export const workflowThread = workflowModule.thread({
   kind: 'workflow',
   shape: WorkflowStateSchema,
-  initialState: (ctx): WorkflowState => ({
+  initialState: (ctx) => ({
     definitionName: ctx.definitionName,
     nodes: {},
     concurrency: 8,
@@ -105,7 +113,7 @@ export const workflowThread = workflowModule.thread({
     pendingSleeps: [],
     pendingEffects: [],
     pendingEmits: [],
-    status: 'running',
+    status: initialWorkflowStatus,
     error: null,
   }),
   step(state, event, ctx) {
@@ -146,7 +154,11 @@ export const workflowThread = workflowModule.thread({
           ...state,
           nodes: {
             ...state.nodes,
-            [nodeId]: { status: 'running', result: null, error: null },
+            [nodeId]: {
+              status: 'running',
+              result: null,
+              error: null,
+            } satisfies NodeState,
           },
           runningNodes: state.runningNodes.includes(nodeId)
             ? state.runningNodes
@@ -171,7 +183,7 @@ export const workflowThread = workflowModule.thread({
               status: failed ? 'failed' : 'completed',
               result: result ?? null,
               error: failed ? error : null,
-            },
+            } satisfies NodeState,
           },
           runningNodes: state.runningNodes.filter((id) => id !== nodeId),
           pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
@@ -271,7 +283,11 @@ export const workflowThread = workflowModule.thread({
           ...state,
           nodes: {
             ...state.nodes,
-            [nodeId]: { status: 'failed', result: null, error: message },
+            [nodeId]: {
+              status: 'failed',
+              result: null,
+              error: message,
+            } satisfies NodeState,
           },
           runningNodes: state.runningNodes.filter((id) => id !== nodeId),
           pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
