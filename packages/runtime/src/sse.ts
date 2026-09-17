@@ -158,6 +158,7 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
+      vary: 'accept',
       'x-accel-buffering': 'no',
     },
   })

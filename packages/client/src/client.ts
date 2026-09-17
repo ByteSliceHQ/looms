@@ -124,10 +124,10 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 
           const res = yield* Effect.tryPromise({
             try: (signal) =>
-              fetchImpl(
-                `${baseUrl}/api/events?runId=${encodeURIComponent(runId)}&live=true&cursor=${cursor}`,
-                { headers, signal },
-              ),
+              fetchImpl(`${baseUrl}/runs/${encodeURIComponent(runId)}/events?fromSeq=${fromSeq}`, {
+                headers,
+                signal,
+              }),
             catch: (cause) => new LoomsClientError('Event subscription failed', cause),
           })
 
@@ -222,8 +222,8 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         method: 'POST',
         body: stringifyJson({ kind: definition.kind, definitionName: definition.name, input }),
       }),
-    getRun: (runId: string) => request(`/runs/${runId}`, RunResultSchema),
-    getState: (runId: string) => request(`/runs/${runId}`, RunResultSchema),
+    getRun: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
+    getState: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
     getEvents: (runId: string, opts?: { fromSeq?: number; limit?: number }) => {
       const params = new URLSearchParams()
 
@@ -236,18 +236,25 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       }
 
       const q = params.toString()
-      return request(`/runs/${runId}/events${q ? `?${q}` : ''}`, EventsResultSchema)
+      return request(
+        `/runs/${encodeURIComponent(runId)}/events${q ? `?${q}` : ''}`,
+        EventsResultSchema,
+      )
     },
     signal: (runId: string, events: ReadonlyArray<EventInput>) =>
-      request(`/runs/${runId}/events`, RunResultSchema, {
+      request(`/runs/${encodeURIComponent(runId)}/events`, RunResultSchema, {
         method: 'POST',
         body: stringifyJson({ events }),
       }),
-    wake: (runId: string) => request(`/runs/${runId}/wake`, RunResultSchema, { method: 'POST' }),
+    wake: (runId: string) =>
+      request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
     replayTo: (runId: string, seq: number) =>
-      request(`/runs/${runId}/replay?seq=${seq}`, ReplayResultSchema),
+      request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>
-      request(`/runs/${runId}/projections/${name}`, ProjectionResultSchema),
+      request(
+        `/runs/${encodeURIComponent(runId)}/projections/${encodeURIComponent(name)}`,
+        ProjectionResultSchema,
+      ),
     subscribeEvents,
     /**
      * Subscribe to the run log, then start execution so deltas arrive live.

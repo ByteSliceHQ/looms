@@ -98,10 +98,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Confirm the request reaches /api/events with the correct runId and permission context.
-        Preserve text/event-stream and streaming bodies through the gateway, disable buffering, and
-        check network errors. A disconnected client should resume using its cursor; ensure retention
-        has not removed the requested history.
+        Confirm the request reaches /runs/:id/events with the correct permission context. Preserve
+        text/event-stream and streaming bodies through the gateway, disable buffering, and check
+        network errors. A disconnected client should resume with Last-Event-ID; ensure retention has
+        not removed the requested history.
       </p>
       <h2 id="invalid-input-or-events">
         Invalid input or events

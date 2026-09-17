@@ -37,7 +37,7 @@ export interface LoomsClientStoreOptions {
   storeId: string
   /**
    * Base URL of the Looms host (e.g. http://127.0.0.1:8787).
-   * Opens `${endpoint}/api/events?runId=&live=true` as an SSE stream.
+   * Opens `${endpoint}/runs/:id/events?live=true` as an SSE stream.
    */
   endpoint: string
   /** Backoff between SSE reconnects. */
@@ -173,13 +173,11 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const liveUrl = () => {
-    const cursor = Math.max(0, fromSeq - 1)
-    return `${endpoint}/api/events?runId=${encodeURIComponent(options.storeId)}&live=true&cursor=${cursor}`
+    return `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?live=true&fromSeq=${fromSeq}`
   }
 
   const pull = Effect.gen(function* () {
-    const cursor = Math.max(0, fromSeq - 1)
-    const url = `${endpoint}/api/events?runId=${encodeURIComponent(options.storeId)}&cursor=${cursor}`
+    const url = `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?fromSeq=${fromSeq}`
 
     const res = yield* Effect.tryPromise({
       try: (signal) => fetchFn(url, { signal }),
@@ -208,16 +206,9 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
 
     const body = decodedBody.value
-    const batch = 'batch' in body && Array.isArray(body.batch) ? body.batch : []
+    const pulledEvents = 'events' in body && Array.isArray(body.events) ? body.events : []
 
-    applyBatch(batch.map((raw) => decodeLoomsEvent(raw, options.storeId)))
-
-    const head = 'head' in body && Predicate.isNumber(body.head) ? body.head : undefined
-
-    if (head !== undefined) {
-      fromSeq = Math.max(fromSeq, head + 1)
-    }
-
+    applyBatch(pulledEvents.map((raw) => decodeLoomsEvent(raw, options.storeId)))
     return undefined
   }).pipe(
     Effect.catchIf(

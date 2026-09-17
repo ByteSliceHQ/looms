@@ -39,7 +39,7 @@ async function readSseFrames(res: Response, count: number): Promise<string[]> {
   return frames
 }
 
-describe('handleEventsApi SSE', () => {
+describe('GET /runs/:id/events', () => {
   test('streams existing events with id framing', async () => {
     const echo = defineAgent({
       name: 'echo-sse',
@@ -55,7 +55,7 @@ describe('handleEventsApi SSE', () => {
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&live=true`),
+      new Request(`http://looms.test/runs/${encodeURIComponent(runId)}/events?live=true`),
     )
 
     expect(res).not.toBeNull()
@@ -84,8 +84,8 @@ describe('handleEventsApi SSE', () => {
     expect(events.length).toBeGreaterThan(1)
 
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&live=true`, {
-        headers: { 'last-event-id': '1', accept: 'text/event-stream' },
+      new Request(`http://looms.test/runs/${encodeURIComponent(runId)}/events`, {
+        headers: { 'last-event-id': '1', accept: 'text/event-stream; charset=utf-8' },
       }),
     )
 
@@ -95,7 +95,7 @@ describe('handleEventsApi SSE', () => {
     expect(frames[0]).not.toContain('id: 1\n')
   })
 
-  test('non-live pull returns a JSON batch', async () => {
+  test('non-live pull returns the event resource', async () => {
     const echo = defineAgent({
       name: 'echo-pull',
       instructions: 'echo',
@@ -110,7 +110,7 @@ describe('handleEventsApi SSE', () => {
     const { runId } = await looms.start(echo, { text: 'hi' })
 
     const res = await looms.fetch(
-      new Request(`http://looms.test/api/events?runId=${encodeURIComponent(runId)}&cursor=0`),
+      new Request(`http://looms.test/runs/${encodeURIComponent(runId)}/events?fromSeq=1`),
     )
 
     expect(res).not.toBeNull()
@@ -121,8 +121,40 @@ describe('handleEventsApi SSE', () => {
       return
     }
 
-    expect(Array.isArray(body.batch)).toBe(true)
-    expect(Predicate.isNumber(body.head)).toBe(true)
+    expect(body.runId).toBe(runId)
+    expect(Array.isArray(body.events)).toBe(true)
+    expect(res!.headers.get('vary')).toBe('accept')
+  })
+
+  test('rejects invalid event ranges and resume cursors', async () => {
+    const looms = createLooms({ modules: [] })
+
+    const invalidFromSeq = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/events?fromSeq=0'),
+    )
+
+    const invalidLimit = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/events?limit=1.5'),
+    )
+
+    const invalidLastEventId = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/events', {
+        headers: { accept: 'text/event-stream', 'last-event-id': 'not-a-sequence' },
+      }),
+    )
+
+    expect(invalidFromSeq?.status).toBe(400)
+    expect(invalidLimit?.status).toBe(400)
+    expect(invalidLastEventId?.status).toBe(400)
+    await looms.stop()
+  })
+
+  test('does not handle the removed legacy event endpoint', async () => {
+    const looms = createLooms({ modules: [] })
+    const res = await looms.fetch(new Request('http://looms.test/api/events?runId=run_1&live=true'))
+
+    expect(res).toBeNull()
+    await looms.stop()
   })
 
   test('POST /runs with stream=true returns SSE frames', async () => {

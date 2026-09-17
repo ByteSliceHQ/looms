@@ -11,7 +11,6 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import { handleEventsApiEffect } from './events-api'
 import type { LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
 
@@ -36,6 +35,10 @@ class RequestBodyError extends Data.TaggedError('RequestBodyError')<{
     this.name = 'RequestBodyError'
   }
 }
+
+class RequestQueryError extends Data.TaggedError('RequestQueryError')<{
+  readonly message: string
+}> {}
 
 const StartRunBodySchema = Schema.Struct({
   kind: Schema.optional(Schema.String),
@@ -78,9 +81,65 @@ function provideStore<A, E>(
   return Effect.provideService(effect, EventStoreTag, store)
 }
 
+function acceptsEventStream(req: Request): boolean {
+  return (req.headers.get('accept') ?? '')
+    .split(',')
+    .some((value) => value.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream')
+}
+
 function wantsRunStream(req: Request, url: URL): boolean {
-  const accept = req.headers.get('accept') ?? ''
-  return url.searchParams.get('stream') === 'true' || accept.includes('text/event-stream')
+  return url.searchParams.get('stream') === 'true' || acceptsEventStream(req)
+}
+
+function wantsEventStream(req: Request, url: URL): boolean {
+  const live = url.searchParams.get('live')
+  return live === 'true' || live === '1' || acceptsEventStream(req)
+}
+
+function readIntegerQuery(
+  url: URL,
+  name: string,
+  options: { minimum: number },
+): Effect.Effect<number | null, RequestQueryError> {
+  const raw = url.searchParams.get(name)
+
+  if (raw === null) {
+    return Effect.succeed(null)
+  }
+
+  const value = Number(raw)
+
+  if (!Number.isSafeInteger(value) || value < options.minimum || raw.trim() === '') {
+    return Effect.fail(
+      new RequestQueryError({
+        message: `${name} must be an integer greater than or equal to ${options.minimum}`,
+      }),
+    )
+  }
+
+  return Effect.succeed(value)
+}
+
+function readEventStreamFromSeq(req: Request, url: URL): Effect.Effect<number, RequestQueryError> {
+  const lastEventId = req.headers.get('last-event-id')
+
+  if (lastEventId !== null && lastEventId.trim() !== '') {
+    const value = Number(lastEventId)
+
+    if (!Number.isSafeInteger(value) || value < 0) {
+      return Effect.fail(
+        new RequestQueryError({
+          message: 'Last-Event-ID must be a non-negative integer',
+        }),
+      )
+    }
+
+    return Effect.succeed(value + 1)
+  }
+
+  return readIntegerQuery(url, 'fromSeq', { minimum: 1 }).pipe(
+    Effect.map((fromSeq) => fromSeq ?? 1),
+  )
 }
 
 function streamStartRun(
@@ -138,11 +197,11 @@ const readJson = (req: Request): Effect.Effect<JsonValue, RequestBodyError> =>
   )
 
 export function isLoomsApiPath(path: string): boolean {
-  return path === '/health' || path.startsWith('/api/events') || path.startsWith('/runs')
+  return path === '/health' || path === '/runs' || path.startsWith('/runs/')
 }
 
 function toErrorResponse(err: Error): Response {
-  if (err instanceof RequestBodyError) {
+  if (err instanceof RequestBodyError || err instanceof RequestQueryError) {
     return Response.json({ error: err.message }, { status: 400 })
   }
 
@@ -170,16 +229,12 @@ export function createFetchHandler(
 
         const accept = req.headers.get('accept') ?? ''
 
-        if (req.method === 'GET' && accept.includes('text/html') && !path.startsWith('/api/')) {
+        if (req.method === 'GET' && accept.includes('text/html') && !acceptsEventStream(req)) {
           return null
         }
 
         if (path === '/health') {
           return Response.json({ ok: true })
-        }
-
-        if (path.startsWith('/api/events')) {
-          return yield* handleEventsApiEffect(req, runtime, store)
         }
 
         if (req.method === 'GET' && path === '/runs') {
@@ -284,16 +339,21 @@ export function createFetchHandler(
         if (req.method === 'GET' && eventsMatch) {
           const runId = decodeURIComponent(eventsMatch[1]!)
 
-          const fromSeq = url.searchParams.get('fromSeq')
-            ? Number(url.searchParams.get('fromSeq'))
-            : undefined
+          if (wantsEventStream(req, url)) {
+            return createEventStreamResponse({
+              signal: req.signal,
+              request: req,
+              store,
+              runId,
+              fromSeq: yield* readEventStreamFromSeq(req, url),
+            })
+          }
 
-          const limit = url.searchParams.get('limit')
-            ? Number(url.searchParams.get('limit'))
-            : undefined
+          const fromSeq = (yield* readIntegerQuery(url, 'fromSeq', { minimum: 1 })) ?? undefined
+          const limit = (yield* readIntegerQuery(url, 'limit', { minimum: 1 })) ?? undefined
 
           const events = yield* provideStore(runtime.getEvents(runId, { fromSeq, limit }), store)
-          return Response.json({ runId, events })
+          return Response.json({ runId, events }, { headers: { vary: 'accept' } })
         }
 
         const threadsMatch = path.match(/^\/runs\/([^/]+)\/(threads)$/)

@@ -19,5 +19,4 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
-export { handleEventsApi, encodeLoomsEvent, type EncodedLoomsEvent } from './events-api'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'

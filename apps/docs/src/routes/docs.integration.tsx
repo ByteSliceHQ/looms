@@ -59,8 +59,8 @@ function Page() {
       <p>
         After authenticating and authorizing a request, forward it to an actor host or call{' '}
         <code>looms.fetch(request)</code>. The embed handler returns null for unrelated paths. Keep
-        the documented paths intact when forwarding, including <code>/api/events</code>. Do not
-        expose raw event ingestion directly to untrusted browsers.
+        the documented <code>/runs</code> paths intact when forwarding, including streaming
+        responses. Do not expose event ingestion directly to untrusted browsers.
       </p>
       <CodeBlock lang="ts">{`// Fragment inside an already-authorized server handler:
 const response = await looms.fetch(request)

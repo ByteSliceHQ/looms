@@ -187,10 +187,10 @@ describe('@looms/cloudflare', () => {
 
     expect(readBody.runId).toBe(startBody.runId)
 
-    // Verify SSE streaming through routeToDurableObject via the events API
+    // Verify SSE streaming through routeToDurableObject via the run event resource
     const streamRes = await routeToDurableObject(
       fakeNamespace,
-      new Request(`http://localhost:8787/api/events?runId=${startBody.runId}&live=true`, {
+      new Request(`http://localhost:8787/runs/${startBody.runId}/events?live=true`, {
         method: 'GET',
         headers: { accept: 'text/event-stream' },
       }),

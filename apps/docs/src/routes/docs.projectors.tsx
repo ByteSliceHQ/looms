@@ -159,7 +159,7 @@ export const orderTracker = ordersModule.projection({
       <p>
         Wrap your React tree or page with <code>LoomsProvider</code> from{' '}
         <code>@swirls/looms/react</code>. Pass the Looms host URL; the client opens{' '}
-        <code>/api/events</code> on that host:
+        <code>/runs/:id/events</code> on that host:
       </p>
       <CodeBlock lang="tsx">{`import { LoomsProvider } from '@swirls/looms/react'
 import { OrderDashboard } from './order-dashboard'

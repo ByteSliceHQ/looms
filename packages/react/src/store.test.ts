@@ -45,20 +45,14 @@ describe('createLoomsStore', () => {
       async fetch(req) {
         const url = new URL(req.url)
 
-        if (url.pathname === '/api/events') {
-          const storeId = url.searchParams.get('runId')
-
-          if (storeId !== 'run_1') {
-            return new Response('Not Found', { status: 404 })
-          }
-
+        if (url.pathname === '/runs/run_1/events' && req.method === 'GET') {
           const accept = req.headers.get('accept') ?? ''
 
           const isLive =
             url.searchParams.get('live') === 'true' || accept.includes('text/event-stream')
 
           if (!isLive) {
-            return Response.json({ batch: events.map(encodeLoomsEvent), head: events.length })
+            return Response.json({ runId: 'run_1', events: events.map(encodeLoomsEvent) })
           }
 
           liveRequests += 1
@@ -66,7 +60,7 @@ describe('createLoomsStore', () => {
 
           const cursor = lastEventId
             ? Number(lastEventId)
-            : Number(url.searchParams.get('cursor') ?? '0')
+            : Number(url.searchParams.get('fromSeq') ?? '1') - 1
 
           const pending = events.filter((item) => item.seq > cursor)
 
@@ -155,7 +149,7 @@ describe('createLoomsStore reconnect', () => {
       async fetch(req) {
         const url = new URL(req.url)
 
-        if (url.pathname !== '/api/events') {
+        if (url.pathname !== '/runs/run_1/events') {
           return new Response('Not Found', { status: 404 })
         }
 
@@ -163,7 +157,7 @@ describe('createLoomsStore reconnect', () => {
           url.searchParams.get('live') !== 'true' &&
           !(req.headers.get('accept') ?? '').includes('text/event-stream')
         ) {
-          return Response.json({ batch: [], head: 0 })
+          return Response.json({ runId: 'run_1', events: [] })
         }
 
         connections += 1
@@ -175,7 +169,7 @@ describe('createLoomsStore reconnect', () => {
 
         const cursor = lastEventId
           ? Number(lastEventId)
-          : Number(url.searchParams.get('cursor') ?? '0')
+          : Number(url.searchParams.get('fromSeq') ?? '1') - 1
 
         const pending = log.filter((item) => item.seq > cursor)
         const first = pending[0]

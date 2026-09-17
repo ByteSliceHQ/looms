@@ -47,15 +47,14 @@ describe('createLoomsClient', () => {
     expect(calls[0]).toBe('/runs')
   })
 
-  test('subscribeEvents follows /api/events SSE', async () => {
+  test('subscribeEvents follows the run event resource over SSE', async () => {
     const received: string[] = []
 
     const client = createLoomsClient({
       fetch: async (input) => {
         const href = hrefOf(input)
-        expect(href).toContain('/api/events')
-        expect(href).toContain('live=true')
-        expect(href).toContain('runId=run_1')
+        expect(href).toContain('/runs/run_1/events')
+        expect(href).toContain('fromSeq=1')
 
         const stream = new ReadableStream({
           start(controller) {

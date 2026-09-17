@@ -130,12 +130,13 @@ GET  /runs/:id/threads               → { runId, threads }
 POST /runs/:id/wake                  → { runId, state }
 GET  /runs/:id/replay?seq=10          → { runId, step }
 GET  /runs/:id/projections/:name      → { runId, name, value }
-GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
+GET  /runs/:id/events?live=true       → SSE`}</CodeBlock>
       <p>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
         POST /runs/:id/events accepts an events array and optionally idempotencyKey. The embed
         handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and
-        limit; SSE uses cursor and Last-Event-ID for catch-up.
+        limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
+        Streams resume after Last-Event-ID, or begin at fromSeq when that header is absent.
       </p>
       <CodeBlock lang="bash">{`curl -X POST http://localhost:8787/runs \\
   -H 'content-type: application/json' \\

@@ -21,7 +21,7 @@
 
   - Add Standard Schema `input` typing and runtime validation for `defineAgent`, `defineWorkflow`, and `defineTool`.
   - Provide Promise-based `createLooms()` facade with lazy init, typed start overloads, and universal `fetch(req) -> Response | null`.
-  - Add Looms-native event streaming directly against EventStore and `/api/events` (eliminating the dual-log S2 bridge).
+  - Add Looms-native event streaming directly against EventStore and `/runs/:id/events` (eliminating the dual-log S2 bridge).
   - Add `s2Lite()` / `startS2Lite()` auto-starting dev process manager.
   - Typed client generics for `createLoomsClient<typeof definitions>()`.
   - Single server setup for dev and prod in demo app with no `effect` dependency.
@@ -42,5 +42,5 @@
 - e398380: Publish the React integration at `@swirls/looms/react` and drop the former LiveStore protocol names.
 
   - Package and React provider are now `@swirls/looms/react` / `LoomsProvider`.
-  - Live event HTTP is `GET /api/events?runId=` (pull or SSE). Wire batches are Looms event envelopes.
+  - Live event HTTP is `GET /runs/:id/events` with SSE content negotiation. Wire batches are Looms event envelopes.
   - `LiveStoreGlobalEncoded` is now `EncodedLoomsEvent`.

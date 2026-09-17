@@ -37,9 +37,9 @@ function Page() {
         <li>Forward only the authorized request to Looms.</li>
       </ol>
       <p>
-        Enforce this for reads and SSE subscriptions as well as writes. Both /runs/:id paths and
-        /api/events?runId=... expose run data. For new runs, generate/assign ownership on the
-        server; do not trust a tenant ID or arbitrary run ID from a browser.
+        Enforce this for reads and SSE subscriptions as well as writes. Every /runs/:id path exposes
+        run data. For new runs, generate/assign ownership on the server; do not trust a tenant ID or
+        arbitrary run ID from a browser.
       </p>
       <h2 id="do-not-expose-unrestricted-event-ingestion">
         Do not expose unrestricted event ingestion

@@ -77,7 +77,7 @@ Looms supports pluggable runtime hosts for actor single-writer execution:
 Set `LOOMS_BACKEND` in your environment:
 
 - `LOOMS_BACKEND=bun` (default): Runs `createLocalActorHost` inside the TanStack app server (per-run SQLite under `.looms/runs/`).
-- `LOOMS_BACKEND=cloudflare`: Proxies `/runs*` and `/api/events*` requests to `LOOMS_WORKER_URL` (default `http://127.0.0.1:8788`), where the Durable Object worker (`apps/demo-worker`) executes each run in its own cell.
+- `LOOMS_BACKEND=cloudflare`: Proxies `/runs*` requests to `LOOMS_WORKER_URL` (default `http://127.0.0.1:8788`), where the Durable Object worker (`apps/demo-worker`) executes each run in its own cell.
 
 Both backends share `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads). Cloudflare mode loads secrets from `apps/demo/.env` via `wrangler dev --env-file ../demo/.env` (or `apps/demo-worker/.dev.vars`).
 
