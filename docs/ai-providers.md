@@ -51,7 +51,48 @@ defineAgent({
 - `conversational: true` keeps the run open so the next user message starts another turn.
 - `maxTurns` is a hard cap.
 - `stopWhen` completes the run gracefully (for example after an `answer` tool).
-- Tools can be functions, other agents, workflows, or `gate()` approvals.
+- Tools can be functions, other agents, workflows, Jev evaluators, or `gate()` approvals.
+
+## TypeSafe Jev
+
+Jev is not a chat model. Use `defineJev` with your own `questions` and pass `vercelJev()` into the jev module. The evaluation lands on the run log like any other effect, so a workflow can branch on `route` and `reason` after a crash.
+
+```ts
+import { vercelJev } from '@swirls/looms/ai-vercel'
+import { defineJev, jev } from '@swirls/looms/jev'
+import { createLooms } from '@swirls/looms/runtime'
+
+const scoreRefund = defineJev({
+  name: 'score-refund',
+  questions: {
+    needsReview: {
+      type: 'boolean',
+      instructions: 'Should this refund be reviewed before it ships?',
+    },
+  },
+  route: ({ answers }) => {
+    const probability =
+      answers.needsReview?.type === 'boolean' ? answers.needsReview.probability : null
+
+    return {
+      route: probability !== null && probability < 0.1 ? 'auto' : 'review',
+      reason:
+        probability !== null && (probability < 0.1 || probability >= 0.9) ? 'model' : 'uncertain',
+    }
+  },
+})
+
+const looms = createLooms({
+  modules: [
+    jev({
+      definitions: [scoreRefund],
+      evaluator: vercelJev(),
+    }),
+  ],
+})
+```
+
+`vercelJev` needs the Vercel AI SDK `experimental_evaluate` API (`ai` 7.0.105+) and `AI_GATEWAY_API_KEY`. It calls `typesafe-ai/jev` with a 2s timeout and zero-data-retention, then maps boolean/choice/score answers onto `jev.evaluated`. Without an adapter, the jev module uses a deterministic stub suitable for tests and examples.
 
 ## Custom adapter
 

@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 import {
   asAgentTool,
   asEffectsTool,
+  asJevTool,
   asWorkflowTool,
   defineAgent,
   defineTool,
@@ -86,6 +87,25 @@ describe('tool schema', () => {
     })
 
     expect(tool.input).toBe(CheckoutInput)
+    const schema = toolJsonSchema(tool)
+    expect(JSON.stringify(schema)).toContain('amount')
+  })
+
+  test('asJevTool inherits input from jev definition', () => {
+    const RefundInput = Schema.Struct({ amount: Schema.Finite })
+
+    const tool = asJevTool({
+      jev: {
+        kind: 'jev',
+        name: 'score-refund',
+        description: 'Score a refund',
+        input: RefundInput,
+      },
+    })
+
+    expect(tool.input).toBe(RefundInput)
+    expect(tool.childKind).toBe('jev')
+    expect(tool.childName).toBe('score-refund')
     const schema = toolJsonSchema(tool)
     expect(JSON.stringify(schema)).toContain('amount')
   })

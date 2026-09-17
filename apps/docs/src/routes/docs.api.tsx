@@ -183,13 +183,16 @@ GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, conversation, userMessage.
+          asAgentTool, asWorkflowTool, asJevTool, conversation, userMessage.
         </li>
         <li>
           <code>@swirls/looms/workflow</code>: workflow and defineWorkflow.
         </li>
         <li>
           <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
+        </li>
+        <li>
+          <code>@swirls/looms/jev</code>: jev, defineJev, defineLogTriage, evaluate, evaluations.
         </li>
         <li>
           <code>@swirls/looms/actor</code>: createActorCell and createLocalActorHost.
@@ -202,7 +205,8 @@ GET  /api/events?runId=ID&live=true   → SSE`}</CodeBlock>
           streams, providers, and projection hooks.
         </li>
         <li>
-          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
+          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers; vercelJev for
+          TypeSafe Jev.
         </li>
         <li>
           <code>@swirls/looms/projectors</code>: post-commit indexes and fan-out.{' '}

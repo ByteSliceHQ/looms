@@ -108,6 +108,7 @@ Looms publishes as one package. Explicit subpaths keep browser, server, provider
 | `@swirls/looms/client`     | HTTP client                                            |
 | `@swirls/looms/react`      | React hooks and live run stores                        |
 | `@swirls/looms/debugger`   | Reusable run and event inspection UI                   |
+| `@swirls/looms/jev`        | Typed Jev evaluations that branch agents and workflows |
 | `@swirls/looms/s2`         | S2 event storage, snapshots, and projection support    |
 | `@swirls/looms/ai-vercel`  | Vercel AI SDK model adapters                           |
 | `@swirls/looms/projectors` | Cross-run indexes                                      |

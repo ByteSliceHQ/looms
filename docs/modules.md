@@ -1,6 +1,6 @@
 # Modules
 
-Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, and approvals. Add your own for domain work — charges, tickets, notifications — without forking Looms.
+Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, approvals, and Jev evaluations. Add your own for domain work — charges, tickets, notifications — without forking Looms.
 
 ## Built-in
 
@@ -9,6 +9,7 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 | `@swirls/looms/agent`    | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
 | `@swirls/looms/workflow` | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
 | `@swirls/looms/approval` | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
+| `@swirls/looms/jev`      | Typed evaluations that branch a run     | `defineJev`, `evaluate()`, spawn as a child of an agent or workflow                |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 
@@ -59,7 +60,7 @@ export const vintageWatch = auction.define({
 })
 ```
 
-The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`.
+The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`. `defineJev` is that helper bound to `'jev'`, plus questions and routing.
 
 ## Talk to a running run
 
@@ -143,7 +144,7 @@ Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Age
 
 ## File layout
 
-Built-in modules (`@swirls/looms/agent`, `@swirls/looms/workflow`, `@swirls/looms/approval`) use separate files for larger modules. Open the folder and the names tell you where to look:
+Built-in modules (`@swirls/looms/agent`, `@swirls/looms/workflow`, `@swirls/looms/approval`, `@swirls/looms/jev`) use separate files for larger modules. Open the folder and the names tell you where to look:
 
 ```
 src/

@@ -217,6 +217,30 @@ export function asWorkflowTool(def: {
   })
 }
 
+export function asJevTool(def: {
+  name?: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+  jev: {
+    kind: 'jev'
+    name: string
+    description?: string
+    input?: SchemaInput
+    inputSchema?: JsonValue
+  }
+  mapInput?: (input: JsonValue) => JsonValue
+}): ThreadTool {
+  return asThreadTool({
+    name: def.name,
+    description: def.description ?? def.jev.description,
+    input: def.input ?? def.jev.input,
+    inputSchema: def.inputSchema ?? def.jev.inputSchema,
+    child: { kind: 'jev', name: def.jev.name },
+    mapInput: def.mapInput,
+  })
+}
+
 export function asEffectsTool(def: {
   name: string
   description: string

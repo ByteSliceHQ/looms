@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import approvalExample from '../../../../examples/approval.ts?raw'
 import customThread from '../../../../examples/custom-thread.ts?raw'
+import jevExample from '../../../../examples/jev.ts?raw'
 import workflowExample from '../../../../examples/workflow.ts?raw'
 import { CodeBlock } from '../components/code-block'
 import { pageHead } from '../page-head'
@@ -35,6 +36,19 @@ bun approval.ts`}</CodeBlock>
         to reject and expect shipped: false. A gate alone does not enforce that branch.
       </p>
       <CodeBlock lang="ts" code={approvalExample} />
+      <h2 id="jev">
+        Score, then branch
+        <a className="heading-anchor" href="#jev" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Save as jev.ts. A workflow spawns <code>defineJev</code>, then branches on{' '}
+        <code>route</code> and <code>reason</code>. The stub auto-pays a routine refund, reviews a
+        dispute, and skips the model for a large amount before spawning a stub agent. No model key
+        is required. See <Link to="/docs/jev">Jev evaluations</Link> to connect the hosted model.
+      </p>
+      <CodeBlock lang="ts" code={jevExample} />
       <h2 id="workflow">
         Workflow with a child agent
         <a className="heading-anchor" href="#workflow" aria-label="Link to this section">

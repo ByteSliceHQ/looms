@@ -20,6 +20,7 @@ import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
 import { Route as DocsHostingAndStorageRouteImport } from './routes/docs.hosting-and-storage'
 import { Route as DocsIntegrationRouteImport } from './routes/docs.integration'
+import { Route as DocsJevRouteImport } from './routes/docs.jev'
 import { Route as DocsMathRouteImport } from './routes/docs.math'
 import { Route as DocsModulesRouteImport } from './routes/docs.modules'
 import { Route as DocsOperationsRouteImport } from './routes/docs.operations'
@@ -91,6 +92,11 @@ const DocsHostingAndStorageRoute = DocsHostingAndStorageRouteImport.update({
 const DocsIntegrationRoute = DocsIntegrationRouteImport.update({
   id: '/integration',
   path: '/integration',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsJevRoute = DocsJevRouteImport.update({
+  id: '/jev',
+  path: '/jev',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsMathRoute = DocsMathRouteImport.update({
@@ -193,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
+  '/docs/jev': typeof DocsJevRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
+  '/docs/jev': typeof DocsJevRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
@@ -252,6 +260,7 @@ export interface FileRoutesById {
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
+  '/docs/jev': typeof DocsJevRoute
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
@@ -284,6 +293,7 @@ export interface FileRouteTypes {
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
+    | '/docs/jev'
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
+    | '/docs/jev'
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
@@ -342,6 +353,7 @@ export interface FileRouteTypes {
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
+    | '/docs/jev'
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
@@ -445,6 +457,13 @@ declare module '@tanstack/react-router' {
       path: '/integration'
       fullPath: '/docs/integration'
       preLoaderRoute: typeof DocsIntegrationRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/jev': {
+      id: '/docs/jev'
+      path: '/jev'
+      fullPath: '/docs/jev'
+      preLoaderRoute: typeof DocsJevRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/math': {
@@ -597,6 +616,7 @@ interface DocsRouteChildren {
   DocsExamplesRoute: typeof DocsExamplesRoute
   DocsHostingAndStorageRoute: typeof DocsHostingAndStorageRoute
   DocsIntegrationRoute: typeof DocsIntegrationRoute
+  DocsJevRoute: typeof DocsJevRoute
   DocsMathRoute: typeof DocsMathRoute
   DocsModulesRoute: typeof DocsModulesRoute
   DocsOperationsRoute: typeof DocsOperationsRoute
@@ -620,6 +640,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsExamplesRoute: DocsExamplesRoute,
   DocsHostingAndStorageRoute: DocsHostingAndStorageRoute,
   DocsIntegrationRoute: DocsIntegrationRoute,
+  DocsJevRoute: DocsJevRoute,
   DocsMathRoute: DocsMathRoute,
   DocsModulesRoute: DocsModulesRoute,
   DocsOperationsRoute: DocsOperationsRoute,
