@@ -58,11 +58,13 @@ function RunsAndThreads() {
       </h2>
       <p>
         A custom kind is a module that registers a thread definition and implements{' '}
-        <code>m.thread</code>. The definition is what you pass to <code>start</code>; the thread is
-        the state machine that handles events for that kind:
+        <code>m.thread</code>. Stamp the startable definition with <code>createKind</code> (the same
+        shape <code>defineAgent</code> and <code>defineWorkflow</code> already produce). The
+        definition is what you pass to <code>start</code>; the thread is the state machine that
+        handles events for that kind:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
-import { defineEventCatalog, defineModule, type DefinitionRef } from '@swirls/looms/core'
+import { createKind, defineEventCatalog, defineModule } from '@swirls/looms/core'
 
 const AuctionInput = z.object({
   item: z.string(),
@@ -74,11 +76,11 @@ const auctionCatalog = defineEventCatalog('auction', {
   close: z.object({ reason: z.string().optional() }),
 })
 
-const vintageWatch = {
-  kind: 'auction' as const,
+const auction = createKind('auction')
+const vintageWatch = auction.define({
   name: 'vintage-watch',
   input: AuctionInput,
-} satisfies DefinitionRef
+})
 
 const auctionModule = defineModule(
   { namespace: 'auction', protocolVersion: '1.0.0', events: auctionCatalog },

@@ -46,6 +46,21 @@ At initialization, Looms rejects duplicate `(kind, name)` registrations and defi
 
 Modules that implement a custom thread kind can return `definitions` alongside `threads`. The runtime gathers these for `start`, HTTP starts, and cross-module child spawning.
 
+`defineAgent` and `defineWorkflow` are specialized helpers. For your own kind, stamp the definition with `createKind` (or `defineKind`) instead of assembling `{ kind, name }` by hand:
+
+```ts
+import { createKind } from '@swirls/looms/core'
+
+const auction = createKind('auction')
+
+export const vintageWatch = auction.define({
+  name: 'vintage-watch',
+  input: AuctionInput,
+})
+```
+
+The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`.
+
 ## Talk to a running run
 
 Every input to a run is an event. Modules export small builders so you never hand-write event payloads:

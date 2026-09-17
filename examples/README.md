@@ -8,7 +8,7 @@ Small, self-contained scripts that show how to stand up a Looms runtime. The ful
 | [`workflow.ts`](./workflow.ts)           | DAG workflow with node deps and a child spawn              |
 | [`approval.ts`](./approval.ts)           | Human `gate()`, then `signal` a `decision`                 |
 | [`custom-module.ts`](./custom-module.ts) | Domain events/effects/projections composed with a workflow |
-| [`custom-thread.ts`](./custom-thread.ts) | Custom thread kind (actor / state machine) via `m.thread`  |
+| [`custom-thread.ts`](./custom-thread.ts) | Custom thread kind via `createKind` + `m.thread`           |
 
 ## Run
 
