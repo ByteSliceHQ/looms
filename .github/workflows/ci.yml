@@ -58,7 +58,7 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
       - name: Build docs
-        run: bun run --filter @looms/docs build
+        run: bun x turbo run build --filter=@looms/docs
       - name: Deploy docs
         uses: cloudflare/wrangler-action@v4
         with:
