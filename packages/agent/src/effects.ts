@@ -1,6 +1,12 @@
 import { Data, Effect, Predicate, Schema } from 'effect'
 
-import { createThreadId, validateInputEffect, type EventInputOf, type JsonValue } from '@looms/core'
+import {
+  createThreadId,
+  DEFAULT_DEFINITION_VERSION,
+  validateInputEffect,
+  type EventInputOf,
+  type JsonValue,
+} from '@looms/core'
 
 import { normalizeTools, type ToolLike } from './definitions'
 import { AgentDefinitionsTag } from './definitions-store'
@@ -12,13 +18,20 @@ import { MessageSchema, ToolCallSchema, type Message, type ToolCall } from './ty
 const CallLlmInput = Schema.Struct({
   turn: Schema.Finite,
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   messages: Schema.optional(Schema.Array(MessageSchema)),
   input: Schema.optional(Schema.Json),
+  consumedSteerMessageIds: Schema.optional(Schema.Array(Schema.String)),
 })
 
 const ExecuteToolInput = Schema.Struct({
   turn: Schema.Finite,
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   toolCall: ToolCallSchema,
 })
 
@@ -49,10 +62,13 @@ export const callLlmEffect = agentModule.effect({
     runCallLlm({
       turn: input.turn,
       definitionName: input.definitionName,
+      definitionVersion: input.definitionVersion,
       messages: [...(input.messages ?? [])],
       input: input.input ?? null,
+      consumedSteerMessageIds: [...(input.consumedSteerMessageIds ?? [])],
       runId: ctx.runId,
       threadId: ctx.threadId,
+      signal: ctx.signal,
       emit: (event) => ctx.emit(event),
     }),
 })
@@ -60,10 +76,13 @@ export const callLlmEffect = agentModule.effect({
 function runCallLlm(args: {
   turn: number
   definitionName?: string
+  definitionVersion: string
   messages: Message[]
   input: JsonValue
+  consumedSteerMessageIds: string[]
   runId: string
   threadId: string
+  signal: AbortSignal
   emit: (event: EventInputOf<AgentEvent>) => Promise<void>
 }): Effect.Effect<
   ReadonlyArray<EventInputOf<AgentEvent>>,
@@ -71,10 +90,21 @@ function runCallLlm(args: {
   LlmTag | AgentDefinitionsTag
 > {
   return Effect.gen(function* () {
-    const { turn, threadId, emit, definitionName, messages, input } = args
+    const {
+      turn,
+      threadId,
+      emit,
+      definitionName,
+      definitionVersion,
+      messages,
+      input,
+      consumedSteerMessageIds,
+      signal,
+    } = args
+
     const agents = yield* AgentDefinitionsTag
     const llm = yield* LlmTag
-    const definition = definitionName ? agents.get(definitionName) : undefined
+    const definition = definitionName ? agents.get(definitionName, definitionVersion) : undefined
 
     if (!definition) {
       return [
@@ -113,6 +143,7 @@ function runCallLlm(args: {
       input,
       tools,
       instructions: definition.instructions,
+      signal,
     }
 
     const result = definition.runTurn
@@ -126,6 +157,7 @@ function runCallLlm(args: {
           messages: [{ role: 'system', content: definition.instructions }, ...turnCtx.messages],
           tools,
           toolSpecs: toolSpecs(tools),
+          signal,
           onTextDelta: (delta) =>
             emit({
               type: 'agent.turn.text_delta',
@@ -157,9 +189,15 @@ function runCallLlm(args: {
 
     if (shouldStop) {
       if (!definition.conversational) {
+        const output = result.output ?? { text: result.message.content }
+
         events.push({
           type: 'runtime.thread.completed',
-          payload: { threadId, output: result.output ?? { text: result.message.content } },
+          payload: {
+            threadId,
+            output:
+              consumedSteerMessageIds.length === 0 ? output : { output, consumedSteerMessageIds },
+          },
           threadId,
         })
       }
@@ -176,11 +214,14 @@ function runCallLlm(args: {
     }
 
     if (toolCalls.length === 0 && !definition.conversational) {
+      const output = result.output ?? { text: result.message.content }
+
       events.push({
         type: 'runtime.thread.completed',
         payload: {
           threadId,
-          output: result.output ?? { text: result.message.content },
+          output:
+            consumedSteerMessageIds.length === 0 ? output : { output, consumedSteerMessageIds },
         },
         threadId,
       })
@@ -197,7 +238,10 @@ export const executeToolEffect = agentModule.effect({
     Effect.gen(function* () {
       const threadId = ctx.threadId
       const agents = yield* AgentDefinitionsTag
-      const definition = input.definitionName ? agents.get(input.definitionName) : undefined
+
+      const definition = input.definitionName
+        ? agents.get(input.definitionName, input.definitionVersion)
+        : undefined
 
       if (!definition) {
         return [
@@ -325,6 +369,7 @@ export const executeToolEffect = agentModule.effect({
                 childThreadId,
                 kind: tool.childKind,
                 definitionName: tool.childName,
+                definitionVersion: tool.childVersion,
                 input: childInput,
                 toolCallId: input.toolCall.id,
               },

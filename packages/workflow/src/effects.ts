@@ -1,24 +1,44 @@
 import { Clock, Data, Effect, Predicate, Schema } from 'effect'
 
-import { createThreadId, createWaitId, type EventInputOf, type JsonValue } from '@looms/core'
+import {
+  createThreadId,
+  createWaitId,
+  DEFAULT_DEFINITION_VERSION,
+  type EventInputOf,
+  type JsonValue,
+} from '@looms/core'
 
 import {
   NodeStateSchema,
-  readyNodes,
   type NodeResult,
+  type NodeState,
   type WorkflowDefinition,
+  validateWorkflowInput,
 } from './definitions'
 import { WorkflowDefinitionsTag } from './definitions-store'
+import {
+  assertJsonWithinLimit,
+  getReadyNodeIds,
+  getSkippableNodeIds,
+  nodeChildWorkflowId,
+  resolveGraphConcurrency,
+} from './graph'
 import { workflowModule, type WorkflowEvent } from './scope'
 
 const ScheduleInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   nodes: Schema.optional(Schema.Record(Schema.String, NodeStateSchema)),
   input: Schema.optional(Schema.Json),
 })
 
 const RunNodeInput = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   nodeId: Schema.String,
   input: Schema.optional(Schema.Json),
   results: Schema.optional(Schema.Record(Schema.String, Schema.NullOr(Schema.Json))),
@@ -44,7 +64,11 @@ function isNodeResult(raw: JsonValue | NodeResult): raw is NodeResult {
   }
 
   return (
-    raw.type === 'value' || raw.type === 'spawn' || raw.type === 'sleep' || raw.type === 'effects'
+    raw.type === 'value' ||
+    raw.type === 'spawn' ||
+    raw.type === 'sleep' ||
+    raw.type === 'effects' ||
+    raw.type === 'switch'
   )
 }
 
@@ -55,41 +79,109 @@ export const scheduleEffect = workflowModule.effect({
     Effect.gen(function* () {
       const workflows = yield* WorkflowDefinitionsTag
       const threadId = ctx.threadId
-      const definition = input.definitionName ? workflows.get(input.definitionName) : undefined
+
+      const definition = input.definitionName
+        ? workflows.get(input.definitionName, input.definitionVersion)
+        : undefined
 
       if (!definition) {
         return []
       }
 
       const rawNodes = input.nodes ?? {}
-      const nodes: { [id: string]: { status: string; result: JsonValue | null } } = {}
+      const nodes: Record<string, NodeState> = {}
 
       for (const [id, n] of Object.entries(rawNodes)) {
-        // SAFETY: NodeState results are valid JSON-serializable node execution outputs.
-        nodes[id] = { status: n.status, result: n.result ?? null }
+        nodes[id] = {
+          status: n.status,
+          result: n.result ?? null,
+          error: n.error ?? null,
+          attempts: n.attempts,
+          branch: n.branch,
+        }
       }
 
       for (const node of definition.nodes) {
         if (!nodes[node.id]) {
-          nodes[node.id] = { status: 'pending', result: null }
+          nodes[node.id] = { status: 'pending', result: null, error: null, attempts: 0 }
         }
       }
 
-      return scheduleEvents(definition, { nodes, input: input.input ?? null }, threadId)
+      const workflowInput = input.input ?? null
+      validateWorkflowInput(definition, workflowInput)
+      return scheduleEvents(definition, { nodes, input: workflowInput }, threadId)
     }),
 })
 
 export function scheduleEvents(
   definition: WorkflowDefinition,
   binding: {
-    nodes: { [id: string]: { status: string; result: JsonValue | null } }
+    nodes: Record<string, NodeState>
     input: JsonValue
   },
   threadId: string,
 ): EventInputOf<WorkflowEvent>[] {
+  const failed = definition.nodes.find((node) => binding.nodes[node.id]?.status === 'failed')
+
+  if (failed) {
+    const state = binding.nodes[failed.id]
+    const policy = failed.failure ?? { type: 'fail' as const }
+
+    switch (policy.type) {
+      case 'retry':
+        if ((state?.attempts ?? 0) < policy.maxAttempts) {
+          return [{ type: 'workflow.node.started', payload: { nodeId: failed.id }, threadId }]
+        }
+
+        break
+      case 'skip':
+        return [
+          {
+            type: 'workflow.node.skipped',
+            payload: { nodeId: failed.id, reason: state?.error ?? 'failure policy skip' },
+            threadId,
+          },
+        ]
+      case 'fallback':
+        return [
+          {
+            type: 'workflow.node.skipped',
+            payload: { nodeId: failed.id, reason: `fallback:${policy.nodeId}` },
+            threadId,
+          },
+          { type: 'workflow.node.started', payload: { nodeId: policy.nodeId }, threadId },
+        ]
+      case 'fail':
+        break
+
+      default: {
+        const exhaustiveCheck: never = policy
+        return exhaustiveCheck
+      }
+    }
+
+    return [
+      {
+        type: 'runtime.thread.failed',
+        payload: { threadId, error: state?.error ?? `Node ${failed.id} failed` },
+        threadId,
+      },
+    ]
+  }
+
+  const skippable = getSkippableNodeIds(definition, binding.nodes)
+
+  if (skippable.length > 0) {
+    return skippable.map((nodeId) => ({
+      type: 'workflow.node.skipped' as const,
+      payload: { nodeId, reason: 'inactive branch' },
+      threadId,
+    }))
+  }
+
   const running = Object.values(binding.nodes).filter((n) => n.status === 'running').length
-  const slots = Math.max(0, (definition.concurrency ?? 8) - running)
-  const ready = readyNodes(definition, binding.nodes).slice(0, slots)
+  const slots = Math.max(0, resolveGraphConcurrency(definition.concurrency) - running)
+  const ready = getReadyNodeIds(definition, binding.nodes).slice(0, slots)
   const events: EventInputOf<WorkflowEvent>[] = []
 
   for (const nodeId of ready) {
@@ -112,18 +204,6 @@ export function scheduleEvents(
     return []
   }
 
-  const failed = Object.entries(binding.nodes).find(([, n]) => n.status === 'failed')
-
-  if (failed) {
-    return [
-      {
-        type: 'runtime.thread.failed',
-        payload: { threadId, error: `Node ${failed[0]} failed` },
-        threadId,
-      },
-    ]
-  }
-
   const results: { [id: string]: JsonValue | null } = {}
 
   for (const [id, node] of Object.entries(binding.nodes)) {
@@ -131,6 +211,7 @@ export function scheduleEvents(
   }
 
   const output = definition.output ? definition.output({ input: binding.input, results }) : results
+  assertJsonWithinLimit(output, 'Workflow output', definition.outputLimitBytes)
   return [
     {
       type: 'runtime.thread.completed',
@@ -147,7 +228,10 @@ export const runNodeEffect = workflowModule.effect({
     Effect.gen(function* () {
       const workflows = yield* WorkflowDefinitionsTag
       const threadId = ctx.threadId
-      const definition = input.definitionName ? workflows.get(input.definitionName) : undefined
+
+      const definition = input.definitionName
+        ? workflows.get(input.definitionName, input.definitionVersion)
+        : undefined
 
       if (!definition) {
         return [
@@ -208,7 +292,13 @@ function runNode(
             nodeId,
             input: binding.input,
             results,
-            spawn: (child, input) => ({ type: 'spawn', kind: child.kind, name: child.name, input }),
+            spawn: (child, input) => ({
+              type: 'spawn',
+              kind: child.kind,
+              name: child.name,
+              version: child.version ?? DEFAULT_DEFINITION_VERSION,
+              input,
+            }),
             sleep: (ms) => ({ type: 'sleep', ms }),
             effects: (effects) => ({ type: 'effects', effects }),
           }),
@@ -235,6 +325,12 @@ function runNode(
 
     switch (result.type) {
       case 'value':
+        assertJsonWithinLimit(
+          result.value ?? null,
+          `Node ${nodeId} output`,
+          definition.outputLimitBytes,
+        )
+
         return [
           {
             type: 'workflow.node.finished',
@@ -244,7 +340,10 @@ function runNode(
         ]
 
       case 'spawn': {
-        const childThreadId = createThreadId()
+        const childThreadId =
+          result.childThreadId ??
+          (nodeDef.type === 'workflow' ? nodeChildWorkflowId(threadId, nodeId) : createThreadId())
+
         return [
           {
             type: 'workflow.spawn.requested',
@@ -253,6 +352,7 @@ function runNode(
               childThreadId,
               kind: result.kind,
               definitionName: result.name,
+              definitionVersion: result.version,
               input: result.input ?? null,
             },
             threadId,
@@ -283,6 +383,26 @@ function runNode(
             payload: {
               nodeId,
               effects: result.effects ?? [],
+            },
+            threadId,
+          },
+        ]
+
+      case 'switch':
+        assertJsonWithinLimit(
+          result.value ?? result.branch,
+          `Node ${nodeId} output`,
+          definition.outputLimitBytes,
+        )
+
+        return [
+          {
+            type: 'workflow.node.finished',
+            payload: {
+              nodeId,
+              result: result.value ?? result.branch,
+              error: null,
+              branch: result.branch,
             },
             threadId,
           },

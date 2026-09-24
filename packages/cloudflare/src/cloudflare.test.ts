@@ -23,7 +23,7 @@ void mock.module('cloudflare:workers', () => ({
 }))
 
 const { LoomsDurableObject } = await import('./durable-object')
-const { alarmScheduler } = await import('./alarm-scheduler')
+const { alarmScheduler, scheduleAlarmAtEarliest } = await import('./alarm-scheduler')
 const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
 import type { LoomsDurableObjectConfig } from './durable-object'
@@ -67,6 +67,56 @@ describe('@looms/cloudflare', () => {
         expect(currentAlarm).toBeNull()
       }),
     )
+  })
+
+  test('alarmScheduler preserves an earlier projector retry deadline', async () => {
+    let currentAlarm: number | null = 500
+    let projectorDeadline: number | null = 500
+
+    const storage: AlarmStorage = {
+      getAlarm: async () => currentAlarm,
+      setAlarm: async (at) => {
+        currentAlarm = at instanceof Date ? +at : at
+      },
+      deleteAlarm: async () => {
+        currentAlarm = null
+      },
+    }
+
+    const scheduler = alarmScheduler(storage, async () => projectorDeadline)
+
+    await Effect.runPromise(scheduler.schedule('run_1', 1_000))
+    expect(currentAlarm).toBe(500)
+
+    await Effect.runPromise(scheduler.cancel('run_1'))
+    expect(currentAlarm).toBe(500)
+
+    projectorDeadline = null
+    await Effect.runPromise(scheduler.cancel('run_1'))
+    expect(currentAlarm).toBeNull()
+  })
+
+  test('reconstructed deadlines restore a missing alarm without moving an earlier one', async () => {
+    let currentAlarm: number | null = null
+
+    const storage: AlarmStorage = {
+      getAlarm: async () => currentAlarm,
+      setAlarm: async (at) => {
+        currentAlarm = at instanceof Date ? +at : at
+      },
+      deleteAlarm: async () => {
+        currentAlarm = null
+      },
+    }
+
+    await scheduleAlarmAtEarliest(storage, 2_000)
+
+    await Promise.all([
+      scheduleAlarmAtEarliest(storage, 500),
+      scheduleAlarmAtEarliest(storage, 1_000),
+    ])
+
+    expect(currentAlarm).toBe(500)
   })
 
   test('routeToDurableObject handles health and rejects global runs listing', async () => {

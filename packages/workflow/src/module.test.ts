@@ -111,7 +111,7 @@ describe('@looms/workflow module', () => {
           ...createEvent(runId, {
             type: 'runtime.effect.failed',
             payload: {
-              effectId: `${threadId}:3:0`,
+              effectId: `${threadId}:runNode_charge`,
               error: 'Invalid input: amount: expected number',
             },
             threadId,
@@ -128,5 +128,60 @@ describe('@looms/workflow module', () => {
     const emitted = state.outstandingEffects.find((item) => item.effect.type === 'runtime.emit')
     expect(emitted).toBeDefined()
     expect(JSON.stringify(emitted?.effect)).toContain('workflow.node.finished')
+  })
+
+  test('attributes a failed effect to the correct concurrent node', () => {
+    const registry = composeModules([workflow()])
+    const runId = 'run_wf_concurrent_fail'
+    const threadId = 'thr_wf_concurrent_fail'
+
+    const events = [
+      createEvent(runId, {
+        type: 'runtime.thread.started',
+        payload: {
+          threadId,
+          kind: 'workflow',
+          definitionName: 'parallel',
+          input: { nodeIds: ['first', 'second'] },
+          parentThreadId: null,
+        },
+        threadId,
+        origin: { type: 'system' as const },
+      }),
+      createEvent(runId, {
+        type: 'workflow.node.started',
+        payload: { nodeId: 'first' },
+        threadId,
+        origin: { type: 'thread' as const, threadId },
+      }),
+      createEvent(runId, {
+        type: 'workflow.node.started',
+        payload: { nodeId: 'second' },
+        threadId,
+        origin: { type: 'thread' as const, threadId },
+      }),
+      createEvent(runId, {
+        type: 'runtime.effect.failed',
+        payload: {
+          effectId: `${threadId}:runNode_second`,
+          error: 'second failed',
+        },
+        threadId,
+        origin: { type: 'system' as const },
+      }),
+    ].map((event, index) => ({ ...event, seq: index + 1 }))
+
+    const state = foldRun(events, registry)
+
+    const threadState = state.threads[threadId]?.state
+
+    const nodes =
+      isJsonObject(threadState) && isJsonObject(threadState.nodes) ? threadState.nodes : {}
+
+    const first = isJsonObject(nodes.first) ? nodes.first : {}
+    const second = isJsonObject(nodes.second) ? nodes.second : {}
+
+    expect(first.status).toBe('running')
+    expect(second.status).toBe('failed')
   })
 })

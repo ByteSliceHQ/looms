@@ -1,7 +1,13 @@
 import { Option, Schema } from 'effect'
 import { z } from 'zod'
 
-import { asAgentTool, asEffectsTool, defineAgent, defineTool } from '@swirls/looms/agent'
+import {
+  asAgentTool,
+  asEffectsTool,
+  defineAgent,
+  defineAgentSession,
+  defineTool,
+} from '@swirls/looms/agent'
 import { gate } from '@swirls/looms/approval'
 import {
   createWaitId,
@@ -417,6 +423,23 @@ export const assistant = defineAgent({
   ],
 })
 
+const sessionResponder = defineAgent({
+  name: 'session-responder',
+  input: z.object({ text: z.string() }),
+  instructions: 'Reply to the current session message.',
+  runTurn: ({ input }) => ({
+    message: { role: 'assistant', content: `Session reply: ${input.text}` },
+    done: true,
+    output: { text: input.text },
+  }),
+})
+
+export const assistantSession = defineAgentSession({
+  name: 'assistant-session',
+  agent: sessionResponder,
+  idleTimeoutMs: 30 * 60 * 1_000,
+})
+
 export const definitions = [
   echo,
   greeter,
@@ -426,4 +449,6 @@ export const definitions = [
   checkout,
   pipeline,
   assistant,
+  sessionResponder,
+  assistantSession,
 ] as const

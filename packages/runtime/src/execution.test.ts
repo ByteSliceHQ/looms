@@ -49,6 +49,127 @@ describe('createLooms runtime', () => {
     expect(root?.output).toEqual({ text: 'hi' })
   })
 
+  test('keeps runs pinned when definition versions share a name', async () => {
+    const v1 = defineWorkflow({
+      name: 'versioned',
+      version: 'v1',
+      nodes: [{ id: 'result', run: () => 'from-v1' }],
+    })
+
+    const v2 = defineWorkflow({
+      name: 'versioned',
+      version: 'v2',
+      nodes: [{ id: 'result', run: () => 'from-v2' }],
+    })
+
+    const agentV1 = defineAgent({
+      name: 'versioned-agent',
+      version: 'v1',
+      instructions: 'v1',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'agent-v1' },
+        done: true,
+        output: 'agent-v1',
+      }),
+    })
+
+    const agentV2 = defineAgent({
+      name: 'versioned-agent',
+      version: 'v2',
+      instructions: 'v2',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'agent-v2' },
+        done: true,
+        output: 'agent-v2',
+      }),
+    })
+
+    const looms = createLooms({
+      modules: [workflow({ definitions: [v1, v2] }), agent({ definitions: [agentV1, agentV2] })],
+    })
+
+    const v1Result = await looms.start(v1, {})
+    const v2Result = await looms.start(v2, {})
+    const agentV1Result = await looms.start(agentV1, {})
+    const agentV2Result = await looms.start(agentV2, {})
+
+    const v1Root = v1Result.state.rootThreadId
+      ? v1Result.state.threads[v1Result.state.rootThreadId]
+      : undefined
+
+    const v2Root = v2Result.state.rootThreadId
+      ? v2Result.state.threads[v2Result.state.rootThreadId]
+      : undefined
+
+    const agentV1Root = agentV1Result.state.rootThreadId
+      ? agentV1Result.state.threads[agentV1Result.state.rootThreadId]
+      : undefined
+
+    const agentV2Root = agentV2Result.state.rootThreadId
+      ? agentV2Result.state.threads[agentV2Result.state.rootThreadId]
+      : undefined
+
+    expect(v1Root?.definitionVersion).toBe('v1')
+    expect(v1Root?.output).toEqual({ result: 'from-v1' })
+    expect(v2Root?.definitionVersion).toBe('v2')
+    expect(v2Root?.output).toEqual({ result: 'from-v2' })
+    expect(agentV1Root?.output).toBe('agent-v1')
+    expect(agentV2Root?.output).toBe('agent-v2')
+
+    const events = await looms.getEvents(v1Result.runId)
+    const started = events.find((event) => event.type === 'runtime.run.started')
+    expect(started?.payload).toMatchObject({ definitionVersion: 'v1' })
+    await looms.stop()
+  })
+
+  test('resumes a parked v1 run with v1 semantics after a v2 deployment', async () => {
+    const v1 = defineWorkflow({
+      name: 'deployed-version',
+      version: 'v1',
+      nodes: [
+        {
+          id: 'park',
+          run: (ctx) =>
+            ctx.effects([wait({ waitId: 'deploy-resume', on: { type: 'deploy.resume' } })]),
+        },
+        { id: 'result', deps: ['park'], run: () => 'from-v1' },
+      ],
+    })
+
+    const v2 = defineWorkflow({
+      name: 'deployed-version',
+      version: 'v2',
+      nodes: [{ id: 'result', run: () => 'from-v2' }],
+    })
+
+    const store = await Effect.runPromise(makeMemoryEventStore)
+
+    const beforeDeploy = createLooms({
+      store,
+      modules: [workflow({ definitions: [v1] })],
+    })
+
+    const parked = await beforeDeploy.start(v1, {})
+    expect(parked.state.status).toBe('running')
+    await beforeDeploy.stop()
+
+    const afterDeploy = createLooms({
+      store,
+      modules: [workflow({ definitions: [v1, v2] })],
+    })
+
+    const resumed = await afterDeploy.signal(parked.runId, [
+      { type: 'deploy.resume', payload: {}, threadId: parked.threadId },
+    ])
+
+    const root = resumed.rootThreadId ? resumed.threads[resumed.rootThreadId] : undefined
+
+    expect(resumed.status).toBe('completed')
+    expect(root?.definitionVersion).toBe('v1')
+    expect(root?.output).toEqual({ park: {}, result: 'from-v1' })
+    await afterDeploy.stop()
+  })
+
   test('rejects unknown definitions before writing run events', async () => {
     const checkout = defineWorkflow({
       name: 'checkout',

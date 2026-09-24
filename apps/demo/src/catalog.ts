@@ -1,9 +1,10 @@
-import type { AgentDefinition } from '@swirls/looms/agent'
+import type { AgentDefinition, AgentSessionDefinition } from '@swirls/looms/agent'
 import type { JsonValue } from '@swirls/looms/core'
 import type { WorkflowDefinition } from '@swirls/looms/workflow'
 
 import {
   assistant,
+  assistantSession,
   checkout,
   echo,
   greeter,
@@ -40,9 +41,29 @@ export type WorkflowRunType = {
   fields: CatalogField[]
 }
 
-export type RunType = AgentRunType | WorkflowRunType
+export type AgentSessionRunType = {
+  kind: 'agent-session'
+  name: string
+  label: string
+  description: string
+  conversational: true
+  def: AgentSessionDefinition
+  placeholder: string
+}
+
+export type ChatRunType = AgentRunType | AgentSessionRunType
+export type RunType = ChatRunType | WorkflowRunType
 
 export const catalog: readonly RunType[] = [
+  {
+    kind: 'agent-session',
+    name: assistantSession.name,
+    label: 'agent session',
+    description: 'Durable mailbox with follow-up, steer, and next-turn delivery',
+    conversational: true,
+    def: assistantSession,
+    placeholder: 'Send the first message…',
+  },
   {
     kind: 'agent',
     name: echo.name,

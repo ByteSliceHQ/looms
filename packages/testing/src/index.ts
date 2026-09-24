@@ -6,8 +6,13 @@ import {
   foldRun,
   makeMemoryEventStore,
   ModuleCompositionError,
+  EventStoreError,
+  snapshotStoreOf,
   stringifyJson,
+  withSnapshotStore,
   type AnyRuntimeModule,
+  type AppendOptions,
+  type AppendableEvent,
   type EventStore,
 } from '@looms/core'
 import { createRuntime, type LoomsRuntime } from '@looms/runtime'
@@ -109,4 +114,72 @@ export function moduleConformance(module: AnyRuntimeModule): string[] {
   }
 
   return errors
+}
+
+export type EventStoreFaultOperation = 'append' | 'read' | 'tail' | 'bounds' | 'trim' | 'listRuns'
+
+export interface EventStoreFaultContext {
+  readonly operation: EventStoreFaultOperation
+  readonly runId: string | null
+  readonly call: number
+}
+
+export interface FaultInjectingEventStore {
+  readonly store: EventStore
+  readonly calls: ReadonlyMap<EventStoreFaultOperation, number>
+}
+
+type MutableEventStore = {
+  -readonly [K in keyof EventStore]: EventStore[K]
+}
+
+/**
+ * Wraps an EventStore with deterministic delay/failure injection. Throw from
+ * `before` to fail a call, or await inside it to pause a race at an exact store boundary.
+ */
+export function createFaultInjectingEventStore(
+  source: EventStore,
+  before: (context: EventStoreFaultContext) => void | Promise<void>,
+): FaultInjectingEventStore {
+  const calls = new Map<EventStoreFaultOperation, number>()
+
+  const inject = (operation: EventStoreFaultOperation, runId: string | null) =>
+    Effect.tryPromise({
+      try: () => {
+        const call = (calls.get(operation) ?? 0) + 1
+        calls.set(operation, call)
+        return Promise.resolve(before({ operation, runId, call }))
+      },
+      catch: (cause) =>
+        cause instanceof EventStoreError
+          ? cause
+          : new EventStoreError(`Injected ${operation} fault`, cause),
+    })
+
+  const store: MutableEventStore = {
+    append: (runId: string, events: ReadonlyArray<AppendableEvent>, options?: AppendOptions) =>
+      inject('append', runId).pipe(Effect.andThen(source.append(runId, events, options))),
+    read: (runId, options) =>
+      inject('read', runId).pipe(Effect.andThen(source.read(runId, options))),
+    tail: (runId) => inject('tail', runId).pipe(Effect.andThen(source.tail(runId))),
+    subscribe: source.subscribe,
+    listRuns: inject('listRuns', null).pipe(Effect.andThen(source.listRuns)),
+  }
+
+  if (source.bounds) {
+    store.bounds = (runId) => inject('bounds', runId).pipe(Effect.andThen(source.bounds!(runId)))
+  }
+
+  if (source.trim) {
+    store.trim = (runId, beforeSeq) =>
+      inject('trim', runId).pipe(Effect.andThen(source.trim!(runId, beforeSeq)))
+  }
+
+  const snapshots = snapshotStoreOf(source)
+
+  if (snapshots) {
+    withSnapshotStore(store, snapshots)
+  }
+
+  return { store, calls }
 }

@@ -57,6 +57,7 @@ const ProjectionResultSchema = Schema.Struct({
 export interface LoomsClientOptions {
   baseUrl?: string
   fetch?: typeof fetch
+  workerCallbackToken?: string
 }
 
 export interface StartResult {
@@ -165,13 +166,34 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
   const startRun = (args: {
     kind: string
     definitionName: string
+    definitionVersion?: string
     input?: JsonValue
     runId?: string
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
+  const workerCallback = (
+    runId: string,
+    effectId: string,
+    attempt: number,
+    action: 'started' | 'heartbeat' | 'complete' | 'fail' | 'cancelled',
+    body: JsonValue = {},
+  ) =>
+    request(
+      `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(effectId)}/${attempt}/${action}`,
+      RunResultSchema,
+      {
+        method: 'POST',
+        headers: options.workerCallbackToken
+          ? { authorization: `Bearer ${options.workerCallbackToken}` }
+          : undefined,
+        body: stringifyJson(body),
+      },
+    )
+
   const streamRun = (args: {
     kind: string
     definitionName: string
+    definitionVersion?: string
     input?: JsonValue
     runId?: string
   }): StreamHandle => {
@@ -220,7 +242,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     start: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>) =>
       request('/runs', StartResultSchema, {
         method: 'POST',
-        body: stringifyJson({ kind: definition.kind, definitionName: definition.name, input }),
+        body: stringifyJson({
+          kind: definition.kind,
+          definitionName: definition.name,
+          definitionVersion: definition.version,
+          input,
+        }),
       }),
     getRun: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
     getState: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
@@ -248,6 +275,20 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       }),
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
+    workerStarted: (runId: string, effectId: string, attempt: number) =>
+      workerCallback(runId, effectId, attempt, 'started'),
+    workerHeartbeat: (runId: string, effectId: string, attempt: number) =>
+      workerCallback(runId, effectId, attempt, 'heartbeat'),
+    workerComplete: (
+      runId: string,
+      effectId: string,
+      attempt: number,
+      events: ReadonlyArray<EventInput>,
+    ) => workerCallback(runId, effectId, attempt, 'complete', { events }),
+    workerFail: (runId: string, effectId: string, attempt: number, error: string) =>
+      workerCallback(runId, effectId, attempt, 'fail', { error }),
+    workerCancelled: (runId: string, effectId: string, attempt: number) =>
+      workerCallback(runId, effectId, attempt, 'cancelled'),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>
@@ -268,6 +309,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       streamRun({
         kind: definition.kind,
         definitionName: definition.name,
+        definitionVersion: definition.version,
         input,
       }),
   }

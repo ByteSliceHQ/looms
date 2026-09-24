@@ -2,7 +2,9 @@ import { Predicate, Schema } from 'effect'
 
 import {
   asJson,
+  createEffectId,
   createWaitId,
+  DEFAULT_DEFINITION_VERSION,
   EventInputSchema,
   emit,
   fail,
@@ -24,6 +26,7 @@ export const WorkflowPendingSpawnSchema = Schema.Struct({
   childThreadId: Schema.String,
   kind: Schema.String,
   definitionName: Schema.String,
+  definitionVersion: Schema.String,
   nodeId: Schema.String,
   input: Schema.Json,
 })
@@ -50,6 +53,7 @@ export type WorkflowPendingEmit = Schema.Schema.Type<typeof WorkflowPendingEmitS
 
 export const WorkflowStateSchema = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.optional(Schema.String),
   nodes: Schema.Record(Schema.String, NodeStateSchema),
   concurrency: Schema.Finite,
   input: Schema.Json,
@@ -74,6 +78,7 @@ const initialWorkflowStatus: WorkflowState['status'] = 'running'
 function scheduleInvocation(state: WorkflowState) {
   return invoke(scheduleEffect, {
     definitionName: state.definitionName,
+    definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
     nodes: state.nodes,
     input: state.input,
   })
@@ -90,6 +95,7 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
     runNodeEffect,
     {
       definitionName: state.definitionName,
+      definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
       nodeId,
       input: state.input,
       results,
@@ -98,11 +104,40 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
   )
 }
 
+function nodeIdForEffect(state: WorkflowState, threadId: string, effectId: string): string | null {
+  for (const nodeId of state.runningNodes) {
+    if (createEffectId(threadId, `runNode_${nodeId}`) === effectId) {
+      return nodeId
+    }
+  }
+
+  for (const pending of state.pendingEffects) {
+    for (const effect of pending.effects) {
+      if (
+        ('tag' in effect &&
+          Predicate.isString(effect.tag) &&
+          createEffectId(threadId, effect.tag) === effectId) ||
+        ('waitId' in effect &&
+          Predicate.isString(effect.waitId) &&
+          createEffectId(threadId, effect.waitId) === effectId) ||
+        ('childThreadId' in effect &&
+          Predicate.isString(effect.childThreadId) &&
+          createEffectId(threadId, `spawn_${effect.childThreadId}`) === effectId)
+      ) {
+        return pending.nodeId
+      }
+    }
+  }
+
+  return null
+}
+
 export const workflowThread = workflowModule.thread({
   kind: 'workflow',
   shape: WorkflowStateSchema,
   initialState: (ctx) => ({
     definitionName: ctx.definitionName,
+    definitionVersion: ctx.definitionVersion,
     nodes: {},
     concurrency: 8,
     input: ctx.input,
@@ -121,6 +156,10 @@ export const workflowThread = workflowModule.thread({
       case 'runtime.thread.started': {
         const payload = event.payload
         const defName = payload.definitionName || state.definitionName
+
+        const defVersion =
+          payload.definitionVersion ?? state.definitionVersion ?? DEFAULT_DEFINITION_VERSION
+
         const inputObj = Predicate.isObject(payload.input) ? payload.input : {}
 
         const nodeIds = Array.isArray(inputObj.nodeIds)
@@ -136,6 +175,7 @@ export const workflowThread = workflowModule.thread({
         return {
           ...state,
           definitionName: defName,
+          definitionVersion: defVersion,
           nodes,
           nodeIds,
           input: payload.input ?? state.input,
@@ -158,6 +198,7 @@ export const workflowThread = workflowModule.thread({
               status: 'running',
               result: null,
               error: null,
+              attempts: (state.nodes[nodeId]?.attempts ?? 0) + 1,
             } satisfies NodeState,
           },
           runningNodes: state.runningNodes.includes(nodeId)
@@ -168,7 +209,7 @@ export const workflowThread = workflowModule.thread({
       }
 
       case 'workflow.node.finished': {
-        const { nodeId, result, error } = event.payload
+        const { nodeId, result, error, branch } = event.payload
 
         if (!nodeId) {
           return state
@@ -183,6 +224,8 @@ export const workflowThread = workflowModule.thread({
               status: failed ? 'failed' : 'completed',
               result: result ?? null,
               error: failed ? error : null,
+              attempts: state.nodes[nodeId]?.attempts ?? 1,
+              branch,
             } satisfies NodeState,
           },
           runningNodes: state.runningNodes.filter((id) => id !== nodeId),
@@ -190,14 +233,35 @@ export const workflowThread = workflowModule.thread({
           pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
           pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
           pendingEmits: state.pendingEmits.filter((item) => item.id !== `finished_${nodeId}`),
-          status: failed ? 'failed' : state.status,
           error: failed ? error : state.error,
-          needsSchedule: !failed,
+          needsSchedule: true,
+        }
+      }
+
+      case 'workflow.node.skipped': {
+        const { nodeId, reason } = event.payload
+        return {
+          ...state,
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              status: 'skipped',
+              result: null,
+              error: reason,
+              attempts: state.nodes[nodeId]?.attempts ?? 0,
+            } satisfies NodeState,
+          },
+          runningNodes: state.runningNodes.filter((id) => id !== nodeId),
+          pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+          pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
+          pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
+          needsSchedule: true,
         }
       }
 
       case 'workflow.spawn.requested': {
-        const { childThreadId, kind, definitionName, nodeId, input } = event.payload
+        const { childThreadId, kind, definitionName, definitionVersion, nodeId, input } =
+          event.payload
 
         if (!childThreadId || !kind || !definitionName || !nodeId) {
           return state
@@ -211,6 +275,7 @@ export const workflowThread = workflowModule.thread({
               childThreadId,
               kind,
               definitionName,
+              definitionVersion,
               nodeId,
               input: input ?? null,
             },
@@ -271,13 +336,16 @@ export const workflowThread = workflowModule.thread({
           return state
         }
 
-        const running = Object.entries(state.nodes).find(([, node]) => node.status === 'running')
+        const effectId = event.payload.effectId
 
-        if (!running) {
+        const nodeId = Predicate.isString(effectId)
+          ? nodeIdForEffect(state, ctx.threadId, effectId)
+          : null
+
+        if (!nodeId) {
           return state
         }
 
-        const nodeId = running[0]
         const message = `Node ${nodeId} failed: ${error}`
         return {
           ...state,
@@ -332,6 +400,14 @@ export const workflowThread = workflowModule.thread({
         const result =
           embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : { waited: true })
 
+        const approvalTimeout =
+          Predicate.isString(tag.approvalId) &&
+          Predicate.isObject(embedded) &&
+          embedded.type === 'runtime.timer.fired'
+
+        const terminalError =
+          error ?? (approvalTimeout ? `Approval ${String(tag.approvalId)} timed out` : null)
+
         return {
           ...state,
           pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
@@ -347,7 +423,7 @@ export const workflowThread = workflowModule.thread({
                   nodeId,
                   // SAFETY: result is serialized to a JSON-compatible node execution result.
                   result: asJson(result) ?? null,
-                  error,
+                  error: terminalError,
                 },
                 threadId: ctx.threadId,
               },
@@ -379,6 +455,7 @@ export const workflowThread = workflowModule.thread({
           childThreadId: spawnReq.childThreadId,
           kind: spawnReq.kind,
           definitionName: spawnReq.definitionName,
+          definitionVersion: spawnReq.definitionVersion,
           input: spawnReq.input,
         }),
         wait({

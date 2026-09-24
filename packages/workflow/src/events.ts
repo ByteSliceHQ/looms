@@ -1,6 +1,6 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import { defineEventCatalog, RuntimeEffectSchema } from '@looms/core'
+import { DEFAULT_DEFINITION_VERSION, defineEventCatalog, RuntimeEffectSchema } from '@looms/core'
 
 export const WorkflowNodeStartedPayloadSchema = Schema.Struct({
   nodeId: Schema.String,
@@ -10,6 +10,7 @@ export const WorkflowNodeFinishedPayloadSchema = Schema.Struct({
   nodeId: Schema.String,
   result: Schema.NullOr(Schema.Json),
   error: Schema.NullOr(Schema.String),
+  branch: Schema.optional(Schema.String),
 })
 
 export const WorkflowNodeSkippedPayloadSchema = Schema.Struct({
@@ -22,6 +23,9 @@ export const WorkflowSpawnRequestedPayloadSchema = Schema.Struct({
   childThreadId: Schema.String,
   kind: Schema.String,
   definitionName: Schema.String,
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   input: Schema.Json,
 })
 

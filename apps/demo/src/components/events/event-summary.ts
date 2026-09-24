@@ -147,6 +147,16 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       }
     case 'agent.steered':
       return { title: 'steered', detail: messageContent(event.payload) }
+    case 'agent.session.message.submitted':
+      return { title: 'session message submitted', detail: event.payload.messageId }
+    case 'agent.session.steer.delivered':
+      return { title: 'session steer delivered', detail: event.payload.messageId }
+    case 'agent.session.turn.started':
+      return { title: 'session turn started', detail: event.payload.childThreadId }
+    case 'agent.session.turn.closed':
+      return { title: `session turn ${event.payload.status}`, detail: event.payload.messageId }
+    case 'agent.session.cancel.requested':
+      return { title: 'session cancellation requested' }
     case 'agent.spawn.requested':
       return {
         title: 'agent spawn',
