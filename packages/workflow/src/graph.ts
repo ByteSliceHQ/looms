@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect'
 
-import { isJsonString, utf8JsonBytes, type JsonValue } from '@looms/core'
+import { deterministicThreadId, isJsonString, utf8JsonBytes, type JsonValue } from '@looms/core'
 
 import type { NodeState, WorkflowDefinition, WorkflowNodeDefinition } from './definitions'
 
@@ -43,40 +43,6 @@ export interface WorkflowEdge {
 
 export type GraphNodeStatuses = Record<string, NodeState['status']>
 
-function fnv1a32(value: string, seed: number): string {
-  let hash = seed >>> 0
-
-  for (let index = 0; index < value.length; index++) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-
-  return (hash >>> 0).toString(16).padStart(8, '0')
-}
-
-export function deterministicWorkflowId(...parts: readonly (string | number)[]): string {
-  const source = parts.join(':')
-  let reversed = ''
-
-  for (let index = source.length - 1; index >= 0; index--) {
-    reversed += source.charAt(index)
-  }
-
-  const hex = [
-    fnv1a32(source, 0x811c9dc5),
-    fnv1a32(source, 0x9e3779b9),
-    fnv1a32(reversed, 0x85ebca6b),
-    fnv1a32(reversed, 0xc2b2ae35),
-  ].join('')
-
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${(
-    (Number.parseInt(hex.slice(16, 18), 16) & 0x3f) |
-    0x80
-  )
-    .toString(16)
-    .padStart(2, '0')}${hex.slice(18, 20)}-${hex.slice(20)}`
-}
-
 /** Distinguishes each attempt, and each loop iteration within it, of one node. */
 export function nodeRunKey(nodeId: string, attempt: number, iteration?: number): string {
   return iteration === undefined ? `${nodeId}_${attempt}` : `${nodeId}_${attempt}_${iteration}`
@@ -89,7 +55,7 @@ export function iterationChildWorkflowId(
   attempt: number,
   index: number,
 ): string {
-  return deterministicWorkflowId(parentThreadId, nodeId, kind, attempt, index)
+  return deterministicThreadId(parentThreadId, nodeId, kind, attempt, index)
 }
 
 export function nodeChildWorkflowId(
@@ -97,7 +63,7 @@ export function nodeChildWorkflowId(
   nodeId: string,
   attempt: number,
 ): string {
-  return deterministicWorkflowId(parentThreadId, nodeId, 'workflow', attempt)
+  return deterministicThreadId(parentThreadId, nodeId, 'workflow', attempt)
 }
 
 export function assertJsonWithinLimit(

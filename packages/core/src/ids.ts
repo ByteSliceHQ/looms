@@ -23,6 +23,44 @@ export function createThreadId(): string {
   return `thr_${token()}`
 }
 
+function fnv1a32(value: string, seed: number): string {
+  let hash = seed >>> 0
+
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+ * A UUID-shaped id derived only from `parts`, so a reducer that replays the same events names the same
+ * child thread every time.
+ */
+export function deterministicThreadId(...parts: readonly (string | number)[]): string {
+  const source = parts.join(':')
+  let reversed = ''
+
+  for (let index = source.length - 1; index >= 0; index--) {
+    reversed += source.charAt(index)
+  }
+
+  const hex = [
+    fnv1a32(source, 0x811c9dc5),
+    fnv1a32(source, 0x9e3779b9),
+    fnv1a32(reversed, 0x85ebca6b),
+    fnv1a32(reversed, 0xc2b2ae35),
+  ].join('')
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${(
+    (Number.parseInt(hex.slice(16, 18), 16) & 0x3f) |
+    0x80
+  )
+    .toString(16)
+    .padStart(2, '0')}${hex.slice(18, 20)}-${hex.slice(20)}`
+}
+
 export function createWaitId(scope?: string, tag?: string | number): string {
   if (scope !== undefined && tag !== undefined) {
     return `wait_${scope}_${tag}`

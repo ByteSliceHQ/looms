@@ -56,7 +56,12 @@ export function gate(args: {
       wait({
         waitId: createWaitId(approvalId, 'timeout'),
         on: { timerAt: args.timeoutAt },
-        tag: { approvalId, raceId: approvalId, outcome: 'timeout' },
+        tag: {
+          approvalId,
+          raceId: approvalId,
+          outcome: 'timeout',
+          error: `Approval ${approvalId} timed out`,
+        },
       }),
     )
   }

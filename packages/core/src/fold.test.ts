@@ -3,9 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import { Effect, Schema, Stream } from 'effect'
 
 import { defineEventCatalog } from './catalog'
-import { complete, invoke, wait } from './effects'
+import { cancel, complete, emit, invoke, wait } from './effects'
 import { createEvent } from './envelope'
-import { foldRun, foldStream } from './fold'
+import { foldRun, foldStream, stableEffectId } from './fold'
 import { createEffectId } from './ids'
 import { composeModules, defineRuntimeModule } from './index'
 import { matchesWait, isSubset } from './match'
@@ -963,5 +963,16 @@ describe('threadTree projection', () => {
     )
 
     expect(state.threads[threadId]?.state).toEqual({ count: 5 })
+  })
+})
+
+describe('stableEffectId', () => {
+  test('uses the tag of an emit and falls back to the target of a cancel', () => {
+    const event = { type: 'demo.happened', payload: {}, threadId: 'thr_a' }
+
+    expect(stableEffectId('thr_a', emit(event, 'announce'))).toBe('thr_a:announce')
+    expect(stableEffectId('thr_a', emit(event))).toBeUndefined()
+    expect(stableEffectId('thr_a', cancel('thr_b'))).toBe('thr_a:cancel_thr_b')
+    expect(stableEffectId('thr_a', cancel('thr_b', 'stop_b'))).toBe('thr_a:stop_b')
   })
 })

@@ -1,9 +1,10 @@
-import { Predicate, Schema } from 'effect'
+import { Predicate } from 'effect'
 
 import {
   cancel,
   createWaitId,
-  invoke,
+  deterministicThreadId,
+  emit,
   spawn,
   wait,
   type DefinitionStore,
@@ -22,81 +23,6 @@ import type {
   AgentSessionState,
   AgentSessionTurnStatus,
 } from './types'
-
-const SessionActionInput = Schema.Struct({
-  action: Schema.Union([Schema.Literal('admit'), Schema.Literal('steer'), Schema.Literal('close')]),
-  sessionThreadId: Schema.String,
-  messageId: Schema.String,
-  childThreadId: Schema.optional(Schema.String),
-  activeMessageId: Schema.optional(Schema.String),
-  text: Schema.optional(Schema.String),
-  status: Schema.optional(
-    Schema.Union([
-      Schema.Literal('completed'),
-      Schema.Literal('failed'),
-      Schema.Literal('cancelled'),
-    ]),
-  ),
-  error: Schema.optional(Schema.String),
-})
-
-export const agentSessionActionEffect = agentModule.effect({
-  type: 'agent.sessionAction',
-  input: SessionActionInput,
-  execute: (input) => {
-    switch (input.action) {
-      case 'admit':
-        return [
-          agentModule.input(
-            'session.turn.started',
-            {
-              messageId: input.messageId,
-              childThreadId: input.childThreadId ?? '',
-            },
-            { threadId: input.sessionThreadId },
-          ),
-        ]
-      case 'steer':
-        return [
-          agentModule.input(
-            'steered',
-            {
-              turn: 0,
-              messageId: input.messageId,
-              message: { role: 'user', content: input.text ?? '' },
-              interrupt: true,
-            },
-            { threadId: input.childThreadId },
-          ),
-          agentModule.input(
-            'session.steer.delivered',
-            {
-              messageId: input.messageId,
-              activeMessageId: input.activeMessageId ?? '',
-            },
-            { threadId: input.sessionThreadId },
-          ),
-        ]
-      case 'close':
-        return [
-          agentModule.input(
-            'session.turn.closed',
-            {
-              messageId: input.messageId,
-              status: input.status ?? 'failed',
-              error: input.error,
-            },
-            { threadId: input.sessionThreadId },
-          ),
-        ]
-
-      default: {
-        const exhaustiveCheck: never = input.action
-        return exhaustiveCheck
-      }
-    }
-  },
-})
 
 function objectPayload(event: EventEnvelope): { [key: string]: JsonValue } {
   return Predicate.isObject(event.payload) ? event.payload : {}
@@ -151,10 +77,6 @@ function close(
   error?: string,
 ): AgentSessionClosure {
   return error === undefined ? { messageId, status } : { messageId, status, error }
-}
-
-function childThreadId(sessionThreadId: string, messageId: string): string {
-  return `${sessionThreadId}_turn_${encodeURIComponent(messageId)}`
 }
 
 export function createAgentSessionThread(
@@ -340,15 +262,12 @@ export function createAgentSessionThread(
 
       for (const closure of state.pendingClosures) {
         effects.push(
-          invoke(
-            agentSessionActionEffect,
-            {
-              action: 'close',
-              sessionThreadId: ctx.threadId,
-              messageId: closure.messageId,
-              status: closure.status,
-              error: closure.error,
-            },
+          emit(
+            agentModule.input(
+              'session.turn.closed',
+              { messageId: closure.messageId, status: closure.status, error: closure.error },
+              { threadId: ctx.threadId },
+            ),
             `session_close_${closure.messageId}`,
           ),
         )
@@ -360,17 +279,26 @@ export function createAgentSessionThread(
         }
 
         effects.push(
-          invoke(
-            agentSessionActionEffect,
-            {
-              action: 'steer',
-              sessionThreadId: ctx.threadId,
-              childThreadId: state.activeTurn.childThreadId,
-              activeMessageId: state.activeTurn.messageId,
-              messageId: message.messageId,
-              text: message.text,
-            },
+          emit(
+            agentModule.input(
+              'steered',
+              {
+                turn: 0,
+                messageId: message.messageId,
+                message: { role: 'user', content: message.text },
+                interrupt: true,
+              },
+              { threadId: state.activeTurn.childThreadId },
+            ),
             `session_steer_${message.messageId}`,
+          ),
+          emit(
+            agentModule.input(
+              'session.steer.delivered',
+              { messageId: message.messageId, activeMessageId: state.activeTurn.messageId },
+              { threadId: ctx.threadId },
+            ),
+            `session_steer_delivered_${message.messageId}`,
           ),
         )
       }
@@ -418,14 +346,15 @@ export function createAgentSessionThread(
 
       if (next) {
         effects.push(
-          invoke(
-            agentSessionActionEffect,
-            {
-              action: 'admit',
-              sessionThreadId: ctx.threadId,
-              childThreadId: childThreadId(ctx.threadId, next.messageId),
-              messageId: next.messageId,
-            },
+          emit(
+            agentModule.input(
+              'session.turn.started',
+              {
+                messageId: next.messageId,
+                childThreadId: deterministicThreadId(ctx.threadId, 'turn', next.messageId),
+              },
+              { threadId: ctx.threadId },
+            ),
             `session_admit_${next.messageId}`,
           ),
         )

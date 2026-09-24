@@ -40,6 +40,8 @@ export type WaitEffect = {
 export type EmitEffect<E extends EventInput = EventInput> = {
   type: 'runtime.emit'
   event: E
+  /** Stable identity, so the emit survives reordering of the thread's effects. */
+  tag?: string
 }
 
 export type CompleteEffect = {
@@ -55,6 +57,7 @@ export type FailEffect = {
 export type CancelEffect = {
   type: 'runtime.cancel'
   threadId: string
+  tag?: string
 }
 
 export interface RetryPolicy {
@@ -112,6 +115,7 @@ export const RuntimeEffectSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('runtime.emit'),
     event: EventInputSchema,
+    tag: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal('runtime.complete'),
@@ -124,6 +128,7 @@ export const RuntimeEffectSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('runtime.cancel'),
     threadId: Schema.String,
+    tag: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.String,
@@ -338,8 +343,39 @@ export function wait(args: { waitId: string; on: WaitCondition; tag?: JsonValue 
   return effect
 }
 
-export function emit<E extends EventInput = EventInput>(event: E): EmitEffect<E> {
-  return { type: 'runtime.emit', event }
+export interface WaitOutcome {
+  readonly result: JsonValue | null
+  readonly error: string | null
+}
+
+/**
+ * Reads the outcome of a satisfied wait. The wait fails when the satisfying event's payload has an
+ * `error`, or when the waiter put an `error` on the wait's tag (such as a timeout that loses a
+ * race). Otherwise the result is the payload's `output`, else the whole payload.
+ */
+export function waitOutcome(
+  satisfied: JsonValue | undefined,
+  tag: JsonValue | undefined,
+  fallback: JsonValue | null = null,
+): WaitOutcome {
+  const payload =
+    Predicate.isObject(satisfied) && Predicate.isObject(satisfied.payload) ? satisfied.payload : {}
+
+  const tagError = Predicate.isObject(tag) && Predicate.isString(tag.error) ? tag.error : null
+  const error = Predicate.isString(payload.error) ? payload.error : tagError
+
+  if (error !== null) {
+    return { result: null, error }
+  }
+
+  const result = payload.output ?? (Predicate.isObject(satisfied) ? satisfied.payload : fallback)
+
+  // SAFETY: wait results are persisted JSON event payloads.
+  return { result: asJson(result) ?? null, error: null }
+}
+
+export function emit<E extends EventInput = EventInput>(event: E, tag?: string): EmitEffect<E> {
+  return tag === undefined ? { type: 'runtime.emit', event } : { type: 'runtime.emit', event, tag }
 }
 
 export function complete(output: JsonValue): CompleteEffect {
@@ -350,8 +386,10 @@ export function fail(error: string): FailEffect {
   return { type: 'runtime.fail', error }
 }
 
-export function cancel(threadId: string): CancelEffect {
-  return { type: 'runtime.cancel', threadId }
+export function cancel(threadId: string, tag?: string): CancelEffect {
+  return tag === undefined
+    ? { type: 'runtime.cancel', threadId }
+    : { type: 'runtime.cancel', threadId, tag }
 }
 
 export function invoke<TInput>(

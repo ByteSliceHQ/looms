@@ -282,6 +282,42 @@ describe('createLooms runtime', () => {
     await looms.stop()
   })
 
+  test('an approval timeout fails the waiting workflow node', async () => {
+    const approvalId = 'approval-timeout'
+
+    const gatedFlow = defineWorkflow({
+      name: 'approval-timeout-flow',
+      nodes: [
+        {
+          id: 'gate',
+          run: (ctx) =>
+            ctx.effects(gate({ approvalId, title: 'Timeout', timeoutAt: Date.now() + 10 })),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      modules: [workflow({ definitions: [gatedFlow] }), approval()],
+    })
+
+    const started = await looms.start(gatedFlow, {})
+    await Bun.sleep(20)
+    await looms.wake(started.runId)
+
+    const events = await looms.getEvents(started.runId)
+
+    const nodeFailed = events.find(
+      (event) =>
+        event.type === 'workflow.node.finished' &&
+        Predicate.isObject(event.payload) &&
+        event.payload.error === `Approval ${approvalId} timed out`,
+    )
+
+    expect(nodeFailed).toBeDefined()
+    expect((await looms.getRun(started.runId)).status).toBe('failed')
+    await looms.stop()
+  })
+
   test('pages a store that returns at most 5 events per read instead of treating it as truncation', async () => {
     let completeCalls = 0
     const tokens = Array.from({ length: 20 }, (_, i) => `token_${i}`)

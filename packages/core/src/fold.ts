@@ -245,7 +245,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
       const existing = state.threads[threadId]
 
-      if (!existing) {
+      if (!existing || isTerminalStatus(existing.status)) {
         return state
       }
 
@@ -478,6 +478,14 @@ export function stableEffectId(threadId: string, effect: RuntimeEffect): string 
 
   if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
     return createEffectId(threadId, `spawn_${effect.childThreadId}`)
+  }
+
+  if (
+    effect.type === 'runtime.cancel' &&
+    'threadId' in effect &&
+    Predicate.isString(effect.threadId)
+  ) {
+    return createEffectId(threadId, `cancel_${effect.threadId}`)
   }
 
   return undefined

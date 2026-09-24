@@ -1,7 +1,7 @@
 import { Effect, Predicate, Schema } from 'effect'
 
 import {
-  asJson,
+  cancel,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   EventInputSchema,
@@ -18,6 +18,7 @@ import {
   type JsonValue,
   type RuntimeEffect,
   utf8JsonBytes,
+  waitOutcome,
 } from '@looms/core'
 
 import { NodeStateSchema, type NodeState } from './definitions'
@@ -91,6 +92,10 @@ export const WorkflowStateSchema = Schema.Struct({
   pendingSleeps: Schema.mutable(Schema.Array(WorkflowPendingSleepSchema)),
   pendingEffects: Schema.mutable(Schema.Array(WorkflowPendingEffectsSchema)),
   pendingEmits: Schema.mutable(Schema.Array(WorkflowPendingEmitSchema)),
+  /** Children of stopped nodes that were still running; each is cancelled once. */
+  pendingCancels: Schema.mutable(Schema.Array(Schema.String)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
   status: Schema.Union([
     Schema.Literal('running'),
     Schema.Literal('completed'),
@@ -229,9 +234,45 @@ function nodeIdForEffect(state: WorkflowState, threadId: string, effectId: strin
   return match?.nodeId ?? null
 }
 
-function withoutPendingWork(state: WorkflowState, nodeId: string): WorkflowState {
+/** Children a node started that have not reported back yet. */
+function unsettledChildren(state: WorkflowState, nodeId: string, threadId: string): string[] {
+  const children = state.pendingSpawns
+    .filter((item) => item.nodeId === nodeId)
+    .map((item) => item.childThreadId)
+
+  for (const map of state.pendingMaps) {
+    if (map.nodeId !== nodeId) {
+      continue
+    }
+
+    for (let index = 0; index < map.nextIndex; index++) {
+      if (!(String(index) in map.outputs)) {
+        children.push(mapChildThreadId(threadId, map, index))
+      }
+    }
+  }
+
+  return children
+}
+
+/**
+ * Drops a node's pending work and cancels the children it leaves running. `settled` is the child
+ * whose result is finishing the node, which must not be cancelled.
+ */
+function withoutPendingWork(
+  state: WorkflowState,
+  nodeId: string,
+  threadId: string,
+  settled: string | null = null,
+): WorkflowState {
+  const cancels = unsettledChildren(state, nodeId, threadId).filter(
+    (childThreadId) => childThreadId !== settled && !state.pendingCancels.includes(childThreadId),
+  )
+
   return {
     ...state,
+    pendingCancels:
+      cancels.length === 0 ? state.pendingCancels : [...state.pendingCancels, ...cancels],
     pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
     pendingMaps: state.pendingMaps.filter((item) => item.nodeId !== nodeId),
     pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
@@ -239,9 +280,9 @@ function withoutPendingWork(state: WorkflowState, nodeId: string): WorkflowState
   }
 }
 
-function stopNode(state: WorkflowState, nodeId: string): WorkflowState {
+function stopNode(state: WorkflowState, nodeId: string, threadId: string): WorkflowState {
   return {
-    ...withoutPendingWork(state, nodeId),
+    ...withoutPendingWork(state, nodeId, threadId),
     runningNodes: state.runningNodes.filter((id) => id !== nodeId),
   }
 }
@@ -253,6 +294,7 @@ function finishNode(
   result: JsonValue | null,
   error: string | null,
   threadId: string,
+  settled: string | null = null,
 ): WorkflowState {
   const id = `finished_${nodeId}`
 
@@ -263,39 +305,9 @@ function finishNode(
   }
 
   return {
-    ...withoutPendingWork(state, nodeId),
+    ...withoutPendingWork(state, nodeId, threadId, settled),
     pendingEmits: [...state.pendingEmits.filter((item) => item.id !== id), { id, event }],
   }
-}
-
-interface WaitOutcome {
-  readonly result: JsonValue | null
-  readonly error: string | null
-}
-
-function waitOutcome(
-  satisfied: JsonValue | undefined,
-  tag: { readonly [key: string]: JsonValue },
-): WaitOutcome {
-  const payload =
-    Predicate.isObject(satisfied) && Predicate.isObject(satisfied.payload) ? satisfied.payload : {}
-
-  const error = Predicate.isString(payload.error) ? payload.error : null
-
-  const approvalId = Predicate.isString(tag.approvalId) ? tag.approvalId : undefined
-
-  const approvalTimeout =
-    approvalId !== undefined &&
-    Predicate.isObject(satisfied) &&
-    satisfied.type === 'runtime.timer.fired'
-
-  const terminalError = error ?? (approvalTimeout ? `Approval ${approvalId} timed out` : null)
-
-  const result =
-    payload.output ?? (Predicate.isObject(satisfied) ? satisfied.payload : { waited: true })
-
-  // SAFETY: result is serialized to a JSON-compatible node execution result.
-  return { result: terminalError ? null : (asJson(result) ?? null), error: terminalError }
 }
 
 function recordMapOutput(
@@ -309,17 +321,18 @@ function recordMapOutput(
     return state
   }
 
+  const settled = mapChildThreadId(threadId, map, index)
   const outputs = { ...map.outputs, [String(index)]: output }
   const size = utf8JsonBytes(outputs)
 
   if (size > map.limitBytes) {
     const error = new WorkflowValueTooLargeError(`Node ${map.nodeId} outputs`, size, map.limitBytes)
-    return finishNode(state, map.nodeId, null, error.message, threadId)
+    return finishNode(state, map.nodeId, null, error.message, threadId, settled)
   }
 
   if (Object.keys(outputs).length === map.items.length) {
     const ordered = map.items.map((_, i) => outputs[String(i)] ?? null)
-    return finishNode(state, map.nodeId, ordered, null, threadId)
+    return finishNode(state, map.nodeId, ordered, null, threadId, settled)
   }
 
   const nextIndex = Math.min(map.items.length, map.nextIndex + 1)
@@ -354,6 +367,7 @@ export const workflowThread = workflowModule.thread({
     pendingSleeps: [],
     pendingEffects: [],
     pendingEmits: [],
+    pendingCancels: [],
     status: initialWorkflowStatus,
     error: null,
   }),
@@ -423,7 +437,7 @@ export const workflowThread = workflowModule.thread({
 
         const failed = Predicate.isString(error) && error.length > 0
         return {
-          ...stopNode(state, nodeId),
+          ...stopNode(state, nodeId, ctx.threadId),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -443,7 +457,7 @@ export const workflowThread = workflowModule.thread({
       case 'workflow.node.skipped': {
         const { nodeId, reason, cause } = event.payload
         return {
-          ...stopNode(state, nodeId),
+          ...stopNode(state, nodeId, ctx.threadId),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -564,7 +578,7 @@ export const workflowThread = workflowModule.thread({
         const message = `Node ${nodeId} failed: ${error}`
 
         return {
-          ...finishNode(stopNode(state, nodeId), nodeId, null, message, ctx.threadId),
+          ...finishNode(stopNode(state, nodeId, ctx.threadId), nodeId, null, message, ctx.threadId),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -590,7 +604,7 @@ export const workflowThread = workflowModule.thread({
           return state
         }
 
-        const { result, error } = waitOutcome(event.payload.event, tag)
+        const { result, error } = waitOutcome(event.payload.event, tag, { waited: true })
         const map = state.pendingMaps.find((item) => item.nodeId === nodeId)
 
         if (error === null && map && Predicate.isNumber(tag.index)) {
@@ -610,7 +624,15 @@ export const workflowThread = workflowModule.thread({
           }
         }
 
-        return finishNode(state, nodeId, result, error, ctx.threadId)
+        const satisfied = event.payload.event
+        const satisfiedPayload = Predicate.isObject(satisfied) ? satisfied.payload : undefined
+
+        const settled =
+          Predicate.isObject(satisfiedPayload) && Predicate.isString(satisfiedPayload.threadId)
+            ? satisfiedPayload.threadId
+            : null
+
+        return finishNode(state, nodeId, result, error, ctx.threadId, settled)
       }
 
       default:
@@ -630,6 +652,10 @@ export const workflowThread = workflowModule.thread({
 
     for (const emitReq of state.pendingEmits) {
       effects.push(emit(emitReq.event))
+    }
+
+    for (const childThreadId of state.pendingCancels) {
+      effects.push(cancel(childThreadId))
     }
 
     if (state.status === 'failed') {
