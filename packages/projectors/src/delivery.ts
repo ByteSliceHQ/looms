@@ -118,7 +118,11 @@ export function createProjectorDelivery(
     let pending = initialized.get(key)
 
     if (!pending) {
-      pending = projector.init?.() ?? Promise.resolve()
+      pending = Promise.resolve(projector.init?.()).catch((cause: unknown) => {
+        initialized.delete(key)
+        throw cause
+      })
+
       initialized.set(key, pending)
     }
 
@@ -204,41 +208,54 @@ export function createProjectorDelivery(
             limit: batchSize,
           })
 
-          if (events.length === 0) {
+          const first = events[0]
+          const last = events.at(-1)
+
+          if (first === undefined || last === undefined) {
             return
           }
 
-          for (const event of events) {
-            const projected = yield* runProjectorEffect(projectorIdentity(projector), () =>
-              projector.project([event]),
-            ).pipe(Effect.exit)
+          const projected = yield* runProjectorEffect(projectorIdentity(projector), () =>
+            projector.project(events),
+          ).pipe(Effect.exit)
 
-            if (projected._tag === 'Failure') {
-              yield* recordFailure(
-                runId,
-                projector,
-                status,
-                event.seq,
-                normalizeError(projected.cause),
-              )
-
-              return
-            }
-
-            yield* Effect.promise(() => cursors.advance(runId, projector, event.seq, now()))
-            status = yield* Effect.promise(() => cursors.get(runId, projector))
-            const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => event.seq))
-
-            observe({
-              type: 'projector.lag',
+          if (projected._tag === 'Failure') {
+            yield* recordFailure(
               runId,
-              projector: projectorIdentity(projector),
-              at: now(),
-              cursor: event.seq,
-              lag: Math.max(0, sourceTail - event.seq),
-              attempts: status.attempts,
-            })
+              projector,
+              status,
+              first.seq,
+              normalizeError(projected.cause),
+            )
+
+            return
           }
+
+          const advancedAt = now()
+
+          yield* Effect.promise(() => cursors.advance(runId, projector, last.seq, advancedAt))
+
+          status = {
+            ...status,
+            cursor: last.seq,
+            state: 'idle',
+            attempts: 0,
+            failedSeq: null,
+            nextRetryAt: null,
+            lastError: null,
+          }
+
+          const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => last.seq))
+
+          observe({
+            type: 'projector.lag',
+            runId,
+            projector: projectorIdentity(projector),
+            at: advancedAt,
+            cursor: last.seq,
+            lag: Math.max(0, sourceTail - last.seq),
+            attempts: 0,
+          })
         }
       }),
     )

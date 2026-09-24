@@ -180,7 +180,9 @@ export interface AppendOptions {
   readonly expectedTail?: number
   /**
    * Atomically claims an ingress command with the append. Reusing the key
-   * returns a deduplicated result without appending events.
+   * returns a deduplicated result without appending events. Stores without a
+   * command table may ignore this; callers must pair it with `expectedTail`
+   * so a retried command conflicts instead of appending twice.
    */
   readonly idempotency?: {
     readonly key: string

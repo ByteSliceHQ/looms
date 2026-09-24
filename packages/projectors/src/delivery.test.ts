@@ -57,12 +57,12 @@ describe('projector delivery', () => {
     const projector: Projector = {
       name: 'search',
       version: '1',
-      project: async ([item]: readonly EventEnvelope[]) => {
+      project: async (events: readonly EventEnvelope[]) => {
         if (failures-- > 0) {
           throw new Error('temporary outage')
         }
 
-        seen.push(item!.seq)
+        seen.push(...events.map((item) => item.seq))
       },
     }
 
@@ -125,6 +125,93 @@ describe('projector delivery', () => {
 
     expect(initCalls).toBe(1)
     expect(projectCalls).toBe(1)
+  })
+
+  test('projects each page in one call', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+
+    await Effect.runPromise(
+      source.append('run_1', [event('run_1', 1), event('run_1', 2), event('run_1', 3)]),
+    )
+
+    const batches: number[][] = []
+
+    const projector: Projector = {
+      name: 'search',
+      version: '1',
+      project: async (events) => {
+        batches.push(events.map((item) => item.seq))
+      },
+    }
+
+    const delivery = createProjectorDelivery(
+      source,
+      [projector],
+      sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
+      { batchSize: 2 },
+    )
+
+    await delivery.deliver('run_1')
+
+    expect(batches).toEqual([[1, 2], [3]])
+  })
+
+  test('retries init after it rejects', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+    await Effect.runPromise(source.append('run_1', [event('run_1', 1)]))
+
+    let initCalls = 0
+    const seen: number[] = []
+
+    const projector: Projector = {
+      name: 'search',
+      version: '1',
+      init: async () => {
+        initCalls += 1
+
+        if (initCalls === 1) {
+          throw new Error('cold start')
+        }
+      },
+      project: async (events) => {
+        seen.push(...events.map((item) => item.seq))
+      },
+    }
+
+    const delivery = createProjectorDelivery(
+      source,
+      [projector],
+      sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
+    )
+
+    await delivery.deliver('run_1')
+    expect((await delivery.status('run_1'))[0]?.state).toBe('retrying')
+
+    await delivery.deliver('run_1', { force: true })
+
+    expect(initCalls).toBe(2)
+    expect(seen).toEqual([1])
+  })
+
+  test('ignores a stale failure behind an advanced cursor', async () => {
+    const cursors = sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:')))
+    const projector: Projector = { name: 'search', version: '1', project: async () => {} }
+
+    await cursors.advance('run_1', projector, 10, 1)
+
+    await cursors.fail('run_1', projector, {
+      attempts: 1,
+      failedSeq: 5,
+      nextRetryAt: 100,
+      error: 'late',
+      now: 2,
+    })
+
+    expect(await cursors.get('run_1', projector)).toMatchObject({
+      cursor: 10,
+      state: 'idle',
+      attempts: 0,
+    })
   })
 
   test('requeues a dead-lettered event', async () => {

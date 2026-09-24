@@ -70,10 +70,6 @@ function deliveryStatus(row: DeliveryRow): ProjectorDeliveryStatus {
   }
 }
 
-function currentTimeMillis(): number {
-  return Math.floor(performance.timeOrigin + performance.now())
-}
-
 function initialize(exec: SqliteExec): void {
   for (const statement of SQLITE_PROJECTOR_DELIVERY_SCHEMA.split(';')) {
     const sql = statement.trim()
@@ -87,7 +83,7 @@ function initialize(exec: SqliteExec): void {
 export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorStore {
   initialize(exec)
 
-  const find = (runId: string, projector: Projector): ProjectorDeliveryStatus | undefined => {
+  const get = (runId: string, projector: Projector): ProjectorDeliveryStatus => {
     const [row] = exec.rows(
       `SELECT run_id, projector_name, projector_version, cursor, state, attempts,
               failed_seq, next_retry_at, last_error, updated_at
@@ -96,73 +92,73 @@ export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorSto
       [runId, projector.name, projector.version],
     )
 
-    return row === undefined ? undefined : deliveryStatus(decodeDeliveryRow(row))
-  }
-
-  const ensure = (runId: string, projector: Projector, now: number): ProjectorDeliveryStatus => {
-    exec.run(
-      `INSERT OR IGNORE INTO looms_projector_delivery
-         (run_id, projector_name, projector_version, updated_at)
-       VALUES (?, ?, ?, ?)`,
-      [runId, projector.name, projector.version, now],
-    )
-
-    const status = find(runId, projector)
-
-    if (!status) {
-      throw new Error(`Failed to initialize projector cursor for ${runId}`)
-    }
-
-    return status
+    return row === undefined
+      ? {
+          runId,
+          projector: projector.name,
+          version: projector.version,
+          cursor: 0,
+          state: 'idle',
+          attempts: 0,
+          failedSeq: null,
+          nextRetryAt: null,
+          lastError: null,
+          updatedAt: 0,
+        }
+      : deliveryStatus(decodeDeliveryRow(row))
   }
 
   return {
-    get: (runId, projector) => Promise.resolve(ensure(runId, projector, currentTimeMillis())),
+    get: (runId, projector) => Promise.resolve(get(runId, projector)),
     advance: (runId, projector, cursor, now) => {
-      ensure(runId, projector, now)
-
       exec.run(
-        `UPDATE looms_projector_delivery
-         SET cursor = MAX(cursor, ?), state = 'idle', attempts = 0, failed_seq = NULL,
-             next_retry_at = NULL, last_error = NULL, updated_at = ?
-         WHERE run_id = ? AND projector_name = ? AND projector_version = ?`,
-        [cursor, now, runId, projector.name, projector.version],
+        `INSERT INTO looms_projector_delivery
+           (run_id, projector_name, projector_version, cursor, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
+         SET cursor = MAX(cursor, excluded.cursor), state = 'idle', attempts = 0,
+             failed_seq = NULL, next_retry_at = NULL, last_error = NULL,
+             updated_at = excluded.updated_at`,
+        [runId, projector.name, projector.version, cursor, now],
       )
 
       return Promise.resolve()
     },
     fail: (runId, projector, failure) => {
-      ensure(runId, projector, failure.now)
-
       exec.run(
-        `UPDATE looms_projector_delivery
-         SET state = ?, attempts = ?, failed_seq = ?, next_retry_at = ?,
-             last_error = ?, updated_at = ?
-         WHERE run_id = ? AND projector_name = ? AND projector_version = ?`,
+        `INSERT INTO looms_projector_delivery
+           (run_id, projector_name, projector_version, state, attempts, failed_seq,
+            next_retry_at, last_error, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
+         SET state = excluded.state, attempts = excluded.attempts,
+             failed_seq = excluded.failed_seq, next_retry_at = excluded.next_retry_at,
+             last_error = excluded.last_error, updated_at = excluded.updated_at
+         WHERE cursor < excluded.failed_seq`,
         [
+          runId,
+          projector.name,
+          projector.version,
           failure.nextRetryAt === null ? 'dead-letter' : 'retrying',
           failure.attempts,
           failure.failedSeq,
           failure.nextRetryAt,
           failure.error,
           failure.now,
-          runId,
-          projector.name,
-          projector.version,
         ],
       )
 
       return Promise.resolve()
     },
     requeue: (runId, projector, now) => {
-      ensure(runId, projector, now)
-
       exec.run(
-        `UPDATE looms_projector_delivery
-         SET state = 'retrying', attempts = 0, next_retry_at = ?, last_error = NULL,
-             updated_at = ?
-         WHERE run_id = ? AND projector_name = ? AND projector_version = ?`,
-        [now, now, runId, projector.name, projector.version],
+        `INSERT INTO looms_projector_delivery
+           (run_id, projector_name, projector_version, state, next_retry_at, updated_at)
+         VALUES (?, ?, ?, 'retrying', ?, ?)
+         ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
+         SET state = 'retrying', attempts = 0, next_retry_at = excluded.next_retry_at,
+             last_error = NULL, updated_at = excluded.updated_at`,
+        [runId, projector.name, projector.version, now, now],
       )
 
       return Promise.resolve()

@@ -84,18 +84,23 @@ describe('withProjectors', () => {
     expect(snapshotStoreOf(store)).toBe(snapshots)
   })
 
-  test('surfaces projection failure when no durable runner is configured', async () => {
+  test('never fails a committed append when projection fails', async () => {
     const base = await Effect.runPromise(makeMemoryEventStore)
+    const reported: string[] = []
 
-    const store = withProjectors(base, [
-      {
-        name: 'failing',
-        version: '1',
-        project: async () => {
-          throw new Error('projection unavailable')
+    const store = withProjectors(
+      base,
+      [
+        {
+          name: 'failing',
+          version: '1',
+          project: async () => {
+            throw new Error('projection unavailable')
+          },
         },
-      },
-    ])
+      ],
+      { onError: (error) => reported.push(error.message) },
+    )
 
     const result = await Effect.runPromise(
       Effect.exit(
@@ -115,7 +120,8 @@ describe('withProjectors', () => {
       ),
     )
 
-    expect(result._tag).toBe('Failure')
+    expect(result._tag).toBe('Success')
+    expect(reported).toHaveLength(1)
     expect(await Effect.runPromise(base.tail('run_1'))).toBe(1)
   })
 
