@@ -6,6 +6,26 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { toModelMessages } from './messages'
 import { vercelLlm } from './vercel-llm'
 
+function modelUsage(input: number, output: number) {
+  return {
+    inputTokens: {
+      total: input,
+      noCache: input,
+      cacheRead: undefined,
+      cacheWrite: undefined,
+    },
+    outputTokens: {
+      total: output,
+      text: output,
+      reasoning: undefined,
+    },
+  }
+}
+
+function finishReason(unified: 'stop' | 'tool-calls') {
+  return { unified, raw: undefined }
+}
+
 describe('toModelMessages', () => {
   test('maps system, user, assistant tool calls, and tool results', () => {
     const messages = toModelMessages([
@@ -45,11 +65,16 @@ describe('vercelLlm', () => {
   test('maps generateText text and tool calls', async () => {
     const model = new MockLanguageModelV3({
       doGenerate: async () => ({
-        finishReason: 'tool-calls',
-        usage: { inputTokens: 1, outputTokens: 1 },
+        finishReason: finishReason('tool-calls'),
+        usage: modelUsage(1, 1),
         content: [
           { type: 'text', text: '' },
-          { type: 'tool-call', toolCallId: 'tc1', toolName: 'greet', input: { name: 'Ada' } },
+          {
+            type: 'tool-call',
+            toolCallId: 'tc1',
+            toolName: 'greet',
+            input: JSON.stringify({ name: 'Ada' }),
+          },
         ],
         warnings: [],
       }),
@@ -89,9 +114,9 @@ describe('vercelLlm', () => {
             { type: 'text-end', id: 't' },
             {
               type: 'finish',
-              finishReason: 'stop',
-              usage: { inputTokens: 1, outputTokens: 2 },
-              totalUsage: { inputTokens: 1, outputTokens: 2 },
+              finishReason: finishReason('stop'),
+              usage: modelUsage(1, 2),
+              totalUsage: modelUsage(1, 2),
             },
           ],
         }),
@@ -118,8 +143,8 @@ describe('vercelLlm', () => {
   test('mock model is accepted by generateText', async () => {
     const model = new MockLanguageModelV3({
       doGenerate: async () => ({
-        finishReason: 'stop',
-        usage: { inputTokens: 1, outputTokens: 1 },
+        finishReason: finishReason('stop'),
+        usage: modelUsage(1, 1),
         content: [{ type: 'text', text: 'ok' }],
         warnings: [],
       }),

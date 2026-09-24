@@ -40,6 +40,7 @@ export const docsNav = [
     children: [
       { to: '/docs/agents', label: 'Agents & models' },
       { to: '/docs/approvals', label: 'Human approvals' },
+      { to: '/docs/evaluator', label: 'Evaluations' },
       { to: '/docs/examples', label: 'Examples' },
       { to: '/docs/modules', label: 'Custom modules' },
       { to: '/docs/projectors', label: 'Live UI & indexes' },

@@ -188,8 +188,8 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, defineAgentSession, submitAgentMessage, conversation, and
-          userMessage.
+          asAgentTool, asWorkflowTool, asEvaluatorTool, defineAgentSession, submitAgentMessage,
+          conversation, and userMessage.
         </li>
         <li>
           <code>@swirls/looms/workflow</code>: workflow, defineWorkflow, graph validation, failure
@@ -197,6 +197,9 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
+        </li>
+        <li>
+          <code>@swirls/looms/evaluator</code>: evaluator, defineEvaluator, evaluate, evaluations.
         </li>
         <li>
           <code>@swirls/looms/actor</code>: createActorCell and createLocalActorHost.
@@ -209,7 +212,8 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
           streams, providers, and projection hooks.
         </li>
         <li>
-          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK model providers.
+          <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK chat models; vercelEvaluator
+          for evaluation models such as TypeSafe Jev.
         </li>
         <li>
           <code>@swirls/looms/projectors</code>: post-commit indexes and fan-out.{' '}

@@ -17,6 +17,7 @@ import { Route as DocsAgentsRouteImport } from './routes/docs.agents'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsApprovalsRouteImport } from './routes/docs.approvals'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
+import { Route as DocsEvaluatorRouteImport } from './routes/docs.evaluator'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
 import { Route as DocsHostingAndStorageRouteImport } from './routes/docs.hosting-and-storage'
 import { Route as DocsIntegrationRouteImport } from './routes/docs.integration'
@@ -76,6 +77,11 @@ const DocsApprovalsRoute = DocsApprovalsRouteImport.update({
 const DocsConceptsRoute = DocsConceptsRouteImport.update({
   id: '/concepts',
   path: '/concepts',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsEvaluatorRoute = DocsEvaluatorRouteImport.update({
+  id: '/evaluator',
+  path: '/evaluator',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsExamplesRoute = DocsExamplesRouteImport.update({
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
+  '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
@@ -218,6 +225,7 @@ export interface FileRoutesByTo {
   '/docs/agents': typeof DocsAgentsRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
+  '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
+  '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
   '/docs/integration': typeof DocsIntegrationRoute
@@ -281,6 +290,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/approvals'
     | '/docs/concepts'
+    | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
@@ -309,6 +319,7 @@ export interface FileRouteTypes {
     | '/docs/agents'
     | '/docs/api'
     | '/docs/approvals'
+    | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
@@ -339,6 +350,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/approvals'
     | '/docs/concepts'
+    | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
     | '/docs/integration'
@@ -424,6 +436,13 @@ declare module '@tanstack/react-router' {
       path: '/concepts'
       fullPath: '/docs/concepts'
       preLoaderRoute: typeof DocsConceptsRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/evaluator': {
+      id: '/docs/evaluator'
+      path: '/evaluator'
+      fullPath: '/docs/evaluator'
+      preLoaderRoute: typeof DocsEvaluatorRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/examples': {
@@ -594,6 +613,7 @@ interface DocsRouteChildren {
   DocsApiRoute: typeof DocsApiRoute
   DocsApprovalsRoute: typeof DocsApprovalsRoute
   DocsConceptsRoute: typeof DocsConceptsRouteWithChildren
+  DocsEvaluatorRoute: typeof DocsEvaluatorRoute
   DocsExamplesRoute: typeof DocsExamplesRoute
   DocsHostingAndStorageRoute: typeof DocsHostingAndStorageRoute
   DocsIntegrationRoute: typeof DocsIntegrationRoute
@@ -617,6 +637,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsApiRoute: DocsApiRoute,
   DocsApprovalsRoute: DocsApprovalsRoute,
   DocsConceptsRoute: DocsConceptsRouteWithChildren,
+  DocsEvaluatorRoute: DocsEvaluatorRoute,
   DocsExamplesRoute: DocsExamplesRoute,
   DocsHostingAndStorageRoute: DocsHostingAndStorageRoute,
   DocsIntegrationRoute: DocsIntegrationRoute,

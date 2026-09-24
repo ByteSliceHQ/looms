@@ -15,9 +15,9 @@ function Page() {
       <h1>Agents and model providers</h1>
 
       <p>
-        An agent is a built-in thread kind. It can call function tools or spawn workflow, agent, and
-        custom-thread children. Looms runs agent turns; model providers return messages and tool
-        requests.
+        An agent is a built-in thread kind. It can call function tools or spawn workflow, agent,
+        evaluator, and custom-thread children. Looms runs agent turns; model providers return
+        messages and tool requests.
       </p>
       <h2 id="connect-a-model">
         Connect a model
@@ -100,9 +100,9 @@ await looms.signal(runId, [
         </a>
       </h2>
       <p>
-        A function tool returns JSON. Use <code>asAgentTool</code>, <code>asWorkflowTool</code>, or{' '}
-        <code>asThreadTool</code> to delegate to a child. Register that child's definition in its
-        owning module. Child execution appears in the same run log.
+        A function tool returns JSON. Use <code>asAgentTool</code>, <code>asWorkflowTool</code>,{' '}
+        <code>asEvaluatorTool</code>, or <code>asThreadTool</code> to delegate to a child. Register
+        that child's definition in its owning module. Child execution appears in the same run log.
       </p>
       <p>
         Validate tool inputs and check permissions in your application. A model's request to perform

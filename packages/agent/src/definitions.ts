@@ -235,6 +235,32 @@ export function asAgentTool(def: {
   })
 }
 
+type EvaluatorToolTarget = {
+  kind: 'evaluator'
+  name: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+}
+
+export function asEvaluatorTool(def: {
+  name?: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+  evaluator: EvaluatorToolTarget
+  mapInput?: (input: JsonValue) => JsonValue
+}): ThreadTool {
+  return asThreadTool({
+    name: def.name,
+    description: def.description ?? def.evaluator.description,
+    input: def.input ?? def.evaluator.input,
+    inputSchema: def.inputSchema ?? def.evaluator.inputSchema,
+    child: { kind: 'evaluator', name: def.evaluator.name },
+    mapInput: def.mapInput,
+  })
+}
+
 export function asWorkflowTool(def: {
   name?: string
   description?: string
