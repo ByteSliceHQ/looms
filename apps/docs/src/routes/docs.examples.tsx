@@ -87,9 +87,16 @@ bun approval.ts`}</CodeBlock>
   ],
 })`}</CodeBlock>
       <p>
-        Use <code>executeMap</code>, <code>executeFanout</code>, and <code>executeWhile</code> for
-        child iterations with deterministic IDs and durable checkpoints. Inputs, outputs, and
-        checkpoints have configurable UTF-8 byte limits.
+        A retried node runs again as a fresh attempt. Skipped nodes still unblock their dependents,
+        and a node that falls back reports its fallback&apos;s result to them.
+      </p>
+      <p>
+        For child iterations, return <code>ctx.map(child, items)</code> to run them one at a time,{' '}
+        <code>ctx.fanout(child, items, concurrency)</code> to run them in parallel, or{' '}
+        <code>ctx.loop(child, input, {'{ maxIterations }'})</code> to re-run the node with each
+        iteration&apos;s output in <code>ctx.iteration</code>. Each iteration is a durable child
+        thread with a deterministic ID, and outputs keep input order. Inputs, outputs, and iteration
+        state have configurable UTF-8 byte limits.
       </p>
       <h2 id="custom-thread">
         Your own execution kind
