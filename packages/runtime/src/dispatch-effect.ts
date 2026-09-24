@@ -1,5 +1,5 @@
 import type { Context, ManagedRuntime } from 'effect'
-import { Effect, Schedule } from 'effect'
+import { Effect } from 'effect'
 
 import {
   asJson,
@@ -12,7 +12,7 @@ import {
   type RuntimeEffect,
 } from '@looms/core'
 
-import { threadStartedEvents } from './runtime-helpers'
+import { threadStartedEvents } from './helpers'
 
 export function dispatchEffect(
   registry: ComposedRegistry,
@@ -34,6 +34,7 @@ export function dispatchEffect(
           return threadStartedEvents(definitions, {
             kind: eff.kind,
             definitionName: eff.definitionName,
+            definitionVersion: eff.definitionVersion,
             input: eff.input,
             threadId: childThreadId,
             parentThreadId: currentThreadId,
@@ -116,22 +117,10 @@ export function dispatchEffect(
 
     const input = 'input' in eff ? eff.input : {}
 
-    let execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = Effect.gen(function* () {
+    const execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = Effect.gen(function* () {
       const serviceContext = yield* services.contextEffect
       return yield* handler.execute(input, effCtx).pipe(Effect.provide(serviceContext))
     })
-
-    if (handler.retry && handler.retry.maxAttempts > 1) {
-      const retryPolicy = handler.retry
-      const backoff = retryPolicy.backoffMs ?? 100
-
-      execution = execution.pipe(
-        Effect.retry({
-          times: retryPolicy.maxAttempts - 1,
-          schedule: Schedule.spaced(backoff),
-        }),
-      )
-    }
 
     return execution.pipe(
       Effect.catch((err) =>

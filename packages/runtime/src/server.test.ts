@@ -283,3 +283,53 @@ describe('server HTTP idempotency', () => {
     await looms.stop()
   })
 })
+
+describe('server routing', () => {
+  test('routes system endpoints and distinguishes passthrough from API 404s', async () => {
+    const looms = createLooms({ modules: [] })
+
+    const health = await looms.fetch(new Request('http://looms.test/health'))
+    const runs = await looms.fetch(new Request('http://looms.test/runs'))
+
+    const unknownApiRoute = await looms.fetch(new Request('http://looms.test/runs/run_1/unknown'))
+
+    const nonApiRoute = await looms.fetch(new Request('http://looms.test/application'))
+
+    expect(health?.status).toBe(200)
+    expect(await health?.json()).toEqual({ ok: true })
+    expect(runs?.status).toBe(200)
+    expect(await runs?.json()).toEqual({ runIds: [] })
+    expect(unknownApiRoute?.status).toBe(404)
+    expect(await unknownApiRoute?.text()).toBe('Not Found')
+    expect(nonApiRoute).toBeNull()
+    await looms.stop()
+  })
+
+  test('centralizes operations endpoint configuration and authorization', async () => {
+    const unconfigured = createLooms({ modules: [] })
+    const configured = createLooms({ modules: [], operationsToken: 'operations-secret' })
+    const url = 'http://looms.test/operations/deadlines/rescan'
+
+    const unavailable = await unconfigured.fetch(new Request(url, { method: 'POST' }))
+    const unauthorized = await configured.fetch(new Request(url, { method: 'POST' }))
+
+    const authorized = await configured.fetch(
+      new Request(url, {
+        method: 'POST',
+        headers: { authorization: 'Bearer operations-secret' },
+      }),
+    )
+
+    expect(unavailable?.status).toBe(503)
+
+    expect(await unavailable?.json()).toEqual({
+      error: 'Operational endpoints are not configured',
+    })
+
+    expect(unauthorized?.status).toBe(401)
+    expect(authorized?.status).toBe(200)
+    expect(await authorized?.json()).toEqual({ scheduled: 0 })
+    await unconfigured.stop()
+    await configured.stop()
+  })
+})

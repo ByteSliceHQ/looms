@@ -9,7 +9,7 @@ export interface WakeScheduler {
 export function createTimeoutScheduler(
   wake: (runId: string) => Effect.Effect<void>,
 ): WakeScheduler {
-  const scheduled = new Map<string, Fiber.Fiber<void>>()
+  const scheduled = new Map<string, { fiber: Fiber.Fiber<void>; token: symbol }>()
 
   const cancel = (runId: string): Effect.Effect<void> =>
     Effect.gen(function* () {
@@ -17,7 +17,7 @@ export function createTimeoutScheduler(
 
       if (existing) {
         scheduled.delete(runId)
-        yield* Fiber.interrupt(existing)
+        yield* Fiber.interrupt(existing.fiber)
       }
     })
 
@@ -27,20 +27,28 @@ export function createTimeoutScheduler(
         yield* cancel(runId)
 
         const now = yield* Clock.currentTimeMillis
+        const token = Symbol(runId)
+
+        const release = Effect.sync(() => {
+          if (scheduled.get(runId)?.token === token) {
+            scheduled.delete(runId)
+          }
+        })
 
         const fiber = yield* Effect.sleep(Math.max(0, timerAt - now + 5)).pipe(
+          Effect.andThen(release),
           Effect.andThen(wake(runId)),
-          Effect.ensuring(Effect.sync(() => scheduled.delete(runId))),
+          Effect.ensuring(release),
           Effect.forkDetach,
         )
 
-        scheduled.set(runId, fiber)
+        scheduled.set(runId, { fiber, token })
       }),
 
     cancel,
 
     dispose() {
-      for (const fiber of scheduled.values()) {
+      for (const { fiber } of scheduled.values()) {
         Effect.runFork(Fiber.interrupt(fiber))
       }
 

@@ -316,6 +316,21 @@
         "react-dom",
       ],
     },
+    "packages/otel": {
+      "name": "@looms/otel",
+      "version": "0.0.1",
+      "dependencies": {
+        "@looms/projectors": "workspace:*",
+        "@looms/runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "typescript": "7.0.2",
+      },
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+      },
+    },
     "packages/projectors": {
       "name": "@looms/projectors",
       "version": "0.0.1",
@@ -760,6 +775,8 @@
     "@looms/docs": ["@looms/docs@workspace:apps/docs"],
 
     "@looms/examples": ["@looms/examples@workspace:examples"],
+
+    "@looms/otel": ["@looms/otel@workspace:packages/otel"],
 
     "@looms/projectors": ["@looms/projectors@workspace:packages/projectors"],
 

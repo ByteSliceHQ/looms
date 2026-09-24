@@ -11,6 +11,7 @@ import {
   type EventEnvelope,
   type EventInput,
   type EventStore,
+  type EventStoreTrimCoverage,
   type JsonValue,
   type SnapshotStore,
   type ProjectionDefinition,
@@ -18,7 +19,15 @@ import {
   type RunState,
 } from '@looms/core'
 
-import { createRuntime, type LoomsRuntime, type WakeScheduler } from './runtime'
+import type { RuntimeObserver } from './observer'
+import {
+  createRuntime,
+  type EffectWorker,
+  type LoomsRuntime,
+  type RunOperationalStatus,
+  type WakeScheduler,
+  type WorkerCallback,
+} from './runtime'
 import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
 
 export interface CreateLoomsOptions {
@@ -27,17 +36,29 @@ export interface CreateLoomsOptions {
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
   readonly maxWakeIterations?: number
+  /** Maximum active and queued mutation operations per run. Default 256. */
+  readonly maxPendingRunOperations?: number
   /** Durable events between mid-wake snapshots. Default 200; `0` disables. Parking always snapshots. */
   readonly snapshotEvery?: number
   /** Defaults to the EventStore's attached store (S2) or an in-memory SnapshotStore. */
   readonly snapshotStore?: SnapshotStore
-  readonly trimAfterSnapshot?: { keepSnapshots: number }
+  readonly trimAfterSnapshot?: {
+    keepSnapshots: number
+    coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
+  }
   /** In-process cursor cache size. Default `0` (stateless between calls). */
   readonly runCacheSize?: number
   /** Scan existing runs for pending timers on boot. Default true. */
   readonly rescanTimers?: boolean
   /** Pluggable wake scheduler for timer waits. Defaults to an in-process Effect fiber scheduler. */
   readonly scheduler?: WakeScheduler
+  readonly worker?: EffectWorker
+  /** Failure-isolated runtime observation sink. */
+  readonly observer?: RuntimeObserver
+  /** Bearer token required by worker callback HTTP routes. */
+  readonly workerCallbackToken?: string
+  /** Bearer token required by mutation-capable operational HTTP routes. */
+  readonly operationsToken?: string
 }
 
 export interface StartResult {
@@ -60,6 +81,7 @@ export interface Looms {
   startRun(args: {
     kind: string
     definitionName: string
+    definitionVersion?: string
     input?: JsonValue
     runId?: string
     threadId?: string
@@ -74,9 +96,21 @@ export interface Looms {
   ): Promise<RunState>
   wake(runId: string): Promise<RunState>
   rescanTimers(): Promise<number>
+  recoverDeadlines(): Promise<number>
+  inspectRun(runId: string): Promise<RunOperationalStatus>
+  retryEffect(runId: string, effectId: string): Promise<RunState>
+  listRuns(): Promise<string[]>
   project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   cancel(runId: string, threadId?: string): Promise<RunState>
+  workerStarted(runId: string, callback: WorkerCallback): Promise<RunState>
+  workerHeartbeat(runId: string, callback: WorkerCallback): Promise<RunState>
+  workerComplete(
+    runId: string,
+    callback: WorkerCallback & { events: ReadonlyArray<EventInput> },
+  ): Promise<RunState>
+  workerFail(runId: string, callback: WorkerCallback & { error: string }): Promise<RunState>
+  workerCancelled(runId: string, callback: WorkerCallback): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
@@ -132,11 +166,14 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             modules,
             store,
             maxWakeIterations: options.maxWakeIterations,
+            maxPendingRunOperations: options.maxPendingRunOperations,
             snapshotEvery: options.snapshotEvery,
             snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
             trimAfterSnapshot: options.trimAfterSnapshot,
             runCacheSize: options.runCacheSize,
             scheduler: options.scheduler,
+            worker: options.worker,
+            observer: options.observer,
           })
 
           if (options.rescanTimers !== false) {
@@ -147,7 +184,13 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             )
           }
 
-          const fetchHandler = createFetchHandler({ runtime, store })
+          const fetchHandler = createFetchHandler({
+            runtime,
+            store,
+            workerCallbackToken: options.workerCallbackToken,
+            operationsToken: options.operationsToken,
+          })
+
           return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
         }),
       )
@@ -183,6 +226,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         i.runtime.startRun({
           kind: definition.kind,
           definitionName: definition.name,
+          definitionVersion: definition.version,
           // SAFETY: input is validated against the definition's schema inside startRun.
           input: input,
           runId: startOpts?.runId,
@@ -196,9 +240,21 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
       runEffect((i) => i.runtime.signal(runId, events, signalOpts)),
     wake: (runId) => runEffect((i) => i.runtime.wake(runId)),
     rescanTimers: () => runEffect((i) => i.runtime.rescanTimers),
+    recoverDeadlines: () => runEffect((i) => i.runtime.recoverDeadlines),
+    inspectRun: (runId) => runEffect((i) => i.runtime.inspectRun(runId)),
+    retryEffect: (runId, effectId) => runEffect((i) => i.runtime.retryEffect(runId, effectId)),
+    listRuns: () => runEffect((i) => i.runtime.listRuns),
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
+    workerStarted: (runId, callback) => runEffect((i) => i.runtime.workerStarted(runId, callback)),
+    workerHeartbeat: (runId, callback) =>
+      runEffect((i) => i.runtime.workerHeartbeat(runId, callback)),
+    workerComplete: (runId, callback) =>
+      runEffect((i) => i.runtime.workerComplete(runId, callback)),
+    workerFail: (runId, callback) => runEffect((i) => i.runtime.workerFail(runId, callback)),
+    workerCancelled: (runId, callback) =>
+      runEffect((i) => i.runtime.workerCancelled(runId, callback)),
     fetch: (req) => {
       if (!isLoomsApiPath(new URL(req.url).pathname)) {
         return Promise.resolve(null)

@@ -3,6 +3,7 @@ import { Data, Effect, Layer, Predicate, type Context } from 'effect'
 import {
   asJson,
   createEvent,
+  definitionKey,
   makeMemorySnapshotStore,
   matchingWaits,
   snapshotStoreOf,
@@ -17,24 +18,43 @@ import {
   type EventInput,
   type EventOrigin,
   type EventStore,
-  type InvalidEventError,
+  InvalidEventError,
   type JsonValue,
+  type OutstandingEffect,
   type RegisteredDefinition,
   type RunCursor,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
 
+import type { EffectWorkerTask } from './types'
+
+export function workerTask(
+  runId: string,
+  item: OutstandingEffect,
+  attempt: number,
+): EffectWorkerTask {
+  return {
+    runId,
+    effectId: item.effectId,
+    attempt,
+    type: item.effect.type,
+    input: 'input' in item.effect ? item.effect.input : null,
+  }
+}
+
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{
   readonly kind: string
   readonly definitionName: string
+  readonly definitionVersion: string
   readonly message: string
 }> {
-  constructor(kind: string, definitionName: string) {
+  constructor(kind: string, definitionName: string, definitionVersion: string) {
     super({
       kind,
       definitionName,
-      message: `Unknown definition ${kind}:${definitionName}`,
+      definitionVersion,
+      message: `Unknown definition ${definitionKey(kind, definitionName, definitionVersion)}`,
     })
 
     this.name = 'UnknownDefinitionError'
@@ -160,16 +180,23 @@ export function threadStartedEvents(
   args: {
     kind: string
     definitionName: string
+    definitionVersion: string
     input: JsonValue
     threadId: string
     parentThreadId: string | null
   },
 ): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError> {
   return Effect.gen(function* () {
-    const def = definitions.get(`${args.kind}:${args.definitionName}`)
+    const def = definitions.get(
+      definitionKey(args.kind, args.definitionName, args.definitionVersion),
+    )
 
     if (!def) {
-      return yield* new UnknownDefinitionError(args.kind, args.definitionName)
+      return yield* new UnknownDefinitionError(
+        args.kind,
+        args.definitionName,
+        args.definitionVersion,
+      )
     }
 
     const raw = args.input ?? null
@@ -197,6 +224,7 @@ export function threadStartedEvents(
         threadId: args.threadId,
         kind: args.kind,
         definitionName: args.definitionName,
+        definitionVersion: args.definitionVersion,
         input: startedInput,
         parentThreadId: args.parentThreadId,
       },
@@ -350,12 +378,41 @@ export function createLiveEvent(
     effectId: item.effectId,
     causationId: item.causingEventId,
     threadId: targetThreadId,
-    ephemeral: validated.ephemeral ?? true,
+    ephemeral: true,
     origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
   })
 
   const [liveEvent] = stripSeq([ephemeral])
   return liveEvent
+}
+
+const EXTERNAL_RUNTIME_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'runtime.signal.received',
+  'runtime.thread.cancel.requested',
+])
+
+/**
+ * Admit events from an external caller. Runtime protocol events are reserved for the runtime
+ * itself, and external events can never claim an effect outcome or a non-external origin.
+ */
+export function admitExternalEvents(
+  events: readonly EventInput[],
+): Effect.Effect<EventInput[], InvalidEventError> {
+  return Effect.forEach(events, (input) =>
+    input.type.startsWith('runtime.') && !EXTERNAL_RUNTIME_EVENT_TYPES.has(input.type)
+      ? Effect.fail(
+          new InvalidEventError(
+            input.type,
+            `Event type "${input.type}" is reserved for the runtime`,
+          ),
+        )
+      : Effect.succeed({
+          ...input,
+          effectId: null,
+          origin:
+            input.origin?.type === 'external' ? input.origin : ({ type: 'external' } as const),
+        }),
+  )
 }
 
 export function validateAndCreateEvents(
