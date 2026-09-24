@@ -111,7 +111,7 @@ describe('@looms/workflow module', () => {
           ...createEvent(runId, {
             type: 'runtime.effect.failed',
             payload: {
-              effectId: `${threadId}:runNode_charge`,
+              effectId: `${threadId}:runNode_charge_1`,
               error: 'Invalid input: amount: expected number',
             },
             threadId,
@@ -163,7 +163,7 @@ describe('@looms/workflow module', () => {
       createEvent(runId, {
         type: 'runtime.effect.failed',
         payload: {
-          effectId: `${threadId}:runNode_second`,
+          effectId: `${threadId}:runNode_second_1`,
           error: 'second failed',
         },
         threadId,

@@ -4,7 +4,7 @@ import { Schema } from 'effect'
 import { DEFAULT_DEFINITION_VERSION, type JsonValue, type RuntimeEffect } from '@looms/core'
 
 import {
-  assertJsonWithinLimit,
+  DEFAULT_GRAPH_CONCURRENCY,
   getReadyNodeIds,
   resolveGraphConcurrency,
   topologicalSort,
@@ -27,17 +27,44 @@ export const NodeStateSchema = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   attempts: Schema.optional(Schema.Finite),
   branch: Schema.optional(Schema.String),
+  /** Policy skips (skip/fallback) still satisfy dependents; inactive skips propagate. */
+  skipCause: Schema.optional(Schema.Union([Schema.Literal('inactive'), Schema.Literal('policy')])),
+  iteration: Schema.optional(Schema.Struct({ index: Schema.Finite, previous: Schema.Json })),
 })
 export type NodeState = Schema.Schema.Type<typeof NodeStateSchema>
+
+export interface WorkflowChild {
+  readonly kind: string
+  readonly name: string
+  readonly version?: string
+}
+
+export interface WorkflowIteration {
+  /** Zero-based index of the loop iteration about to run. */
+  readonly index: number
+  /** Output of the previous iteration's child. */
+  readonly previous: JsonValue
+}
 
 export interface WorkflowNodeContext<TInput = JsonValue> {
   readonly threadId: string
   readonly nodeId: string
   readonly input: TInput
   readonly results: { [nodeId: string]: JsonValue | null }
-  spawn(child: { kind: string; name: string; version?: string }, input: JsonValue): NodeResult
+  /** Set when a `loop` node is re-run after one of its iterations completed. */
+  readonly iteration: WorkflowIteration | undefined
+  spawn(child: WorkflowChild, input: JsonValue): NodeResult
   sleep(ms: number): NodeResult
   effects(effects: RuntimeEffect[]): NodeResult
+  /** Run one child per item, one at a time, and finish with the ordered outputs. */
+  map(child: WorkflowChild, items: readonly JsonValue[]): NodeResult
+  /** Run one child per item with bounded concurrency and finish with the ordered outputs. */
+  fanout(child: WorkflowChild, items: readonly JsonValue[], concurrency?: number): NodeResult
+  /**
+   * Run one child iteration, then re-run this node with `ctx.iteration`. Returning a value
+   * instead ends the loop; reaching `maxIterations` ends it with the last iteration's output.
+   */
+  loop(child: WorkflowChild, input: JsonValue, options: { maxIterations: number }): NodeResult
 }
 
 export type NodeResult =
@@ -53,6 +80,22 @@ export type NodeResult =
   | { type: 'sleep'; ms: number }
   | { type: 'effects'; effects: RuntimeEffect[] }
   | { type: 'switch'; branch: string; value?: JsonValue }
+  | {
+      type: 'map'
+      kind: string
+      name: string
+      version: string
+      items: readonly JsonValue[]
+      concurrency: number
+    }
+  | {
+      type: 'loop'
+      kind: string
+      name: string
+      version: string
+      input: JsonValue
+      maxIterations: number
+    }
 
 export type WorkflowFailurePolicy =
   | { readonly type: 'fail' }
@@ -63,7 +106,7 @@ export type WorkflowFailurePolicy =
 export interface WorkflowNodeDefinition<TInput = JsonValue> {
   id: string
   deps?: string[]
-  type?: 'task' | 'switch' | 'workflow' | 'map' | 'fanout' | 'while'
+  type?: 'task' | 'switch' | 'workflow'
   failure?: WorkflowFailurePolicy
   run(ctx: WorkflowNodeContext<TInput>): Promise<JsonValue | NodeResult> | JsonValue | NodeResult
 }
@@ -162,6 +205,45 @@ export function readyNodes(
   return getReadyNodeIds(workflow, states)
 }
 
-export function validateWorkflowInput(definition: WorkflowDefinition, input: JsonValue): void {
-  assertJsonWithinLimit(input, 'Workflow input', definition.inputLimitBytes)
+function childRef(child: WorkflowChild) {
+  return {
+    kind: child.kind,
+    name: child.name,
+    version: child.version ?? DEFAULT_DEFINITION_VERSION,
+  }
+}
+
+function iterations(
+  child: WorkflowChild,
+  items: readonly JsonValue[],
+  concurrency: number,
+): NodeResult {
+  return {
+    type: 'map',
+    ...childRef(child),
+    items,
+    concurrency: resolveGraphConcurrency(concurrency),
+  }
+}
+
+/** Builds the helpers a node's `run` uses to describe durable work. */
+export function nodeResultBuilders(): Pick<
+  WorkflowNodeContext,
+  'spawn' | 'sleep' | 'effects' | 'map' | 'fanout' | 'loop'
+> {
+  return {
+    spawn: (child, input) => ({ type: 'spawn', ...childRef(child), input }),
+    sleep: (ms) => ({ type: 'sleep', ms }),
+    effects: (effects) => ({ type: 'effects', effects }),
+    map: (child, items) => iterations(child, items, 1),
+    fanout: (child, items, concurrency = DEFAULT_GRAPH_CONCURRENCY) =>
+      iterations(child, items, concurrency),
+    loop: (child, input, { maxIterations }) => {
+      if (!Number.isInteger(maxIterations) || maxIterations < 0) {
+        throw new Error('loop maxIterations must be a non-negative integer')
+      }
+
+      return { type: 'loop', ...childRef(child), input, maxIterations }
+    },
+  }
 }

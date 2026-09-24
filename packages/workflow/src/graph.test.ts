@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { Effect } from 'effect'
+
 import { defineWorkflow, type NodeState } from './definitions'
 import {
   assertJsonWithinLimit,
@@ -81,7 +83,9 @@ describe('production graph planning', () => {
       deterministicWorkflowId('parent', 'node'),
     )
 
-    expect(() => assertJsonWithinLimit('é', 'value', 3)).toThrow('UTF-8 bytes')
+    expect(Effect.runSync(Effect.flip(assertJsonWithinLimit('é', 'value', 3))).message).toContain(
+      'UTF-8 bytes',
+    )
 
     expect(() =>
       topologicalSort(

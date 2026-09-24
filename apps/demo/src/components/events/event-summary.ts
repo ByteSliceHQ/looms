@@ -179,6 +179,11 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
         title: 'workflow spawn',
         detail: `${event.payload.definitionName} from ${event.payload.nodeId}`,
       }
+    case 'workflow.map.requested':
+      return {
+        title: 'workflow map',
+        detail: `${event.payload.items.length} × ${event.payload.definitionName} from ${event.payload.nodeId}`,
+      }
     case 'workflow.sleep.requested':
       return { title: 'sleep', detail: event.payload.nodeId }
     case 'workflow.effects.requested':
