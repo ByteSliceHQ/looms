@@ -5,11 +5,7 @@ import { stringifyJson, validateInputEffect, type EventInputOf, type JsonValue }
 import { EvaluatorDefinitionsTag } from './definitions-store'
 import { EvaluatorTag } from './evaluator'
 import { evaluatorModule, type EvaluatorEvent } from './scope'
-import type {
-  EvaluatorAnswers,
-  EvaluatorEvaluateResult,
-  ResolvedEvaluatorDecision,
-} from './types'
+import type { EvaluatorAnswers, EvaluatorEvaluateResult, ResolvedEvaluatorDecision } from './types'
 
 const EvaluateInput = Schema.Struct({
   evaluationId: Schema.String,

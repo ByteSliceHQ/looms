@@ -4,12 +4,12 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 
 ## Built-in
 
-| Package                   | Use it for                              | SDK                                                                                 |
-| ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------- |
-| `@swirls/looms/agent`     | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools               |
-| `@swirls/looms/workflow`  | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects  |
-| `@swirls/looms/approval`  | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                            |
-| `@swirls/looms/evaluator` | Typed questions that branch a run       | `defineEvaluator`, `evaluate()`, spawn as a child                                   |
+| Package                   | Use it for                              | SDK                                                                                |
+| ------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@swirls/looms/agent`     | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools              |
+| `@swirls/looms/workflow`  | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects |
+| `@swirls/looms/approval`  | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
+| `@swirls/looms/evaluator` | Typed questions that branch a run       | `defineEvaluator`, `evaluate()`, spawn as a child                                  |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 

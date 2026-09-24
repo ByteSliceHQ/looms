@@ -188,8 +188,8 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, asEvaluatorTool, defineAgentSession,
-          submitAgentMessage, conversation, and userMessage.
+          asAgentTool, asWorkflowTool, asEvaluatorTool, defineAgentSession, submitAgentMessage,
+          conversation, and userMessage.
         </li>
         <li>
           <code>@swirls/looms/workflow</code>: workflow, defineWorkflow, graph validation, failure

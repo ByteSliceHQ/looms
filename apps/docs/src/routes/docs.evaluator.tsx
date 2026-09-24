@@ -98,12 +98,11 @@ evaluator({
 })`}</CodeBlock>
       <p>
         <code>vercelEvaluator</code> uses the Vercel AI SDK <code>experimental_evaluate</code> API.
-        Pass <code>typesafe-ai/jev</code> today. A later model that answers the same boolean, choice,
-        and score questions uses the same definition with a different <code>model</code> id. Keep{' '}
-        <code>AI_GATEWAY_API_KEY</code> on the server. Without an adapter, the evaluator module uses
-        a deterministic stub. See{' '}
-        <Link to="/docs/agents">agents and model providers</Link> for chat adapters, and{' '}
-        <Link to="/docs/examples">examples</Link> for the stubbed script.
+        Pass <code>typesafe-ai/jev</code> today. A later model that answers the same boolean,
+        choice, and score questions uses the same definition with a different <code>model</code> id.
+        Keep <code>AI_GATEWAY_API_KEY</code> on the server. Without an adapter, the evaluator module
+        uses a deterministic stub. See <Link to="/docs/agents">agents and model providers</Link> for
+        chat adapters, and <Link to="/docs/examples">examples</Link> for the stubbed script.
       </p>
     </>
   )
