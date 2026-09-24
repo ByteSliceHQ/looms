@@ -40,6 +40,8 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
         title: text(payload.error) ? 'run failed' : 'run completed',
         detail: text(payload.error) ?? compactJson(payload.output ?? null),
       }
+    case 'runtime.run.cancelled':
+      return { title: 'run cancelled', detail: text(payload.reason) }
     case 'runtime.thread.started':
       return {
         title: 'thread started',
@@ -78,10 +80,34 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
       return { title: 'timer fired' }
     case 'runtime.effect.failed':
       return { title: 'effect failed', detail: text(payload.error) }
+    case 'runtime.effect.attempt.started':
+      return { title: 'effect attempt started', detail: numeric(payload.attempt) }
+    case 'runtime.effect.queued':
+      return { title: 'effect queued', detail: numeric(payload.attempt) }
+    case 'runtime.effect.dispatched':
+      return { title: 'effect dispatched', detail: numeric(payload.attempt) }
+    case 'runtime.effect.worker.started':
+      return { title: 'worker started effect', detail: numeric(payload.attempt) }
+    case 'runtime.effect.heartbeat':
+      return { title: 'effect heartbeat', detail: numeric(payload.attempt) }
+    case 'runtime.effect.completed':
+      return { title: 'effect completed', detail: numeric(payload.attempt) }
+    case 'runtime.effect.cancel.requested':
+      return { title: 'effect cancellation requested', detail: numeric(payload.attempt) }
+    case 'runtime.effect.cancelled':
+      return { title: 'effect cancelled', detail: numeric(payload.attempt) }
+    case 'runtime.effect.timed_out':
+      return { title: 'effect timed out', detail: text(payload.timeout) }
+    case 'runtime.effect.ambiguous':
+      return { title: 'effect outcome ambiguous', detail: text(payload.error) }
+    case 'runtime.effect.retry.scheduled':
+      return { title: 'effect retry scheduled', detail: text(payload.error) }
     case 'runtime.snapshot.taken':
       return { title: 'snapshot', detail: `seq ${numeric(payload.seq) ?? ''}` }
     case 'runtime.signal.received':
       return { title: 'signal', detail: compactJson(event.payload) }
+    case 'runtime.thread.cancel.requested':
+      return { title: 'thread cancellation requested', detail: text(payload.threadId) }
 
     default: {
       const exhaustiveType: never = event.type

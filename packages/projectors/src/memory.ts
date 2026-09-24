@@ -103,6 +103,7 @@ export function memory(): IndexProjector {
 export function noop(): Projector {
   return {
     name: 'noop',
+    version: '1',
     project: () => Promise.resolve(),
   }
 }

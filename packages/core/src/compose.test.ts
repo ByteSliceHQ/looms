@@ -125,11 +125,28 @@ describe('composeModules', () => {
     const composed = composeModules([module])
 
     expect(composed.definitions).toEqual([
-      { kind: 'ping', name: 'checkout', input: undefined, value: checkout },
+      { kind: 'ping', name: 'checkout', version: 'v1', input: undefined, value: checkout },
     ])
   })
 
-  test('rejects duplicate definitions across modules', () => {
+  test('allows the same definition name at different versions', () => {
+    const v1 = { kind: 'ping', name: 'shared', version: 'v1' }
+    const v2 = { kind: 'ping', name: 'shared', version: 'v2' }
+
+    const module = defineRuntimeModule({
+      namespace: 'versioned',
+      protocolVersion: '1.0.0',
+      definitions: [v1, v2],
+      threads: { ping },
+    })
+
+    expect(composeModules([module]).definitions.map((definition) => definition.version)).toEqual([
+      'v1',
+      'v2',
+    ])
+  })
+
+  test('rejects duplicate definition versions across modules', () => {
     const def = { kind: 'ping', name: 'shared' }
 
     const a = defineRuntimeModule({
@@ -146,7 +163,7 @@ describe('composeModules', () => {
       threads: { ping },
     })
 
-    expect(() => composeModules([a, b])).toThrow(/Duplicate definition: ping:shared/)
+    expect(() => composeModules([a, b])).toThrow(/Duplicate definition: ping:shared@v1/)
   })
 
   test('rejects definitions whose owning module does not implement the kind', () => {
@@ -157,7 +174,7 @@ describe('composeModules', () => {
     })
 
     expect(() => composeModules([module])).toThrow(
-      /registers definition workflow:checkout but does not implement thread kind workflow/,
+      /registers definition workflow:checkout@v1 but does not implement thread kind workflow/,
     )
   })
 })

@@ -205,6 +205,7 @@ export interface LoomsRuntime<
 
 const DEFAULT_RUN_CACHE_SIZE = 0
 const DEFAULT_KEEP_SNAPSHOTS = 1
+const NEVER_ABORTED = new AbortController().signal
 
 function readRemaining(
   store: EventStore,
@@ -828,6 +829,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                           runId,
                           threadId: item.threadId,
                           causingEventId: item.causingEventId,
+                          signal: NEVER_ABORTED,
                           emit: appendLive,
                         },
                       )

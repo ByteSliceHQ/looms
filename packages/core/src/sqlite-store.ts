@@ -2,6 +2,12 @@ import { Effect, Option, Queue, Schema, Stream } from 'effect'
 
 import { EventEnvelopeSchema, fromWireEvent, withAssignedSeq, type EventEnvelope } from './envelope'
 import {
+  assertEventByteLimits,
+  assertSnapshotByteLimit,
+  EventPayloadTooLargeError,
+  SnapshotPayloadTooLargeError,
+} from './limits'
+import {
   SnapshotStoreError,
   withSnapshotStore,
   type RunSnapshot,
@@ -38,6 +44,14 @@ CREATE TABLE IF NOT EXISTS looms_snapshots (
   taken_at INTEGER NOT NULL,
   state TEXT NOT NULL,
   PRIMARY KEY (run_id, cursor)
+);
+
+CREATE TABLE IF NOT EXISTS looms_commands (
+  run_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  fingerprint TEXT,
+  committed_tail INTEGER NOT NULL,
+  PRIMARY KEY (run_id, idempotency_key)
 );
 `.trim()
 
@@ -85,6 +99,11 @@ const CursorRowSchema = Schema.Struct({
   cursor: Schema.Finite,
 })
 
+const CommandRowSchema = Schema.Struct({
+  fingerprint: Schema.NullOr(Schema.String),
+  committed_tail: Schema.Finite,
+})
+
 type StreamRow = Schema.Schema.Type<typeof StreamRowSchema>
 
 const decodeEventBody = Schema.decodeUnknownSync(Schema.fromJsonString(EventEnvelopeSchema))
@@ -95,6 +114,7 @@ const decodeEventRow = Schema.decodeUnknownSync(EventRowSchema)
 const decodeSnapshotRow = Schema.decodeUnknownSync(SnapshotRowSchema)
 const decodeRunIdRow = Schema.decodeUnknownSync(RunIdRowSchema)
 const decodeCursorRow = Schema.decodeUnknownSync(CursorRowSchema)
+const decodeCommandRow = Schema.decodeUnknownSync(CommandRowSchema)
 
 export interface SqliteEventStoreOptions {
   readonly exec: SqliteExec
@@ -186,6 +206,8 @@ function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
     save: (snapshot) =>
       Effect.try({
         try: () => {
+          assertSnapshotByteLimit(snapshot)
+
           exec.run(
             `INSERT INTO looms_snapshots (run_id, cursor, state_hash, taken_at, state)
              VALUES (?, ?, ?, ?, ?)
@@ -203,7 +225,9 @@ function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
           )
         },
         catch: (cause) =>
-          new SnapshotStoreError(`Failed to save snapshot for ${snapshot.runId}`, cause),
+          cause instanceof SnapshotPayloadTooLargeError
+            ? cause
+            : new SnapshotStoreError(`Failed to save snapshot for ${snapshot.runId}`, cause),
       }),
 
     listCursors: (runId) =>
@@ -288,12 +312,48 @@ function createSqliteEventStore(exec: SqliteExec): EventStore {
     append: (runId, events, options) =>
       Effect.try({
         try: (): AppendResult => {
-          if (events.length === 0 && options?.fence === undefined) {
+          assertEventByteLimits(runId, events)
+
+          if (
+            events.length === 0 &&
+            options?.fence === undefined &&
+            options?.idempotency === undefined
+          ) {
             return { sequences: [], tail: getStream(runId).tail }
           }
 
           return runInTransaction(exec, () => {
             const log = ensureStream(runId)
+            const idempotency = options?.idempotency
+
+            if (idempotency) {
+              const [commandRow] = exec.rows(
+                `SELECT fingerprint, committed_tail
+                 FROM looms_commands
+                 WHERE run_id = ? AND idempotency_key = ?`,
+                [runId, idempotency.key],
+              )
+
+              if (commandRow !== undefined) {
+                const command = decodeCommandRow(commandRow)
+
+                if (
+                  idempotency.fingerprint !== undefined &&
+                  command.fingerprint !== null &&
+                  command.fingerprint !== idempotency.fingerprint
+                ) {
+                  throw new EventStoreError(
+                    `Idempotency key "${idempotency.key}" was reused with different content`,
+                  )
+                }
+
+                return {
+                  sequences: [],
+                  tail: getStream(runId).tail,
+                  deduplicated: true,
+                }
+              }
+            }
 
             if (options?.expectedTail !== undefined && log.tail !== options.expectedTail) {
               throw new EventStoreConflictError(runId, options.expectedTail, log.tail)
@@ -341,6 +401,15 @@ function createSqliteEventStore(exec: SqliteExec): EventStore {
               [runId, log.head, nextTail, fenceToken],
             )
 
+            if (idempotency) {
+              exec.run(
+                `INSERT INTO looms_commands
+                   (run_id, idempotency_key, fingerprint, committed_tail)
+                 VALUES (?, ?, ?, ?)`,
+                [runId, idempotency.key, idempotency.fingerprint ?? null, nextTail],
+              )
+            }
+
             notify(runId, appended)
 
             return { sequences, tail: nextTail }
@@ -349,7 +418,8 @@ function createSqliteEventStore(exec: SqliteExec): EventStore {
         catch: (cause) =>
           cause instanceof EventStoreConflictError ||
           cause instanceof EventStoreFencedError ||
-          cause instanceof EventStoreError
+          cause instanceof EventStoreError ||
+          cause instanceof EventPayloadTooLargeError
             ? cause
             : new EventStoreError(`append failed for ${runId}`, cause),
       }),

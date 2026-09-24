@@ -10,6 +10,7 @@ import type {
   RuntimeModule,
   RegisteredDefinition,
 } from './module'
+import { DEFAULT_DEFINITION_VERSION, definitionKey } from './module'
 import type { ProjectionDefinition } from './projection'
 import { protocolCatalog } from './protocol'
 import type { ThreadDefinition } from './thread'
@@ -76,7 +77,8 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     }
 
     for (const definition of module.definitions ?? []) {
-      const key = `${definition.kind}:${definition.name}`
+      const version = definition.version ?? DEFAULT_DEFINITION_VERSION
+      const key = definitionKey(definition.kind, definition.name, version)
 
       if (definitionKeys.has(key)) {
         throw new ModuleCompositionError(`Duplicate definition: ${key}`)
@@ -93,6 +95,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
       definitions.push({
         kind: definition.kind,
         name: definition.name,
+        version,
         input: definition.input,
         value: definition,
       })

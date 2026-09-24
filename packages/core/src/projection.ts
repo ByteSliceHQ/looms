@@ -1,6 +1,7 @@
 import { Predicate, Schema, Stream, type Effect } from 'effect'
 
 import type { EventEnvelope } from './envelope'
+import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
@@ -84,6 +85,7 @@ export interface ThreadNode {
   threadId: string
   kind: string
   definitionName: string
+  definitionVersion: string
   status: ThreadRecord['status']
   parentThreadId: string | null
   children: ThreadNode[]
@@ -138,6 +140,9 @@ export const threadTree = defineProjection<TreeBuildState>({
         const kind = readString(payload, 'kind')
         const definitionName = readString(payload, 'definitionName')
 
+        const definitionVersion =
+          readString(payload, 'definitionVersion') ?? DEFAULT_DEFINITION_VERSION
+
         if (!threadId || !kind || !definitionName) {
           return { ...state, runId: event.runId }
         }
@@ -149,6 +154,7 @@ export const threadTree = defineProjection<TreeBuildState>({
           threadId,
           kind,
           definitionName,
+          definitionVersion,
           parentThreadId,
           status: 'running',
           input: payload.input ?? null,
@@ -278,10 +284,13 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
     runId: state.runId,
     status: 'running',
     rootThreadId: state.rootThreadId,
+    startIdentity: null,
     threads: state.records,
     waits: {},
     outstandingEffects: [],
+    effectExecutions: {},
     completedEffectIds: [],
+    processedIdempotencyKeys: [],
   })
 }
 
@@ -306,6 +315,7 @@ export function treeFromRun(state: RunState): ThreadTree {
       threadId: record.threadId,
       kind: record.kind,
       definitionName: record.definitionName,
+      definitionVersion: record.definitionVersion,
       status: isWaiting ? 'waiting' : record.status,
       parentThreadId: record.parentThreadId,
       children: (byParent.get(record.threadId) ?? []).map(toNode),

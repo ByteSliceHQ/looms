@@ -86,6 +86,7 @@ describe('validateEventInput', () => {
     const result = await Effect.runPromise(validateEventInput(catalogs, validProtocol))
 
     expect(result.type).toBe('runtime.run.started')
+    expect(result.payload).toMatchObject({ definitionVersion: 'v1' })
 
     const invalidProtocol = {
       type: 'runtime.run.started',

@@ -17,6 +17,7 @@ export function s2Projector(config: S2Config): Projector {
 
   return {
     name: 's2',
+    version: '1',
     project: (events) => {
       if (events.length === 0) {
         return Promise.resolve()

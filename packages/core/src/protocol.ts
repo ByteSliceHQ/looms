@@ -1,24 +1,35 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { defineEventCatalog, type EventInputOf, type EventsOfCatalog } from './catalog'
 import { WaitConditionSchema, type WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
+import { DEFAULT_DEFINITION_VERSION } from './module'
+
+const DefinitionVersionSchema = Schema.String.pipe(
+  Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+)
 
 export const protocolCatalog = defineEventCatalog('runtime', {
   'run.started': Schema.Struct({
     rootThreadId: Schema.optional(Schema.String),
     kind: Schema.String,
     definitionName: Schema.String,
+    definitionVersion: DefinitionVersionSchema,
     input: JsonValueSchema,
+    requestedThreadId: Schema.optional(Schema.NullOr(Schema.String)),
   }),
   'run.completed': Schema.Struct({
     output: Schema.NullOr(JsonValueSchema),
     error: Schema.NullOr(Schema.String),
   }),
+  'run.cancelled': Schema.Struct({
+    reason: Schema.optional(Schema.String),
+  }),
   'thread.started': Schema.Struct({
     threadId: Schema.String,
     kind: Schema.String,
     definitionName: Schema.String,
+    definitionVersion: DefinitionVersionSchema,
     input: JsonValueSchema,
     parentThreadId: Schema.NullOr(Schema.String),
   }),
@@ -33,6 +44,9 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'thread.cancelled': Schema.Struct({
     threadId: Schema.String,
     reason: Schema.optional(Schema.String),
+  }),
+  'thread.cancel.requested': Schema.Struct({
+    threadId: Schema.String,
   }),
   'wait.registered': Schema.Struct({
     waitId: Schema.String,
@@ -62,6 +76,60 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     effectId: Schema.String,
     error: Schema.String,
   }),
+  'effect.attempt.started': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+  }),
+  'effect.queued': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    deadlineAt: Schema.NullOr(Schema.Finite),
+  }),
+  'effect.dispatched': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    deadlineAt: Schema.NullOr(Schema.Finite),
+  }),
+  'effect.worker.started': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    deadlineAt: Schema.NullOr(Schema.Finite),
+  }),
+  'effect.heartbeat': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    heartbeatAt: Schema.Finite,
+    deadlineAt: Schema.NullOr(Schema.Finite),
+  }),
+  'effect.cancel.requested': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    deadlineAt: Schema.NullOr(Schema.Finite),
+  }),
+  'effect.cancelled': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+  }),
+  'effect.completed': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+  }),
+  'effect.timed_out': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    timeout: Schema.String,
+  }),
+  'effect.ambiguous': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    error: Schema.String,
+  }),
+  'effect.retry.scheduled': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    nextAttemptAt: Schema.Finite,
+    error: Schema.String,
+  }),
   'snapshot.taken': Schema.Struct({
     seq: Schema.Finite,
     stateHash: Schema.String,
@@ -78,15 +146,28 @@ export type ProtocolEventInput = EventInputOf<typeof protocolCatalog>
 export const PROTOCOL_TYPES = [
   'runtime.run.started',
   'runtime.run.completed',
+  'runtime.run.cancelled',
   'runtime.thread.started',
   'runtime.thread.completed',
   'runtime.thread.failed',
   'runtime.thread.cancelled',
+  'runtime.thread.cancel.requested',
   'runtime.wait.registered',
   'runtime.wait.satisfied',
   'runtime.timer.set',
   'runtime.timer.fired',
   'runtime.effect.failed',
+  'runtime.effect.attempt.started',
+  'runtime.effect.queued',
+  'runtime.effect.dispatched',
+  'runtime.effect.worker.started',
+  'runtime.effect.heartbeat',
+  'runtime.effect.cancel.requested',
+  'runtime.effect.cancelled',
+  'runtime.effect.completed',
+  'runtime.effect.timed_out',
+  'runtime.effect.ambiguous',
+  'runtime.effect.retry.scheduled',
   'runtime.snapshot.taken',
   'runtime.signal.received',
 ] as const

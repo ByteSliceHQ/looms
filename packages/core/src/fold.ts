@@ -3,6 +3,7 @@ import { Option, Predicate, Schema, Stream, type Effect } from 'effect'
 import { isWithdrawnError, WaitConditionSchema, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
+import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
@@ -38,9 +39,11 @@ function cloneState(state: RunState): RunState {
     runId: state.runId,
     status: state.status,
     rootThreadId: state.rootThreadId,
+    startIdentity: state.startIdentity,
     threads: { ...state.threads },
     waits: { ...state.waits },
     outstandingEffects: [...state.outstandingEffects],
+    effectExecutions: { ...state.effectExecutions },
     completedEffectIds: state.completedEffectIds ? [...state.completedEffectIds] : [],
     processedIdempotencyKeys: state.processedIdempotencyKeys
       ? [...state.processedIdempotencyKeys]
@@ -50,9 +53,11 @@ function cloneState(state: RunState): RunState {
 
 function completeEffect(state: RunState, effectId: string): RunState {
   const completed = state.completedEffectIds ?? []
+  const { [effectId]: _completedExecution, ...effectExecutions } = state.effectExecutions ?? {}
   return {
     ...state,
     outstandingEffects: state.outstandingEffects.filter((item) => item.effectId !== effectId),
+    effectExecutions,
     completedEffectIds: completed.includes(effectId) ? completed : [...completed, effectId],
   }
 }
@@ -101,8 +106,33 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
   switch (event.type) {
     case 'runtime.run.started': {
-      const rootThreadId = readString(payload, 'rootThreadId') ?? null
-      return { ...state, runId: event.runId, rootThreadId, status: 'running' }
+      const rootThreadId = readString(payload, 'rootThreadId')
+      const kind = readString(payload, 'kind')
+      const definitionName = readString(payload, 'definitionName')
+
+      const definitionVersion =
+        readString(payload, 'definitionVersion') ?? DEFAULT_DEFINITION_VERSION
+
+      const startIdentity =
+        rootThreadId && kind && definitionName && definitionVersion
+          ? {
+              kind,
+              definitionName,
+              definitionVersion,
+              input: payload.input ?? null,
+              requestedThreadId: readString(payload, 'requestedThreadId') ?? null,
+              idempotencyKey: event.idempotencyKey ?? null,
+              rootThreadId,
+            }
+          : null
+
+      return {
+        ...state,
+        runId: event.runId,
+        rootThreadId: rootThreadId ?? null,
+        startIdentity,
+        status: 'running',
+      }
     }
 
     case 'runtime.run.completed': {
@@ -111,10 +141,16 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       return { ...state, status }
     }
 
+    case 'runtime.run.cancelled':
+      return { ...state, status: 'cancelled' }
+
     case 'runtime.thread.started': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
       const kind = readString(payload, 'kind')
       const definitionName = readString(payload, 'definitionName')
+
+      const definitionVersion =
+        readString(payload, 'definitionVersion') ?? DEFAULT_DEFINITION_VERSION
 
       if (!threadId || !kind || !definitionName) {
         return state
@@ -129,6 +165,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         threadId,
         kind,
         definitionName,
+        definitionVersion,
         parentThreadId,
         status: definition ? 'running' : 'failed',
         input,
@@ -140,6 +177,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               threadId,
               parentThreadId,
               definitionName,
+              definitionVersion,
               input,
             })
           : {},
@@ -221,6 +259,126 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       )
     }
 
+    case 'runtime.effect.attempt.started': {
+      const effectId = readString(payload, 'effectId')
+      const attempt = payload.attempt
+
+      if (!effectId || !Predicate.isNumber(attempt)) {
+        return state
+      }
+
+      return {
+        ...state,
+        effectExecutions: {
+          ...state.effectExecutions,
+          [effectId]: {
+            effectId,
+            attempt,
+            status: 'running',
+            nextAttemptAt: null,
+            deadlineAt: null,
+            startedAt: event.ts,
+            lastHeartbeatAt: null,
+            lastError: null,
+          },
+        },
+      }
+    }
+
+    case 'runtime.effect.queued':
+    case 'runtime.effect.dispatched':
+    case 'runtime.effect.worker.started':
+    case 'runtime.effect.heartbeat':
+    case 'runtime.effect.cancel.requested':
+    case 'runtime.effect.timed_out':
+
+    case 'runtime.effect.ambiguous': {
+      const effectId = readString(payload, 'effectId')
+      const attempt = payload.attempt
+
+      if (!effectId || !Predicate.isNumber(attempt)) {
+        return state
+      }
+
+      const status =
+        event.type === 'runtime.effect.queued'
+          ? 'queued'
+          : event.type === 'runtime.effect.dispatched'
+            ? 'dispatched'
+            : event.type === 'runtime.effect.worker.started'
+              ? 'started'
+              : event.type === 'runtime.effect.heartbeat'
+                ? 'heartbeat'
+                : event.type === 'runtime.effect.cancel.requested'
+                  ? 'cancel_requested'
+                  : event.type === 'runtime.effect.timed_out'
+                    ? 'timed_out'
+                    : 'ambiguous'
+
+      const deadlineAt = payload.deadlineAt
+      const heartbeatAt = payload.heartbeatAt
+      const previous = state.effectExecutions[effectId]
+      const sameAttempt = previous?.attempt === attempt
+
+      return {
+        ...state,
+        effectExecutions: {
+          ...state.effectExecutions,
+          [effectId]: {
+            effectId,
+            attempt,
+            status,
+            nextAttemptAt: null,
+            deadlineAt: Predicate.isNumber(deadlineAt) ? deadlineAt : null,
+            startedAt:
+              event.type === 'runtime.effect.worker.started'
+                ? event.ts
+                : sameAttempt
+                  ? previous.startedAt
+                  : null,
+            lastHeartbeatAt: Predicate.isNumber(heartbeatAt)
+              ? heartbeatAt
+              : sameAttempt
+                ? previous.lastHeartbeatAt
+                : null,
+            lastError: readString(payload, 'error') ?? null,
+          },
+        },
+      }
+    }
+
+    case 'runtime.effect.cancelled': {
+      const effectId = readString(payload, 'effectId')
+      return effectId ? completeEffect(state, effectId) : state
+    }
+
+    case 'runtime.effect.retry.scheduled': {
+      const effectId = readString(payload, 'effectId')
+      const attempt = payload.attempt
+      const nextAttemptAt = payload.nextAttemptAt
+
+      if (!effectId || !Predicate.isNumber(attempt) || !Predicate.isNumber(nextAttemptAt)) {
+        return state
+      }
+
+      return {
+        ...state,
+        effectExecutions: {
+          ...state.effectExecutions,
+          [effectId]: {
+            effectId,
+            attempt,
+            status: 'retry_wait',
+            nextAttemptAt,
+            deadlineAt: nextAttemptAt,
+            startedAt: null,
+            lastHeartbeatAt: null,
+            lastError: readString(payload, 'error') ?? 'effect failed',
+          },
+        },
+      }
+    }
+
     case 'runtime.wait.registered': {
       const waitId = readString(payload, 'waitId')
       const threadId = readString(payload, 'threadId') ?? event.threadId
@@ -265,6 +423,21 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
       const existingWait = state.waits[waitId]
       let next = removeWait(state, waitId)
+      const existingTag = Predicate.isObject(existingWait?.tag) ? existingWait.tag : undefined
+
+      const raceId =
+        existingTag && Predicate.isString(existingTag.raceId) ? existingTag.raceId : undefined
+
+      if (raceId) {
+        for (const sibling of Object.values(next.waits)) {
+          const siblingTag = Predicate.isObject(sibling.tag) ? sibling.tag : undefined
+
+          if (siblingTag?.raceId === raceId) {
+            next = removeWait(next, sibling.waitId)
+          }
+        }
+      }
+
       const threadId = existingWait?.threadId ?? event.threadId
 
       if (!threadId) {
@@ -281,9 +454,11 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
     }
 
     case 'runtime.snapshot.taken':
+    case 'runtime.thread.cancel.requested':
     case 'runtime.timer.set':
     case 'runtime.timer.fired':
     case 'runtime.effect.failed':
+    case 'runtime.effect.completed':
     case 'runtime.signal.received':
       return state
     default:
@@ -395,6 +570,10 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   const record = state.threads[threadId]
 
   if (!record) {
+    return state
+  }
+
+  if (isTerminalStatus(record.status)) {
     return state
   }
 

@@ -1,6 +1,7 @@
 import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
 import { EventInputSchema, type EventInput } from './envelope'
+import { DEFAULT_DEFINITION_VERSION } from './module'
 import {
   validateInputEffect,
   type InferDefinedSchema,
@@ -25,6 +26,7 @@ export type SpawnEffect = {
   childThreadId: string
   kind: string
   definitionName: string
+  definitionVersion: string
   input: JsonValue
 }
 
@@ -59,6 +61,11 @@ export interface RetryPolicy {
   readonly maxAttempts: number
   readonly backoffMs?: number
   readonly maxBackoffMs?: number
+  readonly backoffMultiplier?: number
+  readonly scheduleToStartTimeoutMs?: number
+  readonly startToCloseTimeoutMs?: number
+  readonly heartbeatTimeoutMs?: number
+  readonly cancellationTimeoutMs?: number
 }
 
 export type InvokeEffect = {
@@ -91,6 +98,9 @@ export const RuntimeEffectSchema = Schema.Union([
     childThreadId: Schema.String,
     kind: Schema.String,
     definitionName: Schema.String,
+    definitionVersion: Schema.String.pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+    ),
     input: Schema.Json,
   }),
   Schema.Struct({
@@ -159,6 +169,7 @@ export interface EffectContext {
   readonly runId: string
   readonly threadId: string
   readonly causingEventId: string
+  readonly signal: AbortSignal
   emit(event: EventInput): Promise<void>
 }
 
@@ -167,6 +178,7 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly runId: string
   readonly threadId: string
   readonly causingEventId: string
+  readonly signal: AbortSignal
   emit(event: E): Promise<void>
 }
 
@@ -194,6 +206,8 @@ export type EffectHandlerResult<
 
 declare const effectInputType: unique symbol
 
+export type EffectExecution = 'local' | 'worker'
+
 export interface EffectDefinition<
   TInput = JsonValue,
   R = Context.Service.Any,
@@ -202,6 +216,10 @@ export interface EffectDefinition<
   readonly type: string
   readonly input?: SchemaInput
   readonly retry?: RetryPolicy
+  /** Forces where the effect runs. When omitted, the runtime decides from `hasHandler` and the configured worker. */
+  readonly execution?: EffectExecution
+  /** Whether `execute` runs a user handler. Without one, the effect can only complete through a worker. */
+  readonly hasHandler: boolean
   readonly [effectInputType]?: (input: TInput) => TInput
   execute(
     input: JsonValue,
@@ -227,10 +245,12 @@ function liftHandlerResult<R, E extends EventInput, HandlerError>(
 }
 
 /**
- * Define an effect handler. A run's actor cell executes each effect at most
- * once while it is alive. If the cell dies mid-execution, the replacement
- * actor may re-run the handler (at-least-once across failover). Keep handlers
+ * Define an effect. With `execute`, a run's actor cell runs the handler at
+ * most once while it is alive; if the cell dies mid-execution, the replacement
+ * actor may re-run it (at-least-once across failover). Keep handlers
  * idempotent when they have external side effects.
+ *
+ * Omit `execute` to declare an effect that only an `EffectWorker` completes.
  */
 export function defineEffect<
   TSchema extends SchemaInput,
@@ -241,7 +261,8 @@ export function defineEffect<
   type: string
   input: TSchema
   retry?: RetryPolicy
-  execute: (
+  execution?: EffectExecution
+  execute?: (
     input: InferDefinedSchema<TSchema>,
     ctx: EffectContext,
   ) => EffectHandlerResult<R, E, HandlerError>
@@ -255,26 +276,32 @@ export function defineEffect<
   type: string
   input?: undefined
   retry?: RetryPolicy
-  execute: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
+  execution?: EffectExecution
+  execute?: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
 }): EffectDefinition<JsonValue, R, E>
 
 export function defineEffect<R, E extends EventInput, HandlerError>(def: {
   type: string
   input?: SchemaInput
   retry?: RetryPolicy
-  execute: (input: any, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
+  execution?: EffectExecution
+  execute?: (input: any, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
 }): EffectDefinition<any, R, E> {
   const schema = def.input
+  const handler = def.execute
+  const noOutput: ReadonlyArray<E> = []
 
   return {
     type: def.type,
     input: schema,
     retry: def.retry,
+    execution: def.execution,
+    hasHandler: handler !== undefined,
     execute: (raw: JsonValue, ctx) =>
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw
 
-        return yield* liftHandlerResult(def.execute(input, ctx))
+        return handler ? yield* liftHandlerResult(handler(input, ctx)) : noOutput
       }),
   }
 }
@@ -283,6 +310,7 @@ export function spawn(args: {
   childThreadId?: string
   kind: string
   definitionName: string
+  definitionVersion?: string
   input: JsonValue
 }): SpawnEffect {
   const childThreadId = args.childThreadId ?? ''
@@ -291,6 +319,7 @@ export function spawn(args: {
     childThreadId,
     kind: args.kind,
     definitionName: args.definitionName,
+    definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
     input: args.input,
   }
 }

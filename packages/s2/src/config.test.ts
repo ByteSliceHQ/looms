@@ -78,7 +78,20 @@ describe('@looms/s2 config', () => {
   })
 
   test('isPortOpen returns false for closed port', async () => {
-    const open = await isPortOpen(64321)
+    const server = net.createServer()
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+
+    const address = server.address()
+
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
+
+    if (!address || Predicate.isString(address)) {
+      throw new Error('expected TCP address')
+    }
+
+    const open = await isPortOpen(address.port)
     expect(open).toBe(false)
   })
 

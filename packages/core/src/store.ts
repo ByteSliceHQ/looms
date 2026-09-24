@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Layer, Option, Queue, Ref, Stream } from 'effect'
 
 import { withAssignedSeq, type AppendableEvent, type EventEnvelope } from './envelope'
+import { assertEventByteLimits, EventPayloadTooLargeError } from './limits'
 
 export class EventStoreError extends Data.TaggedError('EventStoreError')<{
   readonly message: string
@@ -92,16 +93,72 @@ export class EventStoreFencedError extends Data.TaggedError('EventStoreFencedErr
   }
 }
 
+export class UnsafeEventStoreTrimError extends Data.TaggedError('UnsafeEventStoreTrimError')<{
+  readonly runId: string
+  readonly trimThrough: number
+  readonly message: string
+}> {
+  constructor(runId: string, trimThrough: number) {
+    super({
+      runId,
+      trimThrough,
+      message: `UnsafeEventStoreTrim: refusing to trim run "${runId}" through seq ${trimThrough}; no archive or complete projector checkpoint coverage was supplied`,
+    })
+
+    this.name = 'UnsafeEventStoreTrimError'
+  }
+}
+
+export type EventStoreTrimCoverage =
+  | {
+      /** Durable archive contains every event through this sequence. */
+      readonly archiveCursor: number
+      readonly requiredProjectors?: never
+      readonly projectorCursors?: never
+    }
+  | {
+      readonly archiveCursor?: never
+      /** Authoritative identities of every projector required before trimming. */
+      readonly requiredProjectors: readonly string[]
+      /** Durable checkpoint by projector identity. Every required projector must be present. */
+      readonly projectorCursors: Readonly<Record<string, number>>
+    }
+
+export function trimEventStoreSafely(
+  store: EventStore,
+  runId: string,
+  beforeSeq: number,
+  coverage: EventStoreTrimCoverage,
+): Effect.Effect<void, EventStoreError | UnsafeEventStoreTrimError> {
+  const trimThrough = Math.max(0, beforeSeq - 1)
+
+  const covered =
+    coverage.archiveCursor !== undefined
+      ? coverage.archiveCursor >= trimThrough
+      : coverage.requiredProjectors.length > 0 &&
+        coverage.requiredProjectors.every(
+          (projector) => (coverage.projectorCursors[projector] ?? -1) >= trimThrough,
+        )
+
+  if (!store.trim || !covered) {
+    return Effect.fail(new UnsafeEventStoreTrimError(runId, trimThrough))
+  }
+
+  return store.trim(runId, beforeSeq)
+}
+
 export type EventStoreAppendError =
   | EventStoreError
   | EventStoreConflictError
   | EventStoreFencedError
+  | EventPayloadTooLargeError
 export type AnyEventStoreError =
   | EventStoreError
   | EventStoreConflictError
   | EventStoreTruncationError
   | EventStoreTrimmedError
   | EventStoreFencedError
+  | EventPayloadTooLargeError
 
 export function isEventStoreError(err: unknown): err is AnyEventStoreError {
   return (
@@ -109,7 +166,8 @@ export function isEventStoreError(err: unknown): err is AnyEventStoreError {
     err instanceof EventStoreConflictError ||
     err instanceof EventStoreTruncationError ||
     err instanceof EventStoreTrimmedError ||
-    err instanceof EventStoreFencedError
+    err instanceof EventStoreFencedError ||
+    err instanceof EventPayloadTooLargeError
   )
 }
 
@@ -120,6 +178,16 @@ export interface StreamBounds {
 
 export interface AppendOptions {
   readonly expectedTail?: number
+  /**
+   * Atomically claims an ingress command with the append. Reusing the key
+   * returns a deduplicated result without appending events. Stores without a
+   * command table may ignore this; callers must pair it with `expectedTail`
+   * so a retried command conflicts instead of appending twice.
+   */
+  readonly idempotency?: {
+    readonly key: string
+    readonly fingerprint?: string
+  }
   /** Set the stream fencing token atomically in this batch (`''` clears). */
   readonly fence?: string
   /** Must match the stream's current fencing token, or the append fails. */
@@ -168,6 +236,7 @@ export function paginatePages<T, SCursor, E = never, R = never>(
 export interface AppendResult {
   sequences: number[]
   tail: number
+  deduplicated?: boolean
 }
 
 export interface EventStore {
@@ -246,6 +315,7 @@ interface RunLog {
   head: number
   tail: number
   fenceToken?: string
+  commands: Map<string, { fingerprint?: string; committedTail: number }>
 }
 
 export const makeMemoryEventStore = Effect.gen(function* () {
@@ -258,19 +328,55 @@ export const makeMemoryEventStore = Effect.gen(function* () {
       return existing
     }
 
-    const created: RunLog = { events: [], waiters: [], head: 1, tail: 0 }
+    const created: RunLog = {
+      events: [],
+      waiters: [],
+      head: 1,
+      tail: 0,
+      commands: new Map(),
+    }
+
     map.set(runId, created)
+
     return created
   }
 
   const service: EventStore = {
     append: (runId, events, options) =>
       Effect.gen(function* () {
+        yield* Effect.try({
+          try: () => assertEventByteLimits(runId, events),
+          catch: (cause) =>
+            cause instanceof EventPayloadTooLargeError
+              ? cause
+              : new EventStoreError('event size validation failed', cause),
+        })
+
         const sequences: number[] = []
+        let deduplicated = false
 
         yield* Ref.update(logs, (map) => {
           const next = new Map(map)
           const log = getOrCreate(next, runId)
+
+          const command = options?.idempotency
+            ? log.commands.get(options.idempotency.key)
+            : undefined
+
+          if (command) {
+            if (
+              options?.idempotency?.fingerprint !== undefined &&
+              command.fingerprint !== undefined &&
+              command.fingerprint !== options.idempotency.fingerprint
+            ) {
+              throw new EventStoreError(
+                `Idempotency key "${options.idempotency.key}" was reused with different content`,
+              )
+            }
+
+            deduplicated = true
+            return map
+          }
 
           if (options?.expectedTail !== undefined && log.tail !== options.expectedTail) {
             throw new EventStoreConflictError(runId, options.expectedTail, log.tail)
@@ -305,6 +411,14 @@ export const makeMemoryEventStore = Effect.gen(function* () {
             head: log.head,
             tail: nextTail,
             fenceToken,
+            commands: new Map(log.commands),
+          }
+
+          if (options?.idempotency) {
+            updated.commands.set(options.idempotency.key, {
+              fingerprint: options.idempotency.fingerprint,
+              committedTail: nextTail,
+            })
           }
 
           next.set(runId, updated)
@@ -321,7 +435,8 @@ export const makeMemoryEventStore = Effect.gen(function* () {
             Effect.fail(
               cause instanceof EventStoreConflictError ||
                 cause instanceof EventStoreFencedError ||
-                cause instanceof EventStoreError
+                cause instanceof EventStoreError ||
+                cause instanceof EventPayloadTooLargeError
                 ? cause
                 : new EventStoreError('append failed', cause),
             ),
@@ -329,7 +444,13 @@ export const makeMemoryEventStore = Effect.gen(function* () {
         )
 
         const tail = yield* service.tail(runId)
-        return { sequences, tail }
+        const result: AppendResult = { sequences, tail }
+
+        if (deduplicated) {
+          result.deduplicated = true
+        }
+
+        return result
       }),
 
     read: (runId, options) =>

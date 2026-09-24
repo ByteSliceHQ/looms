@@ -28,13 +28,21 @@ export interface RuntimeModuleDependency {
 export interface DefinitionRef {
   readonly kind: string
   readonly name: string
+  readonly version?: string
   readonly input?: SchemaInput | undefined
 }
 
-/** A definition registered on a host, keyed by `${kind}:${name}`. */
+export const DEFAULT_DEFINITION_VERSION = 'v1'
+
+export function definitionKey(kind: string, name: string, version: string): string {
+  return `${kind}:${name}@${version}`
+}
+
+/** A definition registered on a host, keyed by `${kind}:${name}@${version}`. */
 export interface RegisteredDefinition {
   readonly kind: string
   readonly name: string
+  readonly version: string
   readonly input?: SchemaInput | undefined
   readonly value: DefinitionRef
 }

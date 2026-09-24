@@ -170,9 +170,14 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
   }
 }
 
-export function createIndexProjector(name: string, backend: IndexBackend): IndexProjector {
+export function createIndexProjector(
+  name: string,
+  backend: IndexBackend,
+  version = '1',
+): IndexProjector {
   return {
     name,
+    version,
     init: backend.init,
     dispose: backend.dispose,
     project: (events) => {

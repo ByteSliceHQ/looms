@@ -88,8 +88,21 @@ describe('foldRun', () => {
     ])
 
     const state = foldRun(events, registry)
+
     expect(state.rootThreadId).toBe(threadId)
+
+    expect(state.startIdentity).toEqual({
+      kind: 'counter',
+      definitionName: 'counter',
+      definitionVersion: 'v1',
+      input: null,
+      requestedThreadId: null,
+      idempotencyKey: null,
+      rootThreadId: threadId,
+    })
+
     expect(state.threads[threadId]?.status).toBe('running')
+    expect(state.threads[threadId]?.definitionVersion).toBe('v1')
     expect(state.threads[threadId]?.state).toEqual({ count: 0 })
     expect(state.outstandingEffects).toHaveLength(1)
     expect(state.outstandingEffects[0]?.effect.type).toBe('counter.tick')
