@@ -3,6 +3,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { createActorCell, type ActorCell } from '@looms/actor'
 import type { AnyRuntimeModule, EventStoreTrimCoverage } from '@looms/core'
 import type { Projector } from '@looms/projectors'
+import type { Authorize } from '@looms/runtime'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
@@ -17,6 +18,8 @@ export interface LoomsDurableObjectConfig {
     readonly keepSnapshots: number
     readonly coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
   }
+  /** Authorizes the actor's HTTP API; see `createFetchHandler`. */
+  readonly authorize?: Authorize
 }
 
 /**
@@ -79,6 +82,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,
         trimAfterSnapshot: config.trimAfterSnapshot,
+        authorize: config.authorize,
       })
 
       const delivery = store.projectorDelivery

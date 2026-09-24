@@ -4,6 +4,7 @@ import { agent, defineAgent } from '@looms/agent'
 
 import { createLooms } from './looms'
 import type { RuntimeObservation } from './observer'
+import { bearerAuth } from './server'
 
 describe('createLooms production facade', () => {
   test('exposes observation, inspection, deadline recovery, and protected operations', async () => {
@@ -22,7 +23,7 @@ describe('createLooms production facade', () => {
     const looms = createLooms({
       modules: [agent({ definitions: [echo] })],
       observer: { observe: (event) => observations.push(event) },
-      operationsToken: 'operations-secret',
+      authorize: bearerAuth({ operations: 'operations-secret' }),
     })
 
     const started = await looms.start(echo, { value: 1 })

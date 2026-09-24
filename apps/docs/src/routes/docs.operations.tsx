@@ -63,7 +63,8 @@ function Page() {
         <code>GET /runs/:id/status</code> returns thread, deadline, and effect execution status.
         <code>GET /runs/:id/effects</code> narrows that view to durable effect attempts. Retry an
         operator-reviewed effect with <code>POST /runs/:id/effects/:effectId/retry</code>; protect
-        mutation-capable operations with <code>operationsToken</code>.
+        mutation-capable operations with an <code>authorize</code> hook such as{' '}
+        <code>bearerAuth</code>.
       </p>
       <h2 id="cancellation-and-intervention">
         Cancellation and intervention

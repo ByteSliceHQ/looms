@@ -28,7 +28,13 @@ import {
   type WakeScheduler,
   type WorkerCallbackInput,
 } from './runtime'
-import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
+import {
+  createFetchHandler,
+  isLoomsApiPath,
+  serveHttp,
+  type Authorize,
+  type RunningServer,
+} from './server'
 
 export interface CreateLoomsOptions {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
@@ -55,10 +61,11 @@ export interface CreateLoomsOptions {
   readonly worker?: EffectWorker
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
-  /** Bearer token required by worker callback HTTP routes. */
-  readonly workerCallbackToken?: string
-  /** Bearer token required by mutation-capable operational HTTP routes. */
-  readonly operationsToken?: string
+  /**
+   * Authorizes HTTP API requests. Without it, run reads and writes are open while worker callback
+   * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
+   */
+  readonly authorize?: Authorize
 }
 
 export interface StartResult {
@@ -180,8 +187,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           const fetchHandler = createFetchHandler({
             runtime,
             store,
-            workerCallbackToken: options.workerCallbackToken,
-            operationsToken: options.operationsToken,
+            authorize: options.authorize,
           })
 
           return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }

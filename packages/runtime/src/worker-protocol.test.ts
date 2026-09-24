@@ -14,7 +14,7 @@ import {
   type RetryPolicy,
 } from '@looms/core'
 
-import { createLooms, type EffectWorkerTask } from './index'
+import { bearerAuth, createLooms, type EffectWorkerTask } from './index'
 
 const workerDefinition = {
   kind: 'worker-test',
@@ -382,7 +382,7 @@ describe('durable external effect workers', () => {
     const looms = createLooms({
       modules: [workerModule({ maxAttempts: 1 })],
       worker: { dispatch: () => undefined },
-      workerCallbackToken: 'worker-secret',
+      authorize: bearerAuth({ worker: 'worker-secret' }),
     })
 
     const started = await looms.start(workerDefinition, {})
