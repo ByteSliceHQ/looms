@@ -9,6 +9,8 @@ import {
   stringifyJson,
   type EventStore,
   type JsonValue,
+  type WorkerCallbackInput,
+  type WorkerCallbackKind,
 } from '@looms/core'
 
 import { RunOverloadedError, StartRunConflictError, type LoomsRuntime } from './runtime'
@@ -75,7 +77,6 @@ const WorkerCallbackBodySchema = Schema.Struct({
   error: Schema.optional(Schema.String),
 })
 
-type WorkerCallbackAction = 'started' | 'heartbeat' | 'complete' | 'fail' | 'cancelled'
 type RouteAuthorization = 'operations' | 'worker-callback'
 type RouteEffect = Effect.Effect<Response, Error>
 
@@ -145,9 +146,7 @@ const integerParameter = <const TName extends string>(
   decode: Number,
 })
 
-const callbackActionParameter = (
-  name: 'action',
-): RouteParameter<'action', WorkerCallbackAction> => ({
+const callbackActionParameter = (name: 'action'): RouteParameter<'action', WorkerCallbackKind> => ({
   kind: 'parameter',
   name,
   matches: (value) => workerCallbackAction(value) !== null,
@@ -187,7 +186,7 @@ function extractIdempotencyKey(req: Request, bodyKey?: string): string | undefin
   )
 }
 
-function workerCallbackAction(value: string): WorkerCallbackAction | null {
+function workerCallbackAction(value: string): WorkerCallbackKind | null {
   switch (value) {
     case 'started':
     case 'heartbeat':
@@ -483,6 +482,26 @@ function createStartRoutes(options: FetchHandlerOptions): readonly AnyRoute[] {
   ]
 }
 
+function workerCallbackInput(
+  params: {
+    readonly effectId: string
+    readonly attempt: number
+    readonly action: WorkerCallbackKind
+  },
+  body: Schema.Schema.Type<typeof WorkerCallbackBodySchema>,
+): WorkerCallbackInput | null {
+  const callback = { effectId: params.effectId, attempt: params.attempt }
+
+  switch (params.action) {
+    case 'complete':
+      return { ...callback, kind: 'complete', events: body.events ?? [] }
+    case 'fail':
+      return body.error ? { ...callback, kind: 'fail', error: body.error } : null
+    default:
+      return { ...callback, kind: params.action }
+  }
+}
+
 function createWorkerCallbackRoutes(options: FetchHandlerOptions): readonly AnyRoute[] {
   const { runtime, store } = options
   const runId = stringParameter('runId')
@@ -500,44 +519,13 @@ function createWorkerCallbackRoutes(options: FetchHandlerOptions): readonly AnyR
             Effect.flatMap(Schema.decodeUnknownEffect(WorkerCallbackBodySchema)),
           )
 
-          const callback = { effectId: params.effectId, attempt: params.attempt }
-          let state
+          const input = workerCallbackInput(params, body)
 
-          switch (params.action) {
-            case 'started':
-              state = yield* provideStore(runtime.workerStarted(params.runId, callback), store)
-              break
-            case 'heartbeat':
-              state = yield* provideStore(runtime.workerHeartbeat(params.runId, callback), store)
-              break
-            case 'complete':
-              state = yield* provideStore(
-                runtime.workerComplete(params.runId, { ...callback, events: body.events ?? [] }),
-                store,
-              )
-
-              break
-            case 'fail':
-              if (!body.error) {
-                return Response.json({ error: 'error required' }, { status: 400 })
-              }
-
-              state = yield* provideStore(
-                runtime.workerFail(params.runId, { ...callback, error: body.error }),
-                store,
-              )
-
-              break
-            case 'cancelled':
-              state = yield* provideStore(runtime.workerCancelled(params.runId, callback), store)
-              break
-
-            default: {
-              const exhaustiveCheck: never = params.action
-              return exhaustiveCheck
-            }
+          if (!input) {
+            return Response.json({ error: 'error required' }, { status: 400 })
           }
 
+          const state = yield* provideStore(runtime.workerCallback(params.runId, input), store)
           return Response.json({ runId: params.runId, state })
         }),
       'worker-callback',

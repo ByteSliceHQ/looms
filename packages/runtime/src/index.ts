@@ -15,6 +15,7 @@ export {
   type WakeError,
   type WakeScheduler,
   type WorkerCallback,
+  type WorkerCallbackInput,
 } from './runtime'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
 export {

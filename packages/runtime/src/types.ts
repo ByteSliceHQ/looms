@@ -5,6 +5,7 @@ import type {
   ComposedRegistry,
   EventEnvelope,
   EventInput,
+  WorkerCallbackInput,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -91,11 +92,6 @@ export interface EffectWorker {
   cancel?(task: EffectWorkerTask): void | Promise<void>
 }
 
-export interface WorkerCallback {
-  readonly effectId: string
-  readonly attempt: number
-}
-
 export interface StartRunArgs {
   kind: string
   definitionName: string
@@ -176,25 +172,10 @@ export interface LoomsRuntime<
     runId: string,
     threadId?: string,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  workerStarted(
+  /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
+  workerCallback(
     runId: string,
-    callback: WorkerCallback,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  workerHeartbeat(
-    runId: string,
-    callback: WorkerCallback,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  workerComplete(
-    runId: string,
-    callback: WorkerCallback & { events: ReadonlyArray<EventInput> },
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  workerFail(
-    runId: string,
-    callback: WorkerCallback & { error: string },
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  workerCancelled(
-    runId: string,
-    callback: WorkerCallback,
+    input: WorkerCallbackInput,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
   readonly rescanTimers: Effect.Effect<

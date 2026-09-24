@@ -12,6 +12,7 @@ import {
   type EventInput,
   type JsonValue,
   type RunState,
+  type WorkerCallbackInput,
 } from '@looms/core'
 
 import { consumeSseStreamEffect, eventsFromSseData, sseFrames } from './sse'
@@ -171,15 +172,16 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     runId?: string
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
-  const workerCallback = (
-    runId: string,
-    effectId: string,
-    attempt: number,
-    action: 'started' | 'heartbeat' | 'complete' | 'fail' | 'cancelled',
-    body: JsonValue = {},
-  ) =>
-    request(
-      `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(effectId)}/${attempt}/${action}`,
+  const workerCallback = (runId: string, input: WorkerCallbackInput) => {
+    const body =
+      input.kind === 'complete'
+        ? { events: input.events }
+        : input.kind === 'fail'
+          ? { error: input.error }
+          : {}
+
+    return request(
+      `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(input.effectId)}/${input.attempt}/${input.kind}`,
       RunResultSchema,
       {
         method: 'POST',
@@ -189,6 +191,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         body: stringifyJson(body),
       },
     )
+  }
 
   const streamRun = (args: {
     kind: string
@@ -275,20 +278,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       }),
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
-    workerStarted: (runId: string, effectId: string, attempt: number) =>
-      workerCallback(runId, effectId, attempt, 'started'),
-    workerHeartbeat: (runId: string, effectId: string, attempt: number) =>
-      workerCallback(runId, effectId, attempt, 'heartbeat'),
-    workerComplete: (
-      runId: string,
-      effectId: string,
-      attempt: number,
-      events: ReadonlyArray<EventInput>,
-    ) => workerCallback(runId, effectId, attempt, 'complete', { events }),
-    workerFail: (runId: string, effectId: string, attempt: number, error: string) =>
-      workerCallback(runId, effectId, attempt, 'fail', { error }),
-    workerCancelled: (runId: string, effectId: string, attempt: number) =>
-      workerCallback(runId, effectId, attempt, 'cancelled'),
+    workerCallback,
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>

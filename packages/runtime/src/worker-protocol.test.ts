@@ -321,7 +321,13 @@ describe('durable external effect workers', () => {
 
     const started = await looms.start(workerDefinition, {})
     const identity = effectIdentity(await looms.getEvents(started.runId))
-    await looms.workerFail(started.runId, { ...identity, error: 'transient' })
+
+    await looms.workerCallback(started.runId, {
+      kind: 'fail',
+      ...identity,
+      error: 'transient',
+    })
+
     await looms.cancel(started.runId, started.threadId)
 
     const types = (await looms.getEvents(started.runId)).map((event) => event.type)
@@ -463,8 +469,8 @@ describe('durable external effect workers', () => {
 
     const started = await looms.start(workerDefinition, {})
     const identity = effectIdentity(await looms.getEvents(started.runId))
-    await looms.workerStarted(started.runId, identity)
-    await looms.workerHeartbeat(started.runId, identity)
+    await looms.workerCallback(started.runId, { ...identity, kind: 'started' })
+    await looms.workerCallback(started.runId, { ...identity, kind: 'heartbeat' })
     await Bun.sleep(12)
     await looms.wake(started.runId)
     await Bun.sleep(3)
@@ -495,10 +501,10 @@ describe('durable external effect workers', () => {
     const deadline = async () =>
       (await looms.getRun(started.runId)).effectExecutions[identity.effectId]?.deadlineAt ?? 0
 
-    await looms.workerHeartbeat(started.runId, identity)
+    await looms.workerCallback(started.runId, { ...identity, kind: 'heartbeat' })
     const first = await deadline()
     await Bun.sleep(350)
-    await looms.workerHeartbeat(started.runId, identity)
+    await looms.workerCallback(started.runId, { ...identity, kind: 'heartbeat' })
     const second = await deadline()
     // Past the first heartbeat's deadline, well inside the second's.
     await Bun.sleep(350)
@@ -524,7 +530,8 @@ describe('durable external effect workers', () => {
     const attempt = events.find((event) => event.type === 'runtime.effect.attempt.started')
     const payload = Predicate.isReadonlyObject(attempt?.payload) ? attempt.payload : {}
 
-    await looms.workerFail(started.runId, {
+    await looms.workerCallback(started.runId, {
+      kind: 'fail',
       effectId: Predicate.isString(payload.effectId) ? payload.effectId : '',
       attempt: 1,
       error: 'forged',
@@ -551,8 +558,8 @@ describe('durable external effect workers', () => {
       events: [{ type: 'worker.done', payload: { ok: true } }],
     }
 
-    await looms.workerComplete(started.runId, completion)
-    await looms.workerComplete(started.runId, completion)
+    await looms.workerCallback(started.runId, { ...completion, kind: 'complete' })
+    await looms.workerCallback(started.runId, { ...completion, kind: 'complete' })
     const events = await looms.getEvents(started.runId)
     expect(events.filter((event) => event.type === 'worker.done')).toHaveLength(1)
     expect(events.filter((event) => event.type === 'runtime.effect.completed')).toHaveLength(1)
@@ -574,11 +581,18 @@ describe('durable external effect workers', () => {
 
     const started = await looms.start(workerDefinition, {})
     const first = effectIdentity(await looms.getEvents(started.runId))
-    await looms.workerFail(started.runId, { ...first, error: 'retry' })
+
+    await looms.workerCallback(started.runId, {
+      kind: 'fail',
+      ...first,
+      error: 'retry',
+    })
+
     await Bun.sleep(3)
     await looms.wake(started.runId)
 
-    await looms.workerComplete(started.runId, {
+    await looms.workerCallback(started.runId, {
+      kind: 'complete',
       ...first,
       events: [{ type: 'worker.done', payload: { stale: true } }],
     })
@@ -595,7 +609,7 @@ describe('durable external effect workers', () => {
 
     expect(newerExecution.attempt).toBe(first.attempt + 1)
     await looms.cancel(started.runId)
-    await looms.workerCancelled(started.runId, first)
+    await looms.workerCallback(started.runId, { ...first, kind: 'cancelled' })
 
     expect(
       (await looms.getEvents(started.runId)).some(
@@ -603,7 +617,8 @@ describe('durable external effect workers', () => {
       ),
     ).toBe(false)
 
-    await looms.workerCancelled(started.runId, {
+    await looms.workerCallback(started.runId, {
+      kind: 'cancelled',
       effectId: first.effectId,
       attempt: newerExecution.attempt,
     })
@@ -629,7 +644,7 @@ describe('durable external effect workers', () => {
     const started = await looms.start(workerDefinition, {})
     const identity = effectIdentity(await looms.getEvents(started.runId))
     await looms.cancel(started.runId)
-    await looms.workerCancelled(started.runId, identity)
+    await looms.workerCallback(started.runId, { ...identity, kind: 'cancelled' })
 
     const events = await looms.getEvents(started.runId)
     expect(events.some((event) => event.type === 'runtime.effect.cancel.requested')).toBe(true)
@@ -647,7 +662,7 @@ describe('durable external effect workers', () => {
 
     const started = await looms.start(workerDefinition, {})
     const identity = effectIdentity(await looms.getEvents(started.runId))
-    await looms.workerCancelled(started.runId, identity)
+    await looms.workerCallback(started.runId, { ...identity, kind: 'cancelled' })
 
     const events = await looms.getEvents(started.runId)
     expect(events.some((event) => event.type === 'runtime.effect.cancel.requested')).toBe(false)
@@ -674,7 +689,8 @@ describe('durable external effect workers', () => {
     await Bun.sleep(12)
     await looms.wake(started.runId)
 
-    await looms.workerComplete(started.runId, {
+    await looms.workerCallback(started.runId, {
+      kind: 'complete',
       ...identity,
       events: [{ type: 'worker.done', payload: { late: true } }],
     })
