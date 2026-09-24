@@ -53,6 +53,8 @@ export interface EffectExecutionRecord {
     | 'running'
   nextAttemptAt: number | null
   deadlineAt: number | null
+  /** When the current attempt started executing, locally or on a worker. */
+  startedAt: number | null
   lastHeartbeatAt: number | null
   lastError: string | null
 }
@@ -159,6 +161,9 @@ export const RunStateSchema = Schema.Struct({
       ]),
       nextAttemptAt: Schema.NullOr(Schema.Finite),
       deadlineAt: Schema.NullOr(Schema.Finite).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
+      startedAt: Schema.NullOr(Schema.Finite).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       lastHeartbeatAt: Schema.NullOr(Schema.Finite).pipe(

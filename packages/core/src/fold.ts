@@ -277,6 +277,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             status: 'running',
             nextAttemptAt: null,
             deadlineAt: null,
+            startedAt: event.ts,
             lastHeartbeatAt: null,
             lastError: null,
           },
@@ -316,6 +317,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
       const deadlineAt = payload.deadlineAt
       const heartbeatAt = payload.heartbeatAt
+      const previous = state.effectExecutions[effectId]
+      const sameAttempt = previous?.attempt === attempt
 
       return {
         ...state,
@@ -327,9 +330,17 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             status,
             nextAttemptAt: null,
             deadlineAt: Predicate.isNumber(deadlineAt) ? deadlineAt : null,
+            startedAt:
+              event.type === 'runtime.effect.worker.started'
+                ? event.ts
+                : sameAttempt
+                  ? previous.startedAt
+                  : null,
             lastHeartbeatAt: Predicate.isNumber(heartbeatAt)
               ? heartbeatAt
-              : (state.effectExecutions[effectId]?.lastHeartbeatAt ?? null),
+              : sameAttempt
+                ? previous.lastHeartbeatAt
+                : null,
             lastError: readString(payload, 'error') ?? null,
           },
         },
@@ -360,6 +371,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             status: 'retry_wait',
             nextAttemptAt,
             deadlineAt: nextAttemptAt,
+            startedAt: null,
             lastHeartbeatAt: null,
             lastError: readString(payload, 'error') ?? 'effect failed',
           },
