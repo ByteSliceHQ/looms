@@ -3,6 +3,7 @@ import { Data, Effect, Layer, Predicate, type Context } from 'effect'
 import {
   asJson,
   createEvent,
+  definitionKey,
   makeMemorySnapshotStore,
   matchingWaits,
   snapshotStoreOf,
@@ -19,22 +20,41 @@ import {
   type EventStore,
   type InvalidEventError,
   type JsonValue,
+  type OutstandingEffect,
   type RegisteredDefinition,
   type RunCursor,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
 
+import type { EffectWorkerTask } from './types'
+
+export function workerTask(
+  runId: string,
+  item: OutstandingEffect,
+  attempt: number,
+): EffectWorkerTask {
+  return {
+    runId,
+    effectId: item.effectId,
+    attempt,
+    type: item.effect.type,
+    input: 'input' in item.effect ? item.effect.input : null,
+  }
+}
+
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{
   readonly kind: string
   readonly definitionName: string
+  readonly definitionVersion: string
   readonly message: string
 }> {
-  constructor(kind: string, definitionName: string) {
+  constructor(kind: string, definitionName: string, definitionVersion: string) {
     super({
       kind,
       definitionName,
-      message: `Unknown definition ${kind}:${definitionName}`,
+      definitionVersion,
+      message: `Unknown definition ${definitionKey(kind, definitionName, definitionVersion)}`,
     })
 
     this.name = 'UnknownDefinitionError'
@@ -160,16 +180,23 @@ export function threadStartedEvents(
   args: {
     kind: string
     definitionName: string
+    definitionVersion: string
     input: JsonValue
     threadId: string
     parentThreadId: string | null
   },
 ): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError> {
   return Effect.gen(function* () {
-    const def = definitions.get(`${args.kind}:${args.definitionName}`)
+    const def = definitions.get(
+      definitionKey(args.kind, args.definitionName, args.definitionVersion),
+    )
 
     if (!def) {
-      return yield* new UnknownDefinitionError(args.kind, args.definitionName)
+      return yield* new UnknownDefinitionError(
+        args.kind,
+        args.definitionName,
+        args.definitionVersion,
+      )
     }
 
     const raw = args.input ?? null
@@ -197,6 +224,7 @@ export function threadStartedEvents(
         threadId: args.threadId,
         kind: args.kind,
         definitionName: args.definitionName,
+        definitionVersion: args.definitionVersion,
         input: startedInput,
         parentThreadId: args.parentThreadId,
       },

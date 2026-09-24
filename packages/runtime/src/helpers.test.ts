@@ -2,22 +2,28 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { threadStartedEvents } from './runtime-helpers'
+import { DEFAULT_DEFINITION_VERSION, definitionKey } from '@looms/core'
+
+import { threadStartedEvents } from './helpers'
 
 describe('threadStartedEvents', () => {
   test('emits runtime.thread.started for registered definition', async () => {
     const def = {
       kind: 'workflow',
       name: 'checkout',
-      value: { kind: 'workflow', name: 'checkout' },
+      version: DEFAULT_DEFINITION_VERSION,
+      value: { kind: 'workflow', name: 'checkout', version: DEFAULT_DEFINITION_VERSION },
     }
 
-    const definitions = new Map([['workflow:checkout', def]])
+    const definitions = new Map([
+      [definitionKey('workflow', 'checkout', DEFAULT_DEFINITION_VERSION), def],
+    ])
 
     const events = await Effect.runPromise(
       threadStartedEvents(definitions, {
         kind: 'workflow',
         definitionName: 'checkout',
+        definitionVersion: DEFAULT_DEFINITION_VERSION,
         input: { amount: 50 },
         threadId: 'thr_1',
         parentThreadId: null,
@@ -31,6 +37,7 @@ describe('threadStartedEvents', () => {
       threadId: 'thr_1',
       kind: 'workflow',
       definitionName: 'checkout',
+      definitionVersion: DEFAULT_DEFINITION_VERSION,
       input: { amount: 50 },
       parentThreadId: null,
     })
@@ -44,6 +51,7 @@ describe('threadStartedEvents', () => {
         threadStartedEvents(definitions, {
           kind: 'workflow',
           definitionName: 'checkout',
+          definitionVersion: DEFAULT_DEFINITION_VERSION,
           input: null,
           threadId: 'thr_1',
           parentThreadId: null,
@@ -56,16 +64,20 @@ describe('threadStartedEvents', () => {
     const def = {
       kind: 'workflow',
       name: 'checkout',
+      version: DEFAULT_DEFINITION_VERSION,
       input: Schema.Struct({ amount: Schema.Finite }),
-      value: { kind: 'workflow', name: 'checkout' },
+      value: { kind: 'workflow', name: 'checkout', version: DEFAULT_DEFINITION_VERSION },
     }
 
-    const definitions = new Map([['workflow:checkout', def]])
+    const definitions = new Map([
+      [definitionKey('workflow', 'checkout', DEFAULT_DEFINITION_VERSION), def],
+    ])
 
     const events = await Effect.runPromise(
       threadStartedEvents(definitions, {
         kind: 'workflow',
         definitionName: 'checkout',
+        definitionVersion: DEFAULT_DEFINITION_VERSION,
         input: { amount: 'not-a-number' },
         threadId: 'thr_1',
         parentThreadId: null,
