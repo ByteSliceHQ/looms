@@ -79,8 +79,7 @@ function Modules() {
             </td>
             <td>Typed questions that branch a run</td>
             <td>
-              <code>defineEvaluator</code>, <code>evaluate()</code>, spawn as a child.{' '}
-              <code>defineJev</code> selects TypeSafe Jev
+              <code>defineEvaluator</code>, <code>evaluate()</code>, spawn as a child
             </td>
           </tr>
         </tbody>

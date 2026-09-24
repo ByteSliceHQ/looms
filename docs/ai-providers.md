@@ -55,7 +55,7 @@ defineAgent({
 
 ## Evaluation models
 
-An evaluator is not a chat model. Use `defineEvaluator` with your own `questions` and pass `vercelEvaluator()` into the evaluator module. TypeSafe Jev is the default model (`defineJev` and `vercelJev()`). A later model that answers the same boolean, choice, and score questions uses the same definition with a different `model` id. The evaluation lands on the run log like any other effect, so a workflow can branch on `route` and `reason` after a crash.
+An evaluator is not a chat model. Use `defineEvaluator` with your own `questions` and pass `vercelEvaluator()` into the evaluator module. Set `model` to `typesafe-ai/jev` today. A later model that answers the same boolean, choice, and score questions uses the same definition with a different `model` id. The evaluation lands on the run log like any other effect, so a workflow can branch on `route` and `reason` after a crash.
 
 ```ts
 import { vercelEvaluator } from '@swirls/looms/ai-vercel'
@@ -93,7 +93,7 @@ const looms = createLooms({
 })
 ```
 
-`vercelEvaluator` needs the Vercel AI SDK `experimental_evaluate` API (`ai` 7.0.105+) and `AI_GATEWAY_API_KEY`. It defaults to `typesafe-ai/jev` with a 2s timeout and zero-data-retention, then maps boolean/choice/score answers onto `evaluator.evaluated`. `vercelJev()` is that default as a preset. Without an adapter, the evaluator module uses a deterministic stub suitable for tests and examples.
+`vercelEvaluator` needs the Vercel AI SDK `experimental_evaluate` API (`ai` 7.0.105+) and `AI_GATEWAY_API_KEY`. If you omit `model`, it calls `typesafe-ai/jev`, with a 2s timeout and zero-data-retention, then maps boolean/choice/score answers onto `evaluator.evaluated`. Without an adapter, the evaluator module uses a deterministic stub suitable for tests and examples.
 
 ## Custom adapter
 

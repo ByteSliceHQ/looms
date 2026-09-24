@@ -188,7 +188,7 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, asEvaluatorTool, asJevTool, defineAgentSession,
+          asAgentTool, asWorkflowTool, asEvaluatorTool, defineAgentSession,
           submitAgentMessage, conversation, and userMessage.
         </li>
         <li>
@@ -199,8 +199,7 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
           <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
         </li>
         <li>
-          <code>@swirls/looms/evaluator</code>: evaluator, defineEvaluator, defineJev, evaluate,
-          evaluations. TypeSafe Jev is a model preset, not a separate kind.
+          <code>@swirls/looms/evaluator</code>: evaluator, defineEvaluator, evaluate, evaluations.
         </li>
         <li>
           <code>@swirls/looms/actor</code>: createActorCell and createLocalActorHost.
@@ -214,7 +213,7 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/ai-vercel</code>: vercelLlm for AI SDK chat models; vercelEvaluator
-          and vercelJev for evaluation models such as TypeSafe Jev.
+          for evaluation models such as TypeSafe Jev.
         </li>
         <li>
           <code>@swirls/looms/projectors</code>: post-commit indexes and fan-out.{' '}

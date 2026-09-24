@@ -6,7 +6,6 @@ import {
   asAgentTool,
   asEffectsTool,
   asEvaluatorTool,
-  asJevTool,
   asWorkflowTool,
   defineAgent,
   defineTool,
@@ -109,22 +108,6 @@ describe('tool schema', () => {
     expect(tool.childName).toBe('score-refund')
     const schema = toolJsonSchema(tool)
     expect(JSON.stringify(schema)).toContain('amount')
-  })
-
-  test('asJevTool accepts a legacy jev target and still spawns an evaluator', () => {
-    const RefundInput = Schema.Struct({ amount: Schema.Finite })
-
-    const tool = asJevTool({
-      jev: {
-        kind: 'jev',
-        name: 'score-refund',
-        input: RefundInput,
-      },
-    })
-
-    expect(tool.childKind).toBe('evaluator')
-    expect(tool.childName).toBe('score-refund')
-    expect(tool.input).toBe(RefundInput)
   })
 
   test('asEffectsTool exposes input schema in toolSpecs', () => {

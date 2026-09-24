@@ -2,9 +2,6 @@ import { Schema } from 'effect'
 
 import type { JsonValue } from '@looms/core'
 
-/** Model id for TypeSafe Jev. Other evaluation models use their own ids. */
-export const TYPESAFE_JEV_MODEL = 'typesafe-ai/jev'
-
 export const BooleanQuestionSchema = Schema.Struct({
   type: Schema.Literal('boolean'),
   instructions: Schema.String,

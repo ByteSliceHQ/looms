@@ -7,7 +7,7 @@ import { composeModules, createEvent, foldRun, stringifyJson } from '@looms/core
 import { createLooms } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
-import { defineEvaluator, defineJev } from './definitions'
+import { defineEvaluator } from './definitions'
 import {
   LOG_TRIAGE_MAX_INPUT_CHARS,
   defineLogTriage,
@@ -19,7 +19,7 @@ import {
 import { evaluator } from './module'
 import { evaluations } from './projections'
 import { evaluate } from './signals'
-import { TYPESAFE_JEV_MODEL, type EvaluatorAnswers, type EvaluatorRouteDecision } from './types'
+import type { EvaluatorAnswers, EvaluatorRouteDecision } from './types'
 
 const RefundInput = Schema.Struct({
   amount: Schema.Finite,
@@ -84,16 +84,6 @@ describe('@looms/evaluator module', () => {
   test('defineEvaluator sets kind', () => {
     expect(scoreRefund.kind).toBe('evaluator')
     expect(scoreRefund.name).toBe('score-refund')
-  })
-
-  test('defineJev selects the Jev model without changing the kind', () => {
-    const scored = defineJev({
-      name: 'score-refund',
-      questions: scoreRefund.questions,
-    })
-
-    expect(scored.kind).toBe('evaluator')
-    expect(scored.model).toBe(TYPESAFE_JEV_MODEL)
   })
 
   test('composes and exposes evaluate handler', () => {

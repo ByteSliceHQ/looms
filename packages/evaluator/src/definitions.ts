@@ -3,12 +3,11 @@ import type { Schema } from 'effect'
 
 import { defineKind, type JsonValue } from '@looms/core'
 
-import {
-  TYPESAFE_JEV_MODEL,
-  type EvaluatorQuestions,
-  type EvaluatorRouteArgs,
-  type EvaluatorRouteDecision,
-  type EvaluatorSkipResult,
+import type {
+  EvaluatorQuestions,
+  EvaluatorRouteArgs,
+  EvaluatorRouteDecision,
+  EvaluatorSkipResult,
 } from './types'
 
 export interface EvaluatorDefinition<TName extends string = string, TInput = JsonValue> {
@@ -32,17 +31,4 @@ export function defineEvaluator<TName extends string, TInput = JsonValue>(
   def: Omit<EvaluatorDefinition<TName, TInput>, 'kind'>,
 ): EvaluatorDefinition<TName, TInput> {
   return defineKind('evaluator', def)
-}
-
-/**
- * `defineEvaluator` preset that selects TypeSafe Jev unless `model` is set.
- * The thread kind is still `evaluator`.
- */
-export function defineJev<TName extends string, TInput = JsonValue>(
-  def: Omit<EvaluatorDefinition<TName, TInput>, 'kind'>,
-): EvaluatorDefinition<TName, TInput> {
-  return defineEvaluator({
-    model: TYPESAFE_JEV_MODEL,
-    ...def,
-  })
 }

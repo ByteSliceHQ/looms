@@ -102,8 +102,7 @@ await looms.signal(runId, [
       <p>
         A function tool returns JSON. Use <code>asAgentTool</code>, <code>asWorkflowTool</code>,{' '}
         <code>asEvaluatorTool</code>, or <code>asThreadTool</code> to delegate to a child. Register
-        that child's definition in its owning module. Child execution appears in the same run log.{' '}
-        <code>asJevTool</code> is the TypeSafe Jev preset of <code>asEvaluatorTool</code>.
+        that child's definition in its owning module. Child execution appears in the same run log.
       </p>
       <p>
         Validate tool inputs and check permissions in your application. A model's request to perform

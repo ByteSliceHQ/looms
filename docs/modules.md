@@ -9,7 +9,7 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 | `@swirls/looms/agent`     | Conversational or tool-using LLM agents | `defineAgent`, `defineTool`, spawn other agents or workflows as tools               |
 | `@swirls/looms/workflow`  | DAGs: nodes, deps, sleeps, nested runs  | `defineWorkflow`; a node can return a value, spawn a child, sleep, or emit effects  |
 | `@swirls/looms/approval`  | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                            |
-| `@swirls/looms/evaluator` | Typed questions that branch a run       | `defineEvaluator`, `evaluate()`, spawn as a child. `defineJev` selects TypeSafe Jev |
+| `@swirls/looms/evaluator` | Typed questions that branch a run       | `defineEvaluator`, `evaluate()`, spawn as a child                                   |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 
@@ -60,7 +60,7 @@ export const vintageWatch = auction.define({
 })
 ```
 
-The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`. `defineEvaluator` is that helper bound to `'evaluator'`, plus questions and routing. `defineJev` is the same helper with the TypeSafe Jev model selected.
+The module still implements `m.thread({ kind: 'auction', ... })`. The builder only types the startable definition; it does not replace `defineModule`. `defineEvaluator` is that helper bound to `'evaluator'`, plus questions and routing. Pass a model id such as `typesafe-ai/jev` on the definition.
 
 ## Talk to a running run
 

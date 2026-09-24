@@ -66,11 +66,12 @@ function Page() {
           #
         </a>
       </h2>
-      <CodeBlock lang="ts">{`import { vercelJev } from '@swirls/looms/ai-vercel'
-import { defineEvaluator, defineJev, evaluator } from '@swirls/looms/evaluator'
+      <CodeBlock lang="ts">{`import { vercelEvaluator } from '@swirls/looms/ai-vercel'
+import { defineEvaluator, evaluator } from '@swirls/looms/evaluator'
 
 const scoreRefund = defineEvaluator({
   name: 'score-refund',
+  model: 'typesafe-ai/jev',
   questions: {
     needsReview: {
       type: 'boolean',
@@ -91,26 +92,16 @@ const scoreRefund = defineEvaluator({
   },
 })
 
-// defineJev defaults model to typesafe-ai/jev. The kind is still evaluator.
-const jevScore = defineJev({
-  name: 'score-refund-jev',
-  questions: scoreRefund.questions,
-  route: scoreRefund.route,
-})
-
 evaluator({
-  definitions: [scoreRefund, jevScore],
-  // vercelJev() is vercelEvaluator({ model: 'typesafe-ai/jev' }).
-  // A later model uses vercelEvaluator({ model: 'vendor/next-evaluator' }).
-  evaluator: vercelJev(),
+  definitions: [scoreRefund],
+  evaluator: vercelEvaluator({ model: 'typesafe-ai/jev' }),
 })`}</CodeBlock>
       <p>
         <code>vercelEvaluator</code> uses the Vercel AI SDK <code>experimental_evaluate</code> API.
-        The default model is <code>typesafe-ai/jev</code>; pass another model id when a future
-        evaluator speaks the same boolean, choice, and score questions. <code>vercelJev()</code> and{' '}
-        <code>defineJev</code> are presets for that model. The thread kind stays{' '}
-        <code>evaluator</code>. Keep <code>AI_GATEWAY_API_KEY</code> on the server. Without an
-        adapter, the evaluator module uses a deterministic stub. See{' '}
+        Pass <code>typesafe-ai/jev</code> today. A later model that answers the same boolean, choice,
+        and score questions uses the same definition with a different <code>model</code> id. Keep{' '}
+        <code>AI_GATEWAY_API_KEY</code> on the server. Without an adapter, the evaluator module uses
+        a deterministic stub. See{' '}
         <Link to="/docs/agents">agents and model providers</Link> for chat adapters, and{' '}
         <Link to="/docs/examples">examples</Link> for the stubbed script.{' '}
         <code>defineLogTriage</code> is an optional sample rubric, not the module API.

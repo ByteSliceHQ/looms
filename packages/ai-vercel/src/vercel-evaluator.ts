@@ -1,14 +1,15 @@
 import type * as AiSdk from 'ai'
 import { Data, Effect, Predicate } from 'effect'
 
-import {
-  TYPESAFE_JEV_MODEL,
-  type EvaluatorAdapter,
-  type EvaluatorAnswer,
-  type EvaluatorAnswers,
-  type EvaluatorEvaluateResult,
-  type EvaluatorQuestions,
+import type {
+  EvaluatorAdapter,
+  EvaluatorAnswer,
+  EvaluatorAnswers,
+  EvaluatorEvaluateResult,
+  EvaluatorQuestions,
 } from '@looms/evaluator'
+
+const DEFAULT_EVALUATOR_MODEL = 'typesafe-ai/jev'
 
 class VercelEvaluatorError extends Data.TaggedError('VercelEvaluatorError')<{
   readonly cause: unknown
@@ -32,12 +33,6 @@ export interface VercelEvaluatorOptions {
   readonly providerOptions?: {
     readonly gateway?: { readonly zeroDataRetention?: boolean }
   }
-}
-
-export interface VercelJevOptions {
-  /** Abort the hosted call after this many milliseconds. Defaults to 2000. */
-  readonly timeoutMs?: number
-  readonly providerOptions?: VercelEvaluatorOptions['providerOptions']
 }
 
 interface EvaluateAnswer {
@@ -153,7 +148,7 @@ export function vercelEvaluator(options: VercelEvaluatorOptions = {}): Evaluator
           const result = yield* Effect.tryPromise({
             try: () =>
               evaluate({
-                model: args.model ?? options.model ?? TYPESAFE_JEV_MODEL,
+                model: args.model ?? options.model ?? DEFAULT_EVALUATOR_MODEL,
                 state: args.state,
                 abortSignal: abortSignalFor(timeoutMs, args.signal),
                 maxRetries: 0,
@@ -174,9 +169,4 @@ export function vercelEvaluator(options: VercelEvaluatorOptions = {}): Evaluator
         }),
       ),
   }
-}
-
-/** `vercelEvaluator` preset for the TypeSafe Jev model. */
-export function vercelJev(options: VercelJevOptions = {}): EvaluatorAdapter {
-  return vercelEvaluator({ ...options, model: TYPESAFE_JEV_MODEL })
 }
