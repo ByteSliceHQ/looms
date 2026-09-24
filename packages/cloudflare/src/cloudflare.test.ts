@@ -67,7 +67,7 @@ describe('@looms/cloudflare', () => {
   test('durableObjectAlarms preserves an earlier projector retry deadline', async () => {
     let projectorDeadline: number | null = 500
     const storage = fakeAlarmStorage(500)
-    const { scheduler } = durableObjectAlarms(storage, async () => projectorDeadline)
+    const { scheduler } = durableObjectAlarms(storage, () => Effect.sync(() => projectorDeadline))
 
     await Effect.runPromise(scheduler.schedule('run_1', 1_000))
     expect(storage.current()).toBe(500)
@@ -85,10 +85,15 @@ describe('@looms/cloudflare', () => {
     const alarms = durableObjectAlarms(storage)
 
     await Effect.runPromise(alarms.scheduler.schedule('run_1', 1_000))
-    await Promise.all([alarms.scheduleAtEarliest(2_000), alarms.scheduleAtEarliest(500)])
+
+    await Promise.all([
+      Effect.runPromise(alarms.scheduleAtEarliest(2_000)),
+      Effect.runPromise(alarms.scheduleAtEarliest(500)),
+    ])
+
     expect(storage.current()).toBe(500)
 
-    await alarms.scheduleAtEarliest(3_000)
+    await Effect.runPromise(alarms.scheduleAtEarliest(3_000))
     expect(storage.current()).toBe(1_000)
   })
 
@@ -96,10 +101,14 @@ describe('@looms/cloudflare', () => {
     const storage = fakeAlarmStorage(2_000)
     const alarms = durableObjectAlarms(storage)
 
-    await Promise.all([alarms.scheduleAtEarliest(500), alarms.scheduleAtEarliest(1_000)])
+    await Promise.all([
+      Effect.runPromise(alarms.scheduleAtEarliest(500)),
+      Effect.runPromise(alarms.scheduleAtEarliest(1_000)),
+    ])
+
     expect(storage.current()).toBe(500)
 
-    await alarms.scheduleAtEarliest(3_000)
+    await Effect.runPromise(alarms.scheduleAtEarliest(3_000))
     expect(storage.current()).toBe(500)
   })
 

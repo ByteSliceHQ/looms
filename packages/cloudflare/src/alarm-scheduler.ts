@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Semaphore } from 'effect'
 
 import type { WakeScheduler } from '@looms/runtime'
 
@@ -12,7 +12,7 @@ export interface DurableObjectAlarms {
   /** Wake scheduler for the runtime; its deadline is remembered across rearms. */
   readonly scheduler: WakeScheduler
   /** Ensures the alarm fires no later than `at` without forgetting the runtime deadline. */
-  readonly scheduleAtEarliest: (at: number) => Promise<void>
+  readonly scheduleAtEarliest: (at: number) => Effect.Effect<void>
 }
 
 function earliest(...deadlines: readonly (number | null | undefined)[]): number | null {
@@ -30,49 +30,51 @@ function earliest(...deadlines: readonly (number | null | undefined)[]): number 
  */
 export function durableObjectAlarms(
   storage: AlarmStorage,
-  additionalDeadline?: () => Promise<number | null>,
+  additionalDeadline?: () => Effect.Effect<number | null>,
 ): DurableObjectAlarms {
   // `undefined` until the runtime reports a deadline; until then an existing alarm is preserved.
   let runtimeDeadline: number | null | undefined
-  let writes: Promise<void> = Promise.resolve()
+  const writes = Semaphore.makeUnsafe(1)
 
-  const rearm = (requested: number | null): Promise<void> => {
-    const write = writes
-      .catch(() => undefined)
-      .then(() =>
-        Promise.all([
-          additionalDeadline?.() ?? Promise.resolve(null),
-          storage.getAlarm?.() ?? Promise.resolve(null),
-        ]),
-      )
-      .then(([additional, current]) => {
+  const rearm = (requested: number | null): Effect.Effect<void> =>
+    Semaphore.withPermits(
+      writes,
+      1,
+      Effect.gen(function* () {
+        const [additional, current] = yield* Effect.all(
+          [
+            additionalDeadline?.() ?? Effect.succeed(null),
+            Effect.promise(() => storage.getAlarm?.() ?? Promise.resolve(null)),
+          ],
+          { concurrency: 'unbounded' },
+        )
+
         const preserved = runtimeDeadline === undefined ? current : null
         const desired = earliest(runtimeDeadline, additional, requested, preserved)
 
         if (desired === current) {
-          return undefined
+          return
         }
 
-        return desired === null ? storage.deleteAlarm() : storage.setAlarm(desired)
-      })
-
-    writes = write
-    return write
-  }
+        yield* Effect.promise(() =>
+          desired === null ? storage.deleteAlarm() : storage.setAlarm(desired),
+        )
+      }),
+    )
 
   return {
     scheduler: {
       schedule: (_runId, at) =>
-        Effect.promise(() => {
+        Effect.suspend(() => {
           runtimeDeadline = at
           return rearm(null)
         }),
       cancel: () =>
-        Effect.promise(() => {
+        Effect.suspend(() => {
           runtimeDeadline = null
           return rearm(null)
         }),
     },
-    scheduleAtEarliest: (at) => rearm(at),
+    scheduleAtEarliest: rearm,
   }
 }

@@ -1,3 +1,5 @@
+import type { Effect } from 'effect'
+
 import type { EventStore } from '@looms/core'
 import { sqliteEventStore, sqlStorageExec } from '@looms/core/sqlite-store'
 import {
@@ -10,7 +12,7 @@ import {
 
 export interface DurableObjectStoreOptions {
   readonly projectors?: readonly Projector[]
-  readonly scheduleProjectorRetry?: (at: number) => Promise<void>
+  readonly scheduleProjectorRetry?: (at: number) => Effect.Effect<void>
 }
 
 export interface DurableObjectEventStore extends EventStore {
