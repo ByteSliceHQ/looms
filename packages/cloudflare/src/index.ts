@@ -1,4 +1,4 @@
-export { alarmScheduler, scheduleAlarmAtEarliest, type AlarmStorage } from './alarm-scheduler'
+export { durableObjectAlarms, type AlarmStorage, type DurableObjectAlarms } from './alarm-scheduler'
 export {
   durableObjectEventStore,
   type DurableObjectEventStore,

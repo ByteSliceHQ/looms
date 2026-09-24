@@ -101,8 +101,8 @@ function objectPayload(event: EventEnvelope): { [key: string]: JsonValue } {
   return Predicate.isObject(event.payload) ? event.payload : {}
 }
 
-function submittedMessage(event: EventEnvelope): AgentSessionMessage | null {
-  const payload = objectPayload(event)
+function messageFrom(value: JsonValue | undefined): AgentSessionMessage | null {
+  const payload = Predicate.isObject(value) ? value : {}
   return Predicate.isString(payload.messageId) && Predicate.isString(payload.text)
     ? {
         messageId: payload.messageId,
@@ -182,7 +182,7 @@ export function createAgentSessionThread(
     step(state, event) {
       switch (event.type) {
         case 'runtime.thread.started': {
-          const initial = submittedMessage(event)
+          const initial = messageFrom(objectPayload(event).input)
           const idleDeadlineAt = state.idleTimeoutMs > 0 ? event.ts + state.idleTimeoutMs : null
 
           if (!initial || state.processedMessageIds.includes(initial.messageId)) {
@@ -198,8 +198,8 @@ export function createAgentSessionThread(
         }
 
         case 'agent.session.message.submitted': {
-          const message = submittedMessage(event)
           const payload = objectPayload(event)
+          const message = messageFrom(payload)
 
           if (!message || state.processedMessageIds.includes(message.messageId)) {
             return state
@@ -375,35 +375,38 @@ export function createAgentSessionThread(
       }
 
       if (state.activeTurn) {
-        if (state.cancelling) {
-          effects.push(cancel(state.activeTurn.childThreadId))
-        } else {
-          const definition = definitions.get(`${state.definitionName}@${state.definitionVersion}`)
+        const { childThreadId: turnThreadId, messageId, text } = state.activeTurn
+        const definition = definitions.get(`${state.definitionName}@${state.definitionVersion}`)
 
-          if (definition) {
-            effects.push(
-              spawn({
-                childThreadId: state.activeTurn.childThreadId,
-                kind: 'agent',
-                definitionName: definition.agent.name,
-                definitionVersion: definition.agent.version,
-                input: { text: state.activeTurn.text },
-              }),
-              wait({
-                waitId: createWaitId(ctx.threadId, `turn_${state.activeTurn.messageId}`),
-                on: {
-                  type: [
-                    'runtime.thread.completed',
-                    'runtime.thread.failed',
-                    'runtime.thread.cancelled',
-                  ],
-                  match: { threadId: state.activeTurn.childThreadId },
-                },
-                tag: { kind: 'agent-session-turn', messageId: state.activeTurn.messageId },
-              }),
-            )
-          }
+        if (state.cancelling) {
+          effects.push(cancel(turnThreadId))
+        } else if (definition) {
+          effects.push(
+            spawn({
+              childThreadId: turnThreadId,
+              kind: 'agent',
+              definitionName: definition.agent.name,
+              definitionVersion: definition.agent.version,
+              input: { text },
+            }),
+          )
         }
+
+        // The turn wait must survive cancellation: the child's cancelled event is what closes it.
+        effects.push(
+          wait({
+            waitId: createWaitId(ctx.threadId, `turn_${messageId}`),
+            on: {
+              type: [
+                'runtime.thread.completed',
+                'runtime.thread.failed',
+                'runtime.thread.cancelled',
+              ],
+              match: { threadId: turnThreadId },
+            },
+            tag: { kind: 'agent-session-turn', messageId },
+          }),
+        )
 
         return effects
       }

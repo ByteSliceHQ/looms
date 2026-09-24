@@ -64,6 +64,32 @@ describe('agent-session mailbox', () => {
     await looms.stop()
   })
 
+  test('runs the initial message supplied when the session starts', async () => {
+    const calls: string[] = []
+
+    const assistant = defineAgent({
+      name: 'initial-assistant',
+      instructions: 'answer',
+      runTurn: ({ messages }) => {
+        const text = messages.findLast((message) => message.role === 'user')?.content ?? ''
+        calls.push(text)
+        return { message: { role: 'assistant', content: text }, done: true }
+      },
+    })
+
+    const session = defineAgentSession({ name: 'initial-session', agent: assistant })
+    const looms = createLooms({ modules: [agent({ definitions: [assistant, session] })] })
+    const started = await looms.start(session, { messageId: 'boot', text: 'hello' })
+
+    await waitFor(() => calls.length === 1)
+    await looms.wake(started.runId)
+
+    const state = await looms.getRun(started.runId)
+    expect(calls).toEqual(['hello'])
+    expect(JSON.stringify(state.threads[started.threadId]?.state)).toContain('"activeTurn":null')
+    await looms.stop()
+  })
+
   test('holds nextTurn context until another message fires a turn', async () => {
     const calls: string[] = []
 

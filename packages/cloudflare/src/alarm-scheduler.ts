@@ -8,50 +8,71 @@ export interface AlarmStorage {
   getAlarm?(): Promise<number | null>
 }
 
-const scheduling = new WeakMap<object, Promise<void>>()
+export interface DurableObjectAlarms {
+  /** Wake scheduler for the runtime; its deadline is remembered across rearms. */
+  readonly scheduler: WakeScheduler
+  /** Ensures the alarm fires no later than `at` without forgetting the runtime deadline. */
+  readonly scheduleAtEarliest: (at: number) => Promise<void>
+}
 
-export function scheduleAlarmAtEarliest(storage: AlarmStorage, at: number): Promise<void> {
-  const previous = scheduling.get(storage) ?? Promise.resolve()
+function earliest(...deadlines: readonly (number | null | undefined)[]): number | null {
+  const known = deadlines.filter(
+    (deadline): deadline is number => deadline !== null && deadline !== undefined,
+  )
 
-  const current = previous
-    .catch(() => undefined)
-    .then(() => storage.getAlarm?.() ?? undefined)
-    .then((scheduled) =>
-      scheduled === undefined || scheduled === null || at < scheduled
-        ? storage.setAlarm(at)
-        : undefined,
-    )
-    .finally(() => {
-      if (scheduling.get(storage) === current) {
-        scheduling.delete(storage)
-      }
-    })
-
-  scheduling.set(storage, current)
-  return current
+  return known.length === 0 ? null : Math.min(...known)
 }
 
 /**
- * Adapter that maps actor wake timer scheduling to Cloudflare Durable Object alarms.
- * `additionalDeadline` preserves non-runtime work (such as projector retries)
- * when the runtime schedules or cancels its own timer.
+ * The single owner of a Durable Object's one alarm. Every write is serialized and sets the alarm to
+ * the earliest of the runtime deadline, `additionalDeadline` (such as projector retries), and the
+ * requested time, so concurrent writers cannot overwrite each other's deadlines.
  */
-export function alarmScheduler(
+export function durableObjectAlarms(
   storage: AlarmStorage,
   additionalDeadline?: () => Promise<number | null>,
-): WakeScheduler {
+): DurableObjectAlarms {
+  // `undefined` until the runtime reports a deadline; until then an existing alarm is preserved.
+  let runtimeDeadline: number | null | undefined
+  let writes: Promise<void> = Promise.resolve()
+
+  const rearm = (requested: number | null): Promise<void> => {
+    const write = writes
+      .catch(() => undefined)
+      .then(() =>
+        Promise.all([
+          additionalDeadline?.() ?? Promise.resolve(null),
+          storage.getAlarm?.() ?? Promise.resolve(null),
+        ]),
+      )
+      .then(([additional, current]) => {
+        const preserved = runtimeDeadline === undefined ? current : null
+        const desired = earliest(runtimeDeadline, additional, requested, preserved)
+
+        if (desired === current) {
+          return undefined
+        }
+
+        return desired === null ? storage.deleteAlarm() : storage.setAlarm(desired)
+      })
+
+    writes = write
+    return write
+  }
+
   return {
-    schedule: (_runId, at) =>
-      Effect.promise(() =>
-        (additionalDeadline?.() ?? Promise.resolve(null)).then((additional) =>
-          storage.setAlarm(additional === null ? at : Math.min(at, additional)),
-        ),
-      ),
-    cancel: () =>
-      Effect.promise(() =>
-        (additionalDeadline?.() ?? Promise.resolve(null)).then((additional) =>
-          additional === null ? storage.deleteAlarm() : storage.setAlarm(additional),
-        ),
-      ),
+    scheduler: {
+      schedule: (_runId, at) =>
+        Effect.promise(() => {
+          runtimeDeadline = at
+          return rearm(null)
+        }),
+      cancel: () =>
+        Effect.promise(() => {
+          runtimeDeadline = null
+          return rearm(null)
+        }),
+    },
+    scheduleAtEarliest: (at) => rearm(at),
   }
 }
