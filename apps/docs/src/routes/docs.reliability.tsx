@@ -63,10 +63,11 @@ function Page() {
       </h2>
       <p>
         Effect retry policies count total attempts: maxAttempts: 3 means one initial attempt and up
-        to two retries. Choose backoff and provider timeouts. A thrown error or failed Effect can
-        trigger retries; classify permanent failures in application code. Exhaustion records
-        runtime.effect.failed. Test what the owning thread does with that event rather than assuming
-        every kind reacts identically.
+        to two retries. Attempt starts and retry deadlines are recorded before the runtime waits, so
+        a restart preserves the retry budget and backoff. Configure start, heartbeat, and execution
+        timeouts for work delivered to external workers. Worker callbacks include the effect ID and
+        attempt number; stale callbacks cannot complete a newer attempt. Exhaustion records{' '}
+        <code>runtime.effect.failed</code>.
       </p>
       <h2 id="signals-and-webhook-delivery">
         Signals and webhook delivery
@@ -118,10 +119,10 @@ function Page() {
         trimAfterSnapshot.
       </p>
       <p>
-        Projectors run after local commit. Their failures do not roll back the execution log. Do not
-        assume an external index or webhook has caught up just because a run succeeded. Track
-        downstream progress and test how to rebuild missing index entries or reconcile external
-        state.
+        Projectors run after local commit. Durable delivery stores a cursor per projector name and
+        version, retries without advancing that cursor, and dead-letters exhausted batches. A run
+        can finish before an external index or webhook catches up, so monitor lag and keep projector
+        writes idempotent.
       </p>
       <h2 id="verify-your-boundary">
         Test recovery

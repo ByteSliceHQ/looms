@@ -13,9 +13,9 @@ function Page() {
       <h1>Changing deployed code</h1>
 
       <p>
-        A run may outlive the code that started it. Recovery uses the definitions and reducers
-        installed on the host when it resumes. Looms does not automatically pin a historical code
-        bundle for each run.
+        A run records the exact version of every definition it starts. Recovery resolves that
+        version, so the host must keep its implementation registered while the run can still wake.
+        Looms does not store the historical code bundle for you.
       </p>
       <p>
         This durability contract is separate from the SemVer version of <code>@swirls/looms</code>.
@@ -33,10 +33,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Use stable versioned names, such as release-v1 and release-v2, for behavior that cannot
-        safely change in place. Register both while old runs remain active, and start new runs with
-        v2. Keep child definition names and module event contracts compatible as well; changing the
-        root name alone does not version shared reducers.
+        Set the definition's <code>version</code>, and register old and new versions together.
+        Starts and child spawns persist <code>kind:name@version</code>; they never resolve to a
+        floating latest version. Keep shared reducers and event contracts compatible with both
+        versions.
       </p>
       <h2 id="evolve-events-additively">
         Evolve events additively

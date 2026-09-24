@@ -59,6 +59,12 @@ function Page() {
         A run may report running while it has a pending human review. Inspect thread state and
         pendingApprovals instead of treating one aggregate status as a complete work queue.
       </p>
+      <p>
+        <code>GET /runs/:id/status</code> returns thread, deadline, and effect execution status.
+        <code>GET /runs/:id/effects</code> narrows that view to durable effect attempts. Retry an
+        operator-reviewed effect with <code>POST /runs/:id/effects/:effectId/retry</code>; protect
+        mutation-capable operations with <code>operationsToken</code>.
+      </p>
       <h2 id="cancellation-and-intervention">
         Cancellation and intervention
         <a
@@ -83,9 +89,14 @@ function Page() {
       </h2>
       <p>
         Correlate logs by runId, threadId, effectId, and sequence. Track failed effects, oldest
-        pending approvals, wake latency, provider errors, stream reconnects, and projector lag.
-        Export metrics through your host's observability stack. Do not log secrets or use estimated
-        token usage as an invoice.
+        pending approvals, retry deadlines, ambiguous external outcomes, wake latency, provider
+        errors, stream reconnects, and projector lag. Export metrics through your host's
+        observability stack. Do not log secrets or use estimated token usage as an invoice.
+      </p>
+      <p>
+        After restoring storage or changing alarm infrastructure, call{' '}
+        <code>POST /operations/deadlines/rescan</code> to rebuild timer, effect retry, and timeout
+        scheduling from the log.
       </p>
       <h2 id="backups-and-retention">
         Backups and retention

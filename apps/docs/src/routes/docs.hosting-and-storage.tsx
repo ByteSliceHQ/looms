@@ -51,6 +51,12 @@ mkdir cloudflare`}</CodeBlock>
         authorization. Disabling public URLs does not implement tenant authorization inside your
         application.
       </p>
+      <p>
+        Set <code>maxPendingRunOperations</code> in <code>configure()</code> to bound queued work
+        for a hot run. The object rejects excess operations instead of growing an unbounded
+        in-memory queue. <code>maxWakeIterations</code> bounds one wake cycle; alarms resume work
+        that remains.
+      </p>
       <CodeBlock lang="bash">{`npx wrangler types --config cloudflare/wrangler.jsonc cloudflare/worker-configuration.d.ts
 npx wrangler dev --config cloudflare/wrangler.jsonc --port 8791`}</CodeBlock>
       <p>
