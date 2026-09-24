@@ -15,7 +15,12 @@ export function demoModules(
   return [
     agent({
       llm: options.llm ?? demoLlm,
-      definitions: [...definitions.filter((d) => d.kind === 'agent'), ...(options.agents ?? [])],
+      definitions: [
+        ...definitions.filter(
+          (definition) => definition.kind === 'agent' || definition.kind === 'agent-session',
+        ),
+        ...(options.agents ?? []),
+      ],
     }),
     workflow({ definitions: definitions.filter((d) => d.kind === 'workflow') }),
     approval(),

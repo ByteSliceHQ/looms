@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Predicate, Schema } from 'effect'
 
 import { approvalModule } from './scope'
 
@@ -49,7 +49,9 @@ export const pendingApprovals = approvalModule.projection({
         const status = outcome === 'reject' ? 'rejected' : 'approved'
         return {
           items: state.items.map((item) =>
-            item.approvalId === approvalId ? ({ ...item, status } satisfies PendingApproval) : item,
+            item.approvalId === approvalId && item.status === 'pending'
+              ? ({ ...item, status } satisfies PendingApproval)
+              : item,
           ),
         }
       }
@@ -58,7 +60,27 @@ export const pendingApprovals = approvalModule.projection({
         const { approvalId } = event.payload
         return {
           items: state.items.map((item) =>
-            item.approvalId === approvalId
+            item.approvalId === approvalId && item.status === 'pending'
+              ? ({ ...item, status: 'timed_out' } satisfies PendingApproval)
+              : item,
+          ),
+        }
+      }
+
+      case 'runtime.wait.satisfied': {
+        const tag = event.payload.tag
+
+        if (
+          !Predicate.isObject(tag) ||
+          !Predicate.isString(tag.approvalId) ||
+          tag.outcome !== 'timeout'
+        ) {
+          return state
+        }
+
+        return {
+          items: state.items.map((item) =>
+            item.approvalId === tag.approvalId && item.status === 'pending'
               ? ({ ...item, status: 'timed_out' } satisfies PendingApproval)
               : item,
           ),

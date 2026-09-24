@@ -1,7 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
 
-import type { JsonValue, RuntimeEffect, SchemaInput } from '@looms/core'
+import {
+  DEFAULT_DEFINITION_VERSION,
+  type JsonValue,
+  type RuntimeEffect,
+  type SchemaInput,
+} from '@looms/core'
 
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
@@ -33,7 +38,8 @@ export interface ThreadTool {
   readonly inputSchema?: JsonValue
   readonly childKind: string
   readonly childName: string
-  readonly child: { kind: string; name: string }
+  readonly childVersion: string
+  readonly child: { kind: string; name: string; version?: string }
   mapInput?(input: JsonValue): JsonValue
 }
 
@@ -54,6 +60,7 @@ export type AgentToolEntry =
   | {
       kind: string
       name: string
+      version?: string
       instructions?: string
       description?: string
       input?: SchemaInput
@@ -66,6 +73,7 @@ export interface AgentTurnContext<TInput = JsonValue> {
   readonly input: TInput
   readonly tools: ToolLike[]
   readonly instructions: string
+  readonly signal?: AbortSignal
 }
 
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {
@@ -83,6 +91,7 @@ export interface AgentDefinition<
 > {
   readonly kind: 'agent'
   readonly name: TName
+  readonly version: string
   readonly model?: string
   readonly instructions: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
@@ -96,6 +105,35 @@ export interface AgentDefinition<
 }
 
 export type AnyAgentDefinition = AgentDefinition
+
+export interface AgentSessionDefinition<TName extends string = string> {
+  readonly kind: 'agent-session'
+  readonly name: TName
+  readonly version: string
+  /** The agent definition is pinned when the session definition is created. */
+  readonly agent: Pick<AgentDefinition, 'kind' | 'name' | 'version'>
+  /** Max idle milliseconds before parking. Zero waits indefinitely. */
+  readonly idleTimeoutMs: number
+}
+
+export function defineAgentSession<TName extends string>(def: {
+  readonly name: TName
+  readonly agent: Pick<AgentDefinition, 'kind' | 'name' | 'version'>
+  readonly version?: string
+  readonly idleTimeoutMs?: number
+}): AgentSessionDefinition<TName> {
+  return {
+    kind: 'agent-session',
+    name: def.name,
+    version: def.version ?? DEFAULT_DEFINITION_VERSION,
+    agent: {
+      kind: 'agent',
+      name: def.agent.name,
+      version: def.agent.version,
+    },
+    idleTimeoutMs: Math.max(0, def.idleTimeoutMs ?? 0),
+  }
+}
 
 export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolLike[] {
   return tools.map((entry) => {
@@ -137,13 +175,15 @@ export function defineAgent<
   TInput = JsonValue,
   TOutput extends JsonValue = JsonValue,
 >(
-  def: Omit<AgentDefinition<TName, TInput, TOutput>, 'kind' | 'tools'> & {
+  def: Omit<AgentDefinition<TName, TInput, TOutput>, 'kind' | 'version' | 'tools'> & {
+    readonly version?: string
     readonly tools?: AgentToolEntry[]
   },
 ): AgentDefinition<TName, TInput, TOutput> {
   return {
     kind: 'agent',
     ...def,
+    version: def.version ?? DEFAULT_DEFINITION_VERSION,
     tools: def.tools ? normalizeTools(def.tools) : undefined,
   }
 }
@@ -153,7 +193,7 @@ export function asThreadTool(def: {
   description?: string
   input?: SchemaInput
   inputSchema?: JsonValue
-  child: { kind: string; name: string }
+  child: { kind: string; name: string; version?: string }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
   return {
@@ -164,6 +204,7 @@ export function asThreadTool(def: {
     inputSchema: def.inputSchema,
     childKind: def.child.kind,
     childName: def.child.name,
+    childVersion: def.child.version ?? DEFAULT_DEFINITION_VERSION,
     child: def.child,
     mapInput: def.mapInput,
   }
@@ -177,6 +218,7 @@ export function asAgentTool(def: {
   agent: {
     kind: 'agent'
     name: string
+    version?: string
     instructions?: string
     input?: SchemaInput
     inputSchema?: JsonValue
@@ -188,7 +230,7 @@ export function asAgentTool(def: {
     description: def.description ?? def.agent.instructions,
     input: def.input ?? def.agent.input,
     inputSchema: def.inputSchema ?? def.agent.inputSchema,
-    child: { kind: 'agent', name: def.agent.name },
+    child: { kind: 'agent', name: def.agent.name, version: def.agent.version },
     mapInput: def.mapInput,
   })
 }
@@ -201,6 +243,7 @@ export function asWorkflowTool(def: {
   workflow: {
     kind: 'workflow'
     name: string
+    version?: string
     description?: string
     input?: SchemaInput
     inputSchema?: JsonValue
@@ -212,7 +255,7 @@ export function asWorkflowTool(def: {
     description: def.description ?? def.workflow.description,
     input: def.input ?? def.workflow.input,
     inputSchema: def.inputSchema ?? def.workflow.inputSchema,
-    child: { kind: 'workflow', name: def.workflow.name },
+    child: { kind: 'workflow', name: def.workflow.name, version: def.workflow.version },
     mapInput: def.mapInput,
   })
 }

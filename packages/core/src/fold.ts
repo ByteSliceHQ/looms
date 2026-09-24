@@ -466,13 +466,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
   }
 }
 
-function deriveEffectId(
-  threadId: string,
-  causingSeq: number,
-  index: number,
-  effect: RuntimeEffect,
-  existingId?: string,
-): string {
+/** The id an effect keeps across folds when it names itself by tag, wait id, or child thread. */
+export function stableEffectId(threadId: string, effect: RuntimeEffect): string | undefined {
   if ('tag' in effect && Predicate.isString(effect.tag)) {
     return createEffectId(threadId, effect.tag)
   }
@@ -485,11 +480,7 @@ function deriveEffectId(
     return createEffectId(threadId, `spawn_${effect.childThreadId}`)
   }
 
-  if (existingId) {
-    return existingId
-  }
-
-  return createEffectId(threadId, causingSeq, index)
+  return undefined
 }
 
 function mapEffects(
@@ -502,24 +493,14 @@ function mapEffects(
   const remainingExisting = [...existingForThread]
   return effects
     .map((effect, index) => {
-      const matchIndex = remainingExisting.findIndex((item) => {
-        if ('tag' in effect && Predicate.isString(effect.tag)) {
-          return item.effectId === createEffectId(threadId, effect.tag)
-        }
+      const stableId = stableEffectId(threadId, effect)
 
-        if ('waitId' in effect && Predicate.isString(effect.waitId)) {
-          return item.effectId === createEffectId(threadId, effect.waitId)
-        }
-
-        if ('childThreadId' in effect && Predicate.isString(effect.childThreadId)) {
-          return item.effectId === createEffectId(threadId, `spawn_${effect.childThreadId}`)
-        }
-
-        return item.effect.type === effect.type
-      })
+      const matchIndex = remainingExisting.findIndex((item) =>
+        stableId === undefined ? item.effect.type === effect.type : item.effectId === stableId,
+      )
 
       const existing = matchIndex >= 0 ? remainingExisting.splice(matchIndex, 1)[0] : undefined
-      const effectId = deriveEffectId(threadId, event.seq, index, effect, existing?.effectId)
+      const effectId = stableId ?? existing?.effectId ?? createEffectId(threadId, event.seq, index)
       return (
         existing ?? {
           effectId,

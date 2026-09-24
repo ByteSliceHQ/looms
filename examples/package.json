@@ -7,11 +7,12 @@
   "type": "module",
   "scripts": {
     "echo-agent": "bun run echo-agent.ts",
+    "agent-session": "bun run agent-session.ts",
     "workflow": "bun run workflow.ts",
     "approval": "bun run approval.ts",
     "custom-module": "bun run custom-module.ts",
     "custom-thread": "bun run custom-thread.ts",
-    "all": "bun run echo-agent && bun run workflow && bun run approval && bun run custom-module && bun run custom-thread",
+    "all": "bun run echo-agent && bun run agent-session && bun run workflow && bun run approval && bun run custom-module && bun run custom-thread",
     "check-types": "bun x tsc -p tsconfig.json --noEmit && bun run cloudflare:types && bun x tsc -p cloudflare/tsconfig.json",
     "test": "bun test",
     "durable-review": "bun durable-review.ts",

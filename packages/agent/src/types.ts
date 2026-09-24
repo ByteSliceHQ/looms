@@ -1,6 +1,11 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import type { EventInput, JsonValue, RuntimeEffect } from '@looms/core'
+import {
+  DEFAULT_DEFINITION_VERSION,
+  type EventInput,
+  type JsonValue,
+  type RuntimeEffect,
+} from '@looms/core'
 
 export const ToolCallSchema = Schema.Struct({
   id: Schema.String,
@@ -39,6 +44,9 @@ export type TokenUsage = Schema.Schema.Type<typeof TokenUsageSchema>
 
 export const ThreadStartedPayloadSchema = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+  ),
   input: Schema.optional(Schema.Unknown),
 })
 
@@ -51,6 +59,7 @@ export interface AgentPendingSpawn {
   readonly childThreadId: string
   readonly kind: string
   readonly definitionName: string
+  readonly definitionVersion: string
   readonly toolCallId: string
   readonly input: JsonValue
 }
@@ -68,6 +77,7 @@ export interface AgentPendingEmit {
 
 export interface AgentState {
   definitionName?: string
+  definitionVersion?: string
   lines: Message[]
   pendingToolCalls: ToolCall[]
   executingToolCalls: ToolCall[]
@@ -81,4 +91,53 @@ export interface AgentState {
   input: JsonValue
   output: JsonValue | null
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
+  consumedSteerMessageIds: string[]
+}
+
+export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'
+export type AgentSessionTurnStatus = 'completed' | 'failed' | 'cancelled'
+
+export interface AgentSessionMessage {
+  readonly messageId: string
+  readonly text: string
+  readonly delivery?: AgentMessageDelivery
+  readonly steeredIntoMessageId?: string
+}
+
+export interface AgentSessionActiveTurn {
+  readonly messageId: string
+  readonly childThreadId: string
+  readonly text: string
+}
+
+export interface AgentSessionClosure {
+  readonly messageId: string
+  readonly status: AgentSessionTurnStatus
+  readonly error?: string
+}
+
+export interface AgentSessionState {
+  readonly definitionName: string
+  readonly definitionVersion: string
+  readonly pendingMessages: AgentSessionMessage[]
+  readonly nextTurnMessages: AgentSessionMessage[]
+  readonly processedMessageIds: string[]
+  readonly activeTurn: AgentSessionActiveTurn | null
+  readonly pendingSteerDeliveries: AgentSessionMessage[]
+  readonly pendingClosures: AgentSessionClosure[]
+  readonly lastSequence: number
+  readonly idleTimeoutMs: number
+  readonly idleDeadlineAt: number | null
+  readonly parked: boolean
+  readonly cancelling: boolean
+}
+
+export interface AgentSessionSnapshot {
+  readonly activeTurnId: string | null
+  readonly activeChildThreadId: string | null
+  readonly pendingMessageCount: number
+  readonly nextTurnHeldCount: number
+  readonly processedMessageIds: readonly string[]
+  readonly lastSequence: number
+  readonly parked: boolean
 }

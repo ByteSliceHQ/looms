@@ -1,9 +1,11 @@
 import { Context, Layer } from 'effect'
 
+import { definitionKey } from '@looms/core'
+
 import type { AgentDefinition } from './definitions'
 
 export interface AgentDefinitionStore {
-  get(name: string): AgentDefinition | undefined
+  get(name: string, version: string): AgentDefinition | undefined
 }
 
 export class AgentDefinitionsTag extends Context.Service<
@@ -14,9 +16,12 @@ export class AgentDefinitionsTag extends Context.Service<
 export function makeAgentDefinitionStore(
   definitions: ReadonlyArray<AgentDefinition>,
 ): AgentDefinitionStore {
-  const map = new Map(definitions.map((def) => [def.name, def]))
+  const map = new Map(
+    definitions.map((def) => [definitionKey(def.kind, def.name, def.version), def]),
+  )
+
   return {
-    get: (name) => map.get(name),
+    get: (name, version) => map.get(definitionKey('agent', name, version)),
   }
 }
 

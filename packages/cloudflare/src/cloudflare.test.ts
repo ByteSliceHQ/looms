@@ -23,7 +23,7 @@ void mock.module('cloudflare:workers', () => ({
 }))
 
 const { LoomsDurableObject } = await import('./durable-object')
-const { alarmScheduler } = await import('./alarm-scheduler')
+const { durableObjectAlarms } = await import('./alarm-scheduler')
 const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
 import type { LoomsDurableObjectConfig } from './durable-object'
@@ -37,36 +37,70 @@ const decodeRunResponse = Schema.decodeUnknownSync(
   }),
 )
 
+function fakeAlarmStorage(initial: number | null): AlarmStorage & { current(): number | null } {
+  let alarm = initial
+
+  return {
+    current: () => alarm,
+    getAlarm: async () => alarm,
+    setAlarm: async (at) => {
+      alarm = at instanceof Date ? +at : at
+    },
+    deleteAlarm: async () => {
+      alarm = null
+    },
+  }
+}
+
 describe('@looms/cloudflare', () => {
-  test('alarmScheduler schedules and deletes alarms', () => {
-    let currentAlarm: number | null = null
+  test('durableObjectAlarms schedules and deletes the runtime alarm', async () => {
+    const storage = fakeAlarmStorage(null)
+    const { scheduler } = durableObjectAlarms(storage)
 
-    const fakeStorage: AlarmStorage = {
-      setAlarm: (at) =>
-        Effect.runPromise(
-          Effect.sync(() => {
-            currentAlarm = at instanceof Date ? +at : at
-          }),
-        ),
-      deleteAlarm: () =>
-        Effect.runPromise(
-          Effect.sync(() => {
-            currentAlarm = null
-          }),
-        ),
-    }
+    await Effect.runPromise(scheduler.schedule('run_1', 1234567890))
+    expect(storage.current()).toBe(1234567890)
 
-    const scheduler = alarmScheduler(fakeStorage)
+    await Effect.runPromise(scheduler.cancel('run_1'))
+    expect(storage.current()).toBeNull()
+  })
 
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        yield* scheduler.schedule('run_1', 1234567890)
-        expect(currentAlarm).toBe(1234567890)
+  test('durableObjectAlarms preserves an earlier projector retry deadline', async () => {
+    let projectorDeadline: number | null = 500
+    const storage = fakeAlarmStorage(500)
+    const { scheduler } = durableObjectAlarms(storage, async () => projectorDeadline)
 
-        yield* scheduler.cancel('run_1')
-        expect(currentAlarm).toBeNull()
-      }),
-    )
+    await Effect.runPromise(scheduler.schedule('run_1', 1_000))
+    expect(storage.current()).toBe(500)
+
+    await Effect.runPromise(scheduler.cancel('run_1'))
+    expect(storage.current()).toBe(500)
+
+    projectorDeadline = null
+    await Effect.runPromise(scheduler.cancel('run_1'))
+    expect(storage.current()).toBeNull()
+  })
+
+  test('durableObjectAlarms keeps the runtime deadline when a retry is requested', async () => {
+    const storage = fakeAlarmStorage(null)
+    const alarms = durableObjectAlarms(storage)
+
+    await Effect.runPromise(alarms.scheduler.schedule('run_1', 1_000))
+    await Promise.all([alarms.scheduleAtEarliest(2_000), alarms.scheduleAtEarliest(500)])
+    expect(storage.current()).toBe(500)
+
+    await alarms.scheduleAtEarliest(3_000)
+    expect(storage.current()).toBe(1_000)
+  })
+
+  test('durableObjectAlarms keeps an existing earlier alarm until the runtime reports', async () => {
+    const storage = fakeAlarmStorage(2_000)
+    const alarms = durableObjectAlarms(storage)
+
+    await Promise.all([alarms.scheduleAtEarliest(500), alarms.scheduleAtEarliest(1_000)])
+    expect(storage.current()).toBe(500)
+
+    await alarms.scheduleAtEarliest(3_000)
+    expect(storage.current()).toBe(500)
   })
 
   test('routeToDurableObject handles health and rejects global runs listing', async () => {

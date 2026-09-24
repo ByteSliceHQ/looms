@@ -1,6 +1,12 @@
 import { Data, Effect } from 'effect'
 
-import type { AnyRuntimeModule, EventStore, RunState, SnapshotStore } from '@looms/core'
+import type {
+  AnyRuntimeModule,
+  EventStore,
+  EventStoreTrimCoverage,
+  RunState,
+  SnapshotStore,
+} from '@looms/core'
 import { EventStoreTag } from '@looms/core'
 import { createTimeoutScheduler, isLoomsApiPath } from '@looms/runtime'
 
@@ -43,7 +49,10 @@ export interface LocalActorHostOptions<
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
-  readonly trimAfterSnapshot?: { keepSnapshots: number }
+  readonly trimAfterSnapshot?: {
+    readonly keepSnapshots: number
+    readonly coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
+  }
   /**
    * After creating a cell, rescan its store for pending timers (process restart).
    * Default true. No-op for empty in-memory stores.

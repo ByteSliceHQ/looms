@@ -4,8 +4,13 @@ import { useState } from 'react'
 import { rememberRun } from '@/hooks/use-recent-runs'
 import { loomsClient } from '@/lib/looms-client'
 import { cn, compactJson } from '@/lib/utils'
-import { conversation, userMessage } from '@swirls/looms/agent'
-import { createRunId } from '@swirls/looms/core'
+import {
+  conversation,
+  sendAgentSessionMessage,
+  userMessage,
+  type AgentMessageDelivery,
+} from '@swirls/looms/agent'
+import { createEventId, createRunId, type EventInput } from '@swirls/looms/core'
 import {
   createFold,
   useEventFold,
@@ -14,10 +19,15 @@ import {
   useRunSummary,
 } from '@swirls/looms/react'
 
-import type { AgentRunType } from '../../catalog'
+import type { ChatRunType } from '../../catalog'
 import { Button } from '../ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible'
 import { Textarea } from '../ui/textarea'
+
+const agentSessionClient = {
+  getRun: (runId: string) => loomsClient.getRun(runId).then((result) => result.state),
+  signal: (runId: string, events: readonly EventInput[]) => loomsClient.signal(runId, events),
+}
 
 interface StreamingState {
   lastMessageSeq: number
@@ -168,15 +178,19 @@ function FollowUpComposer({
   onError,
   onSent,
   setPending,
+  delivery,
+  setDelivery,
 }: {
   runId: string
-  type: AgentRunType
+  type: ChatRunType
   draft: string
   pending: boolean
   setDraft: (value: string) => void
   onError: (value: string | null) => void
   onSent: () => void
   setPending: (value: boolean) => void
+  delivery: AgentMessageDelivery
+  setDelivery: (value: AgentMessageDelivery) => void
 }) {
   const store = useRunStore(runId)
   const { rootThreadId } = useRunSummary(store)
@@ -194,8 +208,15 @@ function FollowUpComposer({
     setPending(true)
     onError(null)
 
-    return store
-      .commit(userMessage(content, { threadId: rootThreadId }))
+    const commit =
+      type.kind === 'agent-session'
+        ? sendAgentSessionMessage(agentSessionClient, runId, createEventId(), content, {
+            delivery,
+            threadId: rootThreadId,
+          })
+        : store.commit(userMessage(content, { threadId: rootThreadId }))
+
+    return commit
       .then(onSent)
       .catch((cause) => {
         onError(cause instanceof Error ? cause.message : String(cause))
@@ -204,18 +225,40 @@ function FollowUpComposer({
   }
 
   return (
-    <Composer
-      draft={draft}
-      pending={pending}
-      disabled={!canFollowUp}
-      canSend={canSend}
-      placeholder={
-        canFollowUp ? type.placeholder : 'Single-turn run. Start a new run to send again.'
-      }
-      submitLabel="Send"
-      onDraft={setDraft}
-      onSubmit={() => void send()}
-    />
+    <div className="space-y-2">
+      {type.kind === 'agent-session' ? (
+        <label className="text-muted-foreground flex items-center gap-2 text-[11px]">
+          Delivery
+          <select
+            className="border-border bg-background text-foreground rounded border px-2 py-1"
+            value={delivery}
+            onChange={(event) => {
+              const value = event.target.value
+
+              if (value === 'followUp' || value === 'steer' || value === 'nextTurn') {
+                setDelivery(value)
+              }
+            }}
+          >
+            <option value="followUp">follow up</option>
+            <option value="steer">steer active turn</option>
+            <option value="nextTurn">hold for next turn</option>
+          </select>
+        </label>
+      ) : null}
+      <Composer
+        draft={draft}
+        pending={pending}
+        disabled={!canFollowUp}
+        canSend={canSend}
+        placeholder={
+          canFollowUp ? type.placeholder : 'Single-turn run. Start a new run to send again.'
+        }
+        submitLabel="Send"
+        onDraft={setDraft}
+        onSubmit={() => void send()}
+      />
+    </div>
   )
 }
 
@@ -225,7 +268,7 @@ export function AgentChat({
   onStarted,
   onReset,
 }: {
-  type: AgentRunType
+  type: ChatRunType
   runId?: string
   onStarted: (runId: string) => void
   onReset: () => void
@@ -233,6 +276,7 @@ export function AgentChat({
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [delivery, setDelivery] = useState<AgentMessageDelivery>('followUp')
 
   function start() {
     const content = draft.trim()
@@ -255,13 +299,20 @@ export function AgentChat({
     setDraft('')
     onStarted(nextRunId)
 
-    return loomsClient
-      .startRun({
-        kind: type.kind,
-        definitionName: type.def.name,
-        input: type.toInput(content),
-        runId: nextRunId,
-      })
+    const startRun = loomsClient.startRun({
+      kind: type.kind,
+      definitionName: type.def.name,
+      definitionVersion: type.def.version,
+      input: type.kind === 'agent-session' ? null : type.toInput(content),
+      runId: nextRunId,
+    })
+
+    return startRun
+      .then(() =>
+        type.kind === 'agent-session'
+          ? sendAgentSessionMessage(agentSessionClient, nextRunId, createEventId(), content)
+          : undefined,
+      )
       .catch((cause) => {
         setError(cause instanceof Error ? cause.message : String(cause))
       })
@@ -292,6 +343,8 @@ export function AgentChat({
             onError={setError}
             onSent={() => setDraft('')}
             setPending={setPending}
+            delivery={delivery}
+            setDelivery={setDelivery}
           />
         ) : (
           <Composer

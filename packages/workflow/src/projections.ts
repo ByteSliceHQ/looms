@@ -29,16 +29,27 @@ export const nodes = workflowModule.projection({
       }
 
       case 'workflow.node.finished': {
-        const { nodeId, result, error } = event.payload
+        const { nodeId, result, error, branch } = event.payload
         const failed = Predicate.isString(error) && error.length > 0
+
+        const nodeState: NodeState =
+          branch === undefined
+            ? {
+                status: failed ? 'failed' : 'completed',
+                result: result ?? null,
+                error: failed ? error : null,
+              }
+            : {
+                status: failed ? 'failed' : 'completed',
+                result: result ?? null,
+                error: failed ? error : null,
+                branch,
+              }
+
         return {
           nodes: {
             ...state.nodes,
-            [nodeId]: {
-              status: failed ? 'failed' : 'completed',
-              result: result ?? null,
-              error: failed ? error : null,
-            } satisfies NodeState,
+            [nodeId]: nodeState,
           },
         }
       }

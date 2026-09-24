@@ -3,6 +3,7 @@ import { Predicate } from 'effect'
 import {
   asJson,
   createWaitId,
+  DEFAULT_DEFINITION_VERSION,
   emit,
   invoke,
   isWithdrawnError,
@@ -74,6 +75,7 @@ export const agentThread = agentModule.thread<AgentState>({
   kind: 'agent',
   initialState: (ctx): AgentState => ({
     definitionName: ctx.definitionName,
+    definitionVersion: ctx.definitionVersion,
     lines: [],
     pendingToolCalls: [],
     executingToolCalls: [],
@@ -87,12 +89,16 @@ export const agentThread = agentModule.thread<AgentState>({
     input: ctx.input,
     output: null,
     pendingEffectTools: {},
+    consumedSteerMessageIds: [],
   }),
   step(state, event, ctx) {
     switch (event.type) {
       case 'runtime.thread.started': {
         const payload = event.payload
         const defName = payload.definitionName || state.definitionName
+
+        const defVersion =
+          payload.definitionVersion ?? state.definitionVersion ?? DEFAULT_DEFINITION_VERSION
 
         // SAFETY: event payload input is JSON
         const input = payload.input !== undefined ? payload.input : state.input
@@ -101,6 +107,7 @@ export const agentThread = agentModule.thread<AgentState>({
         return {
           ...state,
           definitionName: defName,
+          definitionVersion: defVersion,
           input,
           lines,
           needsLlmCall: true,
@@ -179,6 +186,12 @@ export const agentThread = agentModule.thread<AgentState>({
       case 'agent.steered': {
         const message = event.payload.message
         const interrupt = event.payload.interrupt ?? false
+        const messageId = event.payload.messageId
+
+        const consumedSteerMessageIds =
+          messageId && !state.consumedSteerMessageIds.includes(messageId)
+            ? [...state.consumedSteerMessageIds, messageId]
+            : state.consumedSteerMessageIds
 
         if (interrupt) {
           return {
@@ -191,6 +204,7 @@ export const agentThread = agentModule.thread<AgentState>({
             pendingEffects: [],
             pendingEmits: [],
             needsLlmCall: true,
+            consumedSteerMessageIds,
           }
         }
 
@@ -198,11 +212,14 @@ export const agentThread = agentModule.thread<AgentState>({
           ...state,
           lines: [...state.lines, message],
           pendingSteer: message,
+          consumedSteerMessageIds,
         }
       }
 
       case 'agent.spawn.requested': {
-        const { childThreadId, kind, definitionName, toolCallId, input } = event.payload
+        const { childThreadId, kind, definitionName, definitionVersion, toolCallId, input } =
+          event.payload
+
         return {
           ...state,
           executingToolCalls: state.executingToolCalls.filter((item) => item.id !== toolCallId),
@@ -212,6 +229,7 @@ export const agentThread = agentModule.thread<AgentState>({
               childThreadId,
               kind,
               definitionName,
+              definitionVersion,
               toolCallId,
               // SAFETY: schema-decoded input is JSON
               input: input ?? null,
@@ -402,8 +420,10 @@ export const agentThread = agentModule.thread<AgentState>({
           {
             turn: state.turn + 1,
             definitionName: state.definitionName,
+            definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             messages: state.lines,
             input: state.input,
+            consumedSteerMessageIds: state.consumedSteerMessageIds,
           },
           `llm_turn_${state.turn + 1}`,
         ),
@@ -417,6 +437,7 @@ export const agentThread = agentModule.thread<AgentState>({
           {
             turn: state.turn,
             definitionName: state.definitionName,
+            definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             toolCall,
           },
           `tool_${toolCall.id}`,
@@ -432,6 +453,7 @@ export const agentThread = agentModule.thread<AgentState>({
           childThreadId: spawnReq.childThreadId,
           kind: spawnReq.kind,
           definitionName: spawnReq.definitionName,
+          definitionVersion: spawnReq.definitionVersion,
           input: spawnReq.input,
         }),
         wait({

@@ -1,18 +1,22 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { createActorCell, type ActorCell } from '@looms/actor'
-import type { AnyRuntimeModule } from '@looms/core'
+import type { AnyRuntimeModule, EventStoreTrimCoverage } from '@looms/core'
 import type { Projector } from '@looms/projectors'
 
-import { alarmScheduler } from './alarm-scheduler'
-import { durableObjectEventStore } from './event-store'
+import { durableObjectAlarms } from './alarm-scheduler'
+import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
   readonly projectors?: readonly Projector[]
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
-  readonly trimAfterSnapshot?: { keepSnapshots: number }
+  readonly maxPendingRunOperations?: number
+  readonly trimAfterSnapshot?: {
+    readonly keepSnapshots: number
+    readonly coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
+  }
 }
 
 /**
@@ -22,45 +26,84 @@ export interface LoomsDurableObjectConfig {
  */
 export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<Env> {
   private cellPromise?: Promise<ActorCell>
+  private store?: DurableObjectEventStore
 
   abstract configure(env: Env): LoomsDurableObjectConfig | Promise<LoomsDurableObjectConfig>
 
   private getCell(): Promise<ActorCell> {
-    if (!this.cellPromise) {
-      this.cellPromise = Promise.resolve(this.configure(this.env)).then((config) => {
-        const runId = this.ctx.id.name
-
-        if (!runId) {
-          throw new Error(
-            'LoomsDurableObject requires a named Durable Object id (use idFromName / getByName)',
-          )
-        }
-
-        const store = durableObjectEventStore(this.ctx, { projectors: config.projectors })
-        const scheduler = alarmScheduler(this.ctx.storage)
-
-        return createActorCell({
-          runId,
-          store,
-          scheduler,
-          modules: config.modules,
-          snapshotEvery: config.snapshotEvery,
-          maxWakeIterations: config.maxWakeIterations,
-          trimAfterSnapshot: config.trimAfterSnapshot,
-        })
-      })
+    if (this.cellPromise) {
+      return this.cellPromise
     }
 
-    return this.cellPromise
+    const created = this.createCell()
+    this.cellPromise = created
+
+    // A failed setup must not be cached, or every later request and alarm would fail with it.
+    created.catch(() => {
+      if (this.cellPromise === created) {
+        this.cellPromise = undefined
+      }
+    })
+
+    return created
+  }
+
+  private createCell(): Promise<ActorCell> {
+    return Promise.resolve(this.configure(this.env)).then((config) => {
+      const runId = this.ctx.id.name
+
+      if (!runId) {
+        throw new Error(
+          'LoomsDurableObject requires a named Durable Object id (use idFromName / getByName)',
+        )
+      }
+
+      const alarms = durableObjectAlarms(
+        this.ctx.storage,
+        () => this.store?.projectorDelivery?.nextRetryAt(runId) ?? Promise.resolve(null),
+      )
+
+      const store = durableObjectEventStore(this.ctx, {
+        projectors: config.projectors,
+        scheduleProjectorRetry: alarms.scheduleAtEarliest,
+      })
+
+      this.store = store
+
+      const cell = createActorCell({
+        runId,
+        store,
+        scheduler: alarms.scheduler,
+        modules: config.modules,
+        snapshotEvery: config.snapshotEvery,
+        maxWakeIterations: config.maxWakeIterations,
+        maxPendingRunOperations: config.maxPendingRunOperations,
+        trimAfterSnapshot: config.trimAfterSnapshot,
+      })
+
+      const delivery = store.projectorDelivery
+      const recoverProjectors = delivery?.recover(runId) ?? Promise.resolve(0)
+
+      return recoverProjectors
+        .then(() => delivery?.deliver(runId))
+        .then(() => cell.recoverWake())
+        .then(() => cell)
+    })
   }
 
   override fetch(req: Request): Promise<Response> {
     return this.getCell().then((cell) => cell.fetch(req))
   }
 
+  /** A rejected alarm is retried by the platform with backoff, so failures just propagate. */
   override alarm(): Promise<void> {
     return this.getCell()
-      .then((cell) => cell.wake())
+      .then((cell) => {
+        const delivery =
+          this.store?.projectorDelivery?.deliver(this.ctx.id.name ?? '') ?? Promise.resolve()
+
+        return delivery.then(() => cell.wake())
+      })
       .then(() => undefined)
   }
 }

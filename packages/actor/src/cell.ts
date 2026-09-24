@@ -4,6 +4,7 @@ import {
   EventStoreTag,
   type AnyRuntimeModule,
   type EventStore,
+  type EventStoreTrimCoverage,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
@@ -25,8 +26,12 @@ export interface ActorCellOptions<
   readonly modules: TModules
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  readonly maxPendingRunOperations?: number
   readonly snapshotStore?: SnapshotStore
-  readonly trimAfterSnapshot?: { keepSnapshots: number }
+  readonly trimAfterSnapshot?: {
+    readonly keepSnapshots: number
+    readonly coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
+  }
 }
 
 export interface ActorCell<
@@ -37,6 +42,7 @@ export interface ActorCell<
   readonly store: EventStore
   fetch(req: Request): Promise<Response>
   wake(): Promise<RunState>
+  recoverWake(): Promise<number>
   dispose(): Promise<void>
 }
 
@@ -55,6 +61,7 @@ export function createActorCell<
     scheduler,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,
+    maxPendingRunOperations: options.maxPendingRunOperations,
     snapshotStore: options.snapshotStore,
     trimAfterSnapshot: options.trimAfterSnapshot,
   })
@@ -77,6 +84,9 @@ export function createActorCell<
     },
 
     wake: () => Effect.runPromise(Effect.provideService(runtime.wake(runId), EventStoreTag, store)),
+
+    recoverWake: () =>
+      Effect.runPromise(Effect.provideService(runtime.rescanTimers, EventStoreTag, store)),
 
     dispose: () => Effect.runPromise(runtime.dispose),
   }

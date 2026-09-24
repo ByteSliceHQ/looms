@@ -23,4 +23,11 @@ describe('@looms/approval signals', () => {
     expect(wait2?.waitId).toBeDefined()
     expect(wait1?.waitId).not.toBe(wait2?.waitId)
   })
+
+  test('gate races a decision against an absolute timeout', () => {
+    const effects = gate({ title: 'Gate', approvalId: 'review-1', timeoutAt: 1234 })
+    const waits = effects.filter((effect): effect is WaitEffect => effect.type === 'runtime.wait')
+    expect(waits).toHaveLength(2)
+    expect(waits[1]?.on).toEqual({ timerAt: 1234 })
+  })
 })

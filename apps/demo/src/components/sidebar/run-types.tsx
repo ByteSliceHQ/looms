@@ -18,7 +18,7 @@ export function RunTypes({
       </h2>
       <ul>
         {catalog.map((item) => {
-          const Icon = item.kind === 'agent' ? Bot : Workflow
+          const Icon = item.kind === 'workflow' ? Workflow : Bot
           const active = item.name === selected
           return (
             <li key={item.name}>
@@ -35,7 +35,7 @@ export function RunTypes({
                   <span className="block truncate font-medium">{item.label}</span>
                   <span className="text-muted-foreground block truncate text-[11px]">
                     {item.kind}
-                    {item.kind === 'agent' && item.conversational ? ' · chat' : ''}
+                    {item.kind !== 'workflow' && item.conversational ? ' · chat' : ''}
                   </span>
                 </span>
               </button>
