@@ -9,6 +9,7 @@ export {
   stringifyJsonPretty,
 } from './types'
 export * from './ids'
+export * from './worker-callback'
 export * from './schema'
 export * from './validate-event'
 export * from './envelope'

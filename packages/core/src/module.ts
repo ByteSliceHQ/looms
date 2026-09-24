@@ -19,6 +19,13 @@ export type EffectMiddleware = (
   next: NextEffectHandler,
 ) => Effect.Effect<ReadonlyArray<EventInput>, Error>
 
+/**
+ * Names the threads whose in-process effects an admitted signal event interrupts, so a running
+ * effect (such as a model call) can stop early. Return an empty array when the event interrupts
+ * nothing.
+ */
+export type SignalInterruptRule = (event: EventInput) => readonly string[]
+
 export interface RuntimeModuleDependency {
   readonly namespace: string
   readonly protocolVersion?: string
@@ -79,6 +86,7 @@ export interface RuntimeModule<
   readonly definitions?: readonly DefinitionRef[]
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
+  readonly interruptsOnSignal?: SignalInterruptRule
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
   readonly services?: () => Layer.Layer<TServices>
 }

@@ -11,6 +11,7 @@ import {
 import {
   createFetchHandler,
   createRuntime,
+  type Authorize,
   type LoomsRuntime,
   type WakeScheduler,
 } from '@looms/runtime'
@@ -32,6 +33,8 @@ export interface ActorCellOptions<
     readonly keepSnapshots: number
     readonly coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
   }
+  /** Authorizes the cell's HTTP API; see `createFetchHandler`. */
+  readonly authorize?: Authorize
 }
 
 export interface ActorCell<
@@ -66,7 +69,7 @@ export function createActorCell<
     trimAfterSnapshot: options.trimAfterSnapshot,
   })
 
-  const fetchHandler = createFetchHandler({ runtime, store })
+  const fetchHandler = createFetchHandler({ runtime, store, authorize: options.authorize })
 
   return {
     runId,

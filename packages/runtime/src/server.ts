@@ -1,4 +1,20 @@
-export { createFetchHandler, isLoomsApiPath, type FetchHandlerOptions } from './server-routes'
+export {
+  createFetchHandler,
+  isLoomsApiPath,
+  type FetchHandlerOptions,
+} from './server/fetch-handler'
+export {
+  authAllowed,
+  authDenied,
+  bearerAuth,
+  defaultAuthorize,
+  type AuthDecision,
+  type AuthorizedAccess,
+  type Authorize,
+  type BearerTokens,
+  type RouteAccess,
+  type RouteInfo,
+} from './server/auth'
 
 export interface RunningServer {
   port: number

@@ -6,10 +6,10 @@ import {
   isRunTerminal,
   type ComposedRegistry,
   type EventEnvelope,
-  type EventInput,
   type OutstandingEffect,
   type RetryPolicy,
   type RunState,
+  type WorkerCallbackInput,
 } from '@looms/core'
 
 import { materializeEffectOutcome } from './helpers'
@@ -17,7 +17,7 @@ import type { RunIngress } from './ingress'
 import { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
 import { planAttemptFailure } from './retry-policy'
-import type { LoomsRuntime, WorkerCallback } from './types'
+import type { LoomsRuntime } from './types'
 
 const WORKER_ORIGIN = { type: 'external', actorId: 'worker' } as const
 
@@ -58,11 +58,6 @@ export interface WorkerCallbacksOptions {
   readonly wake: LoomsRuntime['wake']
 }
 
-type AppliedWorkerCallback =
-  | (WorkerCallback & { kind: 'started' | 'heartbeat' | 'cancelled' })
-  | (WorkerCallback & { kind: 'complete'; events: ReadonlyArray<EventInput> })
-  | (WorkerCallback & { kind: 'fail'; error: string })
-
 interface WorkerCallbackPlan {
   readonly events: ReadonlyArray<EventEnvelope>
   readonly notices: ReadonlyArray<RuntimeObservation>
@@ -77,7 +72,7 @@ const IGNORED: WorkerCallbackPlan = { events: [], notices: [] }
 function planWorkerCallback(input: {
   readonly runId: string
   readonly state: RunState
-  readonly callback: AppliedWorkerCallback
+  readonly callback: WorkerCallbackInput
   readonly registry: ComposedRegistry
   readonly now: number
 }): Effect.Effect<WorkerCallbackPlan> {
@@ -238,7 +233,7 @@ function planWorkerCallback(input: {
 export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
   const { registry, repository, withRunIngress } = options
 
-  const applyWorkerCallback = (runId: string, callback: AppliedWorkerCallback) =>
+  const applyWorkerCallback = (runId: string, callback: WorkerCallbackInput) =>
     withRunIngress(
       runId,
       Effect.gen(function* () {
@@ -261,18 +256,5 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
       }),
     ).pipe(Effect.andThen(options.wake(runId)))
 
-  return {
-    workerStarted: (runId: string, callback: WorkerCallback) =>
-      applyWorkerCallback(runId, { ...callback, kind: 'started' }),
-    workerHeartbeat: (runId: string, callback: WorkerCallback) =>
-      applyWorkerCallback(runId, { ...callback, kind: 'heartbeat' }),
-    workerComplete: (
-      runId: string,
-      callback: WorkerCallback & { events: ReadonlyArray<EventInput> },
-    ) => applyWorkerCallback(runId, { ...callback, kind: 'complete' }),
-    workerFail: (runId: string, callback: WorkerCallback & { error: string }) =>
-      applyWorkerCallback(runId, { ...callback, kind: 'fail' }),
-    workerCancelled: (runId: string, callback: WorkerCallback) =>
-      applyWorkerCallback(runId, { ...callback, kind: 'cancelled' }),
-  }
+  return { workerCallback: applyWorkerCallback }
 }

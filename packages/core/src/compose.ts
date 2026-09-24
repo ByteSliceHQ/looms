@@ -9,6 +9,7 @@ import type {
   EffectMiddleware,
   RuntimeModule,
   RegisteredDefinition,
+  SignalInterruptRule,
 } from './module'
 import { DEFAULT_DEFINITION_VERSION, definitionKey } from './module'
 import type { ProjectionDefinition } from './projection'
@@ -31,6 +32,7 @@ export interface ComposedRegistry extends FoldRegistry {
   readonly projections: ReadonlyMap<string, ProjectionDefinition>
   readonly catalogs: readonly EventCatalog[]
   readonly middleware: readonly EffectMiddleware[]
+  readonly interruptRules: readonly SignalInterruptRule[]
 }
 
 export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRegistry {
@@ -41,6 +43,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
   const effects = new Map<string, EffectDefinition>()
   const projections = new Map<string, ProjectionDefinition>()
   const middleware: EffectMiddleware[] = []
+  const interruptRules: SignalInterruptRule[] = []
   const catalogs: EventCatalog[] = [protocolCatalog]
 
   for (const module of modules) {
@@ -127,6 +130,10 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
       middleware.push(...module.middleware)
     }
 
+    if (module.interruptsOnSignal) {
+      interruptRules.push(module.interruptsOnSignal)
+    }
+
     if (module.projections) {
       for (const definition of Object.values(module.projections)) {
         if (projections.has(definition.name)) {
@@ -138,7 +145,16 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     }
   }
 
-  return { definitions, modules, threads, effects, projections, catalogs, middleware }
+  return {
+    definitions,
+    modules,
+    threads,
+    effects,
+    projections,
+    catalogs,
+    middleware,
+    interruptRules,
+  }
 }
 
 export function composeModulesEffect(

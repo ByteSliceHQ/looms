@@ -169,6 +169,8 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           const dispatchedEffectIds = new Set<string>()
           const startedEffectIds = new Set<string>()
           let guard = 0
+          // Deadlines at or before this instant were handled by the last loop iteration.
+          let plannedAt = Number.NEGATIVE_INFINITY
 
           while (!isRunTerminal(cursor.state)) {
             if (guard >= maxWakeIterations) {
@@ -178,6 +180,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             guard += 1
             const state = cursor.state
             const now = yield* Clock.currentTimeMillis
+            plannedAt = now
 
             const deadlinePlan = planDeadlineTransitions({ runId, state, registry, now })
 
@@ -437,8 +440,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
           // Snapshot on park: the next wake (on any instance) starts from here.
           cursor = yield* persistSnapshot(store, runId, cursor)
-          const parkedAt = yield* Clock.currentTimeMillis
-          const nextDeadline = nextRuntimeDeadline(cursor.state, parkedAt)
+          const nextDeadline = nextRuntimeDeadline(cursor.state, plannedAt)
 
           if (nextDeadline !== undefined) {
             yield* options.scheduler().schedule(runId, nextDeadline)

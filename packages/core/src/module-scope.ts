@@ -27,6 +27,7 @@ import {
   type RuntimeModule,
   type DefinitionRef,
   type RuntimeModuleDependency,
+  type SignalInterruptRule,
 } from './module'
 import { defineProjection, type ProjectionDefinition } from './projection'
 import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
@@ -246,6 +247,7 @@ export function defineModule<
     readonly projections?: PR
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
+    readonly interruptsOnSignal?: SignalInterruptRule
   } & ModuleServicesConfig<EffectRequirementsOf<FX>>,
 ): RuntimeModule<N, Extract<ModuleCatalog<N, E>, EventCatalog>, FX, TH, PR> & {
   readonly effects: FX
@@ -293,6 +295,10 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
 
   if (members.services) {
     module.services = members.services
+  }
+
+  if (members.interruptsOnSignal) {
+    module.interruptsOnSignal = members.interruptsOnSignal
   }
 
   return module

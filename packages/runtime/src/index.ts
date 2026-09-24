@@ -15,6 +15,7 @@ export {
   type WakeError,
   type WakeScheduler,
   type WorkerCallback,
+  type WorkerCallbackInput,
 } from './runtime'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
 export {
@@ -22,6 +23,16 @@ export {
   createFetchHandler,
   isLoomsApiPath,
   type FetchHandlerOptions,
+  authAllowed,
+  authDenied,
+  bearerAuth,
+  defaultAuthorize,
+  type AuthDecision,
+  type AuthorizedAccess,
+  type Authorize,
+  type BearerTokens,
+  type RouteAccess,
+  type RouteInfo,
   type RunningServer,
   type LoomsFetchResult,
 } from './server'

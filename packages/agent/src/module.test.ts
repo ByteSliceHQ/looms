@@ -6,6 +6,7 @@ import { composeModules, createEvent, foldRun } from '@looms/core'
 
 import { defineAgent } from './definitions'
 import { agent } from './module'
+import { steer } from './signals'
 
 describe('@looms/agent module', () => {
   test('started thread requests callLLM', () => {
@@ -204,5 +205,12 @@ describe('@looms/agent module', () => {
 
     expect(threadState.lines[0]?.role).toBe('user')
     expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')
+  })
+
+  test('registers a signal interrupt rule for interrupting steers', () => {
+    const [rule] = composeModules([agent()]).interruptRules
+
+    expect(rule?.(steer('stop', { threadId: 'thr_a' }))).toEqual(['thr_a'])
+    expect(rule?.(steer('later', { threadId: 'thr_a', interrupt: false }))).toEqual([])
   })
 })

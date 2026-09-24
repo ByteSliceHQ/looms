@@ -42,9 +42,23 @@ effect.
 - Projector delivery exposes `inspect`, `requeue`, and `recover`. Requeue is the
   explicit reset for dead-lettered work.
 
-Mutation endpoints are disabled unless `operationsToken` is configured and
-require `Authorization: Bearer <token>`. Worker callbacks use the separate
-`workerCallbackToken`.
+Every HTTP route except `GET /health` passes through the `authorize(request,
+route)` hook given to `createLooms`, `createLocalActorHost`, or
+`LoomsDurableObject`. `route` carries the access level (`read`, `write`,
+`worker`, or `operations`), the route name, and the `runId` when there is one;
+return `authAllowed` or `authDenied(status, error)`. Without a hook, read and
+write routes are open while worker callbacks and operational endpoints answer 503. `bearerAuth` covers the common case:
+
+```ts
+createLooms({
+  modules,
+  authorize: bearerAuth({ worker: env.WORKER_TOKEN, operations: env.OPS_TOKEN }),
+})
+```
+
+Each configured level requires `Authorization: Bearer <token>`; levels without a
+token keep the default behavior. The client's `workerCallbackToken` option sends
+the worker token on `workerCallback` requests.
 
 ## Retention and compaction
 

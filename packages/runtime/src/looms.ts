@@ -26,9 +26,15 @@ import {
   type LoomsRuntime,
   type RunOperationalStatus,
   type WakeScheduler,
-  type WorkerCallback,
+  type WorkerCallbackInput,
 } from './runtime'
-import { createFetchHandler, isLoomsApiPath, serveHttp, type RunningServer } from './server'
+import {
+  createFetchHandler,
+  isLoomsApiPath,
+  serveHttp,
+  type Authorize,
+  type RunningServer,
+} from './server'
 
 export interface CreateLoomsOptions {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
@@ -55,10 +61,11 @@ export interface CreateLoomsOptions {
   readonly worker?: EffectWorker
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
-  /** Bearer token required by worker callback HTTP routes. */
-  readonly workerCallbackToken?: string
-  /** Bearer token required by mutation-capable operational HTTP routes. */
-  readonly operationsToken?: string
+  /**
+   * Authorizes HTTP API requests. Without it, run reads and writes are open while worker callback
+   * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
+   */
+  readonly authorize?: Authorize
 }
 
 export interface StartResult {
@@ -103,14 +110,7 @@ export interface Looms {
   project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   cancel(runId: string, threadId?: string): Promise<RunState>
-  workerStarted(runId: string, callback: WorkerCallback): Promise<RunState>
-  workerHeartbeat(runId: string, callback: WorkerCallback): Promise<RunState>
-  workerComplete(
-    runId: string,
-    callback: WorkerCallback & { events: ReadonlyArray<EventInput> },
-  ): Promise<RunState>
-  workerFail(runId: string, callback: WorkerCallback & { error: string }): Promise<RunState>
-  workerCancelled(runId: string, callback: WorkerCallback): Promise<RunState>
+  workerCallback(runId: string, input: WorkerCallbackInput): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
@@ -187,8 +187,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           const fetchHandler = createFetchHandler({
             runtime,
             store,
-            workerCallbackToken: options.workerCallbackToken,
-            operationsToken: options.operationsToken,
+            authorize: options.authorize,
           })
 
           return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
@@ -247,14 +246,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
-    workerStarted: (runId, callback) => runEffect((i) => i.runtime.workerStarted(runId, callback)),
-    workerHeartbeat: (runId, callback) =>
-      runEffect((i) => i.runtime.workerHeartbeat(runId, callback)),
-    workerComplete: (runId, callback) =>
-      runEffect((i) => i.runtime.workerComplete(runId, callback)),
-    workerFail: (runId, callback) => runEffect((i) => i.runtime.workerFail(runId, callback)),
-    workerCancelled: (runId, callback) =>
-      runEffect((i) => i.runtime.workerCancelled(runId, callback)),
+    workerCallback: (runId, input) => runEffect((i) => i.runtime.workerCallback(runId, input)),
     fetch: (req) => {
       if (!isLoomsApiPath(new URL(req.url).pathname)) {
         return Promise.resolve(null)

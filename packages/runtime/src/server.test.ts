@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { defineEventCatalog, defineModule } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
+import { authAllowed, authDenied, bearerAuth, type RouteInfo } from './server'
 
 const decodeRunResponse = Schema.decodeUnknownSync(
   Schema.Struct({
@@ -307,7 +308,12 @@ describe('server routing', () => {
 
   test('centralizes operations endpoint configuration and authorization', async () => {
     const unconfigured = createLooms({ modules: [] })
-    const configured = createLooms({ modules: [], operationsToken: 'operations-secret' })
+
+    const configured = createLooms({
+      modules: [],
+      authorize: bearerAuth({ operations: 'operations-secret' }),
+    })
+
     const url = 'http://looms.test/operations/deadlines/rescan'
 
     const unavailable = await unconfigured.fetch(new Request(url, { method: 'POST' }))
@@ -331,5 +337,65 @@ describe('server routing', () => {
     expect(await authorized?.json()).toEqual({ scheduled: 0 })
     await unconfigured.stop()
     await configured.stop()
+  })
+
+  test('passes route access, name and run id to a custom authorize hook', async () => {
+    const seen: RouteInfo[] = []
+
+    const looms = createLooms({
+      modules: [],
+      authorize: (request, route) =>
+        Effect.sync(() => {
+          seen.push(route)
+
+          return request.headers.get('x-tenant') === 'acme'
+            ? authAllowed
+            : authDenied(403, 'Forbidden')
+        }),
+    })
+
+    const denied = await looms.fetch(new Request('http://looms.test/runs/run_1/status'))
+
+    const allowed = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/events', { headers: { 'x-tenant': 'acme' } }),
+    )
+
+    const health = await looms.fetch(new Request('http://looms.test/health'))
+
+    expect(denied?.status).toBe(403)
+    expect(await denied?.json()).toEqual({ error: 'Forbidden' })
+    expect(allowed?.status).toBe(200)
+    expect(health?.status).toBe(200)
+
+    expect(seen).toEqual([
+      { access: 'read', name: 'runs.status', runId: 'run_1' },
+      { access: 'read', name: 'runs.events', runId: 'run_1' },
+    ])
+
+    await looms.stop()
+  })
+
+  test('bearerAuth protects reads and writes only when given a token', async () => {
+    const looms = createLooms({ modules: [], authorize: bearerAuth({ read: 'reader' }) })
+
+    const anonymousRead = await looms.fetch(new Request('http://looms.test/runs'))
+
+    const tokenRead = await looms.fetch(
+      new Request('http://looms.test/runs', { headers: { authorization: 'Bearer reader' } }),
+    )
+
+    const anonymousWrite = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/wake', { method: 'POST' }),
+    )
+
+    const worker = await looms.fetch(
+      new Request('http://looms.test/runs/run_1/effects/eff_1/1/started', { method: 'POST' }),
+    )
+
+    expect(anonymousRead?.status).toBe(401)
+    expect(tokenRead?.status).toBe(200)
+    expect(anonymousWrite?.status).toBe(200)
+    expect(worker?.status).toBe(503)
+    await looms.stop()
   })
 })
