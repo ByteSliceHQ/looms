@@ -1,7 +1,10 @@
 export type { Projector, ProjectorErrorHandler } from './projector'
 export {
   createProjectorDelivery,
+  ProjectorCursorError,
+  UnknownProjectorError,
   type ProjectorCursorStore,
+  type ProjectorDeliveryFailure,
   type ProjectorDelivery,
   type ProjectorDeliveryOptions,
   type ProjectorDeliveryState,

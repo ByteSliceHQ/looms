@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { Effect } from 'effect'
 
 import { createActorCell, type ActorCell } from '@looms/actor'
 import type { AnyRuntimeModule, EventStoreTrimCoverage } from '@looms/core'
@@ -60,7 +61,9 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
       const alarms = durableObjectAlarms(
         this.ctx.storage,
-        () => this.store?.projectorDelivery?.nextRetryAt(runId) ?? Promise.resolve(null),
+        () =>
+          this.store?.projectorDelivery?.nextRetryAt(runId).pipe(Effect.orDie) ??
+          Effect.succeed(null),
       )
 
       const store = durableObjectEventStore(this.ctx, {
@@ -82,12 +85,12 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       })
 
       const delivery = store.projectorDelivery
-      const recoverProjectors = delivery?.recover(runId) ?? Promise.resolve(0)
 
-      return recoverProjectors
-        .then(() => delivery?.deliver(runId))
-        .then(() => cell.recoverWake())
-        .then(() => cell)
+      const recoverProjectors = delivery
+        ? Effect.runPromise(delivery.recover(runId).pipe(Effect.andThen(delivery.deliver(runId))))
+        : Promise.resolve()
+
+      return recoverProjectors.then(() => cell.recoverWake()).then(() => cell)
     })
   }
 
@@ -99,10 +102,13 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
   override alarm(): Promise<void> {
     return this.getCell()
       .then((cell) => {
-        const delivery =
-          this.store?.projectorDelivery?.deliver(this.ctx.id.name ?? '') ?? Promise.resolve()
+        const delivery = this.store?.projectorDelivery
 
-        return delivery.then(() => cell.wake())
+        const delivered = delivery
+          ? Effect.runPromise(delivery.deliver(this.ctx.id.name ?? ''))
+          : Promise.resolve()
+
+        return delivered.then(() => cell.wake())
       })
       .then(() => undefined)
   }

@@ -4,6 +4,7 @@ import { Schema } from 'effect'
 
 import { createEvent, JsonValueSchema, type EventEnvelope } from './envelope'
 import { foldRun, type FoldRegistry } from './fold'
+import { utf8JsonBytes } from './limits'
 import { emptyRunState, RunStateSchema, type RunState } from './state'
 import { asJson, stringifyJson, type JsonValue } from './types'
 
@@ -80,7 +81,7 @@ export function buildSnapshotMarker(
 
   if (options?.state !== undefined) {
     const encoded = runStateToJson(options.state)
-    const bytes = stringifyJson(encoded).length
+    const bytes = utf8JsonBytes(encoded)
 
     if (bytes <= maxInlineBytes) {
       payload = asJson({ seq: cursor, stateHash, state: encoded })

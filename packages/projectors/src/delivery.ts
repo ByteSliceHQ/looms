@@ -1,6 +1,6 @@
-import { Data, Effect } from 'effect'
+import { Data, Effect, Semaphore } from 'effect'
 
-import type { EventStore } from '@looms/core'
+import type { EventStore, EventStoreError } from '@looms/core'
 
 import { runProjectorEffect, type Projector } from './projector'
 
@@ -19,9 +19,21 @@ export interface ProjectorDeliveryStatus {
   readonly updatedAt: number
 }
 
+export class ProjectorCursorError extends Data.TaggedError('ProjectorCursorError')<{
+  readonly message: string
+}> {}
+
 export interface ProjectorCursorStore {
-  get(runId: string, projector: Projector): Promise<ProjectorDeliveryStatus>
-  advance(runId: string, projector: Projector, cursor: number, now: number): Promise<void>
+  get(
+    runId: string,
+    projector: Projector,
+  ): Effect.Effect<ProjectorDeliveryStatus, ProjectorCursorError>
+  advance(
+    runId: string,
+    projector: Projector,
+    cursor: number,
+    now: number,
+  ): Effect.Effect<void, ProjectorCursorError>
   fail(
     runId: string,
     projector: Projector,
@@ -32,10 +44,20 @@ export interface ProjectorCursorStore {
       readonly error: string
       readonly now: number
     },
-  ): Promise<void>
-  requeue(runId: string, projector: Projector, now: number): Promise<void>
-  list(runId?: string): Promise<readonly ProjectorDeliveryStatus[]>
+  ): Effect.Effect<void, ProjectorCursorError>
+  requeue(
+    runId: string,
+    projector: Projector,
+    now: number,
+  ): Effect.Effect<void, ProjectorCursorError>
+  list(runId?: string): Effect.Effect<readonly ProjectorDeliveryStatus[], ProjectorCursorError>
 }
+
+export class UnknownProjectorError extends Data.TaggedError('UnknownProjectorError')<{
+  readonly message: string
+}> {}
+
+export type ProjectorDeliveryFailure = ProjectorCursorError | EventStoreError
 
 export interface ProjectorDeliveryOptions {
   readonly batchSize?: number
@@ -43,7 +65,7 @@ export interface ProjectorDeliveryOptions {
   readonly maxRetryMs?: number
   readonly maxAttempts?: number
   readonly now?: () => number
-  readonly scheduleRetry?: (at: number) => Promise<void>
+  readonly scheduleRetry?: (at: number) => Effect.Effect<void>
   readonly observer?: ProjectorObserver
 }
 
@@ -68,13 +90,22 @@ export interface ProjectorOperationalStatus extends ProjectorDeliveryStatus {
 }
 
 export interface ProjectorDelivery {
-  deliver(runId: string, options?: { readonly force?: boolean }): Promise<void>
-  status(runId?: string): Promise<readonly ProjectorDeliveryStatus[]>
-  requeue(runId: string, projectorName: string, version?: string): Promise<void>
-  nextRetryAt(runId?: string): Promise<number | null>
-  inspect(runId?: string): Promise<readonly ProjectorOperationalStatus[]>
+  deliver(
+    runId: string,
+    options?: { readonly force?: boolean },
+  ): Effect.Effect<void, ProjectorDeliveryFailure>
+  status(runId?: string): Effect.Effect<readonly ProjectorDeliveryStatus[], ProjectorCursorError>
+  requeue(
+    runId: string,
+    projectorName: string,
+    version?: string,
+  ): Effect.Effect<void, ProjectorDeliveryFailure | UnknownProjectorError>
+  nextRetryAt(runId?: string): Effect.Effect<number | null, ProjectorCursorError>
+  inspect(
+    runId?: string,
+  ): Effect.Effect<readonly ProjectorOperationalStatus[], ProjectorDeliveryFailure>
   /** Re-register retry deadlines and resume due retryable projector work. */
-  recover(runId?: string): Promise<number>
+  recover(runId?: string): Effect.Effect<number, ProjectorDeliveryFailure>
 }
 
 function projectorIdentity(projector: Projector): string {
@@ -103,7 +134,7 @@ export function createProjectorDelivery(
   const maxAttempts = options.maxAttempts ?? 8
   const now = options.now ?? Date.now
   const initialized = new Map<string, Promise<void>>()
-  const inFlight = new Map<string, Promise<void>>()
+  const exclusive = new Map<string, Semaphore.Semaphore>()
 
   const observe = (event: ProjectorObservation): void => {
     try {
@@ -129,13 +160,16 @@ export function createProjectorDelivery(
     return pending
   }
 
+  const scheduleRetry = (at: number): Effect.Effect<void> =>
+    options.scheduleRetry?.(at) ?? Effect.void
+
   const recordFailure = (
     runId: string,
     projector: Projector,
     status: ProjectorDeliveryStatus,
     failedSeq: number,
     error: ProjectorDeliveryError,
-  ): Effect.Effect<void> =>
+  ): Effect.Effect<void, ProjectorCursorError> =>
     Effect.gen(function* () {
       const attempts = status.attempts + 1
       const deadLettered = attempts >= maxAttempts
@@ -144,15 +178,13 @@ export function createProjectorDelivery(
         ? null
         : now() + Math.min(maxRetryMs, initialRetryMs * 2 ** Math.max(0, attempts - 1))
 
-      yield* Effect.promise(() =>
-        cursors.fail(runId, projector, {
-          attempts,
-          failedSeq,
-          nextRetryAt,
-          error: error.message,
-          now: now(),
-        }),
-      )
+      yield* cursors.fail(runId, projector, {
+        attempts,
+        failedSeq,
+        nextRetryAt,
+        error: error.message,
+        now: now(),
+      })
 
       const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => status.cursor))
 
@@ -167,192 +199,190 @@ export function createProjectorDelivery(
         error: error.message,
       })
 
-      if (nextRetryAt !== null && options.scheduleRetry) {
-        yield* Effect.promise(() => options.scheduleRetry!(nextRetryAt))
+      if (nextRetryAt !== null) {
+        yield* scheduleRetry(nextRetryAt)
       }
     })
 
-  const deliverProjector = (runId: string, projector: Projector, force: boolean): Promise<void> =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        let status = yield* Effect.promise(() => cursors.get(runId, projector))
-        const currentTime = now()
+  const deliverProjector = (
+    runId: string,
+    projector: Projector,
+    force: boolean,
+  ): Effect.Effect<void, ProjectorDeliveryFailure> =>
+    Effect.gen(function* () {
+      let status = yield* cursors.get(runId, projector)
+      const currentTime = now()
 
-        if (
-          status.state === 'dead-letter' ||
-          (!force && status.nextRetryAt !== null && status.nextRetryAt > currentTime)
-        ) {
+      if (
+        status.state === 'dead-letter' ||
+        (!force && status.nextRetryAt !== null && status.nextRetryAt > currentTime)
+      ) {
+        return
+      }
+
+      const initialization = yield* Effect.tryPromise({
+        try: () => initialize(projector),
+        catch: normalizeError,
+      }).pipe(Effect.exit)
+
+      if (initialization._tag === 'Failure') {
+        yield* recordFailure(
+          runId,
+          projector,
+          status,
+          status.cursor + 1,
+          normalizeError(initialization.cause),
+        )
+
+        return
+      }
+
+      while (true) {
+        const events = yield* source.read(runId, {
+          fromSeq: status.cursor + 1,
+          limit: batchSize,
+        })
+
+        const first = events[0]
+        const last = events.at(-1)
+
+        if (first === undefined || last === undefined) {
           return
         }
 
-        const initialization = yield* Effect.tryPromise({
-          try: () => initialize(projector),
-          catch: normalizeError,
-        }).pipe(Effect.exit)
+        const projected = yield* runProjectorEffect(projectorIdentity(projector), () =>
+          projector.project(events),
+        ).pipe(Effect.exit)
 
-        if (initialization._tag === 'Failure') {
-          yield* recordFailure(
-            runId,
-            projector,
-            status,
-            status.cursor + 1,
-            normalizeError(initialization.cause),
-          )
-
+        if (projected._tag === 'Failure') {
+          yield* recordFailure(runId, projector, status, first.seq, normalizeError(projected.cause))
           return
         }
 
-        while (true) {
-          const events = yield* source.read(runId, {
-            fromSeq: status.cursor + 1,
-            limit: batchSize,
-          })
+        const advancedAt = now()
+        yield* cursors.advance(runId, projector, last.seq, advancedAt)
 
-          const first = events[0]
-          const last = events.at(-1)
-
-          if (first === undefined || last === undefined) {
-            return
-          }
-
-          const projected = yield* runProjectorEffect(projectorIdentity(projector), () =>
-            projector.project(events),
-          ).pipe(Effect.exit)
-
-          if (projected._tag === 'Failure') {
-            yield* recordFailure(
-              runId,
-              projector,
-              status,
-              first.seq,
-              normalizeError(projected.cause),
-            )
-
-            return
-          }
-
-          const advancedAt = now()
-
-          yield* Effect.promise(() => cursors.advance(runId, projector, last.seq, advancedAt))
-
-          status = {
-            ...status,
-            cursor: last.seq,
-            state: 'idle',
-            attempts: 0,
-            failedSeq: null,
-            nextRetryAt: null,
-            lastError: null,
-          }
-
-          const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => last.seq))
-
-          observe({
-            type: 'projector.lag',
-            runId,
-            projector: projectorIdentity(projector),
-            at: advancedAt,
-            cursor: last.seq,
-            lag: Math.max(0, sourceTail - last.seq),
-            attempts: 0,
-          })
+        status = {
+          ...status,
+          cursor: last.seq,
+          state: 'idle',
+          attempts: 0,
+          failedSeq: null,
+          nextRetryAt: null,
+          lastError: null,
         }
-      }),
-    )
 
-  const deliverExclusive = (runId: string, projector: Projector, force: boolean): Promise<void> => {
+        const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => last.seq))
+
+        observe({
+          type: 'projector.lag',
+          runId,
+          projector: projectorIdentity(projector),
+          at: advancedAt,
+          cursor: last.seq,
+          lag: Math.max(0, sourceTail - last.seq),
+          attempts: 0,
+        })
+      }
+    })
+
+  /** One delivery at a time per run and projector; independent projectors still run in parallel. */
+  const deliverExclusive = (
+    runId: string,
+    projector: Projector,
+    force: boolean,
+  ): Effect.Effect<void, ProjectorDeliveryFailure> => {
     const key = `${runId}:${projectorIdentity(projector)}`
-    const previous = inFlight.get(key) ?? Promise.resolve()
+    let semaphore = exclusive.get(key)
 
-    const current = previous
-      .catch(() => undefined)
-      .then(() => deliverProjector(runId, projector, force))
-      .finally(() => {
-        if (inFlight.get(key) === current) {
-          inFlight.delete(key)
-        }
-      })
+    if (!semaphore) {
+      semaphore = Semaphore.makeUnsafe(1)
+      exclusive.set(key, semaphore)
+    }
 
-    inFlight.set(key, current)
-    return current
+    return Semaphore.withPermits(semaphore, 1, deliverProjector(runId, projector, force))
   }
+
+  const findProjector = (name: string, version: string | undefined) =>
+    projectors.find(
+      (candidate) =>
+        candidate.name === name && (version === undefined || candidate.version === version),
+    )
 
   return {
     deliver: (runId, runOptions) =>
-      Promise.all(
-        projectors.map((projector) =>
-          deliverExclusive(runId, projector, runOptions?.force ?? false),
-        ),
-      ).then(() => undefined),
+      Effect.forEach(
+        projectors,
+        (projector) => deliverExclusive(runId, projector, runOptions?.force ?? false),
+        { concurrency: 'unbounded', discard: true },
+      ),
     status: (runId) => cursors.list(runId),
     requeue: (runId, projectorName, version) => {
-      const projector = projectors.find(
-        (candidate) =>
-          candidate.name === projectorName &&
-          (version === undefined || candidate.version === version),
-      )
+      const projector = findProjector(projectorName, version)
 
       if (!projector) {
-        throw new Error(
-          `Unknown projector ${projectorName}${version === undefined ? '' : `@${version}`}`,
+        return Effect.fail(
+          new UnknownProjectorError({
+            message: `Unknown projector ${projectorName}${version === undefined ? '' : `@${version}`}`,
+          }),
         )
       }
 
       return cursors
         .requeue(runId, projector, now())
-        .then(() => deliverExclusive(runId, projector, true))
+        .pipe(Effect.andThen(deliverExclusive(runId, projector, true)))
     },
     nextRetryAt: (runId) =>
-      cursors.list(runId).then((statuses) => {
-        const deadlines = statuses
-          .map((status) => status.nextRetryAt)
-          .filter((deadline): deadline is number => deadline !== null)
+      cursors.list(runId).pipe(
+        Effect.map((statuses) => {
+          const deadlines = statuses
+            .map((status) => status.nextRetryAt)
+            .filter((deadline): deadline is number => deadline !== null)
 
-        return deadlines.length === 0 ? null : Math.min(...deadlines)
-      }),
+          return deadlines.length === 0 ? null : Math.min(...deadlines)
+        }),
+      ),
     inspect: (runId) =>
-      cursors.list(runId).then((statuses) =>
-        Promise.all(
-          statuses.map((status) =>
-            Effect.runPromise(source.tail(status.runId)).then((sourceTail) => ({
-              ...status,
-              sourceTail,
-              lag: Math.max(0, sourceTail - status.cursor),
-            })),
+      cursors.list(runId).pipe(
+        Effect.flatMap((statuses) =>
+          Effect.forEach(
+            statuses,
+            (status) =>
+              source.tail(status.runId).pipe(
+                Effect.map((sourceTail) => ({
+                  ...status,
+                  sourceTail,
+                  lag: Math.max(0, sourceTail - status.cursor),
+                })),
+              ),
+            { concurrency: 'unbounded' },
           ),
         ),
       ),
     recover: (runId) =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const statuses = yield* Effect.promise(() => cursors.list(runId))
-          let recovered = 0
+      Effect.gen(function* () {
+        const statuses = yield* cursors.list(runId)
+        let recovered = 0
 
-          for (const status of statuses) {
-            if (status.state === 'dead-letter' || status.nextRetryAt === null) {
-              continue
-            }
-
-            if (options.scheduleRetry) {
-              yield* Effect.promise(() => options.scheduleRetry!(status.nextRetryAt!))
-            }
-
-            if (status.nextRetryAt <= now()) {
-              const projector = projectors.find(
-                (candidate) =>
-                  candidate.name === status.projector && candidate.version === status.version,
-              )
-
-              if (projector) {
-                yield* Effect.promise(() => deliverExclusive(status.runId, projector, true))
-              }
-            }
-
-            recovered += 1
+        for (const status of statuses) {
+          if (status.state === 'dead-letter' || status.nextRetryAt === null) {
+            continue
           }
 
-          return recovered
-        }),
-      ),
+          yield* scheduleRetry(status.nextRetryAt)
+
+          if (status.nextRetryAt <= now()) {
+            const projector = findProjector(status.projector, status.version)
+
+            if (projector) {
+              yield* deliverExclusive(status.runId, projector, true)
+            }
+          }
+
+          recovered += 1
+        }
+
+        return recovered
+      }),
   }
 }

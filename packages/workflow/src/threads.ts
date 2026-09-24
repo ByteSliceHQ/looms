@@ -17,16 +17,12 @@ import {
   type EventInput,
   type JsonValue,
   type RuntimeEffect,
+  utf8JsonBytes,
 } from '@looms/core'
 
 import { NodeStateSchema, type NodeState } from './definitions'
 import { runNodeEffect, scheduleEffect } from './effects'
-import {
-  iterationChildWorkflowId,
-  nodeRunKey,
-  utf8JsonSize,
-  WorkflowValueTooLargeError,
-} from './graph'
+import { iterationChildWorkflowId, nodeRunKey, WorkflowValueTooLargeError } from './graph'
 import { workflowModule } from './scope'
 
 export { NodeStateSchema, NodeStatusSchema, type NodeState, type NodeStatus } from './definitions'
@@ -314,7 +310,7 @@ function recordMapOutput(
   }
 
   const outputs = { ...map.outputs, [String(index)]: output }
-  const size = utf8JsonSize(outputs)
+  const size = utf8JsonBytes(outputs)
 
   if (size > map.limitBytes) {
     const error = new WorkflowValueTooLargeError(`Node ${map.nodeId} outputs`, size, map.limitBytes)

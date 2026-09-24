@@ -1,11 +1,12 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import type { SqlBinding, SqliteExec } from '@looms/core/sqlite-store'
 
-import type {
-  ProjectorCursorStore,
-  ProjectorDeliveryState,
-  ProjectorDeliveryStatus,
+import {
+  ProjectorCursorError,
+  type ProjectorCursorStore,
+  type ProjectorDeliveryState,
+  type ProjectorDeliveryStatus,
 } from './delivery'
 import type { Projector } from './projector'
 
@@ -80,6 +81,16 @@ function initialize(exec: SqliteExec): void {
   }
 }
 
+function query<A>(run: () => A): Effect.Effect<A, ProjectorCursorError> {
+  return Effect.try({
+    try: run,
+    catch: (cause) =>
+      new ProjectorCursorError({
+        message: cause instanceof Error ? cause.message : 'Projector cursor query failed',
+      }),
+  })
+}
+
 export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorStore {
   initialize(exec)
 
@@ -109,24 +120,24 @@ export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorSto
   }
 
   return {
-    get: (runId, projector) => Promise.resolve(get(runId, projector)),
-    advance: (runId, projector, cursor, now) => {
-      exec.run(
-        `INSERT INTO looms_projector_delivery
+    get: (runId, projector) => query(() => get(runId, projector)),
+    advance: (runId, projector, cursor, now) =>
+      query(() => {
+        exec.run(
+          `INSERT INTO looms_projector_delivery
            (run_id, projector_name, projector_version, cursor, updated_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
          SET cursor = MAX(cursor, excluded.cursor), state = 'idle', attempts = 0,
              failed_seq = NULL, next_retry_at = NULL, last_error = NULL,
              updated_at = excluded.updated_at`,
-        [runId, projector.name, projector.version, cursor, now],
-      )
-
-      return Promise.resolve()
-    },
-    fail: (runId, projector, failure) => {
-      exec.run(
-        `INSERT INTO looms_projector_delivery
+          [runId, projector.name, projector.version, cursor, now],
+        )
+      }),
+    fail: (runId, projector, failure) =>
+      query(() => {
+        exec.run(
+          `INSERT INTO looms_projector_delivery
            (run_id, projector_name, projector_version, state, attempts, failed_seq,
             next_retry_at, last_error, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -135,39 +146,36 @@ export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorSto
              failed_seq = excluded.failed_seq, next_retry_at = excluded.next_retry_at,
              last_error = excluded.last_error, updated_at = excluded.updated_at
          WHERE cursor < excluded.failed_seq`,
-        [
-          runId,
-          projector.name,
-          projector.version,
-          failure.nextRetryAt === null ? 'dead-letter' : 'retrying',
-          failure.attempts,
-          failure.failedSeq,
-          failure.nextRetryAt,
-          failure.error,
-          failure.now,
-        ],
-      )
-
-      return Promise.resolve()
-    },
-    requeue: (runId, projector, now) => {
-      exec.run(
-        `INSERT INTO looms_projector_delivery
+          [
+            runId,
+            projector.name,
+            projector.version,
+            failure.nextRetryAt === null ? 'dead-letter' : 'retrying',
+            failure.attempts,
+            failure.failedSeq,
+            failure.nextRetryAt,
+            failure.error,
+            failure.now,
+          ],
+        )
+      }),
+    requeue: (runId, projector, now) =>
+      query(() => {
+        exec.run(
+          `INSERT INTO looms_projector_delivery
            (run_id, projector_name, projector_version, state, next_retry_at, updated_at)
          VALUES (?, ?, ?, 'retrying', ?, ?)
          ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
          SET state = 'retrying', attempts = 0, next_retry_at = excluded.next_retry_at,
              last_error = NULL, updated_at = excluded.updated_at`,
-        [runId, projector.name, projector.version, now, now],
-      )
-
-      return Promise.resolve()
-    },
+          [runId, projector.name, projector.version, now, now],
+        )
+      }),
     list: (runId) => {
       const params: SqlBinding[] = runId === undefined ? [] : [runId]
       const where = runId === undefined ? '' : 'WHERE run_id = ?'
 
-      return Promise.resolve(
+      return query(() =>
         exec
           .rows(
             `SELECT run_id, projector_name, projector_version, cursor, state, attempts,

@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect'
 
-import { isJsonString, type JsonValue } from '@looms/core'
+import { isJsonString, utf8JsonBytes, type JsonValue } from '@looms/core'
 
 import type { NodeState, WorkflowDefinition, WorkflowNodeDefinition } from './definitions'
 
@@ -100,16 +100,12 @@ export function nodeChildWorkflowId(
   return deterministicWorkflowId(parentThreadId, nodeId, 'workflow', attempt)
 }
 
-export function utf8JsonSize(value: JsonValue | Readonly<object>): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength
-}
-
 export function assertJsonWithinLimit(
   value: JsonValue | Readonly<object>,
   label: string,
   limitBytes = DEFAULT_VALUE_SIZE_LIMIT_BYTES,
 ): Effect.Effect<void, WorkflowValueTooLargeError> {
-  const actualBytes = utf8JsonSize(value)
+  const actualBytes = utf8JsonBytes(value)
 
   return actualBytes > limitBytes
     ? Effect.fail(new WorkflowValueTooLargeError(label, actualBytes, limitBytes))

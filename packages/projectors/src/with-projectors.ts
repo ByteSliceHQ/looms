@@ -43,9 +43,7 @@ export function withProjectors(
 
   const project = (runId: string, sequences: readonly number[]): Effect.Effect<void> => {
     if (delivery) {
-      return runProjectorEffect('delivery', () => delivery.deliver(runId)).pipe(
-        Effect.catch((cause) => logDeliveryFailure(runId, cause)),
-      )
+      return delivery.deliver(runId).pipe(Effect.catch((cause) => logDeliveryFailure(runId, cause)))
     }
 
     const fromSeq = sequences[0]

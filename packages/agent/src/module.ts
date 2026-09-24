@@ -1,6 +1,6 @@
 import { Layer } from 'effect'
 
-import { defineModule } from '@looms/core'
+import { defineModule, makeDefinitionStore } from '@looms/core'
 
 import { agentSessionActionEffect, createAgentSessionThread } from './agent-session'
 import type { AgentDefinition, AgentSessionDefinition } from './definitions'
@@ -25,12 +25,11 @@ export function agent(options: AgentModuleOptions = {}) {
     (definition): definition is AgentDefinition => definition.kind === 'agent',
   )
 
-  const sessionDefinitions = new Map(
-    definitions
-      .filter(
-        (definition): definition is AgentSessionDefinition => definition.kind === 'agent-session',
-      )
-      .map((definition) => [`${definition.name}@${definition.version}`, definition] as const),
+  const sessionDefinitions = makeDefinitionStore(
+    'agent-session',
+    definitions.filter(
+      (definition): definition is AgentSessionDefinition => definition.kind === 'agent-session',
+    ),
   )
 
   const llmLayer = options.llm

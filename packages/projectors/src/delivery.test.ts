@@ -40,10 +40,10 @@ describe('projector delivery', () => {
       sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
     )
 
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
 
     expect(seen).toEqual([1])
-    expect((await delivery.status('run_1'))[0]?.cursor).toBe(1)
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]?.cursor).toBe(1)
   })
 
   test('durably retries and recovers without advancing on failure', async () => {
@@ -73,23 +73,23 @@ describe('projector delivery', () => {
       { now: () => time, initialRetryMs: 100 },
     )
 
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
 
-    expect((await delivery.status('run_1'))[0]).toMatchObject({
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]).toMatchObject({
       cursor: 0,
       state: 'retrying',
       attempts: 1,
       nextRetryAt: 1_100,
     })
 
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
     expect(seen).toEqual([])
 
     time = 1_100
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
     expect(seen).toEqual([1, 2])
 
-    expect((await delivery.status('run_1'))[0]).toMatchObject({
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]).toMatchObject({
       cursor: 2,
       state: 'idle',
       attempts: 0,
@@ -120,8 +120,8 @@ describe('projector delivery', () => {
       sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
     )
 
-    await delivery.deliver('run_1')
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
+    await Effect.runPromise(delivery.deliver('run_1'))
 
     expect(initCalls).toBe(1)
     expect(projectCalls).toBe(1)
@@ -151,7 +151,7 @@ describe('projector delivery', () => {
       { batchSize: 2 },
     )
 
-    await delivery.deliver('run_1')
+    await Effect.runPromise(delivery.deliver('run_1'))
 
     expect(batches).toEqual([[1, 2], [3]])
   })
@@ -184,10 +184,10 @@ describe('projector delivery', () => {
       sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
     )
 
-    await delivery.deliver('run_1')
-    expect((await delivery.status('run_1'))[0]?.state).toBe('retrying')
+    await Effect.runPromise(delivery.deliver('run_1'))
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]?.state).toBe('retrying')
 
-    await delivery.deliver('run_1', { force: true })
+    await Effect.runPromise(delivery.deliver('run_1', { force: true }))
 
     expect(initCalls).toBe(2)
     expect(seen).toEqual([1])
@@ -197,17 +197,19 @@ describe('projector delivery', () => {
     const cursors = sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:')))
     const projector: Projector = { name: 'search', version: '1', project: async () => {} }
 
-    await cursors.advance('run_1', projector, 10, 1)
+    await Effect.runPromise(cursors.advance('run_1', projector, 10, 1))
 
-    await cursors.fail('run_1', projector, {
-      attempts: 1,
-      failedSeq: 5,
-      nextRetryAt: 100,
-      error: 'late',
-      now: 2,
-    })
+    await Effect.runPromise(
+      cursors.fail('run_1', projector, {
+        attempts: 1,
+        failedSeq: 5,
+        nextRetryAt: 100,
+        error: 'late',
+        now: 2,
+      }),
+    )
 
-    expect(await cursors.get('run_1', projector)).toMatchObject({
+    expect(await Effect.runPromise(cursors.get('run_1', projector))).toMatchObject({
       cursor: 10,
       state: 'idle',
       attempts: 0,
@@ -240,15 +242,15 @@ describe('projector delivery', () => {
       { maxAttempts: 1 },
     )
 
-    await delivery.deliver('run_1')
-    expect((await delivery.status('run_1'))[0]?.state).toBe('dead-letter')
+    await Effect.runPromise(delivery.deliver('run_1'))
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]?.state).toBe('dead-letter')
 
     failing = false
-    await delivery.requeue('run_1', 'search', '2')
+    await Effect.runPromise(delivery.requeue('run_1', 'search', '2'))
 
     expect(seen).toEqual([1])
 
-    expect((await delivery.status('run_1'))[0]).toMatchObject({
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]).toMatchObject({
       cursor: 1,
       state: 'idle',
     })
@@ -274,23 +276,24 @@ describe('projector delivery', () => {
       initialRetryMs: 250,
     })
 
-    await first.deliver('run_recover')
+    await Effect.runPromise(first.deliver('run_recover'))
 
     const scheduled: number[] = []
 
     const reconstructed = createProjectorDelivery(source, [projector], cursors, {
       now: () => time,
-      scheduleRetry: async (at) => {
-        scheduled.push(at)
-      },
+      scheduleRetry: (at) =>
+        Effect.sync(() => {
+          scheduled.push(at)
+        }),
     })
 
-    expect(await reconstructed.recover('run_recover')).toBe(1)
+    expect(await Effect.runPromise(reconstructed.recover('run_recover'))).toBe(1)
     expect(scheduled).toEqual([5_250])
 
     time = 5_250
-    await reconstructed.recover('run_recover')
-    expect((await reconstructed.status('run_recover'))[0]?.attempts).toBe(2)
+    await Effect.runPromise(reconstructed.recover('run_recover'))
+    expect((await Effect.runPromise(reconstructed.status('run_recover')))[0]?.attempts).toBe(2)
   })
 
   test('delivers independent projectors concurrently', async () => {
@@ -323,7 +326,7 @@ describe('projector delivery', () => {
       sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
     )
 
-    const pending = delivery.deliver('run_parallel')
+    const pending = Effect.runPromise(delivery.deliver('run_parallel'))
     await Bun.sleep(10)
 
     expect(started).toEqual(['slow', 'fast'])
