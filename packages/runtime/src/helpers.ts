@@ -18,7 +18,7 @@ import {
   type EventInput,
   type EventOrigin,
   type EventStore,
-  type InvalidEventError,
+  InvalidEventError,
   type JsonValue,
   type OutstandingEffect,
   type RegisteredDefinition,
@@ -378,12 +378,41 @@ export function createLiveEvent(
     effectId: item.effectId,
     causationId: item.causingEventId,
     threadId: targetThreadId,
-    ephemeral: validated.ephemeral ?? true,
+    ephemeral: true,
     origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
   })
 
   const [liveEvent] = stripSeq([ephemeral])
   return liveEvent
+}
+
+const EXTERNAL_RUNTIME_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'runtime.signal.received',
+  'runtime.thread.cancel.requested',
+])
+
+/**
+ * Admit events from an external caller. Runtime protocol events are reserved for the runtime
+ * itself, and external events can never claim an effect outcome or a non-external origin.
+ */
+export function admitExternalEvents(
+  events: readonly EventInput[],
+): Effect.Effect<EventInput[], InvalidEventError> {
+  return Effect.forEach(events, (input) =>
+    input.type.startsWith('runtime.') && !EXTERNAL_RUNTIME_EVENT_TYPES.has(input.type)
+      ? Effect.fail(
+          new InvalidEventError(
+            input.type,
+            `Event type "${input.type}" is reserved for the runtime`,
+          ),
+        )
+      : Effect.succeed({
+          ...input,
+          effectId: null,
+          origin:
+            input.origin?.type === 'external' ? input.origin : ({ type: 'external' } as const),
+        }),
+  )
 }
 
 export function validateAndCreateEvents(

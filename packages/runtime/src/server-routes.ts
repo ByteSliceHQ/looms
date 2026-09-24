@@ -11,7 +11,7 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import { RunOverloadedError, type LoomsRuntime } from './runtime'
+import { RunOverloadedError, StartRunConflictError, type LoomsRuntime } from './runtime'
 import { createEventStreamResponse } from './sse'
 
 export interface FetchHandlerOptions {
@@ -123,9 +123,18 @@ const stringParameter = <const TName extends string>(
 ): RouteParameter<TName, string> => ({
   kind: 'parameter',
   name,
-  matches: () => true,
+  matches: isUriComponent,
   decode: decodeURIComponent,
 })
+
+function isUriComponent(value: string): boolean {
+  try {
+    decodeURIComponent(value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 const integerParameter = <const TName extends string>(
   name: TName,
@@ -329,9 +338,20 @@ function authorize(
     return Response.json({ error }, { status: 503 })
   }
 
-  return req.headers.get('authorization') === `Bearer ${token}`
+  return constantTimeEquals(req.headers.get('authorization') ?? '', `Bearer ${token}`)
     ? null
     : Response.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+function constantTimeEquals(actual: string, expected: string): boolean {
+  const length = Math.max(actual.length, expected.length)
+  let difference = actual.length ^ expected.length
+
+  for (let index = 0; index < length; index += 1) {
+    difference |= (actual.charCodeAt(index) || 0) ^ (expected.charCodeAt(index) || 0)
+  }
+
+  return difference === 0
 }
 
 function toErrorResponse(err: Error): Response {
@@ -345,6 +365,10 @@ function toErrorResponse(err: Error): Response {
 
   if (err instanceof RunOverloadedError) {
     return Response.json({ error: err.message }, { status: 429 })
+  }
+
+  if (err instanceof StartRunConflictError) {
+    return Response.json({ error: err.message, mismatches: err.mismatches }, { status: 409 })
   }
 
   return Response.json({ error: err.message }, { status: 500 })
@@ -703,7 +727,14 @@ export function createFetchHandler(
           url,
           params: matched.params,
         })
-      }).pipe(Effect.catch((error) => Effect.succeed(toErrorResponse(error)))),
+      }).pipe(
+        Effect.catch((error) => Effect.succeed(toErrorResponse(error))),
+        Effect.catchCause((cause) =>
+          Effect.logError('[@looms/runtime] request failed', cause).pipe(
+            Effect.as(Response.json({ error: 'Internal server error' }, { status: 500 })),
+          ),
+        ),
+      ),
     )
   }
 }

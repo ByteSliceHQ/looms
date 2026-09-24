@@ -189,29 +189,29 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 
-  test('derives cancellation targets after an earlier signal is admitted', async () => {
+  test('admits cancellation after an earlier in-flight signal', async () => {
     const inner = await Effect.runPromise(makeMemoryEventStore)
     let entered!: () => void
     let release!: () => void
-    let blockChildStart = false
+    let blockSignal = false
 
-    const childStartEntered = new Promise<void>((resolve) => {
+    const signalEntered = new Promise<void>((resolve) => {
       entered = resolve
     })
 
-    const childStartReleased = new Promise<void>((resolve) => {
+    const signalReleased = new Promise<void>((resolve) => {
       release = resolve
     })
 
     const store = {
       ...inner,
       append: (runId, events, options) => {
-        if (blockChildStart && events.some((event) => event.type === 'runtime.thread.started')) {
-          blockChildStart = false
+        if (blockSignal && events.some((event) => event.type === 'worker.progress')) {
+          blockSignal = false
 
           return Effect.gen(function* () {
             entered()
-            yield* Effect.promise(() => childStartReleased)
+            yield* Effect.promise(() => signalReleased)
             return yield* inner.append(runId, events, options)
           })
         }
@@ -227,41 +227,64 @@ describe('durable external effect workers', () => {
     })
 
     const started = await looms.start(workerDefinition, {})
-    const childThreadId = 'thread_contention_child'
-    blockChildStart = true
+    blockSignal = true
 
     const signal = looms.signal(started.runId, [
-      {
-        type: 'runtime.thread.started',
-        payload: {
-          threadId: childThreadId,
-          kind: workerDefinition.kind,
-          definitionName: workerDefinition.name,
-          definitionVersion: '1.0.0',
-          input: null,
-          parentThreadId: started.threadId,
-        },
-        threadId: childThreadId,
-        parentThreadId: started.threadId,
-      },
+      { type: 'worker.progress', payload: { step: 1 }, threadId: started.threadId },
     ])
 
-    await childStartEntered
+    await signalEntered
     const cancellation = looms.cancel(started.runId, started.threadId)
     await Bun.sleep(10)
     release()
     await Promise.all([signal, cancellation])
 
     const events = await looms.getEvents(started.runId)
+    const progressSeq = events.find((event) => event.type === 'worker.progress')?.seq
+    const cancelledSeq = events.find((event) => event.type === 'runtime.thread.cancelled')?.seq
+
+    expect(progressSeq).toBeNumber()
+    expect(cancelledSeq).toBeGreaterThan(progressSeq ?? Number.POSITIVE_INFINITY)
+
+    await looms.stop()
+  })
+
+  test('rejects reserved runtime events from external signals', async () => {
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 1 })],
+      worker: { dispatch: () => undefined },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
 
     expect(
-      events.some(
-        (event) =>
-          event.type === 'runtime.thread.cancelled' &&
-          Predicate.isReadonlyObject(event.payload) &&
-          event.payload.threadId === childThreadId,
-      ),
-    ).toBe(true)
+      looms.signal(started.runId, [
+        {
+          type: 'runtime.effect.cancelled',
+          payload: { effectId: identity.effectId, attempt: identity.attempt },
+          threadId: started.threadId,
+        },
+      ]),
+    ).rejects.toThrow('reserved for the runtime')
+
+    await looms.signal(started.runId, [
+      {
+        type: 'worker.progress',
+        payload: { forged: true },
+        threadId: started.threadId,
+        effectId: identity.effectId,
+        origin: { type: 'system' },
+      },
+    ])
+
+    const forged = (await looms.getEvents(started.runId)).find(
+      (event) => event.type === 'worker.progress',
+    )
+
+    expect(forged?.effectId).toBeNull()
+    expect(forged?.origin).toEqual({ type: 'external' })
+    expect((await looms.getRun(started.runId)).outstandingEffects).toHaveLength(1)
 
     await looms.stop()
   })

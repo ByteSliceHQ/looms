@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { Effect, Predicate } from 'effect'
 
 import type { JsonValue, RunState } from '@looms/core'
 
@@ -27,12 +27,14 @@ export function assertSameDurableStart(
   runId: string,
   state: RunState,
   requested: RunStartIdentity,
-): string {
+): Effect.Effect<string, RuntimeExecutionError | StartRunConflictError> {
   const existing = state.startIdentity
 
   if (!existing) {
-    throw new RuntimeExecutionError(
-      `Run "${runId}" has durable state but no start identity; its legacy snapshot cannot safely validate a retry`,
+    return Effect.fail(
+      new RuntimeExecutionError(
+        `Run "${runId}" has durable state but no start identity; its legacy snapshot cannot safely validate a retry`,
+      ),
     )
   }
 
@@ -62,9 +64,7 @@ export function assertSameDurableStart(
     mismatches.push('idempotencyKey')
   }
 
-  if (mismatches.length > 0) {
-    throw new StartRunConflictError(runId, requested, existing, mismatches)
-  }
-
-  return existing.rootThreadId
+  return mismatches.length > 0
+    ? Effect.fail(new StartRunConflictError(runId, requested, existing, mismatches))
+    : Effect.succeed(existing.rootThreadId)
 }

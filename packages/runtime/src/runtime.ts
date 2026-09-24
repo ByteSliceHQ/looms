@@ -20,6 +20,7 @@ import {
 import { createCancellation } from './cancellation'
 import { RuntimeExecutionError } from './errors'
 import {
+  admitExternalEvents,
   moduleServices,
   resolveSnapshotStore,
   RunCursorCache,
@@ -452,7 +453,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           const existing = yield* loadCursor(store, runId)
 
           if (existing.seq > 0) {
-            return assertSameDurableStart(runId, existing.state, requestedIdentity)
+            return yield* assertSameDurableStart(runId, existing.state, requestedIdentity)
           }
 
           const batch = yield* validateAndCreateEvents(
@@ -500,7 +501,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
           runCacheAccess.delete(runId)
           const durable = yield* loadCursor(store, runId)
-          return assertSameDurableStart(runId, durable.state, requestedIdentity)
+          return yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
         }),
       ).pipe(
         Effect.flatMap((threadId) =>
@@ -516,7 +517,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     },
 
     signal: (runId, events, signalOpts) =>
-      withRunIngress(runId, signalAdmitted(runId, events, signalOpts)).pipe(
+      admitExternalEvents(events).pipe(
+        Effect.flatMap((admitted) =>
+          withRunIngress(runId, signalAdmitted(runId, admitted, signalOpts)),
+        ),
         Effect.andThen(runtime.wake(runId)),
       ),
 
