@@ -2,6 +2,7 @@ import { Data } from 'effect'
 
 import type { AppendableEvent } from './envelope'
 import type { RunSnapshot } from './snapshot-store'
+import type { JsonValue } from './types'
 
 export const DEFAULT_MAX_EVENT_BYTES = 1024 * 1024
 export const DEFAULT_MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
@@ -46,9 +47,8 @@ export class SnapshotPayloadTooLargeError extends Data.TaggedError('SnapshotPayl
   }
 }
 
-type JsonBytePayload = AppendableEvent | RunSnapshot
-
-export function utf8JsonBytes(value: JsonBytePayload): number {
+/** Size of `value` as serialized JSON, in UTF-8 bytes. */
+export function utf8JsonBytes(value: JsonValue | Readonly<object>): number {
   return utf8.encode(JSON.stringify(value)).byteLength
 }
 

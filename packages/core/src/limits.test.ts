@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Exit } from 'effect'
 
-import { assertSnapshotByteLimit } from './limits'
+import { assertSnapshotByteLimit, utf8JsonBytes } from './limits'
+import { buildSnapshotMarker } from './snapshots'
 import { emptyRunState } from './state'
 import { makeMemoryEventStore, trimEventStoreSafely } from './store'
 
@@ -39,6 +40,20 @@ describe('storage byte and compaction safety', () => {
     }
 
     expect(() => assertSnapshotByteLimit(snapshot, 20)).toThrow('SnapshotPayloadTooLarge')
+  })
+
+  test('inline snapshot state is limited by UTF-8 bytes, not string length', () => {
+    const state = emptyRunState('🧵'.repeat(100))
+    const characters = JSON.stringify(state).length
+
+    expect(utf8JsonBytes(state)).toBeGreaterThan(characters)
+
+    const marker = buildSnapshotMarker('run_inline', 1, 'hash', {
+      state,
+      maxInlineBytes: characters,
+    })
+
+    expect(marker.payload).toEqual({ seq: 1, stateHash: 'hash' })
   })
 
   test('rejects projector coverage missing a required identity', async () => {

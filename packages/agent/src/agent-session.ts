@@ -6,6 +6,7 @@ import {
   invoke,
   spawn,
   wait,
+  type DefinitionStore,
   type EventEnvelope,
   type JsonValue,
   type RuntimeEffect,
@@ -157,12 +158,12 @@ function childThreadId(sessionThreadId: string, messageId: string): string {
 }
 
 export function createAgentSessionThread(
-  definitions: ReadonlyMap<string, AgentSessionDefinition>,
+  definitions: DefinitionStore<AgentSessionDefinition>,
 ): ThreadDefinition<AgentSessionState> {
   return agentModule.thread<AgentSessionState>({
     kind: 'agent-session',
     initialState: (ctx) => {
-      const definition = definitions.get(`${ctx.definitionName}@${ctx.definitionVersion}`)
+      const definition = definitions.get(ctx.definitionName, ctx.definitionVersion)
       return {
         definitionName: ctx.definitionName,
         definitionVersion: ctx.definitionVersion,
@@ -376,7 +377,7 @@ export function createAgentSessionThread(
 
       if (state.activeTurn) {
         const { childThreadId: turnThreadId, messageId, text } = state.activeTurn
-        const definition = definitions.get(`${state.definitionName}@${state.definitionVersion}`)
+        const definition = definitions.get(state.definitionName, state.definitionVersion)
 
         if (state.cancelling) {
           effects.push(cancel(turnThreadId))
