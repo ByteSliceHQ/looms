@@ -1,4 +1,4 @@
-import { Layer } from 'effect'
+import { Layer, Predicate } from 'effect'
 
 import { defineModule } from '@looms/core'
 
@@ -53,5 +53,12 @@ export function agent(options: AgentModuleOptions = {}) {
       tokenUsage,
     },
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
+    interruptsOnSignal: (event) =>
+      event.type === 'agent.steered' &&
+      Predicate.isObject(event.payload) &&
+      event.payload.interrupt === true &&
+      event.threadId
+        ? [event.threadId]
+        : [],
   }))
 }

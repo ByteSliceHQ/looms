@@ -14,6 +14,7 @@ import {
   replayTo,
   type AnyRuntimeModule,
   type EventInput,
+  type SignalInterruptRule,
   type InvalidEventError,
 } from '@looms/core'
 
@@ -67,7 +68,10 @@ function currentTimeMillis(): number {
 }
 
 /** Threads whose in-process effects an admitted signal interrupts. */
-function interruptedThreadIds(events: readonly EventInput[]): ReadonlySet<string> {
+function interruptedThreadIds(
+  events: readonly EventInput[],
+  rules: readonly SignalInterruptRule[],
+): ReadonlySet<string> {
   const threadIds = new Set<string>()
 
   for (const event of events) {
@@ -75,8 +79,12 @@ function interruptedThreadIds(events: readonly EventInput[]): ReadonlySet<string
 
     if (event.type === 'runtime.thread.cancel.requested' && Predicate.isString(payload.threadId)) {
       threadIds.add(payload.threadId)
-    } else if (event.type === 'agent.steered' && payload.interrupt === true && event.threadId) {
-      threadIds.add(event.threadId)
+    }
+
+    for (const rule of rules) {
+      for (const threadId of rule(event)) {
+        threadIds.add(threadId)
+      }
     }
   }
 
@@ -178,7 +186,11 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       )
 
       if (committed.append) {
-        executionContexts.abort(runId, interruptedThreadIds(events), 'Effect interrupted')
+        executionContexts.abort(
+          runId,
+          interruptedThreadIds(events, registry.interruptRules),
+          'Effect interrupted',
+        )
       }
 
       return committed.value
