@@ -338,6 +338,37 @@ export function wait(args: { waitId: string; on: WaitCondition; tag?: JsonValue 
   return effect
 }
 
+export interface WaitOutcome {
+  readonly result: JsonValue | null
+  readonly error: string | null
+}
+
+/**
+ * Reads the outcome of a satisfied wait. The wait fails when the satisfying event's payload has an
+ * `error`, or when the waiter put an `error` on the wait's tag (such as a timeout that loses a
+ * race). Otherwise the result is the payload's `output`, else the whole payload.
+ */
+export function waitOutcome(
+  satisfied: JsonValue | undefined,
+  tag: JsonValue | undefined,
+  fallback: JsonValue | null = null,
+): WaitOutcome {
+  const payload =
+    Predicate.isObject(satisfied) && Predicate.isObject(satisfied.payload) ? satisfied.payload : {}
+
+  const tagError = Predicate.isObject(tag) && Predicate.isString(tag.error) ? tag.error : null
+  const error = Predicate.isString(payload.error) ? payload.error : tagError
+
+  if (error !== null) {
+    return { result: null, error }
+  }
+
+  const result = payload.output ?? (Predicate.isObject(satisfied) ? satisfied.payload : fallback)
+
+  // SAFETY: wait results are persisted JSON event payloads.
+  return { result: asJson(result) ?? null, error: null }
+}
+
 export function emit<E extends EventInput = EventInput>(event: E): EmitEffect<E> {
   return { type: 'runtime.emit', event }
 }

@@ -1,7 +1,6 @@
 import { Predicate } from 'effect'
 
 import {
-  asJson,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   emit,
@@ -10,6 +9,7 @@ import {
   parseEffectId,
   spawn,
   wait,
+  waitOutcome,
   type EventEnvelope,
   type JsonValue,
   type RuntimeEffect,
@@ -367,20 +367,9 @@ export const agentThread = agentModule.thread<AgentState>({
           return state
         }
 
-        const embedded = event.payload.event
-
-        const embeddedObj =
-          Predicate.isObject(embedded) && Predicate.isObject(embedded.payload)
-            ? embedded.payload
-            : {}
-
         const threadId = ctx.threadId
         const name = Predicate.isString(tag.name) ? tag.name : 'child'
-        const error = Predicate.isString(embeddedObj.error) ? embeddedObj.error : null
-
-        const result = asJson(
-          embeddedObj.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
-        )
+        const { result, error } = waitOutcome(event.payload.event, tag)
 
         return {
           ...state,
@@ -508,18 +497,9 @@ export function satisfiedToToolResult(event: EventEnvelope): RuntimeEffect | nul
     return null
   }
 
-  const embedded = event.payload.event
-
-  const embeddedPayload =
-    Predicate.isObject(embedded) && Predicate.isObject(embedded.payload) ? embedded.payload : {}
-
   const threadId = event.threadId ?? null
   const name = Predicate.isString(tag.name) ? tag.name : 'child'
-  const error = Predicate.isString(embeddedPayload.error) ? embeddedPayload.error : null
-
-  const result = asJson(
-    embeddedPayload.output ?? (Predicate.isObject(embedded) ? embedded.payload : null) ?? null,
-  )
+  const { result, error } = waitOutcome(event.payload.event, tag)
 
   return emit({
     type: 'agent.tool.result',

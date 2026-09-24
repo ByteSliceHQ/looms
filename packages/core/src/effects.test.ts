@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { defineEffect, type EffectContext } from './effects'
+import { defineEffect, waitOutcome, type EffectContext } from './effects'
 import { validateInputEffect } from './schema'
 
 const ctx: EffectContext = {
@@ -120,6 +120,38 @@ describe('defineEffect', () => {
     expect(result).toMatchObject({
       tag: 'InvalidInputError',
       issues: 1,
+    })
+  })
+})
+
+describe('waitOutcome', () => {
+  test('returns the payload output of the satisfying event', () => {
+    expect(waitOutcome({ type: 'x', payload: { output: 42 } }, { nodeId: 'a' })).toEqual({
+      result: 42,
+      error: null,
+    })
+  })
+
+  test('fails with the payload error', () => {
+    expect(waitOutcome({ type: 'x', payload: { error: 'boom' } }, {})).toEqual({
+      result: null,
+      error: 'boom',
+    })
+  })
+
+  test('fails with an error the waiter put on the tag', () => {
+    const satisfied = { type: 'runtime.timer.fired', payload: { at: 1 } }
+
+    expect(waitOutcome(satisfied, { error: 'Approval a timed out' })).toEqual({
+      result: null,
+      error: 'Approval a timed out',
+    })
+  })
+
+  test('uses the fallback when there is no satisfying event', () => {
+    expect(waitOutcome(undefined, {}, { waited: true })).toEqual({
+      result: { waited: true },
+      error: null,
     })
   })
 })

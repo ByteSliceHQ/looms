@@ -29,5 +29,6 @@ describe('@looms/approval signals', () => {
     const waits = effects.filter((effect): effect is WaitEffect => effect.type === 'runtime.wait')
     expect(waits).toHaveLength(2)
     expect(waits[1]?.on).toEqual({ timerAt: 1234 })
+    expect(waits[1]?.tag).toMatchObject({ error: 'Approval review-1 timed out' })
   })
 })

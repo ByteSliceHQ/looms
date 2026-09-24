@@ -1,7 +1,6 @@
 import { Effect, Predicate, Schema } from 'effect'
 
 import {
-  asJson,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   EventInputSchema,
@@ -18,6 +17,7 @@ import {
   type JsonValue,
   type RuntimeEffect,
   utf8JsonBytes,
+  waitOutcome,
 } from '@looms/core'
 
 import { NodeStateSchema, type NodeState } from './definitions'
@@ -266,36 +266,6 @@ function finishNode(
     ...withoutPendingWork(state, nodeId),
     pendingEmits: [...state.pendingEmits.filter((item) => item.id !== id), { id, event }],
   }
-}
-
-interface WaitOutcome {
-  readonly result: JsonValue | null
-  readonly error: string | null
-}
-
-function waitOutcome(
-  satisfied: JsonValue | undefined,
-  tag: { readonly [key: string]: JsonValue },
-): WaitOutcome {
-  const payload =
-    Predicate.isObject(satisfied) && Predicate.isObject(satisfied.payload) ? satisfied.payload : {}
-
-  const error = Predicate.isString(payload.error) ? payload.error : null
-
-  const approvalId = Predicate.isString(tag.approvalId) ? tag.approvalId : undefined
-
-  const approvalTimeout =
-    approvalId !== undefined &&
-    Predicate.isObject(satisfied) &&
-    satisfied.type === 'runtime.timer.fired'
-
-  const terminalError = error ?? (approvalTimeout ? `Approval ${approvalId} timed out` : null)
-
-  const result =
-    payload.output ?? (Predicate.isObject(satisfied) ? satisfied.payload : { waited: true })
-
-  // SAFETY: result is serialized to a JSON-compatible node execution result.
-  return { result: terminalError ? null : (asJson(result) ?? null), error: terminalError }
 }
 
 function recordMapOutput(
@@ -590,7 +560,7 @@ export const workflowThread = workflowModule.thread({
           return state
         }
 
-        const { result, error } = waitOutcome(event.payload.event, tag)
+        const { result, error } = waitOutcome(event.payload.event, tag, { waited: true })
         const map = state.pendingMaps.find((item) => item.nodeId === nodeId)
 
         if (error === null && map && Predicate.isNumber(tag.index)) {
