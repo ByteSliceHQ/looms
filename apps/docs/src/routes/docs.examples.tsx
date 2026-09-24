@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import agentSession from '../../../../examples/agent-session.ts?raw'
 import approvalExample from '../../../../examples/approval.ts?raw'
 import customThread from '../../../../examples/custom-thread.ts?raw'
 import workflowExample from '../../../../examples/workflow.ts?raw'
@@ -24,6 +25,17 @@ function Examples() {
       <CodeBlock lang="bash">{`npm install @swirls/looms zod
 # Save one of the files below, then:
 bun approval.ts`}</CodeBlock>
+      <h2 id="agent-session">
+        Durable agent session
+        <a className="heading-anchor" href="#agent-session" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        The session keeps an ordered mailbox around a pinned agent. Each message has a stable ID, so
+        retrying delivery does not create another turn.
+      </p>
+      <CodeBlock lang="ts" code={agentSession} />
       <h2 id="approval">
         Approve or reject
         <a className="heading-anchor" href="#approval" aria-label="Link to this section">
@@ -46,6 +58,39 @@ bun approval.ts`}</CodeBlock>
         combines the results. Both root and child definitions are registered.
       </p>
       <CodeBlock lang="ts" code={workflowExample} />
+      <h2 id="workflow-graphs">
+        Workflow graphs
+        <a className="heading-anchor" href="#workflow-graphs" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Workflows accept explicit edges, labeled switch branches, a concurrency limit, and per-node
+        failure policies: fail, retry, skip, or fallback. Scheduling stays deterministic, and nodes
+        outside the selected branch are skipped.
+      </p>
+      <CodeBlock lang="ts">{`const workflow = defineWorkflow({
+  name: 'route-order',
+  concurrency: 8,
+  nodes: [
+    {
+      id: 'route',
+      type: 'switch',
+      run: ({ input }) => ({ type: 'switch', branch: input.priority }),
+    },
+    { id: 'express', failure: { type: 'retry', maxAttempts: 3 }, run: shipExpress },
+    { id: 'standard', failure: { type: 'skip' }, run: shipStandard },
+  ],
+  edges: [
+    { sourceNodeId: 'route', targetNodeId: 'express', label: 'high' },
+    { sourceNodeId: 'route', targetNodeId: 'standard', label: 'normal' },
+  ],
+})`}</CodeBlock>
+      <p>
+        Use <code>executeMap</code>, <code>executeFanout</code>, and <code>executeWhile</code> for
+        child iterations with deterministic IDs and durable checkpoints. Inputs, outputs, and
+        checkpoints have configurable UTF-8 byte limits.
+      </p>
       <h2 id="custom-thread">
         Your own execution kind
         <a className="heading-anchor" href="#custom-thread" aria-label="Link to this section">

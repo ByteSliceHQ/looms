@@ -127,10 +127,14 @@ GET  /runs/:id                       → { runId, state }
 GET  /runs/:id/events                → { runId, events }
 POST /runs/:id/events                → { runId, state }
 GET  /runs/:id/threads               → { runId, threads }
+GET  /runs/:id/status                → run, deadline, and effect status
+GET  /runs/:id/effects               → { runId, effects }
+POST /runs/:id/effects/:effect/retry → operator-reviewed retry
 POST /runs/:id/wake                  → { runId, state }
 GET  /runs/:id/replay?seq=10          → { runId, step }
 GET  /runs/:id/projections/:name      → { runId, name, value }
-GET  /runs/:id/events?live=true       → SSE`}</CodeBlock>
+GET  /runs/:id/events?live=true       → SSE
+POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       <p>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
         POST /runs/:id/events accepts an events array and optionally idempotencyKey. The embed
@@ -184,10 +188,12 @@ GET  /runs/:id/events?live=true       → SSE`}</CodeBlock>
         </li>
         <li>
           <code>@swirls/looms/agent</code>: agent, defineAgent, defineTool, asThreadTool,
-          asAgentTool, asWorkflowTool, conversation, userMessage.
+          asAgentTool, asWorkflowTool, defineAgentSession, submitAgentMessage, conversation, and
+          userMessage.
         </li>
         <li>
-          <code>@swirls/looms/workflow</code>: workflow and defineWorkflow.
+          <code>@swirls/looms/workflow</code>: workflow, defineWorkflow, graph validation, failure
+          policies, and map, fan-out, and while helpers.
         </li>
         <li>
           <code>@swirls/looms/approval</code>: approval, gate, decision, pendingApprovals.
@@ -212,6 +218,9 @@ GET  /runs/:id/events?live=true       → SSE`}</CodeBlock>
         <li>
           <code>@swirls/looms/testing</code>: deterministic in-memory helpers and conformance
           checks.
+        </li>
+        <li>
+          <code>@swirls/looms/otel</code>: OpenTelemetry spans and metrics for runtime observations.
         </li>
         <li>
           <code>@swirls/looms/cli</code> and <code>@swirls/looms/debugger</code>: inspection tools.

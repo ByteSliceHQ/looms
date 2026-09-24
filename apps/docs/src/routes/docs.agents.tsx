@@ -56,6 +56,39 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         Use <code>userMessage(text)</code> with signal. For long conversations, decide how much
         history to send to the model and when to summarize it.
       </p>
+      <h2 id="agent-sessions">
+        Agent sessions
+        <a className="heading-anchor" href="#agent-sessions" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Use <code>defineAgentSession</code> when messages need a durable mailbox. A session admits
+        one turn at a time, deduplicates message IDs, and keeps queued messages across restarts.
+        Submit messages with <code>submitAgentMessage</code>.
+      </p>
+      <p>
+        Delivery can be <code>followUp</code>, <code>steer</code>, or <code>nextTurn</code>. A
+        follow-up starts its own turn in FIFO order. A steer targets the active turn and falls back
+        to a follow-up if it arrives too late. A next-turn message becomes context without starting
+        a turn.
+      </p>
+      <CodeBlock lang="ts">{`const session = defineAgentSession({
+  name: 'support-session',
+  agent: supportAgent,
+  idleTimeoutMs: 30 * 60_000,
+})
+
+const { runId } = await looms.start(session, {})
+await looms.signal(runId, [
+  submitAgentMessage('message-1042', 'Where is my order?', {
+    delivery: 'followUp',
+  }),
+])`}</CodeBlock>
+      <p>
+        Register the session and its pinned agent definition in the agent module. Use stable message
+        IDs when retrying ingress. Cancelling the active turn leaves queued messages in the mailbox.
+      </p>
       <h2 id="tools-and-child-threads">
         Tools and child threads
         <a

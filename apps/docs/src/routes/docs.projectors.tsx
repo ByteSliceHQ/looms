@@ -343,8 +343,9 @@ export function TimeTravelSlider({ runId }: { runId: string }) {
       </h3>
       <p>
         Wrap the <em>local</em> execution store with <code>withProjectors</code> from{' '}
-        <code>@swirls/looms/projectors</code>. Events are delivered in log order after each commit.
-        Projection failures are isolated — the cell-local log stays authoritative.
+        <code>@swirls/looms/projectors</code>. Add <code>createProjectorDelivery</code> with a
+        persistent cursor store when projection must survive a process restart. Delivery advances
+        its cursor only after an idempotent projector accepts the batch.
       </p>
       <CodeBlock lang="ts">{`import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
 import { withProjectors } from '@swirls/looms/projectors'
@@ -364,7 +365,9 @@ const store = withProjectors(bunSqliteEventStore({ path: './run.sqlite' }), [
         On Cloudflare Durable Objects, supply projectors via <code>configure().projectors</code>{' '}
         (see <Link to="/docs/hosting-and-storage">Hosting &amp; storage</Link>). Projectors can
         populate relational databases, emit webhooks, or replicate events to a centralized data lake
-        via <code>s2Projector</code>.
+        via <code>s2Projector</code>. Looms stores projector cursors in the object's SQLite
+        database, retries failures with durable backoff, and moves exhausted work to a dead letter
+        state. Inspect lag and requeue failed delivery through the projector operations API.
       </p>
 
       <h3 id="built-in-index-helpers">
@@ -450,6 +453,7 @@ const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
 export function approvalsWebhook(url: string): Projector {
   return {
     name: 'approvals-webhook',
+    version: '1',
     project: async (events) => {
       for (const event of events) {
         if (event.type !== 'approval.requested') continue

@@ -34,8 +34,12 @@ durable events, `0` disables) additionally snapshots mid-wake to bound replay
 after a crash inside one long wake.
 
 After each save the store is pruned to `trimAfterSnapshot.keepSnapshots`
-(default 1). With `trimAfterSnapshot` set, the event log is also trimmed
-behind the oldest kept snapshot.
+(default 1). With `trimAfterSnapshot` set, the event log is trimmed only when
+its `coverage` callback proves that an archive covers the cut or supplies a
+non-empty, authoritative `requiredProjectors` list whose every identity is
+present in `projectorCursors` at or beyond the cut. A cursor map alone cannot
+prove completeness, and a snapshot alone is insufficient because arbitrary
+projections cannot be rebuilt from it.
 
 Snapshot failures are swallowed; the log stays authoritative.
 
@@ -82,6 +86,13 @@ Set `LOOMS_BACKEND` in your environment:
 Both backends share `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads). Cloudflare mode loads secrets from `apps/demo/.env` via `wrangler dev --env-file ../demo/.env` (or `apps/demo-worker/.dev.vars`).
 
 > **Note on `GET /runs`:** Actor cells are isolated databases keyed by `runId` (Bun host, Durable Objects, and celld). Global run enumeration (`GET /runs`) returns `501 Not Implemented`; recent-run lists should come from an async projector lake (such as S2) or client-side storage (as the demo UI does).
+
+Durable Object request serialization and SQLite transactions provide a
+single-writer boundary per object. Alarms are durable but can be late or
+coalesced, and a wake may repeat after eviction or deployment. Looms therefore
+relies on append preconditions and idempotent effects rather than exactly-once
+execution. See [production.md](./production.md) for deployment and repair
+procedures.
 
 ## Run cache
 
