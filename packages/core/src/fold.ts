@@ -245,7 +245,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
       const existing = state.threads[threadId]
 
-      if (!existing) {
+      if (!existing || isTerminalStatus(existing.status)) {
         return state
       }
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { Predicate } from 'effect'
 
-import type { RunState } from '@looms/core'
+import { wait, type RunState } from '@looms/core'
 import { defineWorkflow, workflow, type WorkflowDefinition } from '@looms/workflow'
 
 import { createLooms } from './looms'
@@ -208,5 +208,37 @@ describe('workflow graphs on the runtime', () => {
     const state = await run([broken, mapper], mapper)
 
     expect(state.status).toBe('failed')
+  })
+
+  test('a failing map child cancels its siblings that are still running', async () => {
+    const child = defineWorkflow({
+      name: 'fail-or-hang',
+      nodes: [
+        {
+          id: 'out',
+          run: (ctx) => {
+            if (ctx.input === 'fail') {
+              throw new Error('child broke')
+            }
+
+            return ctx.effects([wait({ waitId: 'never', on: { type: 'test.never' } })])
+          },
+        },
+      ],
+    })
+
+    const mapper = defineWorkflow({
+      name: 'cancelling-mapper',
+      nodes: [{ id: 'items', run: (ctx) => ctx.fanout(child, ['hang', 'fail'], 2) }],
+    })
+
+    const state = await run([child, mapper], mapper)
+
+    const children = Object.values(state.threads).filter(
+      (thread) => thread.definitionName === 'fail-or-hang',
+    )
+
+    expect(state.status).toBe('failed')
+    expect(children.map((thread) => thread.status).toSorted()).toEqual(['cancelled', 'failed'])
   })
 })
