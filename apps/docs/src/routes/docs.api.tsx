@@ -179,9 +179,9 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       </h2>
       <ul>
         <li>
-          <code>@swirls/looms/core</code>: defineModule, defineEventCatalog, defineThread,
-          defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail. The bun-sqlite
-          entry supplies Bun storage.
+          <code>@swirls/looms/core</code>: defineModule, defineKind, createKind, defineEventCatalog,
+          defineThread, defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail.
+          The bun-sqlite entry supplies Bun storage.
         </li>
         <li>
           <code>@swirls/looms/runtime</code>: createLooms and lower-level runtime APIs.
