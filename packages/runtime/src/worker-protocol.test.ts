@@ -143,6 +143,42 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 
+  test('times out a local handler that never settles', async () => {
+    const hanging = defineEffect({
+      type: 'hang.forever',
+      retry: { maxAttempts: 1, startToCloseTimeoutMs: 10 },
+      execute: () => Effect.never,
+    })
+
+    const hangDefinition = { kind: 'hang', name: 'hang', value: { kind: 'hang', name: 'hang' } }
+
+    const looms = createLooms({
+      modules: [
+        defineRuntimeModule({
+          namespace: 'hang',
+          protocolVersion: '1.0.0',
+          effects: { hanging },
+          threads: {
+            hang: defineThread({
+              kind: 'hang',
+              initialState: () => ({}),
+              step: (state) => state,
+              effects: () => [invoke(hanging, {}, 'hang')],
+            }),
+          },
+          definitions: [hangDefinition],
+        }),
+      ],
+    })
+
+    const started = await looms.start(hangDefinition, {})
+    const types = (await looms.getEvents(started.runId)).map((event) => event.type)
+
+    expect(types).toContain('runtime.effect.timed_out')
+    expect(types).toContain('runtime.effect.failed')
+    await looms.stop()
+  })
+
   test('serializes operator retry with a concurrent signal on the same run', async () => {
     const inner = await Effect.runPromise(makeMemoryEventStore)
     let entered!: () => void
@@ -272,6 +308,27 @@ describe('durable external effect workers', () => {
     expect(progressSeq).toBeNumber()
     expect(cancelledSeq).toBeGreaterThan(progressSeq ?? Number.POSITIVE_INFINITY)
 
+    await looms.stop()
+  })
+
+  test('cancels a retry-waiting worker effect without asking the worker', async () => {
+    const cancelled: EffectWorkerTask[] = []
+
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 3, backoffMs: 60_000 })],
+      worker: { dispatch: () => undefined, cancel: (task) => cancelled.push(task) },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
+    await looms.workerFail(started.runId, { ...identity, error: 'transient' })
+    await looms.cancel(started.runId, started.threadId)
+
+    const types = (await looms.getEvents(started.runId)).map((event) => event.type)
+
+    expect(cancelled).toHaveLength(0)
+    expect(types).toContain('runtime.effect.cancelled')
+    expect(types).not.toContain('runtime.effect.cancel.requested')
     await looms.stop()
   })
 

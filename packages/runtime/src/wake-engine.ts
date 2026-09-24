@@ -45,11 +45,6 @@ export interface WakeEngineOptions {
   readonly worker?: EffectWorker
   readonly observer?: RuntimeObserver
   readonly scheduler: () => WakeScheduler
-  readonly abortActiveEffects: (
-    runId: string,
-    threadIds: ReadonlySet<string>,
-    message: string,
-  ) => void
 }
 
 export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake'] {
@@ -61,7 +56,6 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
     repository,
     snapshotEvery,
     maxWakeIterations,
-    abortActiveEffects,
   } = options
 
   const { appendObserved, applyAppend, liveAppends, loadCursor, persistSnapshot } = repository
@@ -109,17 +103,36 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
       executionContext.resolveWakeCompletion = resolveCompletion
 
       executionContext.waking = true
+      let released = false
+
+      const releaseWake = (): void => {
+        released = true
+        executionContext.waking = false
+        executionContext.wakeAgain = false
+        executionContext.wakeCompletion = null
+        executionContext.resolveWakeCompletion = null
+        executionContext.liveStore = undefined
+        liveAppends.clear(runId)
+        executionContext.liveCount = 0
+        executionContexts.releaseIfIdle(runId)
+      }
+
+      // Checking for a joined wake and releasing the claim must happen without yielding, or a wake
+      // requested in between would join a completion that never saw its events.
+      const releaseUnlessWokenAgain = (): boolean => {
+        if (executionContext.wakeAgain) {
+          executionContext.wakeAgain = false
+          return false
+        }
+
+        releaseWake()
+        return true
+      }
 
       return yield* Effect.gen(function* () {
         const store = yield* EventStoreTag
         const runInContext = Effect.runPromiseWith(yield* Effect.context())
         executionContext.liveStore = store
-
-        const consumeWakeAgain = (): boolean => {
-          const pending = executionContext.wakeAgain
-          executionContext.wakeAgain = false
-          return pending
-        }
 
         let finalState: RunState | undefined
 
@@ -149,7 +162,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             }
 
             finalState = cursor.state
-            break
+            continue
           }
 
           executionContext.liveCount = 0
@@ -270,8 +283,6 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                   : [],
               ),
             )
-
-            abortActiveEffects(runId, cancellationTargets, 'Effect cancelled')
 
             const outstanding = state.outstandingEffects.filter((item) => {
               const execution = state.effectExecutions[item.effectId]
@@ -429,7 +440,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           const parkedAt = yield* Clock.currentTimeMillis
           const nextDeadline = nextRuntimeDeadline(cursor.state, parkedAt)
 
-          if (nextDeadline !== undefined && !isRunTerminal(cursor.state)) {
+          if (nextDeadline !== undefined) {
             yield* options.scheduler().schedule(runId, nextDeadline)
           } else {
             yield* options.scheduler().cancel(runId)
@@ -456,7 +467,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           }
 
           finalState = cursor.state
-        } while (consumeWakeAgain())
+        } while (!releaseUnlessWokenAgain())
 
         if (!finalState) {
           return yield* new RuntimeExecutionError(`Wake for run "${runId}" completed without state`)
@@ -464,17 +475,13 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
         return finalState
       }).pipe(
-        Effect.onExit((exit) => Effect.sync(() => resolveCompletion(exit))),
-        Effect.ensuring(
+        Effect.onExit((exit) =>
           Effect.sync(() => {
-            executionContext.waking = false
-            executionContext.wakeAgain = false
-            executionContext.wakeCompletion = null
-            executionContext.resolveWakeCompletion = null
-            executionContext.liveStore = undefined
-            liveAppends.clear(runId)
-            executionContext.liveCount = 0
-            executionContexts.releaseIfIdle(runId)
+            if (!released) {
+              releaseWake()
+            }
+
+            resolveCompletion(exit)
           }),
         ),
       )

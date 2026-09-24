@@ -2,6 +2,7 @@ import type { Exit } from 'effect'
 
 import type { EventStore, RunState } from '@looms/core'
 
+import { RuntimeExecutionError } from './errors'
 import type { WakeError } from './types'
 
 export type WakeCompletion = Exit.Exit<RunState, WakeError>
@@ -70,6 +71,21 @@ export class RunExecutionContexts {
 
   peek(runId: string): RunExecutionContext | undefined {
     return this.runs.get(runId)
+  }
+
+  /** Abort in-process effects owned by the given threads. */
+  abort(runId: string, threadIds: ReadonlySet<string>, message: string): void {
+    const activeEffects = this.runs.get(runId)?.activeEffects
+
+    if (!activeEffects || threadIds.size === 0) {
+      return
+    }
+
+    for (const active of activeEffects.values()) {
+      if (threadIds.has(active.threadId)) {
+        active.controller.abort(new RuntimeExecutionError(message))
+      }
+    }
   }
 
   releaseIfIdle(runId: string): void {

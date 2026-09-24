@@ -29,11 +29,12 @@ export function createOpenTelemetryObservers(
   const latency = meter.createHistogram('looms.operation.duration', { unit: 'ms' })
   const timerLateness = meter.createHistogram('looms.timer.lateness', { unit: 'ms' })
   const projectorLag = meter.createHistogram('looms.projector.lag', { unit: '{event}' })
+  // Run ids are unbounded, so they never become metric attributes.
   const base = options.attributes ?? {}
 
   const runtimeObserver: RuntimeObserver = {
     observe(event: RuntimeObservation) {
-      const attributes = { ...base, 'looms.operation': event.type, 'looms.run.id': event.runId }
+      const attributes = { ...base, 'looms.operation': event.type }
       operations.add(1, attributes)
 
       if ('latencyMs' in event) {
@@ -55,7 +56,6 @@ export function createOpenTelemetryObservers(
       const attributes = {
         ...base,
         'looms.operation': event.type,
-        'looms.run.id': event.runId,
         'looms.projector': event.projector,
       }
 

@@ -10,21 +10,21 @@ import {
   definitionKey,
   EventStoreTag,
   foldRun,
-  isRunTerminal,
-  isWaitOnTimer,
   project,
   replayTo,
   type AnyRuntimeModule,
+  type EventInput,
+  type InvalidEventError,
 } from '@looms/core'
 
 import { createCancellation } from './cancellation'
-import { RuntimeExecutionError } from './errors'
+import { nextRuntimeDeadline } from './deadline-transition-planner'
+import { RuntimeExecutionError, type StartRunConflictError } from './errors'
 import {
   admitExternalEvents,
   moduleServices,
   resolveSnapshotStore,
   RunCursorCache,
-  stripSeq,
   threadStartedEvents,
   UnknownDefinitionError,
   validateAndCreateEvents,
@@ -32,7 +32,7 @@ import {
 } from './helpers'
 import { createRunIngress } from './ingress'
 import { notifyObserver, type RuntimeObserver } from './observer'
-import { createRuntimeRepository } from './repository'
+import { createRuntimeRepository, type CommitPlan } from './repository'
 import { RunExecutionContexts } from './run-execution-context'
 import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
@@ -66,7 +66,25 @@ function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
 }
 
+/** Threads whose in-process effects an admitted signal interrupts. */
+function interruptedThreadIds(events: readonly EventInput[]): ReadonlySet<string> {
+  const threadIds = new Set<string>()
+
+  for (const event of events) {
+    const payload = Predicate.isObject(event.payload) ? event.payload : {}
+
+    if (event.type === 'runtime.thread.cancel.requested' && Predicate.isString(payload.threadId)) {
+      threadIds.add(payload.threadId)
+    } else if (event.type === 'agent.steered' && payload.interrupt === true && event.threadId) {
+      threadIds.add(event.threadId)
+    }
+  }
+
+  return threadIds
+}
+
 const DEFAULT_RUN_CACHE_SIZE = 0
+const RESCAN_CONCURRENCY = 16
 const DEFAULT_KEEP_SNAPSHOTS = 1
 const DEFAULT_MAX_PENDING_RUN_OPERATIONS = 256
 
@@ -100,24 +118,6 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const observe = (event: Parameters<RuntimeObserver['observe']>[0]) =>
     notifyObserver(options.observer, event)
 
-  const abortActiveEffects = (
-    runId: string,
-    threadIds: ReadonlySet<string>,
-    message: string,
-  ): void => {
-    const activeEffects = executionContexts.peek(runId)?.activeEffects
-
-    if (!activeEffects) {
-      return
-    }
-
-    for (const active of activeEffects.values()) {
-      if (threadIds.has(active.threadId)) {
-        active.controller.abort(new RuntimeExecutionError(message))
-      }
-    }
-  }
-
   const withRunIngress = createRunIngress(executionContexts, maxPendingRunOperations)
 
   const repository = createRuntimeRepository({
@@ -130,93 +130,58 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     observer: options.observer,
   })
 
-  const { appendObserved, loadCursor, deleteCachedCursor } = repository
-  const runCacheAccess = { delete: deleteCachedCursor }
+  const { commit, loadCursor } = repository
 
   const signalAdmitted: LoomsRuntime<TModules>['signal'] = (runId, events, signalOpts) =>
     Effect.gen(function* () {
       const store = yield* EventStoreTag
-      let conflicts = 0
+      const signalKey = signalOpts?.idempotencyKey
 
-      while (conflicts < 16) {
-        const current = yield* loadCursor(store, runId)
-        const currentState = current.state
+      const committed = yield* commit(store, runId, (current) =>
+        Effect.gen(function* () {
+          const processed = current.state.processedIdempotencyKeys
 
-        if (
-          signalOpts?.idempotencyKey &&
-          currentState.processedIdempotencyKeys.includes(signalOpts.idempotencyKey)
-        ) {
-          return currentState
-        }
+          const filteredEvents =
+            signalKey && processed.includes(signalKey)
+              ? []
+              : events.filter((input) => {
+                  const key = input.idempotencyKey ?? signalKey
+                  return !key || !processed.includes(key)
+                })
 
-        const filteredEvents = events.filter((input) => {
-          const key = input.idempotencyKey ?? signalOpts?.idempotencyKey
-          return !key || !currentState.processedIdempotencyKeys.includes(key)
-        })
-
-        if (filteredEvents.length === 0) {
-          return currentState
-        }
-
-        const batch = yield* validateAndCreateEvents(
-          registry.catalogs,
-          runId,
-          filteredEvents.map((input) => ({
-            ...input,
-            idempotencyKey: input.idempotencyKey ?? signalOpts?.idempotencyKey,
-          })),
-          { origin: { type: 'external' } },
-        )
-
-        const folded = foldRun(batch, registry, { runId, initial: currentState })
-        const satisfied = waitSatisfiedEvents(folded, batch)
-        const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
-
-        for (const event of batch) {
-          const payload = Predicate.isObject(event.payload) ? event.payload : {}
-
-          const requestedThreadId =
-            event.type === 'runtime.thread.cancel.requested' && Predicate.isString(payload.threadId)
-              ? payload.threadId
-              : event.type === 'agent.steered' && payload.interrupt === true
-                ? event.threadId
-                : null
-
-          if (!requestedThreadId) {
-            continue
+          if (filteredEvents.length === 0) {
+            return { events: [], value: current.state }
           }
 
-          abortActiveEffects(runId, new Set([requestedThreadId]), 'Effect interrupted')
-        }
+          const batch = yield* validateAndCreateEvents(
+            registry.catalogs,
+            runId,
+            filteredEvents.map((input) => ({
+              ...input,
+              idempotencyKey: input.idempotencyKey ?? signalKey,
+            })),
+            { origin: { type: 'external' } },
+          )
 
-        const appendOptions = signalOpts?.idempotencyKey
-          ? {
-              expectedTail: current.seq,
-              idempotency: { key: `signal:${signalOpts.idempotencyKey}` },
-            }
-          : { expectedTail: current.seq }
+          const folded = foldRun(batch, registry, { runId, initial: current.state })
 
-        const result = yield* appendObserved(
-          store,
-          runId,
-          stripSeq([...batch, ...satisfiedEvents]),
-          appendOptions,
-        ).pipe(
-          Effect.map(() => true),
-          Effect.catchTag('EventStoreConflictError', () => Effect.succeed(false)),
-        )
+          const satisfiedEvents = waitSatisfiedEvents(folded, batch).map((input) =>
+            createEvent(runId, input),
+          )
 
-        if (result) {
-          return currentState
-        }
+          return {
+            events: [...batch, ...satisfiedEvents],
+            value: current.state,
+            idempotencyKey: signalKey ? `signal:${signalKey}` : undefined,
+          }
+        }),
+      )
 
-        runCacheAccess.delete(runId)
-        conflicts += 1
+      if (committed.append) {
+        executionContexts.abort(runId, interruptedThreadIds(events), 'Effect interrupted')
       }
 
-      return yield* new RuntimeExecutionError(
-        `Could not append signal to run "${runId}" after 16 conflicts`,
-      )
+      return committed.value
     })
 
   let scheduler: WakeScheduler
@@ -233,7 +198,6 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     worker: options.worker,
     observer: options.observer,
     scheduler: () => scheduler,
-    abortActiveEffects,
   })
 
   const workerCallbacks = createWorkerCallbacks({
@@ -241,18 +205,16 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     repository,
     withRunIngress,
     observer: options.observer,
-    runtime: () => runtime,
-    worker: options.worker,
+    wake: wakeEngine,
   })
 
   const cancellation = createCancellation({
     registry,
     repository,
+    executionContexts,
     worker: options.worker,
     observer: options.observer,
-    runtime: () => runtime,
-    abortActiveEffects,
-    signalAdmitted,
+    wake: wakeEngine,
     withRunIngress,
   })
 
@@ -318,88 +280,71 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         runId,
         Effect.gen(function* () {
           const store = yield* EventStoreTag
-          const cursor = yield* loadCursor(store, runId)
-          const execution = cursor.state.effectExecutions[effectId]
 
-          const item = cursor.state.outstandingEffects.find(
-            (candidate) => candidate.effectId === effectId,
+          yield* commit(store, runId, (cursor) =>
+            Effect.gen(function* () {
+              const execution = cursor.state.effectExecutions[effectId]
+
+              const item = cursor.state.outstandingEffects.find(
+                (candidate) => candidate.effectId === effectId,
+              )
+
+              if (!execution || !item) {
+                return yield* new RuntimeExecutionError(`Unknown outstanding effect "${effectId}"`)
+              }
+
+              if (
+                execution.status !== 'ambiguous' &&
+                execution.status !== 'timed_out' &&
+                execution.status !== 'cancel_requested'
+              ) {
+                return yield* new RuntimeExecutionError(
+                  `Effect "${effectId}" cannot be retried from status "${execution.status}"`,
+                )
+              }
+
+              const now = yield* Clock.currentTimeMillis
+
+              const retryEvent = createEvent(runId, {
+                type: 'runtime.effect.retry.scheduled',
+                payload: {
+                  effectId,
+                  attempt: execution.attempt,
+                  nextAttemptAt: now,
+                  error: `operator retry from ${execution.status}`,
+                },
+                threadId: item.threadId,
+                causationId: item.causingEventId,
+                origin: { type: 'external', actorId: 'operator' },
+              })
+
+              return { events: [retryEvent], value: undefined }
+            }),
           )
-
-          if (!execution || !item) {
-            return yield* new RuntimeExecutionError(`Unknown outstanding effect "${effectId}"`)
-          }
-
-          if (
-            execution.status !== 'ambiguous' &&
-            execution.status !== 'timed_out' &&
-            execution.status !== 'cancel_requested'
-          ) {
-            return yield* new RuntimeExecutionError(
-              `Effect "${effectId}" cannot be retried from status "${execution.status}"`,
-            )
-          }
-
-          const now = yield* Clock.currentTimeMillis
-
-          const retryEvent = createEvent(runId, {
-            type: 'runtime.effect.retry.scheduled',
-            payload: {
-              effectId,
-              attempt: execution.attempt,
-              nextAttemptAt: now,
-              error: `operator retry from ${execution.status}`,
-            },
-            threadId: item.threadId,
-            causationId: item.causingEventId,
-            origin: { type: 'external', actorId: 'operator' },
-          })
-
-          yield* appendObserved(store, runId, stripSeq([retryEvent]), {
-            expectedTail: cursor.seq,
-          })
-
-          runCacheAccess.delete(runId)
-          return undefined
         }),
       ).pipe(Effect.andThen(runtime.wake(runId))),
 
     rescanTimers: Effect.gen(function* () {
       const store = yield* EventStoreTag
       const runIds = yield* store.listRuns
-      let count = 0
 
-      for (const runId of runIds) {
-        const runState = yield* runtime.getRun(runId)
+      const scheduled = yield* Effect.forEach(
+        runIds,
+        (runId) =>
+          Effect.gen(function* () {
+            const deadline = nextRuntimeDeadline(yield* runtime.getRun(runId))
 
-        let earliestTimerAt: number | null = null
-
-        if (!isRunTerminal(runState)) {
-          for (const waitRecord of Object.values(runState.waits)) {
-            if (isWaitOnTimer(waitRecord.on)) {
-              if (earliestTimerAt === null || waitRecord.on.timerAt < earliestTimerAt) {
-                earliestTimerAt = waitRecord.on.timerAt
-              }
+            if (deadline === undefined) {
+              return false
             }
-          }
-        }
 
-        for (const execution of Object.values(runState.effectExecutions)) {
-          if (
-            (!isRunTerminal(runState) || execution.status === 'cancel_requested') &&
-            execution.deadlineAt !== null &&
-            (earliestTimerAt === null || execution.deadlineAt < earliestTimerAt)
-          ) {
-            earliestTimerAt = execution.deadlineAt
-          }
-        }
+            yield* scheduler.schedule(runId, deadline)
+            return true
+          }),
+        { concurrency: RESCAN_CONCURRENCY },
+      )
 
-        if (earliestTimerAt !== null) {
-          yield* scheduler.schedule(runId, earliestTimerAt)
-          count += 1
-        }
-      }
-
-      return count
+      return scheduled.filter(Boolean).length
     }),
 
     recoverDeadlines: Effect.suspend(() => runtime.rescanTimers),
@@ -450,56 +395,54 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             idempotencyKey: args.idempotencyKey ?? null,
           }
 
-          const existing = yield* loadCursor(store, runId)
-
-          if (existing.seq > 0) {
-            return yield* assertSameDurableStart(runId, existing.state, requestedIdentity)
-          }
-
-          const batch = yield* validateAndCreateEvents(
-            registry.catalogs,
-            runId,
-            [
-              {
-                type: 'runtime.run.started',
-                payload: {
-                  rootThreadId: threadId,
-                  kind: args.kind,
-                  definitionName: args.definitionName,
-                  definitionVersion,
-                  input: startedInput,
-                  requestedThreadId: args.threadId ?? null,
-                },
-                threadId: null,
-                idempotencyKey: args.idempotencyKey,
-              },
-              ...startedEvents,
-            ],
-            { origin: { type: 'system' } },
-          )
-
-          const appendOptions = args.idempotencyKey
-            ? {
-                expectedTail: existing.seq,
-                idempotency: { key: `start:${args.idempotencyKey}` },
-              }
-            : { expectedTail: existing.seq }
-
-          const requiresReload = yield* appendObserved(
+          const committed = yield* commit(
             store,
             runId,
-            stripSeq(batch),
-            appendOptions,
-          ).pipe(
-            Effect.map((result) => result.deduplicated),
-            Effect.catchTag('EventStoreConflictError', () => Effect.succeed(true)),
+            (
+              existing,
+            ): Effect.Effect<
+              CommitPlan<string>,
+              RuntimeExecutionError | StartRunConflictError | InvalidEventError
+            > =>
+              existing.seq > 0
+                ? assertSameDurableStart(runId, existing.state, requestedIdentity).pipe(
+                    Effect.map((rootThreadId) => ({ events: [], value: rootThreadId })),
+                  )
+                : validateAndCreateEvents(
+                    registry.catalogs,
+                    runId,
+                    [
+                      {
+                        type: 'runtime.run.started',
+                        payload: {
+                          rootThreadId: threadId,
+                          kind: args.kind,
+                          definitionName: args.definitionName,
+                          definitionVersion,
+                          input: startedInput,
+                          requestedThreadId: args.threadId ?? null,
+                        },
+                        threadId: null,
+                        idempotencyKey: args.idempotencyKey,
+                      },
+                      ...startedEvents,
+                    ],
+                    { origin: { type: 'system' } },
+                  ).pipe(
+                    Effect.map((batch) => ({
+                      events: batch,
+                      value: threadId,
+                      idempotencyKey: args.idempotencyKey
+                        ? `start:${args.idempotencyKey}`
+                        : undefined,
+                    })),
+                  ),
           )
 
-          if (!requiresReload) {
-            return threadId
+          if (!committed.append?.deduplicated) {
+            return committed.value
           }
 
-          runCacheAccess.delete(runId)
           const durable = yield* loadCursor(store, runId)
           return yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
         }),

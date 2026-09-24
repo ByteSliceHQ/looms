@@ -1,6 +1,7 @@
-import { Effect, Predicate, type Context, type ManagedRuntime } from 'effect'
+import { Effect, Option, Predicate, type Context, type ManagedRuntime } from 'effect'
 
 import {
+  createEvent,
   validateEventInput,
   withdrawnError,
   type ComposedRegistry,
@@ -11,6 +12,7 @@ import {
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
+import { RuntimeExecutionError } from './errors'
 import {
   createEffectFailedEvent,
   createLiveEvent,
@@ -39,8 +41,28 @@ export interface ExecuteLocalEffectsInput {
   readonly now: number
 }
 
+type LocalAttempt =
+  | { readonly _tag: 'completed'; readonly outcomes: ReadonlyArray<EventInput> }
+  | { readonly _tag: 'aborted' }
+  | { readonly _tag: 'timed-out' }
+
 function makeAbortController(): AbortController {
   return new AbortController()
+}
+
+/** Completes when the signal aborts, so racing it interrupts a handler that ignores the signal. */
+function abortion(signal: AbortSignal): Effect.Effect<LocalAttempt> {
+  return Effect.callback<LocalAttempt>((resume) => {
+    const onAbort = () => resume(Effect.succeed({ _tag: 'aborted' }))
+
+    if (signal.aborted) {
+      onAbort()
+      return Effect.void
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+    return Effect.sync(() => signal.removeEventListener('abort', onAbort))
+  })
 }
 
 export function executeLocalEffects(
@@ -89,7 +111,9 @@ export function executeLocalEffects(
             threadId: item.threadId,
           })
 
-          const outcomes = yield* dispatchEffect(registry, services, definitions, item.effect, {
+          const retry = registry.effects.get(item.effect.type)?.retry
+
+          const dispatched = dispatchEffect(registry, services, definitions, item.effect, {
             effectId: item.effectId,
             runId: input.runId,
             threadId: item.threadId,
@@ -97,6 +121,18 @@ export function executeLocalEffects(
             signal: controller.signal,
             emit: appendLive,
           }).pipe(
+            Effect.map((outcomes): LocalAttempt => ({ _tag: 'completed', outcomes })),
+            Effect.raceFirst(abortion(controller.signal)),
+          )
+
+          const settled = yield* (
+            retry?.startToCloseTimeoutMs
+              ? dispatched.pipe(
+                  Effect.timeoutOption(retry.startToCloseTimeoutMs),
+                  Effect.map(Option.getOrElse((): LocalAttempt => ({ _tag: 'timed-out' }))),
+                )
+              : dispatched
+          ).pipe(
             Effect.ensuring(
               Effect.sync(() => {
                 executionContext.activeEffects.delete(item.effectId)
@@ -104,11 +140,53 @@ export function executeLocalEffects(
             ),
           )
 
-          if (controller.signal.aborted) {
+          if (settled._tag === 'aborted') {
             continue
           }
 
           const before = produced.length
+
+          if (settled._tag === 'timed-out') {
+            controller.abort(new RuntimeExecutionError('start-to-close timeout'))
+            const attemptNumber = input.attempts.get(item.effectId) ?? 1
+
+            observe({
+              type: 'effect.timeout',
+              runId: input.runId,
+              at: input.now,
+              effectId: item.effectId,
+              attempt: attemptNumber,
+              detail: 'start-to-close',
+            })
+
+            produced.push(
+              createEvent(input.runId, {
+                type: 'runtime.effect.timed_out',
+                payload: {
+                  effectId: item.effectId,
+                  attempt: attemptNumber,
+                  timeout: 'start-to-close',
+                },
+                threadId: item.threadId,
+                causationId: item.causingEventId,
+                origin: { type: 'system' },
+              }),
+              planAttemptFailure({
+                runId: input.runId,
+                item,
+                attempt: attemptNumber,
+                error: 'start-to-close timeout',
+                now: input.now,
+                retry,
+                origin: { type: 'system' },
+              }).event,
+            )
+
+            failedEffectId = item.effectId
+            continue
+          }
+
+          const { outcomes } = settled
 
           if (outcomes.length === 0) {
             produced.push(createEffectFailedEvent(input.runId, item, 'empty-outcome'))
@@ -126,7 +204,7 @@ export function executeLocalEffects(
                 attempt,
                 error,
                 now: input.now,
-                retry: registry.effects.get(item.effect.type)?.retry,
+                retry,
                 origin: { type: 'system' },
               })
 

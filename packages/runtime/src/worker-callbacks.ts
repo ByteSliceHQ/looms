@@ -7,20 +7,17 @@ import {
   type ComposedRegistry,
   type EventEnvelope,
   type EventInput,
-  type EventStoreAppendError,
-  type EventStoreError,
   type OutstandingEffect,
   type RetryPolicy,
   type RunState,
 } from '@looms/core'
 
-import { RuntimeExecutionError } from './errors'
-import { materializeEffectOutcome, stripSeq } from './helpers'
+import { materializeEffectOutcome } from './helpers'
 import type { RunIngress } from './ingress'
-import { notifyObserver, type RuntimeObserver } from './observer'
+import { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
 import { planAttemptFailure } from './retry-policy'
-import type { EffectWorker, LoomsRuntime, WorkerCallback } from './types'
+import type { LoomsRuntime, WorkerCallback } from './types'
 
 const WORKER_ORIGIN = { type: 'external', actorId: 'worker' } as const
 
@@ -58,213 +55,211 @@ export interface WorkerCallbacksOptions {
   readonly repository: RuntimeRepository
   readonly withRunIngress: RunIngress
   readonly observer?: RuntimeObserver
-  readonly runtime: () => LoomsRuntime
-  readonly worker?: EffectWorker
+  readonly wake: LoomsRuntime['wake']
+}
+
+type AppliedWorkerCallback =
+  | (WorkerCallback & { kind: 'started' | 'heartbeat' | 'cancelled' })
+  | (WorkerCallback & { kind: 'complete'; events: ReadonlyArray<EventInput> })
+  | (WorkerCallback & { kind: 'fail'; error: string })
+
+interface WorkerCallbackPlan {
+  readonly events: ReadonlyArray<EventEnvelope>
+  readonly notices: ReadonlyArray<RuntimeObservation>
+}
+
+const IGNORED: WorkerCallbackPlan = { events: [], notices: [] }
+
+/**
+ * Turn a worker callback into events against the current durable state. Callbacks for another
+ * attempt, a settled attempt, or an effect running in process are ignored.
+ */
+function planWorkerCallback(input: {
+  readonly runId: string
+  readonly state: RunState
+  readonly callback: AppliedWorkerCallback
+  readonly registry: ComposedRegistry
+  readonly now: number
+}): Effect.Effect<WorkerCallbackPlan> {
+  const { runId, state, callback, registry, now } = input
+  const execution = state.effectExecutions[callback.effectId]
+
+  const item = state.outstandingEffects.find(
+    (candidate) => candidate.effectId === callback.effectId,
+  )
+
+  const isCancellationAcknowledgement =
+    callback.kind === 'cancelled' &&
+    execution?.attempt === callback.attempt &&
+    execution.status === 'cancel_requested'
+
+  if (
+    !execution ||
+    execution.attempt !== callback.attempt ||
+    (isRunTerminal(state) && !isCancellationAcknowledgement) ||
+    (!item && !isCancellationAcknowledgement) ||
+    execution.status === 'running' ||
+    execution.status === 'retry_wait' ||
+    execution.status === 'timed_out' ||
+    execution.status === 'ambiguous' ||
+    (callback.kind === 'cancelled' && !isCancellationAcknowledgement) ||
+    (execution.status === 'cancel_requested' && callback.kind !== 'cancelled')
+  ) {
+    return Effect.succeed(IGNORED)
+  }
+
+  const retry = item ? registry.effects.get(item.effect.type)?.retry : undefined
+
+  const notice = (type: 'effect.heartbeat' | 'effect.cancellation'): RuntimeObservation => ({
+    type,
+    runId,
+    at: now,
+    effectId: callback.effectId,
+    attempt: callback.attempt,
+  })
+
+  switch (callback.kind) {
+    case 'started': {
+      return Effect.succeed(
+        item && execution.status === 'dispatched'
+          ? { events: [workerStartedEvent(runId, item, callback.attempt, retry, now)], notices: [] }
+          : IGNORED,
+      )
+    }
+
+    case 'heartbeat': {
+      const implicitStart = execution.status === 'dispatched'
+
+      if (
+        !item ||
+        (!implicitStart && execution.status !== 'started' && execution.status !== 'heartbeat')
+      ) {
+        return Effect.succeed(IGNORED)
+      }
+
+      return Effect.succeed({
+        events: [
+          ...(implicitStart ? [workerStartedEvent(runId, item, callback.attempt, retry, now)] : []),
+          createEvent(runId, {
+            type: 'runtime.effect.heartbeat',
+            payload: {
+              effectId: item.effectId,
+              attempt: callback.attempt,
+              heartbeatAt: now,
+              deadlineAt: workerDeadline(retry, execution.startedAt ?? now, now),
+            },
+            threadId: item.threadId,
+            origin: WORKER_ORIGIN,
+          }),
+        ],
+        notices: [notice('effect.heartbeat')],
+      })
+    }
+
+    case 'complete': {
+      if (!item) {
+        return Effect.succeed(IGNORED)
+      }
+
+      return Effect.forEach(callback.events, (event) =>
+        materializeEffectOutcome(registry.catalogs, runId, item, event),
+      ).pipe(
+        Effect.map((outcomes) => ({
+          events: [
+            ...outcomes,
+            createEvent(runId, {
+              type: 'runtime.effect.completed',
+              payload: { effectId: item.effectId, attempt: callback.attempt },
+              threadId: item.threadId,
+              effectId: item.effectId,
+              causationId: item.causingEventId,
+              origin: WORKER_ORIGIN,
+            }),
+          ],
+          notices: [],
+        })),
+      )
+    }
+
+    case 'fail': {
+      if (!item) {
+        return Effect.succeed(IGNORED)
+      }
+
+      const failure = planAttemptFailure({
+        runId,
+        item,
+        attempt: callback.attempt,
+        error: callback.error,
+        now,
+        retry,
+        origin: WORKER_ORIGIN,
+      })
+
+      return Effect.succeed({
+        events: [failure.event],
+        notices: failure.retrying
+          ? [
+              {
+                type: 'effect.retry',
+                runId,
+                at: now,
+                effectId: item.effectId,
+                attempt: callback.attempt,
+                detail: callback.error,
+              },
+            ]
+          : [],
+      })
+    }
+
+    case 'cancelled': {
+      return Effect.succeed({
+        events: [
+          createEvent(runId, {
+            type: 'runtime.effect.cancelled',
+            payload: { effectId: callback.effectId, attempt: callback.attempt },
+            threadId: item?.threadId ?? null,
+            effectId: callback.effectId,
+            origin: WORKER_ORIGIN,
+          }),
+        ],
+        notices: [notice('effect.cancellation')],
+      })
+    }
+
+    default: {
+      const exhaustiveCheck: never = callback
+      return exhaustiveCheck
+    }
+  }
 }
 
 export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
   const { registry, repository, withRunIngress } = options
-  const { appendObserved, loadCursor, deleteCachedCursor } = repository
-  const runCache = { delete: deleteCachedCursor }
 
-  const observe = (event: Parameters<RuntimeObserver['observe']>[0]) =>
-    notifyObserver(options.observer, event)
-
-  const applyWorkerCallback = (
-    runId: string,
-    callback:
-      | (WorkerCallback & { kind: 'started' | 'heartbeat' | 'cancelled' })
-      | (WorkerCallback & { kind: 'complete'; events: ReadonlyArray<EventInput> })
-      | (WorkerCallback & { kind: 'fail'; error: string }),
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag> =>
+  const applyWorkerCallback = (runId: string, callback: AppliedWorkerCallback) =>
     withRunIngress(
       runId,
       Effect.gen(function* () {
         const store = yield* EventStoreTag
+        const now = yield* Clock.currentTimeMillis
 
-        for (let conflicts = 0; conflicts < 16; conflicts += 1) {
-          const cursor = yield* loadCursor(store, runId)
-          const state = cursor.state
-          const execution = state.effectExecutions[callback.effectId]
+        const committed = yield* repository.commit(store, runId, (cursor) =>
+          planWorkerCallback({ runId, state: cursor.state, callback, registry, now }).pipe(
+            Effect.map((plan) => ({ events: plan.events, value: plan.notices })),
+          ),
+        )
 
-          const item = state.outstandingEffects.find(
-            (candidate) => candidate.effectId === callback.effectId,
-          )
-
-          const isCancellationAcknowledgement =
-            callback.kind === 'cancelled' &&
-            execution?.attempt === callback.attempt &&
-            execution.status === 'cancel_requested'
-
-          if (
-            !execution ||
-            execution.attempt !== callback.attempt ||
-            (isRunTerminal(state) && !isCancellationAcknowledgement) ||
-            (!item && !isCancellationAcknowledgement) ||
-            execution.status === 'running' ||
-            execution.status === 'retry_wait' ||
-            execution.status === 'timed_out' ||
-            execution.status === 'ambiguous' ||
-            (callback.kind === 'cancelled' && !isCancellationAcknowledgement) ||
-            (execution.status === 'cancel_requested' && callback.kind !== 'cancelled')
-          ) {
-            return state
+        if (committed.append) {
+          for (const notice of committed.value) {
+            notifyObserver(options.observer, notice)
           }
-
-          const now = yield* Clock.currentTimeMillis
-          const retry = item ? registry.effects.get(item.effect.type)?.retry : undefined
-          let produced: EventEnvelope[]
-
-          if (callback.kind === 'heartbeat' || callback.kind === 'cancelled') {
-            observe({
-              type: callback.kind === 'heartbeat' ? 'effect.heartbeat' : 'effect.cancellation',
-              runId,
-              at: now,
-              effectId: callback.effectId,
-              attempt: callback.attempt,
-            })
-          }
-
-          switch (callback.kind) {
-            case 'started': {
-              if (!item || execution.status !== 'dispatched') {
-                return state
-              }
-
-              produced = [workerStartedEvent(runId, item, callback.attempt, retry, now)]
-              break
-            }
-
-            case 'heartbeat': {
-              if (!item) {
-                return state
-              }
-
-              const implicitStart = execution.status === 'dispatched'
-
-              if (
-                !implicitStart &&
-                execution.status !== 'started' &&
-                execution.status !== 'heartbeat'
-              ) {
-                return state
-              }
-
-              produced = [
-                ...(implicitStart
-                  ? [workerStartedEvent(runId, item, callback.attempt, retry, now)]
-                  : []),
-                createEvent(runId, {
-                  type: 'runtime.effect.heartbeat',
-                  payload: {
-                    effectId: item.effectId,
-                    attempt: callback.attempt,
-                    heartbeatAt: now,
-                    deadlineAt: workerDeadline(retry, execution.startedAt ?? now, now),
-                  },
-                  threadId: item.threadId,
-                  origin: WORKER_ORIGIN,
-                }),
-              ]
-
-              break
-            }
-
-            case 'complete': {
-              if (!item) {
-                return state
-              }
-
-              produced = []
-
-              for (const input of callback.events) {
-                produced.push(
-                  yield* materializeEffectOutcome(registry.catalogs, runId, item, input),
-                )
-              }
-
-              produced.push(
-                createEvent(runId, {
-                  type: 'runtime.effect.completed',
-                  payload: { effectId: item.effectId, attempt: callback.attempt },
-                  threadId: item.threadId,
-                  effectId: item.effectId,
-                  causationId: item.causingEventId,
-                  origin: WORKER_ORIGIN,
-                }),
-              )
-
-              break
-            }
-
-            case 'fail': {
-              if (!item) {
-                return state
-              }
-
-              const failure = planAttemptFailure({
-                runId,
-                item,
-                attempt: callback.attempt,
-                error: callback.error,
-                now,
-                retry,
-                origin: WORKER_ORIGIN,
-              })
-
-              if (failure.retrying) {
-                observe({
-                  type: 'effect.retry',
-                  runId,
-                  at: now,
-                  effectId: item.effectId,
-                  attempt: callback.attempt,
-                  detail: callback.error,
-                })
-              }
-
-              produced = [failure.event]
-              break
-            }
-
-            case 'cancelled': {
-              produced = [
-                createEvent(runId, {
-                  type: 'runtime.effect.cancelled',
-                  payload: { effectId: callback.effectId, attempt: callback.attempt },
-                  threadId: item?.threadId ?? null,
-                  effectId: callback.effectId,
-                  origin: WORKER_ORIGIN,
-                }),
-              ]
-
-              break
-            }
-
-            default: {
-              const exhaustiveCheck: never = callback
-              return exhaustiveCheck
-            }
-          }
-
-          const appended = yield* appendObserved(store, runId, stripSeq(produced), {
-            expectedTail: cursor.seq,
-          }).pipe(
-            Effect.map(() => true),
-            Effect.catchTag('EventStoreConflictError', () => Effect.succeed(false)),
-          )
-
-          if (appended) {
-            runCache.delete(runId)
-            return cursor.state
-          }
-
-          runCache.delete(runId)
         }
 
-        return yield* new RuntimeExecutionError(`Could not append worker callback for "${runId}"`)
+        return committed.cursor.state
       }),
-    ).pipe(Effect.andThen(options.runtime().wake(runId)))
+    ).pipe(Effect.andThen(options.wake(runId)))
 
   return {
     workerStarted: (runId: string, callback: WorkerCallback) =>

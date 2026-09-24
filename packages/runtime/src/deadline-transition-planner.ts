@@ -207,16 +207,31 @@ export function planTerminalCancellationTransitions(input: {
     .map((execution) => cancellationAmbiguous(input.runId, execution.effectId, execution.attempt))
 }
 
-export function nextRuntimeDeadline(state: RunState, now: number): number | undefined {
-  const deadlines = [
-    ...Object.values(state.waits).flatMap((record) =>
-      isWaitOnTimer(record.on) && record.on.timerAt > now ? [record.on.timerAt] : [],
-    ),
-    ...Object.values(state.effectExecutions).flatMap((execution) =>
-      execution.deadlineAt !== null && execution.deadlineAt > now ? [execution.deadlineAt] : [],
-    ),
-  ]
+/**
+ * The earliest deadline after `after` that needs a wake. A terminal run only waits on
+ * unacknowledged worker cancellations; its leftover timers can never fire anything.
+ */
+export function nextRuntimeDeadline(
+  state: RunState,
+  after = Number.NEGATIVE_INFINITY,
+): number | undefined {
+  const terminal = isRunTerminal(state)
 
+  const timers = terminal
+    ? []
+    : Object.values(state.waits).flatMap((record) =>
+        isWaitOnTimer(record.on) && record.on.timerAt > after ? [record.on.timerAt] : [],
+      )
+
+  const executions = Object.values(state.effectExecutions).flatMap((execution) =>
+    (!terminal || execution.status === 'cancel_requested') &&
+    execution.deadlineAt !== null &&
+    execution.deadlineAt > after
+      ? [execution.deadlineAt]
+      : [],
+  )
+
+  const deadlines = [...timers, ...executions]
   return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
 

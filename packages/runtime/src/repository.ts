@@ -22,7 +22,7 @@ import {
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
-import type { RunCursorCache } from './helpers'
+import { stripSeq, type RunCursorCache } from './helpers'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RunExecutionContexts } from './run-execution-context'
 
@@ -37,6 +37,22 @@ class LiveAppendError extends Data.TaggedError('LiveAppendError')<{
 
 function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
+}
+
+const MAX_COMMIT_CONFLICTS = 16
+
+export interface CommitPlan<A> {
+  readonly events: ReadonlyArray<EventEnvelope>
+  readonly value: A
+  readonly idempotencyKey?: string | undefined
+}
+
+export interface CommitResult<A> {
+  readonly value: A
+  /** The durable state the committed batch was planned against. */
+  readonly cursor: RunCursor
+  /** `null` when the plan had nothing to append. */
+  readonly append: AppendResult | null
 }
 
 function readRemaining(
@@ -426,8 +442,56 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
       return next
     })
 
+  /**
+   * Plan a batch against the latest durable state and append it with optimistic concurrency,
+   * replanning from fresh state whenever another writer got there first.
+   */
+  const commit = <A, E, R>(
+    store: EventStore,
+    runId: string,
+    plan: (cursor: RunCursor) => Effect.Effect<CommitPlan<A>, E, R>,
+  ): Effect.Effect<
+    CommitResult<A>,
+    | E
+    | RuntimeExecutionError
+    | EventStoreAppendError
+    | EventStoreTruncationError
+    | EventStoreTrimmedError
+    | EventStoreError,
+    R
+  > =>
+    Effect.gen(function* () {
+      for (let conflicts = 0; conflicts < MAX_COMMIT_CONFLICTS; conflicts += 1) {
+        const cursor = yield* loadCursor(store, runId)
+        const planned = yield* plan(cursor)
+
+        if (planned.events.length === 0) {
+          return { value: planned.value, cursor, append: null }
+        }
+
+        const append = yield* appendObserved(store, runId, stripSeq(planned.events), {
+          expectedTail: cursor.seq,
+          idempotency: planned.idempotencyKey ? { key: planned.idempotencyKey } : undefined,
+        }).pipe(
+          Effect.asSome,
+          Effect.catchTag('EventStoreConflictError', () => Effect.succeedNone),
+        )
+
+        if (Option.isSome(append)) {
+          return { value: planned.value, cursor, append: append.value }
+        }
+
+        runCache.delete(runId)
+      }
+
+      return yield* new RuntimeExecutionError(
+        `Could not commit to run "${runId}" after ${MAX_COMMIT_CONFLICTS} conflicts`,
+      )
+    })
+
   return {
     appendObserved,
+    commit,
     liveAppends,
     loadCursor,
     persistSnapshot,
