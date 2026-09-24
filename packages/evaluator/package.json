@@ -1,13 +1,13 @@
 {
-  "name": "@looms/ai-vercel",
+  "name": "@looms/evaluator",
   "version": "0.0.1",
   "private": true,
-  "description": "Vercel AI SDK adapter for Looms LlmAdapter",
+  "description": "Typed evaluation threads for Looms",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/ByteSliceHQ/looms.git",
-    "directory": "packages/ai-vercel"
+    "directory": "packages/evaluator"
   },
   "files": [
     "dist",
@@ -29,16 +29,14 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@looms/agent": "workspace:*",
     "@looms/core": "workspace:*",
-    "@looms/evaluator": "workspace:*"
+    "@standard-schema/spec": "^1.1.0",
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
+    "@looms/runtime": "workspace:*",
+    "@looms/workflow": "workspace:*",
     "@types/bun": "^1.3.9",
-    "ai": "^7.0.105",
     "typescript": "7.0.2"
-  },
-  "peerDependencies": {
-    "ai": "^7.0.0"
   }
 }

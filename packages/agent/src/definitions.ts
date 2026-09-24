@@ -235,6 +235,74 @@ export function asAgentTool(def: {
   })
 }
 
+type EvaluatorToolTarget = {
+  kind: 'evaluator'
+  name: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+}
+
+type LegacyJevToolTarget = {
+  kind: 'jev' | 'evaluator'
+  name: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+}
+
+export function asEvaluatorTool(def: {
+  name?: string
+  description?: string
+  input?: SchemaInput
+  inputSchema?: JsonValue
+  evaluator: EvaluatorToolTarget
+  mapInput?: (input: JsonValue) => JsonValue
+}): ThreadTool {
+  return asThreadTool({
+    name: def.name,
+    description: def.description ?? def.evaluator.description,
+    input: def.input ?? def.evaluator.input,
+    inputSchema: def.inputSchema ?? def.evaluator.inputSchema,
+    child: { kind: 'evaluator', name: def.evaluator.name },
+    mapInput: def.mapInput,
+  })
+}
+
+export function asJevTool(
+  def: {
+    name?: string
+    description?: string
+    input?: SchemaInput
+    inputSchema?: JsonValue
+    mapInput?: (input: JsonValue) => JsonValue
+  } & (
+    | { evaluator: EvaluatorToolTarget; jev?: LegacyJevToolTarget }
+    | { evaluator?: EvaluatorToolTarget; jev: LegacyJevToolTarget }
+  ),
+): ThreadTool {
+  const target = def.evaluator ?? def.jev
+
+  if (!target) {
+    throw new Error('asJevTool requires an evaluator or jev definition')
+  }
+
+  return asEvaluatorTool({
+    name: def.name,
+    description: def.description,
+    input: def.input,
+    inputSchema: def.inputSchema,
+    mapInput: def.mapInput,
+    evaluator: {
+      kind: 'evaluator',
+      name: target.name,
+      description: target.description,
+      input: target.input,
+      inputSchema: target.inputSchema,
+    },
+  })
+}
+
 export function asWorkflowTool(def: {
   name?: string
   description?: string

@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import agentSession from '../../../../examples/agent-session.ts?raw'
 import approvalExample from '../../../../examples/approval.ts?raw'
 import customThread from '../../../../examples/custom-thread.ts?raw'
+import evaluatorExample from '../../../../examples/evaluator.ts?raw'
 import workflowExample from '../../../../examples/workflow.ts?raw'
 import { CodeBlock } from '../components/code-block'
 import { pageHead } from '../page-head'
@@ -47,6 +48,19 @@ bun approval.ts`}</CodeBlock>
         to reject and expect shipped: false. A gate alone does not enforce that branch.
       </p>
       <CodeBlock lang="ts" code={approvalExample} />
+      <h2 id="evaluator">
+        Score, then branch
+        <a className="heading-anchor" href="#evaluator" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Save as evaluator.ts. <code>defineEvaluator</code> asks boolean, choice, and score
+        questions, then a workflow branches on <code>route</code> and <code>reason</code>. The stub
+        needs no key. Hosted TypeSafe Jev, or a later model with the same question API, replaces the
+        stub through <code>vercelEvaluator</code>.
+      </p>
+      <CodeBlock lang="ts" code={evaluatorExample} />
       <h2 id="workflow">
         Workflow with a child agent
         <a className="heading-anchor" href="#workflow" aria-label="Link to this section">

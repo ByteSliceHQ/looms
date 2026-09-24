@@ -16,10 +16,11 @@ function Modules() {
       <h1>Modules</h1>
       <p>
         Install <code>@swirls/looms</code>, then import only the module subpaths your application
-        needs. Built-in modules cover agents, workflows, and approvals; add your own for domain work
-        without forking the runtime. The kernel does not special-case LLM turns or DAG nodes; those
-        are <strong>thread kinds</strong> contributed by modules, alongside namespaced events,
-        effects, and projections. Vocabulary: <Link to="/docs/concepts">Concepts</Link>.
+        needs. Built-in modules cover agents, workflows, approvals, and evaluations; add your own
+        for domain work without forking the runtime. The kernel does not special-case LLM turns or
+        DAG nodes; those are <strong>thread kinds</strong> contributed by modules, alongside
+        namespaced events, effects, and projections. Vocabulary:{' '}
+        <Link to="/docs/concepts">Concepts</Link>.
       </p>
 
       <ConceptFigure name="modules" />
@@ -70,6 +71,16 @@ function Modules() {
             <td>Human gates from agents or workflows</td>
             <td>
               <code>gate({'{ title }'})</code> parks the run until <code>approval.decided</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>@swirls/looms/evaluator</code>
+            </td>
+            <td>Typed questions that branch a run</td>
+            <td>
+              <code>defineEvaluator</code>, <code>evaluate()</code>, spawn as a child.{' '}
+              <code>defineJev</code> selects TypeSafe Jev
             </td>
           </tr>
         </tbody>
