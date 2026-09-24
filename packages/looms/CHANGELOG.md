@@ -1,5 +1,12 @@
 # @swirls/looms
 
+## 0.1.0
+
+### Minor Changes
+
+- 2176eac: Add `defineKind` and `createKind` so custom startable types share the same `{ kind, name }` builder as `defineAgent` and `defineWorkflow`.
+- a879e8b: Add `@swirls/looms/evaluator` so typed questions can score a run and branch a workflow. Pass a model id such as `typesafe-ai/jev`; the thread kind stays `evaluator`.
+
 ## 0.0.2
 
 ### Patch Changes
