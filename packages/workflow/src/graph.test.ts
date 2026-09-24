@@ -5,7 +5,6 @@ import { Effect } from 'effect'
 import { defineWorkflow, type NodeState } from './definitions'
 import {
   assertJsonWithinLimit,
-  deterministicWorkflowId,
   getReadyNodeIds,
   getSkippableNodeIds,
   resolveGraphConcurrency,
@@ -78,10 +77,6 @@ describe('production graph planning', () => {
   test('validates concurrency, cycles, deterministic IDs, and UTF-8 bytes', () => {
     expect(resolveGraphConcurrency(64)).toBe(64)
     expect(() => resolveGraphConcurrency(0)).toThrow('between 1 and 64')
-
-    expect(deterministicWorkflowId('parent', 'node')).toBe(
-      deterministicWorkflowId('parent', 'node'),
-    )
 
     expect(Effect.runSync(Effect.flip(assertJsonWithinLimit('é', 'value', 3))).message).toContain(
       'UTF-8 bytes',

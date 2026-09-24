@@ -3,6 +3,7 @@ import { Predicate, Schema } from 'effect'
 import {
   cancel,
   createWaitId,
+  deterministicThreadId,
   invoke,
   spawn,
   wait,
@@ -151,10 +152,6 @@ function close(
   error?: string,
 ): AgentSessionClosure {
   return error === undefined ? { messageId, status } : { messageId, status, error }
-}
-
-function childThreadId(sessionThreadId: string, messageId: string): string {
-  return `${sessionThreadId}_turn_${encodeURIComponent(messageId)}`
 }
 
 export function createAgentSessionThread(
@@ -423,7 +420,7 @@ export function createAgentSessionThread(
             {
               action: 'admit',
               sessionThreadId: ctx.threadId,
-              childThreadId: childThreadId(ctx.threadId, next.messageId),
+              childThreadId: deterministicThreadId(ctx.threadId, 'turn', next.messageId),
               messageId: next.messageId,
             },
             `session_admit_${next.messageId}`,
