@@ -66,7 +66,7 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
             const cancellationTimeoutMs = retry?.cancellationTimeoutMs
 
             if (
-              !isWorkerEffect({ runId, item, registry, worker: options.worker }) ||
+              !isWorkerEffect({ runId, item, execution, registry, worker: options.worker }) ||
               !execution ||
               !cancelledThreadIds.has(item.threadId)
             ) {

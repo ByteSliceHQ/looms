@@ -1,7 +1,6 @@
 import { Effect, Predicate, type Context, type ManagedRuntime } from 'effect'
 
 import {
-  createEvent,
   validateEventInput,
   withdrawnError,
   type ComposedRegistry,
@@ -20,7 +19,7 @@ import {
 } from './helpers'
 import type { RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
-import { retryBackoff } from './retry-policy'
+import { planAttemptFailure } from './retry-policy'
 import type { RunExecutionContext } from './run-execution-context'
 
 export interface LocalEffectExecutorOptions {
@@ -116,38 +115,34 @@ export function executeLocalEffects(
           }
 
           for (const outcome of outcomes) {
-            const attempt = input.attempts.get(item.effectId) ?? 1
-            const retry = registry.effects.get(item.effect.type)?.retry
-
-            if (outcome.type === 'runtime.effect.failed' && retry && attempt < retry.maxAttempts) {
+            if (outcome.type === 'runtime.effect.failed') {
+              const attempt = input.attempts.get(item.effectId) ?? 1
               const payload = Predicate.isObject(outcome.payload) ? outcome.payload : {}
               const error = Predicate.isString(payload.error) ? payload.error : 'effect failed'
 
-              observe({
-                type: 'effect.retry',
+              const failure = planAttemptFailure({
                 runId: input.runId,
-                at: input.now,
-                effectId: item.effectId,
+                item,
                 attempt,
-                detail: error,
+                error,
+                now: input.now,
+                retry: registry.effects.get(item.effect.type)?.retry,
+                origin: { type: 'system' },
               })
 
-              produced.push(
-                createEvent(input.runId, {
-                  type: 'runtime.effect.retry.scheduled',
-                  payload: {
-                    effectId: item.effectId,
-                    attempt,
-                    nextAttemptAt: input.now + retryBackoff(retry, attempt),
-                    error,
-                  },
-                  threadId: item.threadId,
-                  causationId: item.causingEventId,
-                  origin: { type: 'system' },
-                }),
-              )
+              if (failure.retrying) {
+                observe({
+                  type: 'effect.retry',
+                  runId: input.runId,
+                  at: input.now,
+                  effectId: item.effectId,
+                  attempt,
+                  detail: error,
+                })
 
-              continue
+                produced.push(failure.event)
+                continue
+              }
             }
 
             produced.push(

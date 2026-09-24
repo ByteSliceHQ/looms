@@ -117,6 +117,32 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 
+  test('recovers a rejected dispatch through the schedule-to-start timeout', async () => {
+    let calls = 0
+
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 2, backoffMs: 1, scheduleToStartTimeoutMs: 5 })],
+      worker: {
+        dispatch: () => {
+          calls += 1
+          return calls === 1 ? Promise.reject(new Error('network blip')) : undefined
+        },
+      },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    await Bun.sleep(10)
+    await looms.wake(started.runId)
+    await Bun.sleep(5)
+    await looms.wake(started.runId)
+
+    const events = await looms.getEvents(started.runId)
+
+    expect(calls).toBe(2)
+    expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(false)
+    await looms.stop()
+  })
+
   test('serializes operator retry with a concurrent signal on the same run', async () => {
     const inner = await Effect.runPromise(makeMemoryEventStore)
     let entered!: () => void
@@ -394,6 +420,62 @@ describe('durable external effect workers', () => {
         (event) => event.type === 'runtime.effect.timed_out',
       ),
     ).toBe(true)
+
+    await looms.stop()
+  })
+
+  test('extends the heartbeat deadline on every heartbeat up to the start-to-close cap', async () => {
+    const looms = createLooms({
+      modules: [
+        workerModule({ maxAttempts: 1, heartbeatTimeoutMs: 600, startToCloseTimeoutMs: 5_000 }),
+      ],
+      worker: { dispatch: () => undefined },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
+
+    const deadline = async () =>
+      (await looms.getRun(started.runId)).effectExecutions[identity.effectId]?.deadlineAt ?? 0
+
+    await looms.workerHeartbeat(started.runId, identity)
+    const first = await deadline()
+    await Bun.sleep(350)
+    await looms.workerHeartbeat(started.runId, identity)
+    const second = await deadline()
+    // Past the first heartbeat's deadline, well inside the second's.
+    await Bun.sleep(350)
+    await looms.wake(started.runId)
+
+    const execution = (await looms.getRun(started.runId)).effectExecutions[identity.effectId]
+
+    expect(second).toBeGreaterThan(first)
+    expect(execution?.status).toBe('heartbeat')
+    expect(execution?.startedAt).toBeNumber()
+
+    await looms.stop()
+  })
+
+  test('ignores worker callbacks for an effect running in process', async () => {
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 1 }, local)],
+      worker: { dispatch: () => undefined },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const events = await looms.getEvents(started.runId)
+    const attempt = events.find((event) => event.type === 'runtime.effect.attempt.started')
+    const payload = Predicate.isReadonlyObject(attempt?.payload) ? attempt.payload : {}
+
+    await looms.workerFail(started.runId, {
+      effectId: Predicate.isString(payload.effectId) ? payload.effectId : '',
+      attempt: 1,
+      error: 'forged',
+    })
+
+    const after = await looms.getEvents(started.runId)
+    expect(after.some((event) => event.type === 'runtime.effect.failed')).toBe(false)
+    expect(after).toHaveLength(events.length)
 
     await looms.stop()
   })

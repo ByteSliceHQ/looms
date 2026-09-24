@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { composeModules, defineEffect, defineRuntimeModule, type RunState } from '@looms/core'
+import {
+  composeModules,
+  defineEffect,
+  defineRuntimeModule,
+  type EffectExecutionRecord,
+  type RunState,
+} from '@looms/core'
 
 import {
   nextRuntimeDeadline,
@@ -193,8 +199,25 @@ describe('worker effect routing', () => {
     }),
   ])
 
-  const route = (type: string, worker?: EffectWorker) =>
-    isWorkerEffect({ runId: 'run_1', item: outstandingItem(type), registry, worker })
+  const route = (type: string, worker?: EffectWorker, status?: EffectExecutionRecord['status']) =>
+    isWorkerEffect({
+      runId: 'run_1',
+      item: outstandingItem(type),
+      execution: status
+        ? {
+            effectId: 'effect_1',
+            attempt: 1,
+            status,
+            nextAttemptAt: null,
+            deadlineAt: null,
+            startedAt: null,
+            lastHeartbeatAt: null,
+            lastError: null,
+          }
+        : undefined,
+      registry,
+      worker,
+    })
 
   const worker: EffectWorker = { dispatch: () => undefined }
 
@@ -227,11 +250,22 @@ describe('worker effect routing', () => {
     expect(route('route.unknown', { ...worker, handles: ['route.other'] })).toBe(false)
   })
 
+  test('keeps an in-flight attempt where it was placed', () => {
+    const claiming = { ...worker, handles: ['route.local'] }
+
+    expect(route('route.local', claiming, 'running')).toBe(false)
+    expect(route('route.local', worker, 'dispatched')).toBe(true)
+    expect(route('route.local', undefined, 'ambiguous')).toBe(true)
+    expect(route('route.local', claiming, 'retry_wait')).toBe(true)
+    expect(route('route.local', worker, 'retry_wait')).toBe(false)
+  })
+
   test('never routes primitive effects to a worker', () => {
     expect(
       isWorkerEffect({
         runId: 'run_1',
         item: { ...outstandingItem('x'), effect: { type: 'runtime.complete', output: null } },
+        execution: undefined,
         registry,
         worker,
       }),

@@ -277,7 +277,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               const execution = state.effectExecutions[item.effectId]
               return !(
                 (cancellationTargets.has(item.threadId) && item.effect.type !== 'runtime.cancel') ||
-                isWorkerEffect({ runId, item, registry, worker: options.worker }) ||
+                isWorkerEffect({ runId, item, execution, registry, worker: options.worker }) ||
                 (execution?.status === 'retry_wait' &&
                   execution.nextAttemptAt !== null &&
                   execution.nextAttemptAt > now)

@@ -1,4 +1,4 @@
-import { Clock, Effect } from 'effect'
+import { Clock, Effect, Predicate } from 'effect'
 
 import {
   createEvent,
@@ -9,16 +9,49 @@ import {
   type EventInput,
   type EventStoreAppendError,
   type EventStoreError,
+  type OutstandingEffect,
+  type RetryPolicy,
   type RunState,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
-import { materializeEffectOutcome, stripSeq, createEffectFailedEvent } from './helpers'
+import { materializeEffectOutcome, stripSeq } from './helpers'
 import type { RunIngress } from './ingress'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
-import { retryBackoff } from './retry-policy'
+import { planAttemptFailure } from './retry-policy'
 import type { EffectWorker, LoomsRuntime, WorkerCallback } from './types'
+
+const WORKER_ORIGIN = { type: 'external', actorId: 'worker' } as const
+
+/** The earliest of the start-to-close cap and the next heartbeat deadline. */
+function workerDeadline(
+  retry: RetryPolicy | undefined,
+  startedAt: number,
+  now: number,
+): number | null {
+  const deadlines = [
+    retry?.startToCloseTimeoutMs ? startedAt + retry.startToCloseTimeoutMs : null,
+    retry?.heartbeatTimeoutMs ? now + retry.heartbeatTimeoutMs : null,
+  ].filter(Predicate.isNotNull)
+
+  return deadlines.length > 0 ? Math.min(...deadlines) : null
+}
+
+function workerStartedEvent(
+  runId: string,
+  item: OutstandingEffect,
+  attempt: number,
+  retry: RetryPolicy | undefined,
+  now: number,
+): EventEnvelope {
+  return createEvent(runId, {
+    type: 'runtime.effect.worker.started',
+    payload: { effectId: item.effectId, attempt, deadlineAt: workerDeadline(retry, now, now) },
+    threadId: item.threadId,
+    origin: WORKER_ORIGIN,
+  })
+}
 
 export interface WorkerCallbacksOptions {
   readonly registry: ComposedRegistry
@@ -68,6 +101,7 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
             execution.attempt !== callback.attempt ||
             (isRunTerminal(state) && !isCancellationAcknowledgement) ||
             (!item && !isCancellationAcknowledgement) ||
+            execution.status === 'running' ||
             execution.status === 'retry_wait' ||
             execution.status === 'timed_out' ||
             execution.status === 'ambiguous' ||
@@ -93,29 +127,11 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
 
           switch (callback.kind) {
             case 'started': {
-              if (!item) {
+              if (!item || execution.status !== 'dispatched') {
                 return state
               }
 
-              if (execution.status !== 'dispatched') {
-                return state
-              }
-
-              produced = [
-                createEvent(runId, {
-                  type: 'runtime.effect.worker.started',
-                  payload: {
-                    effectId: item.effectId,
-                    attempt: callback.attempt,
-                    deadlineAt: retry?.startToCloseTimeoutMs
-                      ? now + retry.startToCloseTimeoutMs
-                      : null,
-                  },
-                  threadId: item.threadId,
-                  origin: { type: 'external', actorId: 'worker' },
-                }),
-              ]
-
+              produced = [workerStartedEvent(runId, item, callback.attempt, retry, now)]
               break
             }
 
@@ -124,26 +140,30 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
                 return state
               }
 
-              if (execution.status !== 'started' && execution.status !== 'heartbeat') {
+              const implicitStart = execution.status === 'dispatched'
+
+              if (
+                !implicitStart &&
+                execution.status !== 'started' &&
+                execution.status !== 'heartbeat'
+              ) {
                 return state
               }
 
               produced = [
+                ...(implicitStart
+                  ? [workerStartedEvent(runId, item, callback.attempt, retry, now)]
+                  : []),
                 createEvent(runId, {
                   type: 'runtime.effect.heartbeat',
                   payload: {
                     effectId: item.effectId,
                     attempt: callback.attempt,
                     heartbeatAt: now,
-                    deadlineAt: retry?.heartbeatTimeoutMs
-                      ? Math.min(
-                          execution.deadlineAt ?? Number.MAX_SAFE_INTEGER,
-                          now + retry.heartbeatTimeoutMs,
-                        )
-                      : execution.deadlineAt,
+                    deadlineAt: workerDeadline(retry, execution.startedAt ?? now, now),
                   },
                   threadId: item.threadId,
-                  origin: { type: 'external', actorId: 'worker' },
+                  origin: WORKER_ORIGIN,
                 }),
               ]
 
@@ -170,7 +190,7 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
                   threadId: item.threadId,
                   effectId: item.effectId,
                   causationId: item.causingEventId,
-                  origin: { type: 'external', actorId: 'worker' },
+                  origin: WORKER_ORIGIN,
                 }),
               )
 
@@ -182,7 +202,17 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
                 return state
               }
 
-              if (retry && callback.attempt < retry.maxAttempts) {
+              const failure = planAttemptFailure({
+                runId,
+                item,
+                attempt: callback.attempt,
+                error: callback.error,
+                now,
+                retry,
+                origin: WORKER_ORIGIN,
+              })
+
+              if (failure.retrying) {
                 observe({
                   type: 'effect.retry',
                   runId,
@@ -191,25 +221,9 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
                   attempt: callback.attempt,
                   detail: callback.error,
                 })
-
-                produced = [
-                  createEvent(runId, {
-                    type: 'runtime.effect.retry.scheduled',
-                    payload: {
-                      effectId: item.effectId,
-                      attempt: callback.attempt,
-                      nextAttemptAt: now + retryBackoff(retry, callback.attempt),
-                      error: callback.error,
-                    },
-                    threadId: item.threadId,
-                    causationId: item.causingEventId,
-                    origin: { type: 'external', actorId: 'worker' },
-                  }),
-                ]
-              } else {
-                produced = [createEffectFailedEvent(runId, item, callback.error)]
               }
 
+              produced = [failure.event]
               break
             }
 
@@ -220,7 +234,7 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
                   payload: { effectId: callback.effectId, attempt: callback.attempt },
                   threadId: item?.threadId ?? null,
                   effectId: callback.effectId,
-                  origin: { type: 'external', actorId: 'worker' },
+                  origin: WORKER_ORIGIN,
                 }),
               ]
 

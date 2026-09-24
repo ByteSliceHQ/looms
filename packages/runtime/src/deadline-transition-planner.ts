@@ -4,12 +4,14 @@ import {
   isRunTerminal,
   isWaitOnTimer,
   type ComposedRegistry,
+  type EffectExecutionRecord,
   type EventEnvelope,
+  type RetryPolicy,
   type RunState,
 } from '@looms/core'
 
-import { createEffectFailedEvent, waitSatisfiedEvents } from './helpers'
-import { retryBackoff } from './retry-policy'
+import { waitSatisfiedEvents } from './helpers'
+import { planAttemptFailure } from './retry-policy'
 
 export interface TimerLateNotice {
   readonly timerId: string
@@ -133,13 +135,7 @@ function planExpiredExecutions(input: {
     }
 
     const retry = input.registry.effects.get(item.effect.type)?.retry
-
-    const timeout =
-      execution.status === 'dispatched'
-        ? 'schedule-to-start'
-        : execution.status === 'heartbeat'
-          ? 'heartbeat'
-          : 'start-to-close'
+    const timeout = timeoutKind(execution, retry, input.now)
 
     timeoutNotices.push({
       effectId: item.effectId,
@@ -157,27 +153,39 @@ function planExpiredExecutions(input: {
       }),
     )
 
-    if (retry && execution.attempt < retry.maxAttempts) {
-      events.push(
-        createEvent(input.runId, {
-          type: 'runtime.effect.retry.scheduled',
-          payload: {
-            effectId: item.effectId,
-            attempt: execution.attempt,
-            nextAttemptAt: input.now + retryBackoff(retry, execution.attempt),
-            error: `${timeout} timeout`,
-          },
-          threadId: item.threadId,
-          causationId: item.causingEventId,
-          origin: { type: 'system' },
-        }),
-      )
-    } else {
-      events.push(createEffectFailedEvent(input.runId, item, `${timeout} timeout`))
-    }
+    events.push(
+      planAttemptFailure({
+        runId: input.runId,
+        item,
+        attempt: execution.attempt,
+        error: `${timeout} timeout`,
+        now: input.now,
+        retry,
+        origin: { type: 'system' },
+      }).event,
+    )
   }
 
   return { events, timerNotices: [], timeoutNotices }
+}
+
+function timeoutKind(
+  execution: EffectExecutionRecord,
+  retry: RetryPolicy | undefined,
+  now: number,
+): EffectTimeoutNotice['timeout'] {
+  if (execution.status === 'dispatched') {
+    return 'schedule-to-start'
+  }
+
+  const startToCloseAt =
+    execution.startedAt !== null && retry?.startToCloseTimeoutMs
+      ? execution.startedAt + retry.startToCloseTimeoutMs
+      : null
+
+  return execution.lastHeartbeatAt !== null && (startToCloseAt === null || startToCloseAt > now)
+    ? 'heartbeat'
+    : 'start-to-close'
 }
 
 export function planTerminalCancellationTransitions(input: {

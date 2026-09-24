@@ -4,6 +4,7 @@ import {
   createEvent,
   isPrimitiveEffect,
   type ComposedRegistry,
+  type EffectExecutionRecord,
   type EventEnvelope,
   type OutstandingEffect,
   type RunState,
@@ -39,21 +40,41 @@ function workerClaims(
   return handled || (worker.canDispatch?.(workerTask(runId, item, 0)) ?? false)
 }
 
+const WORKER_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
+  'queued',
+  'dispatched',
+  'started',
+  'heartbeat',
+  'cancel_requested',
+  'timed_out',
+  'ambiguous',
+])
+
 /**
- * Decides where an outstanding effect runs. An explicit `execution` wins, then
- * a worker claim; otherwise effects with a local handler run in process and
- * handler-less effects go to the worker.
+ * Decides where an outstanding effect runs. An attempt already in flight keeps
+ * its durable placement. Otherwise an explicit `execution` wins, then a worker
+ * claim; effects with a local handler run in process and handler-less effects
+ * go to the worker.
  */
 export function isWorkerEffect(input: {
   readonly runId: string
   readonly item: OutstandingEffect
+  readonly execution: EffectExecutionRecord | undefined
   readonly registry: ComposedRegistry
   readonly worker?: EffectWorker
 }): boolean {
-  const { item, worker } = input
+  const { item, execution, worker } = input
 
   if (isPrimitiveEffect(item.effect)) {
     return false
+  }
+
+  if (execution?.status === 'running') {
+    return false
+  }
+
+  if (execution && WORKER_ATTEMPT_STATUSES.has(execution.status)) {
+    return true
   }
 
   const definition = input.registry.effects.get(item.effect.type)
@@ -84,11 +105,12 @@ export function planWorkerEffects(input: {
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
   return input.state.outstandingEffects
     .filter((item) => {
-      if (!isWorkerEffect({ ...input, item })) {
+      const execution = input.state.effectExecutions[item.effectId]
+
+      if (!isWorkerEffect({ ...input, item, execution })) {
         return false
       }
 
-      const execution = input.state.effectExecutions[item.effectId]
       return (
         !execution ||
         execution.status === 'queued' ||
@@ -126,44 +148,54 @@ export function planWorkerEffects(input: {
     })
 }
 
+/**
+ * Hand a planned attempt to the worker. A rejected dispatch may still have reached the worker, so
+ * with a schedule-to-start deadline it is recorded as dispatched and recovered by that timeout;
+ * without one it is parked as ambiguous for an operator.
+ */
 export function dispatchWorkerEffect(
   runId: string,
   plan: WorkerEffectDispatchPlan,
   worker: EffectWorker | undefined,
 ): Effect.Effect<EventEnvelope> {
+  const dispatched = createEvent(runId, {
+    type: 'runtime.effect.dispatched',
+    payload: {
+      effectId: plan.item.effectId,
+      attempt: plan.attempt,
+      deadlineAt: plan.scheduleToStartDeadlineAt,
+    },
+    threadId: plan.item.threadId,
+    causationId: plan.item.causingEventId,
+    origin: { type: 'system' },
+  })
+
+  const ambiguous = (error: string) =>
+    createEvent(runId, {
+      type: 'runtime.effect.ambiguous',
+      payload: { effectId: plan.item.effectId, attempt: plan.attempt, error },
+      threadId: plan.item.threadId,
+      causationId: plan.item.causingEventId,
+      origin: { type: 'system' },
+    })
+
+  if (!worker) {
+    return Effect.succeed(
+      ambiguous(`no effect worker is configured for "${plan.item.effect.type}"`),
+    )
+  }
+
   return Effect.tryPromise({
-    try: () =>
-      worker
-        ? Promise.resolve(worker.dispatch(plan.task)).then(() => undefined)
-        : Promise.reject(new RuntimeExecutionError('No effect worker dispatcher configured')),
+    try: () => Promise.resolve(worker.dispatch(plan.task)),
     catch: (cause) =>
       new RuntimeExecutionError(cause instanceof Error ? cause.message : String(cause)),
   }).pipe(
     Effect.match({
-      onFailure: () =>
-        createEvent(runId, {
-          type: 'runtime.effect.ambiguous',
-          payload: {
-            effectId: plan.item.effectId,
-            attempt: plan.attempt,
-            error: 'worker dispatch outcome is ambiguous',
-          },
-          threadId: plan.item.threadId,
-          causationId: plan.item.causingEventId,
-          origin: { type: 'system' },
-        }),
-      onSuccess: () =>
-        createEvent(runId, {
-          type: 'runtime.effect.dispatched',
-          payload: {
-            effectId: plan.item.effectId,
-            attempt: plan.attempt,
-            deadlineAt: plan.scheduleToStartDeadlineAt,
-          },
-          threadId: plan.item.threadId,
-          causationId: plan.item.causingEventId,
-          origin: { type: 'system' },
-        }),
+      onFailure: (error) =>
+        plan.scheduleToStartDeadlineAt === null
+          ? ambiguous(`worker dispatch outcome is ambiguous: ${error.message}`)
+          : dispatched,
+      onSuccess: () => dispatched,
     }),
   )
 }
