@@ -4,7 +4,6 @@ import { defineEventCatalog } from '@looms/core'
 
 import {
   EvaluatorAnswersSchema,
-  EvaluatorQuestionsSchema,
   EvaluatorReasonSchema,
   EvaluatorRouteSchema,
   EvaluatorUsageSchema,
@@ -14,7 +13,6 @@ export const EvaluatorRequestedPayloadSchema = Schema.Struct({
   evaluationId: Schema.String,
   definitionName: Schema.optional(Schema.String),
   state: Schema.String,
-  questions: Schema.optional(EvaluatorQuestionsSchema),
   model: Schema.optional(Schema.String),
 })
 export type EvaluatorRequested = Schema.Schema.Type<typeof EvaluatorRequestedPayloadSchema>

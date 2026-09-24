@@ -8,14 +8,6 @@ import { createLooms } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { defineEvaluator } from './definitions'
-import {
-  LOG_TRIAGE_MAX_INPUT_CHARS,
-  defineLogTriage,
-  logTriageState,
-  redactCommonSecrets,
-  routeLogTriage,
-  skipOversizedLog,
-} from './log-triage'
 import { evaluator } from './module'
 import { evaluations } from './projections'
 import { evaluate } from './signals'
@@ -286,74 +278,27 @@ describe('@looms/evaluator module', () => {
       await looms.stop()
     }
   })
-})
 
-describe('defineLogTriage helper', () => {
-  const logTriage = defineLogTriage()
-
-  test('routeLogTriage keeps uncertain medium-value records on analyze', () => {
-    const decision = routeLogTriage({
-      actionable: { type: 'boolean', value: true, probability: 0.4 },
-      priority: { type: 'choice', value: 'normal' },
-      value: { type: 'score', value: 2 },
+  test('a throwing route fails the thread', async () => {
+    const broken = defineEvaluator({
+      name: 'broken-route',
+      questions: {
+        needsReview: {
+          type: 'boolean',
+          instructions: 'Should this be reviewed?',
+        },
+      },
+      route: () => {
+        throw new Error('route broke')
+      },
     })
 
-    expect(decision.route).toBe('analyze')
-    expect(decision.reason).toBe('uncertain')
-  })
-
-  test('routeLogTriage fails open when answers are unusable', () => {
-    const decision = routeLogTriage({
-      actionable: { type: 'boolean', value: true, probability: Number.NaN },
-      priority: { type: 'choice', value: 'low' },
-      value: { type: 'score', value: 0 },
-    })
-
-    expect(decision.route).toBe('analyze')
-    expect(decision.reason).toBe('unavailable')
-  })
-
-  test('redacts secrets in the model state string', () => {
-    const state = logTriageState({
-      body: 'Authorization: Bearer sk-live-secret password=hunter2 user@example.com',
-    })
-
-    expect(state).toContain('[REDACTED]')
-    expect(state).toContain('[EMAIL]')
-    expect(state).not.toContain('sk-live-secret')
-    expect(state).not.toContain('hunter2')
-    expect(state).not.toContain('user@example.com')
-    expect(redactCommonSecrets('Bearer abc.def')).toBe('Bearer [REDACTED]')
-  })
-
-  test('oversized input skips the model', () => {
-    const skip = skipOversizedLog({ body: 'x'.repeat(LOG_TRIAGE_MAX_INPUT_CHARS + 1) })
-
-    expect(skip?.reason).toBe('unavailable')
-    expect(skip?.route).toBe('analyze')
-  })
-
-  test('ERROR records skip the model', async () => {
-    const looms = createLooms({ modules: [evaluator({ definitions: [logTriage] })] })
+    const looms = createLooms({ modules: [evaluator({ definitions: [broken] })] })
 
     try {
-      const { state } = await looms.start(logTriage, {
-        body: 'Payment capture failed after three retries',
-        severityText: 'ERROR',
-      })
+      const { state } = await looms.start(broken, null)
 
-      expect(state.status).toBe('completed')
-
-      const root = state.rootThreadId ? state.threads[state.rootThreadId] : undefined
-
-      const output = Schema.decodeUnknownSync(
-        Schema.Struct({
-          route: Schema.Literal('analyze'),
-          reason: Schema.Literal('skipped'),
-        }),
-      )(root?.output)
-
-      expect(output.reason).toBe('skipped')
+      expect(state.status).toBe('failed')
     } finally {
       await looms.stop()
     }

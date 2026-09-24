@@ -18,8 +18,6 @@ export interface EvaluatorDefinition<TName extends string = string, TInput = Jso
   readonly model?: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
   readonly questions: EvaluatorQuestions
-  /** Extra JSON options forwarded to the adapter for this definition. */
-  readonly options?: { readonly [key: string]: JsonValue }
   state?(this: void, input: TInput): string
   skipModel?(this: void, input: TInput): EvaluatorSkipResult | undefined
   route?(this: void, args: EvaluatorRouteArgs): EvaluatorRouteDecision

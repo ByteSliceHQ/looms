@@ -83,7 +83,6 @@ export interface EvaluatorEvaluateArgs {
   readonly state: string
   readonly questions: EvaluatorQuestions
   readonly signal?: AbortSignal
-  readonly options?: { readonly [key: string]: JsonValue }
 }
 
 export interface EvaluatorEvaluateResult {

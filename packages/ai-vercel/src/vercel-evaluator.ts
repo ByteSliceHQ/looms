@@ -1,4 +1,4 @@
-import type * as AiSdk from 'ai'
+import { experimental_evaluate } from 'ai'
 import { Data, Effect, Predicate } from 'effect'
 
 import type {
@@ -36,53 +36,9 @@ export interface VercelEvaluatorOptions {
 }
 
 interface EvaluateAnswer {
-  readonly type?: string
   readonly probability?: number
   readonly choice?: string
   readonly score?: number
-}
-
-interface EvaluateResult {
-  readonly answers: { readonly [name: string]: EvaluateAnswer }
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number }
-}
-
-type EvaluateFn = (args: {
-  readonly model: string
-  readonly state: string
-  readonly abortSignal?: AbortSignal
-  readonly maxRetries?: number
-  readonly providerOptions?: VercelEvaluatorOptions['providerOptions']
-  readonly questions: EvaluatorQuestions
-}) => Promise<EvaluateResult>
-
-function isEvaluateFn(value: unknown): value is EvaluateFn {
-  return Predicate.isFunction(value)
-}
-
-function readEvaluateExport(mod: typeof AiSdk, name: string): EvaluateFn | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(mod, name)
-
-  if (!descriptor) {
-    return undefined
-  }
-
-  const value = descriptor.get ? descriptor.get.call(mod) : descriptor.value
-
-  return isEvaluateFn(value) ? value : undefined
-}
-
-function loadEvaluate(mod: typeof AiSdk): EvaluateFn {
-  const candidate =
-    readEvaluateExport(mod, 'experimental_evaluate') ?? readEvaluateExport(mod, 'evaluate')
-
-  if (!candidate) {
-    throw new VercelEvaluatorError(
-      'Install ai@7.0.105 or later to use vercelEvaluator(); experimental_evaluate is required',
-    )
-  }
-
-  return candidate
 }
 
 function abortSignalFor(timeoutMs: number, parent?: AbortSignal): AbortSignal {
@@ -93,7 +49,7 @@ function abortSignalFor(timeoutMs: number, parent?: AbortSignal): AbortSignal {
 /** Map `experimental_evaluate` answers onto evaluator answers. Boolean items only expose probability. */
 export function toEvaluatorAnswers(
   questions: EvaluatorQuestions,
-  raw: EvaluateResult['answers'],
+  raw: { readonly [name: string]: EvaluateAnswer | undefined },
 ): EvaluatorAnswers {
   const answers: { [name: string]: EvaluatorAnswer } = {}
 
@@ -137,36 +93,27 @@ export function vercelEvaluator(options: VercelEvaluatorOptions = {}): Evaluator
   return {
     evaluate: (args): Promise<EvaluatorEvaluateResult> =>
       Effect.runPromise(
-        Effect.gen(function* () {
-          const mod = yield* Effect.tryPromise({
-            try: () => import('ai'),
-            catch: (cause) => new VercelEvaluatorError(cause),
-          })
-
-          const evaluate = loadEvaluate(mod)
-
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              evaluate({
-                model: args.model ?? options.model ?? DEFAULT_EVALUATOR_MODEL,
-                state: args.state,
-                abortSignal: abortSignalFor(timeoutMs, args.signal),
-                maxRetries: 0,
-                providerOptions,
-                questions: args.questions,
-              }),
-            catch: (cause) => new VercelEvaluatorError(cause),
-          })
-
-          return {
+        Effect.tryPromise({
+          try: () =>
+            experimental_evaluate({
+              model: args.model ?? options.model ?? DEFAULT_EVALUATOR_MODEL,
+              state: args.state,
+              abortSignal: abortSignalFor(timeoutMs, args.signal),
+              maxRetries: 0,
+              providerOptions,
+              questions: args.questions,
+            }),
+          catch: (cause) => new VercelEvaluatorError(cause),
+        }).pipe(
+          Effect.map((result) => ({
             answers: toEvaluatorAnswers(args.questions, result.answers),
             usage: {
-              input: result.usage?.inputTokens ?? 0,
-              output: result.usage?.outputTokens ?? 0,
+              input: result.usage.inputTokens ?? 0,
+              output: result.usage.outputTokens ?? 0,
             },
             raw: result,
-          }
-        }),
+          })),
+        ),
       ),
   }
 }

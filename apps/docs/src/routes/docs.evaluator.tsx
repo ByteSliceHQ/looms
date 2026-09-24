@@ -103,8 +103,7 @@ evaluator({
         <code>AI_GATEWAY_API_KEY</code> on the server. Without an adapter, the evaluator module uses
         a deterministic stub. See{' '}
         <Link to="/docs/agents">agents and model providers</Link> for chat adapters, and{' '}
-        <Link to="/docs/examples">examples</Link> for the stubbed script.{' '}
-        <code>defineLogTriage</code> is an optional sample rubric, not the module API.
+        <Link to="/docs/examples">examples</Link> for the stubbed script.
       </p>
     </>
   )
