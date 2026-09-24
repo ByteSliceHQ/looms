@@ -3,8 +3,10 @@ import { Effect, Layer, Option, Schema, Stream } from 'effect'
 
 import {
   createKeyedSerializer,
+  assertSnapshotByteLimit,
   RunStateSchema,
   SnapshotStoreError,
+  SnapshotPayloadTooLargeError,
   SnapshotStoreTag,
   type RunSnapshot,
   type SnapshotStore,
@@ -323,6 +325,14 @@ export function s2SnapshotStore(config: S2Config): SnapshotStore {
   const service: SnapshotStore = {
     save: (snapshot) =>
       Effect.gen(function* () {
+        yield* Effect.try({
+          try: () => assertSnapshotByteLimit(snapshot),
+          catch: (cause) =>
+            cause instanceof SnapshotPayloadTooLargeError
+              ? cause
+              : new SnapshotStoreError('snapshot size validation failed', cause),
+        })
+
         const stream = yield* ensureStream(snapshot.runId)
         const frames = frameSnapshot(snapshot)
 

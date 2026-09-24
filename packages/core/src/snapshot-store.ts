@@ -1,5 +1,6 @@
 import { Context, Data, Effect, Option, Ref } from 'effect'
 
+import { assertSnapshotByteLimit, SnapshotPayloadTooLargeError } from './limits'
 import type { RunState } from './state'
 import type { EventStore } from './store'
 
@@ -31,7 +32,9 @@ export interface SnapshotStore {
   readonly loadLatest: (
     runId: string,
   ) => Effect.Effect<Option.Option<RunSnapshot>, SnapshotStoreError>
-  readonly save: (snapshot: RunSnapshot) => Effect.Effect<void, SnapshotStoreError>
+  readonly save: (
+    snapshot: RunSnapshot,
+  ) => Effect.Effect<void, SnapshotStoreError | SnapshotPayloadTooLargeError>
   readonly listCursors?: (runId: string) => Effect.Effect<number[], SnapshotStoreError>
   readonly prune?: (runId: string, keepLatest: number) => Effect.Effect<void, SnapshotStoreError>
 }
@@ -73,12 +76,22 @@ export const makeMemorySnapshotStore = Effect.gen(function* () {
       }),
 
     save: (snapshot) =>
-      Ref.update(snapshots, (map) => {
-        const next = new Map(map)
-        const existing = next.get(snapshot.runId) ?? []
-        next.set(snapshot.runId, [...existing, snapshot])
-        return next
-      }),
+      Effect.try({
+        try: () => assertSnapshotByteLimit(snapshot),
+        catch: (cause) =>
+          cause instanceof SnapshotPayloadTooLargeError
+            ? cause
+            : new SnapshotStoreError('snapshot size validation failed', cause),
+      }).pipe(
+        Effect.andThen(
+          Ref.update(snapshots, (map) => {
+            const next = new Map(map)
+            const existing = next.get(snapshot.runId) ?? []
+            next.set(snapshot.runId, [...existing, snapshot])
+            return next
+          }),
+        ),
+      ),
 
     listCursors: (runId) =>
       Effect.gen(function* () {

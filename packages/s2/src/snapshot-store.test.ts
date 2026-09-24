@@ -2,20 +2,13 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect } from 'effect'
 
-import { EventStoreFencedError, createEvent, type RunSnapshot } from '@looms/core'
+import { EventStoreFencedError, createEvent, emptyRunState, type RunSnapshot } from '@looms/core'
 
 import { findS2Binary, startS2Lite } from './lite'
 import { assembleSnapshot, frameSnapshot, s2SnapshotStore } from './snapshot-store'
 import { s2 } from './store'
 
-const emptyState = (runId: string): RunSnapshot['state'] => ({
-  runId,
-  status: 'running',
-  rootThreadId: null,
-  threads: {},
-  waits: {},
-  outstandingEffects: [],
-})
+const emptyState = (runId: string): RunSnapshot['state'] => emptyRunState(runId)
 
 describe('frameSnapshot / assembleSnapshot', () => {
   test('round-trips a small snapshot in one frame', () => {
@@ -45,6 +38,7 @@ describe('frameSnapshot / assembleSnapshot', () => {
             threadId: 't',
             kind: 'echo',
             definitionName: 'e',
+            definitionVersion: 'v1',
             parentThreadId: null,
             status: 'running',
             input: 'x'.repeat(50),

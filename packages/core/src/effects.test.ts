@@ -10,6 +10,7 @@ const ctx: EffectContext = {
   runId: 'run_1',
   threadId: 'thr_1',
   causingEventId: 'evt_1',
+  signal: new AbortController().signal,
   emit: async () => undefined,
 }
 
@@ -70,6 +71,36 @@ describe('defineEffect', () => {
 
     const events = await Effect.runPromise(effect.execute({ amount: 99 }, ctx))
     expect(events).toEqual([{ type: 'demo.charged', payload: { amount: 99 } }])
+  })
+
+  test('marks definitions with a handler', () => {
+    const effect = defineEffect({ type: 'demo.ping', execute: () => [] })
+
+    expect(effect.hasHandler).toBe(true)
+    expect(effect.execution).toBeUndefined()
+  })
+
+  test('declares a handler-less effect that still validates input', async () => {
+    const effect = defineEffect({
+      type: 'demo.transcode',
+      input: Schema.Struct({ url: Schema.String }),
+      retry: { maxAttempts: 3 },
+    })
+
+    expect(effect.hasHandler).toBe(false)
+    expect(effect.retry).toEqual({ maxAttempts: 3 })
+
+    const events = await Effect.runPromise(effect.execute({ url: 'https://example.com' }, ctx))
+    expect(events).toEqual([])
+
+    // @ts-expect-error deliberately passing invalid input to test schema rejection
+    expect(Effect.runPromise(effect.execute({ url: 1 }, ctx))).rejects.toThrow('url')
+  })
+
+  test('carries an explicit execution override', () => {
+    const effect = defineEffect({ type: 'demo.local', execution: 'local', execute: () => [] })
+
+    expect(effect.execution).toBe('local')
   })
 
   test('validateInputEffect returns typed InvalidInputError with issues catchable by catchTag', async () => {

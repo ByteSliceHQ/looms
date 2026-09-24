@@ -8,10 +8,13 @@ import {
   type EventEnvelope,
 } from '@looms/core'
 
+import type { ProjectorDelivery } from './delivery'
 import { runProjectorEffect, type Projector, type ProjectorErrorHandler } from './projector'
 
 export interface WithProjectorsOptions {
   onError?: ProjectorErrorHandler
+  /** Durable cursor runner. When present, appends trigger catch-up from its persisted cursor. */
+  delivery?: ProjectorDelivery
 }
 
 function defaultOnError(error: Error, projector: Projector): void {
@@ -22,7 +25,8 @@ function defaultOnError(error: Error, projector: Projector): void {
 
 /**
  * Wrap an EventStore so every successful append is also projected.
- * Projection failures are isolated so the primary log stays authoritative.
+ * The primary log stays authoritative. With a durable delivery runner, failures
+ * are persisted for retry; without one, projection errors are surfaced to the caller.
  */
 export function withProjectors(
   store: EventStore,
@@ -37,6 +41,11 @@ export function withProjectors(
         const result = yield* store.append(runId, events, appendOptions)
         const fromSeq = result.sequences[0]
 
+        if (projectors.length > 0 && options?.delivery) {
+          yield* Effect.promise(() => options.delivery!.deliver(runId))
+          return result
+        }
+
         if (fromSeq !== undefined && projectors.length > 0) {
           const written = yield* store.read(runId, {
             fromSeq,
@@ -47,13 +56,14 @@ export function withProjectors(
             projectors,
             (projector) =>
               runProjectorEffect(projector.name, () => projector.project(written)).pipe(
-                Effect.catch((error) =>
+                Effect.tapError((error) =>
                   Effect.sync(() => {
                     onError(error, projector, written)
                   }),
                 ),
+                Effect.orDie,
               ),
-            { discard: true },
+            { concurrency: 'unbounded', discard: true },
           )
         }
 
@@ -80,7 +90,7 @@ export function projectEvents(
     Effect.forEach(
       projectors,
       (projector) => runProjectorEffect(projector.name, () => projector.project(events)),
-      { discard: true },
+      { concurrency: 'unbounded', discard: true },
     ),
   )
 }

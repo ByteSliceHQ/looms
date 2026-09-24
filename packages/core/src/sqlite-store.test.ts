@@ -188,6 +188,36 @@ describe('sqlite EventStore', () => {
     expect(caught).toBeDefined()
   })
 
+  test('claims an idempotency key atomically with append', async () => {
+    const store = bunSqliteEventStore()
+    const runId = 'run_idempotent_append'
+
+    const event = createEvent(runId, {
+      type: 'test.signal',
+      payload: { value: 1 },
+      threadId: null,
+      origin: { type: 'external' },
+    })
+
+    const first = await Effect.runPromise(
+      store.append(runId, [event], {
+        expectedTail: 0,
+        idempotency: { key: 'signal:request-1' },
+      }),
+    )
+
+    const duplicate = await Effect.runPromise(
+      store.append(runId, [event], {
+        expectedTail: 0,
+        idempotency: { key: 'signal:request-1' },
+      }),
+    )
+
+    expect(first).toEqual({ sequences: [1], tail: 1 })
+    expect(duplicate).toEqual({ sequences: [], tail: 1, deduplicated: true })
+    expect(await Effect.runPromise(store.read(runId))).toHaveLength(1)
+  })
+
   test('attaches a snapshot store in the same database', async () => {
     const store = bunSqliteEventStore()
     const snapshots = snapshotStoreOf(store)

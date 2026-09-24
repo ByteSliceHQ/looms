@@ -8,6 +8,7 @@ export interface StartContext<TInput = JsonValue> {
   readonly threadId: string
   readonly parentThreadId: string | null
   readonly definitionName: string
+  readonly definitionVersion: string
   readonly input: TInput
 }
 

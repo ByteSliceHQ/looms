@@ -61,6 +61,8 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
         title: event.payload.error ? 'run failed' : 'run completed',
         detail: event.payload.error ?? compactJson(event.payload.output),
       }
+    case 'runtime.run.cancelled':
+      return { title: 'run cancelled', detail: event.payload.reason }
     case 'runtime.thread.started':
       return {
         title: 'thread started',
@@ -72,6 +74,8 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       return { title: 'thread failed', detail: event.payload.error }
     case 'runtime.thread.cancelled':
       return { title: 'thread cancelled', detail: event.payload.reason }
+    case 'runtime.thread.cancel.requested':
+      return { title: 'thread cancellation requested', detail: event.payload.threadId }
 
     case 'runtime.wait.registered': {
       const on = event.payload.on
@@ -94,6 +98,28 @@ export function summarizeEvent(event: DemoEvents): EventSummary {
       return { title: 'timer fired' }
     case 'runtime.effect.failed':
       return { title: 'effect failed', detail: event.payload.error }
+    case 'runtime.effect.attempt.started':
+      return { title: 'effect attempt started', detail: String(event.payload.attempt) }
+    case 'runtime.effect.queued':
+      return { title: 'effect queued', detail: String(event.payload.attempt) }
+    case 'runtime.effect.dispatched':
+      return { title: 'effect dispatched', detail: String(event.payload.attempt) }
+    case 'runtime.effect.worker.started':
+      return { title: 'worker started effect', detail: String(event.payload.attempt) }
+    case 'runtime.effect.heartbeat':
+      return { title: 'effect heartbeat', detail: String(event.payload.attempt) }
+    case 'runtime.effect.completed':
+      return { title: 'effect completed', detail: String(event.payload.attempt) }
+    case 'runtime.effect.cancel.requested':
+      return { title: 'effect cancellation requested', detail: String(event.payload.attempt) }
+    case 'runtime.effect.cancelled':
+      return { title: 'effect cancelled', detail: String(event.payload.attempt) }
+    case 'runtime.effect.timed_out':
+      return { title: 'effect timed out', detail: event.payload.timeout }
+    case 'runtime.effect.ambiguous':
+      return { title: 'effect outcome ambiguous', detail: event.payload.error }
+    case 'runtime.effect.retry.scheduled':
+      return { title: 'effect retry scheduled', detail: event.payload.error }
     case 'runtime.snapshot.taken':
       return { title: 'snapshot', detail: `seq ${event.payload.seq}` }
     case 'runtime.signal.received':

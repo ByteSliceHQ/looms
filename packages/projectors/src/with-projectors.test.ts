@@ -12,7 +12,39 @@ import {
 } from '@looms/core'
 
 import type { Projector } from './projector'
-import { withProjectors } from './with-projectors'
+import { projectEvents, withProjectors } from './with-projectors'
+
+function blockingProjectors(
+  started: string[],
+  release: Promise<void>,
+): readonly [Projector, Projector] {
+  return [
+    {
+      name: 'slow',
+      version: '1',
+      project: async () => {
+        started.push('slow')
+        await release
+      },
+    },
+    {
+      name: 'fast',
+      version: '1',
+      project: async () => {
+        started.push('fast')
+      },
+    },
+  ]
+}
+
+function testEvent(): EventEnvelope {
+  return createEvent('run_parallel', {
+    type: 'runtime.run.started',
+    payload: { rootThreadId: 'thread', kind: 'agent', definitionName: 'echo', input: null },
+    threadId: null,
+    origin: { type: 'system' },
+  })
+}
 
 describe('withProjectors', () => {
   test('forwards appends to projectors', async () => {
@@ -20,6 +52,7 @@ describe('withProjectors', () => {
 
     const projector: Projector = {
       name: 'test',
+      version: '1',
       project: async (events) => {
         seen.push([...events])
       },
@@ -49,5 +82,68 @@ describe('withProjectors', () => {
 
     const store = withProjectors(base, [])
     expect(snapshotStoreOf(store)).toBe(snapshots)
+  })
+
+  test('surfaces projection failure when no durable runner is configured', async () => {
+    const base = await Effect.runPromise(makeMemoryEventStore)
+
+    const store = withProjectors(base, [
+      {
+        name: 'failing',
+        version: '1',
+        project: async () => {
+          throw new Error('projection unavailable')
+        },
+      },
+    ])
+
+    const result = await Effect.runPromise(
+      Effect.exit(
+        store.append('run_1', [
+          createEvent('run_1', {
+            type: 'runtime.run.started',
+            payload: {
+              rootThreadId: 'thr_e',
+              kind: 'agent',
+              definitionName: 'echo',
+              input: null,
+            },
+            threadId: null,
+            origin: { type: 'system' },
+          }),
+        ]),
+      ),
+    )
+
+    expect(result._tag).toBe('Failure')
+    expect(await Effect.runPromise(base.tail('run_1'))).toBe(1)
+  })
+
+  test('projects independent append handlers concurrently', async () => {
+    const base = await Effect.runPromise(makeMemoryEventStore)
+    const release = Promise.withResolvers<void>()
+    const started: string[] = []
+    const store = withProjectors(base, blockingProjectors(started, release.promise))
+
+    const pending = Effect.runPromise(store.append('run_parallel', [testEvent()]))
+    await Bun.sleep(10)
+
+    expect(started).toEqual(['slow', 'fast'])
+
+    release.resolve()
+    await pending
+  })
+
+  test('projects independent explicit handlers concurrently', async () => {
+    const release = Promise.withResolvers<void>()
+    const started: string[] = []
+
+    const pending = projectEvents(blockingProjectors(started, release.promise), [testEvent()])
+    await Bun.sleep(10)
+
+    expect(started).toEqual(['slow', 'fast'])
+
+    release.resolve()
+    await pending
   })
 })

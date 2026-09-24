@@ -13,6 +13,7 @@ import {
   emit,
   defineEffect,
   type EffectDefinition,
+  type EffectExecution,
   type EffectHandlerResult,
   type EmitEffect,
   type RetryPolicy,
@@ -129,7 +130,8 @@ export interface ModuleScope<
     type: `${TNamespace}.${string}`
     input?: TSchema
     retry?: RetryPolicy
-    execute: (
+    execution?: EffectExecution
+    execute?: (
       input: TInput,
       ctx: ScopedEffectContext<EventInputOf<U>>,
     ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>

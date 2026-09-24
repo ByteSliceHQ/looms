@@ -3,9 +3,11 @@ import { DateTime, Effect, Layer, Predicate, Schema, Stream } from 'effect'
 
 import {
   createKeyedSerializer,
+  assertEventByteLimits,
   EventStoreConflictError,
   EventStoreError,
   EventStoreFencedError,
+  EventPayloadTooLargeError,
   EventStoreTag,
   EventEnvelopeSchema,
   fromWireEvent,
@@ -154,6 +156,14 @@ export function s2(config: S2Config): EventStore {
   const service: EventStore = {
     append: (runId, events, options) =>
       Effect.gen(function* () {
+        yield* Effect.try({
+          try: () => assertEventByteLimits(runId, events),
+          catch: (cause) =>
+            cause instanceof EventPayloadTooLargeError
+              ? cause
+              : new EventStoreError('event size validation failed', cause),
+        })
+
         if (events.length === 0 && options?.fence === undefined) {
           const tail = yield* service.tail(runId)
           return { sequences: [], tail } satisfies AppendResult

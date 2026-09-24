@@ -76,9 +76,20 @@ export function matchesWait(event: EventEnvelope, on: WaitCondition): boolean {
   return isSubset(on.match, event.payload)
 }
 
-export function matchingWaits<T extends { on: WaitCondition }>(
+export function matchingWaits<T extends { waitId: string; on: WaitCondition }>(
   event: EventEnvelope,
   waits: readonly T[],
 ): T[] {
-  return waits.filter((record) => matchesWait(event, record.on))
+  return waits.filter((record) => {
+    if (isWaitOnTimer(record.on)) {
+      if (event.type !== 'runtime.timer.fired' || !Predicate.isObject(event.payload)) {
+        return false
+      }
+
+      const firedWaitId = event.payload.waitId
+      return Predicate.isString(firedWaitId) && firedWaitId === record.waitId
+    }
+
+    return matchesWait(event, record.on)
+  })
 }

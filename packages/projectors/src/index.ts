@@ -1,5 +1,17 @@
 export type { Projector, ProjectorErrorHandler } from './projector'
 export {
+  createProjectorDelivery,
+  type ProjectorCursorStore,
+  type ProjectorDelivery,
+  type ProjectorDeliveryOptions,
+  type ProjectorDeliveryState,
+  type ProjectorDeliveryStatus,
+  type ProjectorObservation,
+  type ProjectorObserver,
+  type ProjectorOperationalStatus,
+} from './delivery'
+export { sqliteProjectorCursorStore, SQLITE_PROJECTOR_DELIVERY_SCHEMA } from './sqlite-delivery'
+export {
   withProjectors,
   projectEvents,
   ProjectorsStoreLive,

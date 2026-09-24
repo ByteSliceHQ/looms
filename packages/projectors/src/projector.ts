@@ -47,6 +47,8 @@ export function runProjectorPromise<A>(
 export interface Projector {
   /** Used in error reporting / diagnostics. */
   readonly name: string
+  /** Changes when projection semantics or its target schema changes. */
+  readonly version: string
   /** Optional one-time setup (open connection, create tables). Runtime calls this before the first `project`. */
   readonly init?: () => Promise<void>
   /** Apply a batch of events in log order. Must be idempotent (a batch may be redelivered). */
