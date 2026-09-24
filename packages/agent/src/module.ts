@@ -2,7 +2,7 @@ import { Layer } from 'effect'
 
 import { defineModule, makeDefinitionStore } from '@looms/core'
 
-import { agentSessionActionEffect, createAgentSessionThread } from './agent-session'
+import { createAgentSessionThread } from './agent-session'
 import type { AgentDefinition, AgentSessionDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
 import { callLlmEffect, executeToolEffect } from './effects'
@@ -45,7 +45,6 @@ export function agent(options: AgentModuleOptions = {}) {
     effects: {
       callLLM: callLlmEffect,
       executeTool: executeToolEffect,
-      sessionAction: agentSessionActionEffect,
     },
     projections: {
       conversation,

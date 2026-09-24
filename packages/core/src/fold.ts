@@ -480,6 +480,14 @@ export function stableEffectId(threadId: string, effect: RuntimeEffect): string 
     return createEffectId(threadId, `spawn_${effect.childThreadId}`)
   }
 
+  if (
+    effect.type === 'runtime.cancel' &&
+    'threadId' in effect &&
+    Predicate.isString(effect.threadId)
+  ) {
+    return createEffectId(threadId, `cancel_${effect.threadId}`)
+  }
+
   return undefined
 }
 
