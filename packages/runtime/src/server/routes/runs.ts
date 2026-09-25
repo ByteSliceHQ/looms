@@ -132,8 +132,20 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       name: 'runs.list',
       access: 'read',
       handle: () =>
-        provideStore(runtime.listRuns, store).pipe(
-          Effect.map((runIds) => Response.json({ runIds })),
+        provideStore(
+          runtime.listRuns.pipe(Effect.map((runIds) => Response.json({ runIds }))),
+          store,
+        ),
+    }),
+    route({
+      method: 'GET',
+      path: '/runs/summaries',
+      name: 'runs.summaries',
+      access: 'read',
+      handle: () =>
+        provideStore(
+          runtime.listRunSummaries.pipe(Effect.map((runs) => Response.json({ runs }))),
+          store,
         ),
     }),
     route({

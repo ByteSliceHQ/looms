@@ -1,31 +1,129 @@
 @source "./**/*.{ts,tsx}";
+@source "../../agent/src/debugger/**/*.{ts,tsx}";
+@source "../../workflow/src/debugger/**/*.{ts,tsx}";
+@source "../../approval/src/debugger/**/*.{ts,tsx}";
 
 @theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
   --color-status-running: var(--status-running);
   --color-status-waiting: var(--status-waiting);
   --color-status-completed: var(--status-completed);
   --color-status-failed: var(--status-failed);
   --color-status-cancelled: var(--status-cancelled);
-  --color-family-runtime: var(--family-runtime);
-  --color-family-agent: var(--family-agent);
-  --color-family-workflow: var(--family-workflow);
-  --color-family-approval: var(--family-approval);
-  --color-family-payments: var(--family-payments);
-  --color-family-wait: var(--family-wait);
+  --color-json-key: var(--json-key);
+  --color-json-string: var(--json-string);
+  --color-json-number: var(--json-number);
+  --color-json-boolean: var(--json-boolean);
+  --color-json-null: var(--json-null);
+  --ease-snappy: var(--debugger-ease);
+}
+
+/* Layered so a host's own unlayered :root theme (for example shadcn/ui) takes precedence. */
+@layer base {
+  :root {
+    --background: oklch(0.16 0.005 260);
+    --foreground: oklch(0.93 0.01 260);
+    --card: oklch(0.19 0.006 260);
+    --card-foreground: oklch(0.93 0.01 260);
+    --primary: oklch(0.93 0.01 260);
+    --primary-foreground: oklch(0.2 0.006 260);
+    --secondary: oklch(0.24 0.008 260);
+    --secondary-foreground: oklch(0.93 0.01 260);
+    --muted: oklch(0.24 0.008 260);
+    --muted-foreground: oklch(0.68 0.015 260);
+    --accent: oklch(0.26 0.01 260);
+    --accent-foreground: oklch(0.95 0.01 260);
+    --destructive: oklch(0.65 0.18 25);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 12%);
+    --ring: oklch(0.55 0.02 260);
+    --sidebar: oklch(0.18 0.006 260);
+    --sidebar-foreground: oklch(0.93 0.01 260);
+  }
+
+  :where(.looms-debugger, .debugger-pop),
+  :where(.looms-debugger, .debugger-pop) *,
+  :where(.looms-debugger, .debugger-pop) ::before,
+  :where(.looms-debugger, .debugger-pop) ::after {
+    border-color: var(--color-border);
+  }
 }
 
 :root {
+  --debugger-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --status-running: oklch(0.74 0.12 240);
   --status-waiting: oklch(0.8 0.14 85);
   --status-completed: oklch(0.76 0.13 155);
   --status-failed: oklch(0.68 0.18 25);
   --status-cancelled: oklch(0.62 0.01 260);
-  --family-runtime: oklch(0.76 0.13 155);
-  --family-agent: oklch(0.74 0.12 240);
-  --family-workflow: oklch(0.76 0.12 300);
-  --family-approval: oklch(0.8 0.14 85);
-  --family-payments: oklch(0.78 0.1 175);
-  --family-wait: oklch(0.8 0.14 85);
+  --json-key: oklch(0.8 0.06 280);
+  --json-string: oklch(0.8 0.1 150);
+  --json-number: oklch(0.8 0.1 230);
+  --json-boolean: oklch(0.82 0.11 70);
+  --json-null: oklch(0.6 0.01 260);
+}
+
+@keyframes debugger-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes debugger-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Anchored overlays grow from their trigger; keyboard-opened ones appear instantly. */
+.debugger-pop {
+  transform-origin: var(--radix-popper-transform-origin);
+  animation: debugger-pop-in 150ms var(--debugger-ease);
+}
+
+.debugger-pop[data-instant] {
+  animation: none;
+}
+
+.debugger-float-in {
+  transition:
+    opacity 150ms var(--debugger-ease),
+    transform 150ms var(--debugger-ease),
+    scale 150ms var(--debugger-ease),
+    background-color 150ms var(--debugger-ease);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .debugger-pop {
+    animation-name: debugger-fade-in;
+  }
+
+  .debugger-float-in {
+    transition-property: opacity;
+  }
 }
 
 .debugger-event-stream {
@@ -53,19 +151,5 @@
 @container (min-width: 44rem) {
   .debugger-event-causation {
     display: inline;
-  }
-}
-
-@container (max-width: 22rem) {
-  .debugger-follow-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 }

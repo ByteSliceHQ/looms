@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { defineEventCatalog, defineModule } from '@looms/core'
+import {
+  DefinitionCatalogSchema,
+  defineEventCatalog,
+  defineModule,
+  RunSummariesSchema,
+} from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
@@ -397,5 +402,128 @@ describe('server routing', () => {
     expect(anonymousWrite?.status).toBe(200)
     expect(worker?.status).toBe(503)
     await looms.stop()
+  })
+
+  test('GET /definitions lists registered definitions and projections', async () => {
+    const flow = defineWorkflow({
+      name: 'checkout',
+      description: 'Charge after review',
+      input: Schema.Struct({ amount: Schema.Finite }),
+      nodes: [{ id: 'step', run: () => null }],
+    })
+
+    const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
+
+    const response = await looms.fetch(new Request('http://looms.test/definitions'))
+    const body = Schema.decodeUnknownSync(DefinitionCatalogSchema)(await response?.json())
+
+    expect(response?.status).toBe(200)
+
+    expect(body.definitions).toEqual([
+      {
+        kind: 'workflow',
+        name: 'checkout',
+        version: 'v1',
+        description: 'Charge after review',
+        inputSchema: body.definitions[0]?.inputSchema,
+      },
+    ])
+
+    expect(body.definitions[0]?.inputSchema).toMatchObject({ type: 'object' })
+    expect(body.projections).toContain('nodes')
+    await looms.stop()
+  })
+
+  test('GET /runs/summaries lists each run with its status and definition', async () => {
+    const flow = defineWorkflow({ name: 'summarized', nodes: [{ id: 'step', run: () => null }] })
+    const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
+    const started = await looms.start(flow, null)
+
+    const plain = await looms.fetch(new Request('http://looms.test/runs'))
+    const summarized = await looms.fetch(new Request('http://looms.test/runs/summaries'))
+    const body = Schema.decodeUnknownSync(RunSummariesSchema)(await summarized?.json())
+
+    expect(await plain?.json()).toEqual({ runIds: [started.runId] })
+
+    expect(body.runs).toEqual([
+      {
+        runId: started.runId,
+        status: 'completed',
+        kind: 'workflow',
+        definitionName: 'summarized',
+      },
+    ])
+
+    await looms.stop()
+  })
+
+  test('serves a debugger under its base path after read authorization', async () => {
+    const seen: RouteInfo[] = []
+
+    const looms = createLooms({
+      modules: [],
+      authorize: (request, route) =>
+        Effect.sync(() => {
+          if (route.name === 'debugger') {
+            seen.push(route)
+          }
+
+          return request.headers.get('x-allow') === 'yes'
+            ? authAllowed
+            : authDenied(403, 'Forbidden')
+        }),
+      debugger: {
+        basePath: '/debugger/',
+        fetch: (_request, mount) =>
+          Promise.resolve(
+            new Response(`${mount.basePath} ${mount.path}`, {
+              headers: { 'content-type': 'text/html' },
+            }),
+          ),
+      },
+    })
+
+    const denied = await looms.fetch(
+      new Request('http://looms.test/debugger', { headers: { accept: 'text/html' } }),
+    )
+
+    const page = await looms.fetch(
+      new Request('http://looms.test/debugger/runs', {
+        headers: { accept: 'text/html', 'x-allow': 'yes' },
+      }),
+    )
+
+    const health = await looms.fetch(
+      new Request('http://looms.test/health', { headers: { 'x-allow': 'yes' } }),
+    )
+
+    const outside = await looms.fetch(
+      new Request('http://looms.test/debugger-other', { headers: { 'x-allow': 'yes' } }),
+    )
+
+    expect(denied?.status).toBe(403)
+    expect(await denied?.json()).toEqual({ error: 'Forbidden' })
+    expect(page?.status).toBe(200)
+    expect(await page?.text()).toBe('/debugger /runs')
+    expect(health?.status).toBe(200)
+    expect(outside).toBeNull()
+
+    expect(seen).toEqual([
+      { access: 'read', name: 'debugger' },
+      { access: 'read', name: 'debugger' },
+    ])
+
+    await looms.stop()
+  })
+
+  test('rejects a debugger mount that overlaps the HTTP API', () => {
+    expect(() =>
+      createLooms({
+        debugger: {
+          basePath: '/runs',
+          fetch: () => Promise.resolve(null),
+        },
+      }),
+    ).toThrow('overlaps the HTTP API')
   })
 })

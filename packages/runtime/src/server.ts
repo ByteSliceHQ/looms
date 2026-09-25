@@ -1,8 +1,6 @@
-export {
-  createFetchHandler,
-  isLoomsApiPath,
-  type FetchHandlerOptions,
-} from './server/fetch-handler'
+export { createFetchHandler, handlesPath, type FetchHandlerOptions } from './server/fetch-handler'
+export { isLoomsApiPath } from './server/http'
+export { mountDebugger, type DebuggerMount } from './server/debugger-host'
 export {
   authAllowed,
   authDenied,

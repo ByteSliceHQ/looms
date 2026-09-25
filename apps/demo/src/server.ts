@@ -1,49 +1,57 @@
-import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
-import { Predicate } from 'effect'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { looms } from './looms.server'
+import { debuggerUi } from '@looms/debugger/server'
+import { createLooms } from '@swirls/looms'
+import type { EventStore } from '@swirls/looms/core'
+import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
+import { withProjectors } from '@swirls/looms/projectors'
+import { s2Projector, startS2Lite } from '@swirls/looms/s2'
 
-interface BunServerLike {
-  timeout?(req: Request, seconds: number): void
-}
+import {
+  demoEnvFromProcess,
+  resolveDemoEvaluator,
+  resolveDemoLlm,
+  resolveDemoProjectors,
+} from './demo-config'
+import { demoModules } from './runtime'
 
-function isBunServer(value: unknown): value is BunServerLike {
-  return (
-    Predicate.isReadonlyObject(value) &&
-    (!('timeout' in value) || Predicate.isFunction(value.timeout))
-  )
-}
+const runsDir = join(process.cwd(), '.looms')
+const env = demoEnvFromProcess()
+const port = Number(process.env.PORT ?? 8787)
+const hostname = process.env.HOST ?? '127.0.0.1'
+// The default root only exists in the published package; a source checkout serves the app build.
+const debuggerRoot = fileURLToPath(new URL('../../debugger/dist', import.meta.url))
 
-function requestBunServer(req: Request): BunServerLike | undefined {
-  if (!('runtime' in req) || !Predicate.isReadonlyObject(req.runtime)) {
-    return undefined
-  }
+function createStore(): Promise<EventStore> {
+  return mkdir(runsDir, { recursive: true }).then(() => {
+    const local = bunSqliteEventStore({ path: join(runsDir, 'demo.sqlite') })
+    const configured = resolveDemoProjectors(env)
 
-  const runtime = req.runtime
-
-  if (!('bun' in runtime) || !Predicate.isReadonlyObject(runtime.bun)) {
-    return undefined
-  }
-
-  const bun = runtime.bun
-  return 'server' in bun && isBunServer(bun.server) ? bun.server : undefined
-}
-
-function disableBunTimeout(req: Request, server: BunServerLike | undefined): void {
-  try {
-    const srv = server ?? requestBunServer(req)
-
-    if (srv) {
-      srv.timeout?.(req, 0)
+    if (configured.length > 0) {
+      return withProjectors(local, configured)
     }
-  } catch {
-    // Ignore when timeout is not supported.
-  }
+
+    if (env.LOOMS_S2_ENDPOINT || env.LOOMS_S2_ACCESS_TOKEN) {
+      return local
+    }
+
+    return startS2Lite({ env: process.env }).then((lite) =>
+      withProjectors(local, [
+        s2Projector({
+          basin: 'looms-demo',
+          accessToken: 's2_local',
+          endpoint: lite.endpoint,
+        }),
+      ]),
+    )
+  })
 }
 
-export default createServerEntry({
-  fetch: (req, opts) => {
-    disableBunTimeout(req, isBunServer(opts) ? opts : undefined)
-    return looms.fetch(req).then((response) => response ?? handler.fetch(req))
-  },
+createLooms({
+  modules: demoModules({ llm: resolveDemoLlm(env), evaluator: resolveDemoEvaluator(env) }),
+  store: createStore(),
+  debugger: debuggerUi({ root: debuggerRoot }),
+  serve: { port, hostname },
 })

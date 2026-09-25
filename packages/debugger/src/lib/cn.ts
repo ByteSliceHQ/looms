@@ -22,3 +22,7 @@ export function compactJson(value: JsonValue): string {
 
   return text.length > 96 ? `${text.slice(0, 93)}…` : text
 }
+
+export function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}

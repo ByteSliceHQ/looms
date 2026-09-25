@@ -17,6 +17,7 @@ import { Route as DocsAgentsRouteImport } from './routes/docs.agents'
 import { Route as DocsApiRouteImport } from './routes/docs.api'
 import { Route as DocsApprovalsRouteImport } from './routes/docs.approvals'
 import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
+import { Route as DocsDebuggerRouteImport } from './routes/docs.debugger'
 import { Route as DocsEvaluatorRouteImport } from './routes/docs.evaluator'
 import { Route as DocsExamplesRouteImport } from './routes/docs.examples'
 import { Route as DocsHostingAndStorageRouteImport } from './routes/docs.hosting-and-storage'
@@ -77,6 +78,11 @@ const DocsApprovalsRoute = DocsApprovalsRouteImport.update({
 const DocsConceptsRoute = DocsConceptsRouteImport.update({
   id: '/concepts',
   path: '/concepts',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsDebuggerRoute = DocsDebuggerRouteImport.update({
+  id: '/debugger',
+  path: '/debugger',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsEvaluatorRoute = DocsEvaluatorRouteImport.update({
@@ -196,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
+  '/docs/debugger': typeof DocsDebuggerRoute
   '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
@@ -225,6 +232,7 @@ export interface FileRoutesByTo {
   '/docs/agents': typeof DocsAgentsRoute
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
+  '/docs/debugger': typeof DocsDebuggerRoute
   '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
@@ -257,6 +265,7 @@ export interface FileRoutesById {
   '/docs/api': typeof DocsApiRoute
   '/docs/approvals': typeof DocsApprovalsRoute
   '/docs/concepts': typeof DocsConceptsRouteWithChildren
+  '/docs/debugger': typeof DocsDebuggerRoute
   '/docs/evaluator': typeof DocsEvaluatorRoute
   '/docs/examples': typeof DocsExamplesRoute
   '/docs/hosting-and-storage': typeof DocsHostingAndStorageRoute
@@ -290,6 +299,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/approvals'
     | '/docs/concepts'
+    | '/docs/debugger'
     | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
@@ -319,6 +329,7 @@ export interface FileRouteTypes {
     | '/docs/agents'
     | '/docs/api'
     | '/docs/approvals'
+    | '/docs/debugger'
     | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
@@ -350,6 +361,7 @@ export interface FileRouteTypes {
     | '/docs/api'
     | '/docs/approvals'
     | '/docs/concepts'
+    | '/docs/debugger'
     | '/docs/evaluator'
     | '/docs/examples'
     | '/docs/hosting-and-storage'
@@ -436,6 +448,13 @@ declare module '@tanstack/react-router' {
       path: '/concepts'
       fullPath: '/docs/concepts'
       preLoaderRoute: typeof DocsConceptsRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/debugger': {
+      id: '/docs/debugger'
+      path: '/debugger'
+      fullPath: '/docs/debugger'
+      preLoaderRoute: typeof DocsDebuggerRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/evaluator': {
@@ -613,6 +632,7 @@ interface DocsRouteChildren {
   DocsApiRoute: typeof DocsApiRoute
   DocsApprovalsRoute: typeof DocsApprovalsRoute
   DocsConceptsRoute: typeof DocsConceptsRouteWithChildren
+  DocsDebuggerRoute: typeof DocsDebuggerRoute
   DocsEvaluatorRoute: typeof DocsEvaluatorRoute
   DocsExamplesRoute: typeof DocsExamplesRoute
   DocsHostingAndStorageRoute: typeof DocsHostingAndStorageRoute
@@ -637,6 +657,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsApiRoute: DocsApiRoute,
   DocsApprovalsRoute: DocsApprovalsRoute,
   DocsConceptsRoute: DocsConceptsRouteWithChildren,
+  DocsDebuggerRoute: DocsDebuggerRoute,
   DocsEvaluatorRoute: DocsEvaluatorRoute,
   DocsExamplesRoute: DocsExamplesRoute,
   DocsHostingAndStorageRoute: DocsHostingAndStorageRoute,

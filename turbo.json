@@ -13,6 +13,8 @@
     "LOOMS_URL",
     "LOOMS_MODEL",
     "OPENROUTER_API_KEY",
+    "TYPESAFE_AI_API_KEY",
+    "LOOMS_EVALUATOR_MODEL",
     "S2_ACCESS_TOKEN",
     "S2_BASIN",
     "S2_ENDPOINT",
@@ -43,6 +45,11 @@
     },
     "dev": {
       "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "@looms/demo#dev": {
+      "dependsOn": ["^build", "@looms/debugger-app#build"],
       "cache": false,
       "persistent": true
     }

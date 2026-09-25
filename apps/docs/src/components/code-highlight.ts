@@ -1,6 +1,7 @@
 import { createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import bash from 'shiki/langs/bash.mjs'
+import css from 'shiki/langs/css.mjs'
 import json from 'shiki/langs/json.mjs'
 import tsx from 'shiki/langs/tsx.mjs'
 import yaml from 'shiki/langs/yaml.mjs'
@@ -121,7 +122,7 @@ let highlighter: ReturnType<typeof createHighlighterCoreSync> | undefined
 function getHighlighter() {
   highlighter ??= createHighlighterCoreSync({
     engine: createJavaScriptRegexEngine(),
-    langs: [tsx, json, bash, yaml],
+    langs: [tsx, json, bash, yaml, css],
     themes: [loomsLight, loomsDark],
   })
 
@@ -142,6 +143,8 @@ function normalizeLang(lang: string): string {
     case 'shell':
     case 'zsh':
       return 'bash'
+    case 'css':
+      return 'css'
     case 'json':
       return 'json'
     case 'yaml':

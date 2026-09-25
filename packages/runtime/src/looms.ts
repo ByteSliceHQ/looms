@@ -6,6 +6,7 @@ import {
   snapshotStoreOf,
   SnapshotStoreTag,
   type AnyRuntimeModule,
+  type DebuggerHost,
   type DefinitionInput,
   type DefinitionRef,
   type EventEnvelope,
@@ -30,7 +31,8 @@ import {
 } from './runtime'
 import {
   createFetchHandler,
-  isLoomsApiPath,
+  handlesPath,
+  mountDebugger,
   serveHttp,
   type Authorize,
   type RunningServer,
@@ -64,8 +66,16 @@ export interface CreateLoomsOptions {
   /**
    * Authorizes HTTP API requests. Without it, run reads and writes are open while worker callback
    * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
+   *
+   * A mounted debugger is authorized as `{ access: 'read', name: 'debugger' }`. Bearer tokens on
+   * reads block browser navigation, so hosts that need auth should use a cookie or session policy.
    */
   readonly authorize?: Authorize
+  /**
+   * Serves a debugger UI under `debugger.basePath` (for example `/debugger`). The runtime does not
+   * bundle a UI; pass `debuggerUi()` from `@swirls/looms/debugger/server`.
+   */
+  readonly debugger?: DebuggerHost
 }
 
 export interface StartResult {
@@ -139,6 +149,8 @@ class LoomsInitializationError extends Data.TaggedError('LoomsInitializationErro
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
+
+  const debuggerMount = options.debugger ? mountDebugger(options.debugger) : undefined
   let initPromise: Promise<Initialized> | undefined
   let runningServer: RunningServer | undefined
 
@@ -188,6 +200,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             runtime,
             store,
             authorize: options.authorize,
+            debugger: debuggerMount,
           })
 
           return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
@@ -248,7 +261,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
     workerCallback: (runId, input) => runEffect((i) => i.runtime.workerCallback(runId, input)),
     fetch: (req) => {
-      if (!isLoomsApiPath(new URL(req.url).pathname)) {
+      if (!handlesPath(new URL(req.url).pathname, debuggerMount)) {
         return Promise.resolve(null)
       }
 

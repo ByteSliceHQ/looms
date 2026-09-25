@@ -25,17 +25,38 @@ class VercelEvaluatorError extends Data.TaggedError('VercelEvaluatorError')<{
   }
 }
 
-export interface VercelEvaluatorOptions {
-  /** Model id understood by the AI SDK evaluate API. Defaults to TypeSafe Jev. */
-  readonly model?: string
-  /** Abort the hosted call after this many milliseconds. Defaults to 2000. */
-  readonly timeoutMs?: number
-  readonly providerOptions?: {
-    readonly gateway?: { readonly zeroDataRetention?: boolean }
-  }
+type EvaluateOptions = Parameters<typeof experimental_evaluate>[0]
+type EvaluationModel = Exclude<EvaluateOptions['model'], string>
+
+/** An AI SDK provider with evaluation models, such as `createTypeSafeAi({ apiKey })`. */
+export interface EvaluationModelProvider {
+  readonly evaluationModel: (modelId: string) => EvaluationModel
 }
 
+interface VercelEvaluatorBaseOptions {
+  /** Abort the hosted call after this many milliseconds. Defaults to 2000. */
+  readonly timeoutMs?: number
+  /** Defaults to AI Gateway zero data retention when no `provider` is set. */
+  readonly providerOptions?: EvaluateOptions['providerOptions']
+}
+
+export type VercelEvaluatorOptions = VercelEvaluatorBaseOptions &
+  (
+    | {
+        /** AI Gateway model id. Defaults to TypeSafe Jev (`typesafe-ai/jev`). */
+        readonly model?: string
+        readonly provider?: undefined
+      }
+    | {
+        /** Default model id for `provider`. A definition's own `model` takes precedence. */
+        readonly model: string
+        /** Resolves model ids with your own provider and key instead of the AI Gateway. */
+        readonly provider: EvaluationModelProvider
+      }
+  )
+
 interface EvaluateAnswer {
+  readonly type?: 'boolean' | 'choice' | 'score'
   readonly probability?: number
   readonly choice?: string
   readonly score?: number
@@ -88,7 +109,15 @@ export function toEvaluatorAnswers(
 
 export function vercelEvaluator(options: VercelEvaluatorOptions = {}): EvaluatorAdapter {
   const timeoutMs = options.timeoutMs ?? 2000
-  const providerOptions = options.providerOptions ?? { gateway: { zeroDataRetention: true } }
+
+  const providerOptions =
+    options.providerOptions ??
+    (options.provider ? undefined : { gateway: { zeroDataRetention: true } })
+
+  function resolveModel(modelId: string | undefined): string | EvaluationModel {
+    const id = modelId ?? options.model ?? DEFAULT_EVALUATOR_MODEL
+    return options.provider ? options.provider.evaluationModel(id) : id
+  }
 
   return {
     evaluate: (args): Promise<EvaluatorEvaluateResult> =>
@@ -96,7 +125,7 @@ export function vercelEvaluator(options: VercelEvaluatorOptions = {}): Evaluator
         Effect.tryPromise({
           try: () =>
             experimental_evaluate({
-              model: args.model ?? options.model ?? DEFAULT_EVALUATOR_MODEL,
+              model: resolveModel(args.model),
               state: args.state,
               abortSignal: abortSignalFor(timeoutMs, args.signal),
               maxRetries: 0,

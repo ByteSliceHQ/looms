@@ -26,7 +26,6 @@ export interface FunctionTool<
   readonly name: TName
   readonly description: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
-  readonly inputSchema?: JsonValue
   handler(input: TInput, ctx: ToolContext): Promise<TOutput> | TOutput
 }
 
@@ -35,7 +34,6 @@ export interface ThreadTool {
   readonly name: string
   readonly description: string
   readonly input?: SchemaInput
-  readonly inputSchema?: JsonValue
   readonly childKind: string
   readonly childName: string
   readonly childVersion: string
@@ -48,7 +46,6 @@ export interface EffectsTool {
   readonly name: string
   readonly description: string
   readonly input?: SchemaInput
-  readonly inputSchema?: JsonValue
   effects(input: JsonValue): RuntimeEffect[]
   waitOn?: { type: string | readonly string[]; match?: JsonValue }
 }
@@ -92,6 +89,7 @@ export interface AgentDefinition<
   readonly kind: 'agent'
   readonly name: TName
   readonly version: string
+  readonly description?: string
   readonly model?: string
   readonly instructions: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
@@ -110,6 +108,7 @@ export interface AgentSessionDefinition<TName extends string = string> {
   readonly kind: 'agent-session'
   readonly name: TName
   readonly version: string
+  readonly description?: string
   /** The agent definition is pinned when the session definition is created. */
   readonly agent: Pick<AgentDefinition, 'kind' | 'name' | 'version'>
   /** Max idle milliseconds before parking. Zero waits indefinitely. */
@@ -118,21 +117,28 @@ export interface AgentSessionDefinition<TName extends string = string> {
 
 export function defineAgentSession<TName extends string>(def: {
   readonly name: TName
+  readonly description?: string
   readonly agent: Pick<AgentDefinition, 'kind' | 'name' | 'version'>
   readonly version?: string
   readonly idleTimeoutMs?: number
 }): AgentSessionDefinition<TName> {
-  return {
-    kind: 'agent-session',
+  const definition = {
+    kind: 'agent-session' as const,
     name: def.name,
     version: def.version ?? DEFAULT_DEFINITION_VERSION,
     agent: {
-      kind: 'agent',
+      kind: 'agent' as const,
       name: def.agent.name,
       version: def.agent.version,
     },
     idleTimeoutMs: Math.max(0, def.idleTimeoutMs ?? 0),
   }
+
+  if (def.description === undefined) {
+    return definition
+  }
+
+  return { ...definition, description: def.description }
 }
 
 export function normalizeTools(tools: ReadonlyArray<AgentToolEntry> = []): ToolLike[] {
@@ -192,7 +198,6 @@ export function asThreadTool(def: {
   name?: string
   description?: string
   input?: SchemaInput
-  inputSchema?: JsonValue
   child: { kind: string; name: string; version?: string }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
@@ -201,7 +206,6 @@ export function asThreadTool(def: {
     name: def.name ?? def.child.name,
     description: def.description ?? def.child.name,
     input: def.input,
-    inputSchema: def.inputSchema,
     childKind: def.child.kind,
     childName: def.child.name,
     childVersion: def.child.version ?? DEFAULT_DEFINITION_VERSION,
@@ -214,14 +218,12 @@ export function asAgentTool(def: {
   name?: string
   description?: string
   input?: SchemaInput
-  inputSchema?: JsonValue
   agent: {
     kind: 'agent'
     name: string
     version?: string
     instructions?: string
     input?: SchemaInput
-    inputSchema?: JsonValue
   }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
@@ -229,7 +231,6 @@ export function asAgentTool(def: {
     name: def.name,
     description: def.description ?? def.agent.instructions,
     input: def.input ?? def.agent.input,
-    inputSchema: def.inputSchema ?? def.agent.inputSchema,
     child: { kind: 'agent', name: def.agent.name, version: def.agent.version },
     mapInput: def.mapInput,
   })
@@ -240,14 +241,12 @@ type EvaluatorToolTarget = {
   name: string
   description?: string
   input?: SchemaInput
-  inputSchema?: JsonValue
 }
 
 export function asEvaluatorTool(def: {
   name?: string
   description?: string
   input?: SchemaInput
-  inputSchema?: JsonValue
   evaluator: EvaluatorToolTarget
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
@@ -255,7 +254,6 @@ export function asEvaluatorTool(def: {
     name: def.name,
     description: def.description ?? def.evaluator.description,
     input: def.input ?? def.evaluator.input,
-    inputSchema: def.inputSchema ?? def.evaluator.inputSchema,
     child: { kind: 'evaluator', name: def.evaluator.name },
     mapInput: def.mapInput,
   })
@@ -265,14 +263,12 @@ export function asWorkflowTool(def: {
   name?: string
   description?: string
   input?: SchemaInput
-  inputSchema?: JsonValue
   workflow: {
     kind: 'workflow'
     name: string
     version?: string
     description?: string
     input?: SchemaInput
-    inputSchema?: JsonValue
   }
   mapInput?: (input: JsonValue) => JsonValue
 }): ThreadTool {
@@ -280,7 +276,6 @@ export function asWorkflowTool(def: {
     name: def.name,
     description: def.description ?? def.workflow.description,
     input: def.input ?? def.workflow.input,
-    inputSchema: def.inputSchema ?? def.workflow.inputSchema,
     child: { kind: 'workflow', name: def.workflow.name, version: def.workflow.version },
     mapInput: def.mapInput,
   })
@@ -290,7 +285,6 @@ export function asEffectsTool(def: {
   name: string
   description: string
   input?: SchemaInput
-  inputSchema?: JsonValue
   effects: (input: JsonValue) => RuntimeEffect[]
   waitOn?: { type: string | readonly string[]; match?: JsonValue }
 }): EffectsTool {
@@ -299,7 +293,6 @@ export function asEffectsTool(def: {
     name: def.name,
     description: def.description,
     input: def.input,
-    inputSchema: def.inputSchema,
     effects: def.effects,
     waitOn: def.waitOn,
   }

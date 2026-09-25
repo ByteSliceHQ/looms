@@ -1,7 +1,9 @@
+import { createTypeSafeAi } from '@ai-sdk/typesafe-ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
 import type { LlmAdapter } from '@swirls/looms/agent'
-import { vercelLlm } from '@swirls/looms/ai-vercel'
+import { vercelEvaluator, vercelLlm } from '@swirls/looms/ai-vercel'
+import type { EvaluatorAdapter } from '@swirls/looms/evaluator'
 import type { Projector } from '@swirls/looms/projectors'
 import { s2ConfigFromEnv, s2Projector } from '@swirls/looms/s2/projector'
 
@@ -10,6 +12,8 @@ import { demoLlm } from './demo-llm'
 export interface DemoEnv {
   readonly OPENROUTER_API_KEY?: string
   readonly LOOMS_MODEL?: string
+  readonly TYPESAFE_AI_API_KEY?: string
+  readonly LOOMS_EVALUATOR_MODEL?: string
   readonly LOOMS_S2_ACCESS_TOKEN?: string
   readonly LOOMS_S2_BASIN?: string
   readonly LOOMS_S2_ENDPOINT?: string
@@ -20,6 +24,8 @@ export function demoEnvFromProcess(env: NodeJS.ProcessEnv = process.env): DemoEn
   return {
     OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
     LOOMS_MODEL: env.LOOMS_MODEL,
+    TYPESAFE_AI_API_KEY: env.TYPESAFE_AI_API_KEY,
+    LOOMS_EVALUATOR_MODEL: env.LOOMS_EVALUATOR_MODEL,
     LOOMS_S2_ACCESS_TOKEN: env.LOOMS_S2_ACCESS_TOKEN,
     LOOMS_S2_BASIN: env.LOOMS_S2_BASIN,
     LOOMS_S2_ENDPOINT: env.LOOMS_S2_ENDPOINT,
@@ -38,6 +44,22 @@ export function resolveDemoLlm(env: DemoEnv = demoEnvFromProcess()): LlmAdapter 
   return vercelLlm({
     model: createOpenRouter({ apiKey: openRouterKey }).chat(modelId),
     stream: true,
+  })
+}
+
+/** TypeSafe Jev with the caller's own key. Without a key the evaluator module uses its stub. */
+export function resolveDemoEvaluator(
+  env: DemoEnv = demoEnvFromProcess(),
+): EvaluatorAdapter | undefined {
+  const apiKey = env.TYPESAFE_AI_API_KEY
+
+  if (!apiKey) {
+    return undefined
+  }
+
+  return vercelEvaluator({
+    provider: createTypeSafeAi({ apiKey }),
+    model: env.LOOMS_EVALUATOR_MODEL ?? 'jev-latest',
   })
 }
 

@@ -37,6 +37,10 @@
       "types": "./dist/agent/index.d.ts",
       "import": "./dist/agent/index.js"
     },
+    "./agent/debugger": {
+      "types": "./dist/agent/debugger/index.d.ts",
+      "import": "./dist/agent/debugger/index.js"
+    },
     "./ai-vercel": {
       "types": "./dist/ai-vercel/index.d.ts",
       "import": "./dist/ai-vercel/index.js"
@@ -44,6 +48,10 @@
     "./approval": {
       "types": "./dist/approval/index.d.ts",
       "import": "./dist/approval/index.js"
+    },
+    "./approval/debugger": {
+      "types": "./dist/approval/debugger/index.d.ts",
+      "import": "./dist/approval/debugger/index.js"
     },
     "./cli": {
       "types": "./dist/cli/index.d.ts",
@@ -64,6 +72,10 @@
     "./debugger": {
       "types": "./dist/debugger/index.d.ts",
       "import": "./dist/debugger/index.js"
+    },
+    "./debugger/server": {
+      "types": "./dist/debugger/server/index.d.ts",
+      "import": "./dist/debugger/server/index.js"
     },
     "./evaluator": {
       "types": "./dist/evaluator/index.d.ts",
@@ -92,6 +104,10 @@
     "./workflow": {
       "types": "./dist/workflow/index.d.ts",
       "import": "./dist/workflow/index.js"
+    },
+    "./workflow/debugger": {
+      "types": "./dist/workflow/debugger/index.d.ts",
+      "import": "./dist/workflow/debugger/index.js"
     },
     "./core/sqlite-store": {
       "types": "./dist/core/sqlite-store.d.ts",
@@ -132,9 +148,11 @@
     "@standard-schema/spec": "^1.1.0",
     "@tanstack/react-virtual": "^3.14.11",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "effect": "4.0.0-rc.112",
     "lucide-react": "^1.43.0",
     "radix-ui": "^1.6.7",
+    "react-resizable-panels": "^4.13.3",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -148,6 +166,7 @@
     "@looms/cloudflare": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/debugger": "workspace:*",
+    "@looms/debugger-app": "workspace:*",
     "@looms/evaluator": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/react": "workspace:*",

@@ -123,6 +123,7 @@ try {
       <CodeBlock lang="text">{`GET  /health                         → { ok: true }
 POST /runs                           → { runId, threadId, state }
 GET  /runs                           → { runIds } (embed only)
+GET  /runs/summaries                 → { runs }
 GET  /runs/:id                       → { runId, state }
 GET  /runs/:id/events                → { runId, events }
 POST /runs/:id/events                → { runId, state }

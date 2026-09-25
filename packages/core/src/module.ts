@@ -37,6 +37,7 @@ export interface DefinitionRef {
   readonly name: string
   readonly version?: string
   readonly input?: SchemaInput | undefined
+  readonly description?: string | undefined
 }
 
 export const DEFAULT_DEFINITION_VERSION = 'v1'
@@ -51,6 +52,7 @@ export interface RegisteredDefinition {
   readonly name: string
   readonly version: string
   readonly input?: SchemaInput | undefined
+  readonly description?: string | undefined
   readonly value: DefinitionRef
 }
 

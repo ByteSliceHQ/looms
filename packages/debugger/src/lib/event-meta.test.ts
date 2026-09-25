@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { DebuggerEvent } from '../contracts'
-import { createDefaultCatalog } from '../events/catalog'
+import { createEventCatalog } from '../events/catalog'
 import { getEventMeta } from './event-meta'
 
 function makeEvent(seq: number, type: string, threadId = 'thr_1'): DebuggerEvent {
@@ -18,7 +18,7 @@ function makeEvent(seq: number, type: string, threadId = 'thr_1'): DebuggerEvent
 
 describe('Event meta index and caching', () => {
   test('caches event summary and search text on the event object', () => {
-    const catalog = createDefaultCatalog()
+    const catalog = createEventCatalog()
     const evt = makeEvent(1, 'runtime.run.started')
 
     const meta1 = getEventMeta(evt, catalog)
@@ -32,7 +32,13 @@ describe('Event meta index and caching', () => {
   })
 
   test('multiple events retain independent cached metadata', () => {
-    const catalog = createDefaultCatalog()
+    const catalog = createEventCatalog([
+      {
+        name: 'agent',
+        families: [{ family: 'agent', color: 'oklch(0.74 0.12 240)' }],
+      },
+    ])
+
     const evt1 = makeEvent(1, 'runtime.run.started')
     const evt2 = makeEvent(2, 'agent.message')
 

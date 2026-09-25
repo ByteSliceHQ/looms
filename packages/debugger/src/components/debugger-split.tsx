@@ -7,7 +7,10 @@ import { cn } from '../lib/cn'
 import { EventStream } from './event-stream'
 import { RunTree } from './run-tree'
 
-function findThreadName(node: ThreadNode | null, threadId: string | undefined): string | undefined {
+export function findThreadName(
+  node: ThreadNode | null,
+  threadId: string | undefined,
+): string | undefined {
   if (!node || !threadId) {
     return undefined
   }
@@ -74,14 +77,14 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
         'grid h-full min-h-0',
         vertical
           ? 'grid-rows-[minmax(0,38%)_minmax(0,1fr)]'
-          : 'grid-cols-1 min-[36rem]:grid-cols-[11rem_minmax(0,1fr)]',
+          : 'grid-cols-1 min-[36rem]:grid-cols-[14rem_minmax(0,1fr)]',
         className,
       )}
     >
       <section
         aria-label="Run tree"
         className={cn(
-          'border-border min-h-0 overflow-auto border-b py-2',
+          'border-border min-h-0 overflow-hidden border-b',
           !vertical && 'min-[36rem]:border-r min-[36rem]:border-b-0',
           treeClassName,
         )}
@@ -103,6 +106,7 @@ export function DebuggerSplit<TEvent extends DebuggerEvent>({
           startedAt={startedAt}
           threadId={selectedThread}
           threadLabel={findThreadName(tree.root, selectedThread)}
+          onClearThread={selectedThread ? () => onSelectThread(undefined) : undefined}
           selectedSeq={selectedSeq}
           onSelectSeq={onSelectSeq}
           catalog={catalog}

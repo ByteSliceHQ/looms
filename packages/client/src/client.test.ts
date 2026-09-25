@@ -47,6 +47,49 @@ describe('createLoomsClient', () => {
     expect(calls[0]).toBe('/runs')
   })
 
+  test('listDefinitions reads the definitions route', async () => {
+    const calls: string[] = []
+
+    const client = createLoomsClient({
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+        return new Response(
+          JSON.stringify({
+            definitions: [{ kind: 'workflow', name: 'checkout', version: 'v1' }],
+            projections: ['nodes'],
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        )
+      },
+    })
+
+    const catalog = await client.listDefinitions()
+    expect(calls).toEqual(['/definitions'])
+    expect(catalog.definitions[0]?.name).toBe('checkout')
+    expect(catalog.projections).toEqual(['nodes'])
+  })
+
+  test('listRunSummaries asks the runs route for summaries', async () => {
+    const calls: string[] = []
+
+    const client = createLoomsClient({
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+
+        return Response.json({
+          runIds: ['run_1'],
+          runs: [
+            { runId: 'run_1', status: 'running', kind: 'workflow', definitionName: 'checkout' },
+          ],
+        })
+      },
+    })
+
+    const { runs } = await client.listRunSummaries()
+    expect(calls).toEqual(['/runs/summaries'])
+    expect(runs[0]?.definitionName).toBe('checkout')
+  })
+
   test('subscribeEvents follows the run event resource over SSE', async () => {
     const received: string[] = []
 

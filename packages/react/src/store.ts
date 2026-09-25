@@ -68,7 +68,7 @@ export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEv
   project<S>(definition: ProjectionDefinition<S>): S
   fold<S>(definition: EventFoldDefinition<S, TEvent>): S
   flush: () => void
-  commit: (event: EventInput) => Promise<void>
+  commit: (event: EventInput | readonly EventInput[]) => Promise<void>
   sync: () => Promise<void>
   dispose: () => void
 }
@@ -451,7 +451,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
               fetchFn(`${endpoint}/runs/${encodeURIComponent(options.storeId)}/events`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: stringifyJson(event),
+                body: stringifyJson(Array.isArray(event) ? { events: event } : event),
                 signal,
               }),
             catch: (cause) => new LoomsStoreError('Run signal failed', cause),

@@ -7,6 +7,7 @@ import {
   emptyCursor,
   EventStoreTrimmedError,
   hashRunState,
+  summarizeRun,
   trimEventStoreSafely,
   type AppendableEvent,
   type AppendResult,
@@ -105,8 +106,30 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
   const { registry, snapshotStore, trimAfterSnapshot, keepSnapshots, runCache, executionContexts } =
     options
 
+  const headerFingerprints = new Map<string, string>()
+
   const observe = (event: Parameters<RuntimeObserver['observe']>[0]) =>
     notifyObserver(options.observer, event)
+
+  const rememberHeader = (state: RunCursor['state']): Effect.Effect<void> => {
+    const header = summarizeRun(state)
+    const fingerprint = `${header.status}\0${header.kind ?? ''}\0${header.definitionName ?? ''}`
+
+    if (headerFingerprints.get(header.runId) === fingerprint) {
+      return Effect.void
+    }
+
+    return snapshotStore.saveHeader(header).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          headerFingerprints.set(header.runId, fingerprint)
+        }),
+      ),
+      Effect.catch((error) =>
+        Effect.logWarning(`Run header persistence failed for "${header.runId}"`, error),
+      ),
+    )
+  }
 
   const appendObserved = (
     store: EventStore,
@@ -310,6 +333,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
         }
 
         if (tail === cached.seq) {
+          yield* rememberHeader(cached.state)
           return cached
         }
 
@@ -321,11 +345,13 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
         )
 
         runCache.set(runId, next)
+        yield* rememberHeader(next.state)
         return next
       }
 
       const next = yield* loadCursorCold(store, runId)
       runCache.set(runId, next)
+      yield* rememberHeader(next.state)
       return next
     })
 
@@ -439,6 +465,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
       }
 
       runCache.set(runId, next)
+      yield* rememberHeader(next.state)
       return next
     })
 

@@ -108,6 +108,32 @@ function activeTurnFrom(value: JsonValue | undefined): AgentSessionActiveTurn | 
     : null
 }
 
+/** Events for one session message. A steer aimed at `activeChildThreadId` interrupts that turn in the same batch. */
+export function agentSessionMessageEvents(
+  messageId: string,
+  text: string,
+  options: AgentSessionMessageOptions = {},
+): EventInput[] {
+  const events: EventInput[] = [submitAgentMessage(messageId, text, options)]
+
+  if (options.delivery === 'steer' && options.activeChildThreadId) {
+    events.push(
+      agentModule.input(
+        'steered',
+        {
+          turn: 0,
+          messageId,
+          message: { role: 'user', content: text },
+          interrupt: true,
+        },
+        { threadId: options.activeChildThreadId },
+      ),
+    )
+  }
+
+  return events
+}
+
 export function sendAgentSessionMessage<Result>(
   client: AgentSessionSignalClient<Result>,
   runId: string,
@@ -121,30 +147,14 @@ export function sendAgentSessionMessage<Result>(
     const active =
       options.delivery === 'steer' && threadId ? activeTurnFrom(run.threads[threadId]?.state) : null
 
-    const events: EventInput[] = [
-      submitAgentMessage(messageId, text, {
+    return client.signal(
+      runId,
+      agentSessionMessageEvents(messageId, text, {
         ...options,
         threadId,
         activeChildThreadId: active?.childThreadId,
       }),
-    ]
-
-    if (active) {
-      events.push(
-        agentModule.input(
-          'steered',
-          {
-            turn: 0,
-            messageId,
-            message: { role: 'user', content: text },
-            interrupt: true,
-          },
-          { threadId: active.childThreadId },
-        ),
-      )
-    }
-
-    return client.signal(runId, events)
+    )
   })
 }
 

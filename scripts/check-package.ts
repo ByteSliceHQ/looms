@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -70,6 +70,8 @@ try {
     'dist/core/index.js',
     'dist/runtime/index.js',
     'dist/debugger/styles.css',
+    'dist/debugger/app/index.html',
+    'dist/debugger/server/index.js',
     'dist/cli/cli.js',
     'package.json',
     'README.md',
@@ -81,6 +83,38 @@ try {
 
   if (missing.length > 0) {
     throw new Error(`Tarball is missing:\n${missing.join('\n')}`)
+  }
+
+  const debuggerStyles = await readFile(join(packageRoot, 'dist/debugger/styles.css'), 'utf8')
+
+  const debuggerSources = [...debuggerStyles.matchAll(/@source "([^"]+)";/g)].map(
+    (match) => match[1] ?? '',
+  )
+
+  if (
+    debuggerSources.length < 2 ||
+    debuggerSources.some((source) => !source.endsWith('/**/*.js')) ||
+    debuggerStyles.includes('{ts,tsx}') ||
+    !debuggerSources.some((source) => source.startsWith('../'))
+  ) {
+    throw new Error('dist/debugger/styles.css was not rewritten to scan built .js views')
+  }
+
+  const uiImport =
+    /\b(?:from|import)\s*\(?\s*['"](?:react(?:\/[^'"]*)?|[^'"]*\/(?:react|debugger)(?:\/[^'"]*)?)['"]/
+
+  for (const entry of ['agent', 'approval', 'workflow']) {
+    const entryRoot = join(packageRoot, 'dist', entry)
+
+    for (const file of new Bun.Glob('**/*.js').scanSync(entryRoot)) {
+      if (file.startsWith('debugger/')) {
+        continue
+      }
+
+      if (uiImport.test(await readFile(join(entryRoot, file), 'utf8'))) {
+        throw new Error(`@swirls/looms/${entry}/${file} imports react or debugger UI`)
+      }
+    }
   }
 
   const fixture = join(temporaryRoot, 'fixture')
@@ -113,11 +147,14 @@ try {
     '@swirls/looms',
     '@swirls/looms/actor',
     '@swirls/looms/agent',
+    '@swirls/looms/agent/debugger',
     '@swirls/looms/ai-vercel',
     '@swirls/looms/approval',
+    '@swirls/looms/approval/debugger',
     '@swirls/looms/client',
     '@swirls/looms/core',
     '@swirls/looms/debugger',
+    '@swirls/looms/debugger/server',
     '@swirls/looms/evaluator',
     '@swirls/looms/projectors',
     '@swirls/looms/react',
@@ -125,6 +162,7 @@ try {
     '@swirls/looms/s2',
     '@swirls/looms/testing',
     '@swirls/looms/workflow',
+    '@swirls/looms/workflow/debugger',
   ]
 
   const staticImports = imports
@@ -155,7 +193,28 @@ try {
     ),
   )
 
+  await writeFile(
+    join(fixture, 'debugger.mjs'),
+    `import { createLooms } from '@swirls/looms'
+import { debuggerUi } from '@swirls/looms/debugger/server'
+
+const looms = createLooms({ debugger: debuggerUi() })
+
+try {
+  const page = await looms.fetch(new Request('http://looms.test/debugger'))
+  const html = await page?.text()
+
+  if (page?.status !== 200 || !html?.includes('<base href="/debugger/">')) {
+    throw new Error('debugger UI did not serve its shell')
+  }
+} finally {
+  await looms.stop()
+}
+`,
+  )
+
   await run(['bun', 'smoke.mjs'], fixture)
+  await run(['bun', 'debugger.mjs'], fixture)
 
   const node = Bun.which('node')
 

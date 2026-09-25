@@ -2,9 +2,11 @@ import { Data, Effect, Option, Schema, Stream } from 'effect'
 
 import {
   createRunId,
+  DefinitionCatalogSchema,
   EventEnvelopeSchema,
   ReplayStepSchema,
   RunStateSchema,
+  RunSummariesSchema,
   stringifyJson,
   type DefinitionInput,
   type DefinitionRef,
@@ -279,6 +281,8 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
     workerCallback,
+    listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
+    listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>

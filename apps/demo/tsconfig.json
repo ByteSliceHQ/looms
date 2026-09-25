@@ -3,13 +3,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "bun"]
+    "lib": ["ES2022", "DOM"],
+    "types": ["bun"]
   },
   "include": ["src/**/*"]
 }

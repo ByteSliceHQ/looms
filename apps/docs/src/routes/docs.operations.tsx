@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { pageHead } from '../page-head'
 
@@ -28,10 +28,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Actor hosts return 501 for global GET /runs. Maintain an application run registry when
-        starting work, or attach a projector that writes a shared index. Store runId, tenant
-        ownership, definition version, and creation time. Use that registry to route a dashboard to
-        each run's current state and authorized event stream.
+        Actor hosts return 501 for global GET /runs and GET /runs/summaries. Maintain an application
+        run registry when starting work, or attach a projector that writes a shared index. Store
+        runId, tenant ownership, definition version, and creation time. Use that registry to route a
+        dashboard to each run's current state and authorized event stream.
       </p>
       <p>
         The projectors page shows memory, SQLite, and Postgres index helpers. Actor-local SQLite is
@@ -114,6 +114,17 @@ function Page() {
         Set retention based on recovery, audit, and privacy requirements. Replication to a lake is
         not automatically a verified backup; confirm completeness and a restore procedure. Trimming
         old events changes the history available to replay and new projections.
+      </p>
+      <h2 id="debugger">
+        Debugger
+        <a className="heading-anchor" href="#debugger" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        <code>createLooms</code> can serve a debugger that shows each run&apos;s thread tree, event
+        log, replay, and projections. The <Link to="/docs/debugger">debugger guide</Link> covers
+        setup, access control, views for your own modules, and Durable Object hosts.
       </p>
       <h2 id="local-hosts-and-timers">
         Local hosts and timers

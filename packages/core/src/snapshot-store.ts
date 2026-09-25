@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Option, Ref } from 'effect'
 
 import { assertSnapshotByteLimit, SnapshotPayloadTooLargeError } from './limits'
+import type { RunSummary } from './published'
 import type { RunState } from './state'
 import type { EventStore } from './store'
 
@@ -37,6 +38,9 @@ export interface SnapshotStore {
   ) => Effect.Effect<void, SnapshotStoreError | SnapshotPayloadTooLargeError>
   readonly listCursors?: (runId: string) => Effect.Effect<number[], SnapshotStoreError>
   readonly prune?: (runId: string, keepLatest: number) => Effect.Effect<void, SnapshotStoreError>
+  /** Upsert the list-row for a run. Written where the cursor already advanced. */
+  readonly saveHeader: (header: RunSummary) => Effect.Effect<void, SnapshotStoreError>
+  readonly listHeaders: Effect.Effect<readonly RunSummary[], SnapshotStoreError>
 }
 
 export class SnapshotStoreTag extends Context.Service<SnapshotStoreTag, SnapshotStore>()(
@@ -61,6 +65,7 @@ export function snapshotStoreOf(store: EventStore): SnapshotStore | undefined {
 
 export const makeMemorySnapshotStore = Effect.gen(function* () {
   const snapshots = yield* Ref.make(new Map<string, RunSnapshot[]>())
+  const headers = yield* Ref.make(new Map<string, RunSummary>())
 
   const service: SnapshotStore = {
     loadLatest: (runId) =>
@@ -111,6 +116,15 @@ export const makeMemorySnapshotStore = Effect.gen(function* () {
         next.set(runId, list.slice(list.length - keepLatest))
         return next
       }),
+
+    saveHeader: (header) =>
+      Ref.update(headers, (map) => {
+        const next = new Map(map)
+        next.set(header.runId, header)
+        return next
+      }),
+
+    listHeaders: Ref.get(headers).pipe(Effect.map((map) => [...map.values()])),
   }
 
   return service

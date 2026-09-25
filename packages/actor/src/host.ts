@@ -149,7 +149,10 @@ export function createLocalActorHost<
         return Promise.resolve(Response.json({ ok: true }))
       }
 
-      if (req.method === 'GET' && url.pathname === '/runs') {
+      if (
+        req.method === 'GET' &&
+        (url.pathname === '/runs' || url.pathname === '/runs/summaries')
+      ) {
         return Promise.resolve(
           Response.json(
             {

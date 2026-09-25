@@ -96,24 +96,28 @@ Recovery may repeat an external action if its outcome was not recorded before a 
 
 Looms publishes as one package. Explicit subpaths keep browser, server, provider, and storage boundaries clear. Migrate an old import by changing `@looms/<module>` to `@swirls/looms/<module>`; install only `@swirls/looms`.
 
-| Module                     | Use it for                                             |
-| -------------------------- | ------------------------------------------------------ |
-| `@swirls/looms/runtime`    | `createLooms`, processing, and the HTTP host           |
-| `@swirls/looms/actor`      | Local actor cells and one writer per run               |
-| `@swirls/looms/cloudflare` | Cloudflare Durable Object hosting                      |
-| `@swirls/looms/agent`      | Agent definitions, tools, and conversation projections |
-| `@swirls/looms/workflow`   | DAG workflow definitions                               |
-| `@swirls/looms/approval`   | Human approval gates and decisions                     |
-| `@swirls/looms/core`       | Custom modules, events, effects, and projections       |
-| `@swirls/looms/client`     | HTTP client                                            |
-| `@swirls/looms/react`      | React hooks and live run stores                        |
-| `@swirls/looms/debugger`   | Reusable run and event inspection UI                   |
-| `@swirls/looms/evaluator`  | Typed evaluations that branch agents and workflows     |
-| `@swirls/looms/s2`         | S2 event storage, snapshots, and projection support    |
-| `@swirls/looms/ai-vercel`  | Vercel AI SDK model adapters                           |
-| `@swirls/looms/projectors` | Cross-run indexes                                      |
-| `@swirls/looms/testing`    | Runtime and replay helpers for module authors          |
-| `@swirls/looms/cli`        | Inspecting and approving runs from a terminal          |
+| Module                            | Use it for                                                     |
+| --------------------------------- | -------------------------------------------------------------- |
+| `@swirls/looms/runtime`           | `createLooms`, processing, and the HTTP host                   |
+| `@swirls/looms/actor`             | Local actor cells and one writer per run                       |
+| `@swirls/looms/cloudflare`        | Cloudflare Durable Object hosting                              |
+| `@swirls/looms/agent`             | Agent definitions, tools, and conversation projections         |
+| `@swirls/looms/agent/debugger`    | Agent chat, token usage, and agent event summaries             |
+| `@swirls/looms/workflow`          | DAG workflow definitions                                       |
+| `@swirls/looms/workflow/debugger` | Workflow node view and workflow event summaries                |
+| `@swirls/looms/approval`          | Human approval gates and decisions                             |
+| `@swirls/looms/approval/debugger` | Approval decisions and approval event summaries                |
+| `@swirls/looms/core`              | Custom modules, events, effects, and projections               |
+| `@swirls/looms/client`            | HTTP client                                                    |
+| `@swirls/looms/react`             | React hooks and live run stores                                |
+| `@swirls/looms/debugger`          | Debugger kit. Modules add views from their `/debugger` subpath |
+| `@swirls/looms/debugger/server`   | `debuggerUi()` serves the debugger from a Bun or Node host     |
+| `@swirls/looms/evaluator`         | Typed evaluations that branch agents and workflows             |
+| `@swirls/looms/s2`                | S2 event storage, snapshots, and projection support            |
+| `@swirls/looms/ai-vercel`         | Vercel AI SDK model adapters                                   |
+| `@swirls/looms/projectors`        | Cross-run indexes                                              |
+| `@swirls/looms/testing`           | Runtime and replay helpers for module authors                  |
+| `@swirls/looms/cli`               | Inspecting and approving runs from a terminal                  |
 
 ## Explore locally
 
@@ -124,7 +128,7 @@ bun run docs            # docs at http://127.0.0.1:8788
 bun run dev             # demo and docs together
 ```
 
-The Bun demo uses local SQLite and can start `s2-lite` for projections when the S2 CLI is available. See [contributor setup](./CONTRIBUTING.md#local-development) for optional tooling. The Cloudflare demo runs with `bun run dev:cloudflare`; its worker also defaults to port 8788, so stop the local docs server first.
+`bun run demo` starts a Bun host at http://127.0.0.1:8787 and the debugger at http://127.0.0.1:8787/debugger. The same command starts the debugger's Vite server at http://127.0.0.1:5173, which proxies API calls to that host. The Bun demo uses local SQLite and can start `s2-lite` for projections when the S2 CLI is available. See [contributor setup](./CONTRIBUTING.md#local-development) for optional tooling. To add the debugger to your own host, see the [debugger guide](https://looms.sh/docs/debugger).
 
 The published documentation lives at [looms.sh/docs](https://looms.sh/docs). Markdown in [`docs/`](./docs) contains supplementary architecture and protocol notes.
 

@@ -87,12 +87,36 @@ try {
 `,
   )
 
+  await writeFile(
+    join(fixture, 'debugger.mjs'),
+    `import { createLooms } from '@swirls/looms'
+import { debuggerUi } from '@swirls/looms/debugger/server'
+
+const looms = createLooms({ debugger: debuggerUi() })
+
+try {
+  const page = await looms.fetch(new Request('http://looms.test/debugger'))
+  const html = await page?.text()
+
+  if (page?.status !== 200 || !html?.includes('<base href="/debugger/">')) {
+    throw new Error('debugger UI did not serve its shell')
+  }
+
+  console.log('debugger ui ok')
+} finally {
+  await looms.stop()
+}
+`,
+  )
+
   await run(['bun', 'install', '--ignore-scripts'], fixture)
   const installedPackages = await run(['bun', 'pm', 'ls'], fixture)
   const output = await run(['bun', 'echo-agent.mjs'], fixture)
+  const debuggerOutput = await run(['bun', 'debugger.mjs'], fixture)
 
   console.log(installedPackages.trim())
   console.log(output.trim())
+  console.log(debuggerOutput.trim())
 } finally {
   await rm(fixture, { force: true, recursive: true })
 }

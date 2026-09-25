@@ -1,6 +1,4 @@
-import type { DebuggerEvent, EventStreamCatalog } from '../contracts'
-import { searchText, summarizeEvent } from '../events/catalog'
-import type { EventSummary } from '../events/family'
+import type { DebuggerEvent, EventStreamCatalog, EventSummary } from '../contracts'
 
 export interface CachedEventMeta {
   summary: EventSummary
@@ -9,7 +7,7 @@ export interface CachedEventMeta {
 }
 
 interface CacheEntry {
-  catalog: object | undefined
+  catalog: object
   meta: CachedEventMeta
 }
 
@@ -17,7 +15,7 @@ const metaCache = new WeakMap<object, CacheEntry>()
 
 export function getEventMeta<TEvent extends DebuggerEvent>(
   event: TEvent,
-  catalog?: EventStreamCatalog<TEvent>,
+  catalog: EventStreamCatalog<TEvent>,
 ): CachedEventMeta {
   const existing = metaCache.get(event)
 
@@ -25,19 +23,12 @@ export function getEventMeta<TEvent extends DebuggerEvent>(
     return existing.meta
   }
 
-  const family = catalog ? catalog.familyOf(event.type) : 'runtime'
-  const summary = catalog ? catalog.summarize(event) : summarizeEvent(event)
+  const meta: CachedEventMeta = {
+    summary: catalog.summarize(event),
+    searchText: catalog.searchText(event),
+    family: catalog.familyOf(event.type),
+  }
 
-  const text = catalog?.searchText
-    ? catalog.searchText(event)
-    : searchText(event, catalog ? catalog.summarize : summarizeEvent)
-
-  const meta: CachedEventMeta = { summary, searchText: text, family }
-
-  metaCache.set(event, {
-    catalog,
-    meta,
-  })
-
+  metaCache.set(event, { catalog, meta })
   return meta
 }

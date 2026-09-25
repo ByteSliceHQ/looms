@@ -1,71 +1,11 @@
-import { Schema } from 'effect'
-
-import type { JsonValue, SchemaInput } from '@looms/core'
+import { jsonSchemaOfInput, type JsonValue, type SchemaInput } from '@looms/core'
 
 import { normalizeTools, type AgentToolEntry, type ToolLike } from './definitions'
 import type { LlmToolSpec } from './llm'
 
-interface StandardJsonSchemaConverter {
-  readonly input: (options: { target: string }) => JsonValue
-}
-
-interface StandardJsonSchemaHolder {
-  readonly '~standard': {
-    readonly jsonSchema?: {
-      readonly input?: StandardJsonSchemaConverter['input']
-    }
-  }
-}
-
-type SchemaCandidate = SchemaInput | StandardJsonSchemaHolder | Schema.Codec<JsonValue>
-
 const EMPTY_OBJECT_SCHEMA: JsonValue = { type: 'object' }
 
-function isStandardJsonSchemaHolder(value: SchemaCandidate): value is StandardJsonSchemaHolder {
-  return '~standard' in value
-}
-
-function fromStandardJsonSchema(schema: SchemaCandidate): JsonValue | undefined {
-  if (!isStandardJsonSchemaHolder(schema)) {
-    return undefined
-  }
-
-  const input = schema['~standard'].jsonSchema?.input
-
-  if (!input) {
-    return undefined
-  }
-
-  try {
-    return input({ target: 'draft-2020-12' })
-  } catch {
-    return undefined
-  }
-}
-
-function fromEffectSchema(schema: SchemaCandidate): JsonValue | undefined {
-  if (!Schema.isSchema(schema)) {
-    return undefined
-  }
-
-  try {
-    const standard = Schema.toStandardJSONSchemaV1(schema)
-
-    return fromStandardJsonSchema(standard)
-  } catch {
-    return undefined
-  }
-}
-
-function fromInputCandidate(input: SchemaCandidate | undefined): JsonValue | undefined {
-  if (!input) {
-    return undefined
-  }
-
-  return fromStandardJsonSchema(input) ?? fromEffectSchema(input)
-}
-
-function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
+function toolInput(tool: ToolLike): SchemaInput | undefined {
   switch (tool.kind) {
     case 'function':
       return tool.input
@@ -82,7 +22,7 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
 }
 
 export function toolJsonSchema(tool: ToolLike): JsonValue {
-  return tool.inputSchema ?? fromInputCandidate(toolInputCandidate(tool)) ?? EMPTY_OBJECT_SCHEMA
+  return jsonSchemaOfInput(toolInput(tool)) ?? EMPTY_OBJECT_SCHEMA
 }
 
 export function toolSpecs(tools: ReadonlyArray<AgentToolEntry> = []): LlmToolSpec[] {
@@ -91,8 +31,4 @@ export function toolSpecs(tools: ReadonlyArray<AgentToolEntry> = []): LlmToolSpe
     description: tool.description,
     inputJsonSchema: toolJsonSchema(tool),
   }))
-}
-
-export function jsonSchemaFromStandard(schema: SchemaCandidate | null | undefined): JsonValue {
-  return fromInputCandidate(schema ?? undefined) ?? EMPTY_OBJECT_SCHEMA
 }
