@@ -30,6 +30,7 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@ai-sdk/typesafe-ai": "^3.0.6",
     "@looms/debugger": "workspace:*",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@swirls/looms": "workspace:*",

@@ -1,4 +1,8 @@
-import { resolveDemoLlm, resolveDemoProjectors } from '@looms/demo/demo-config'
+import {
+  resolveDemoEvaluator,
+  resolveDemoLlm,
+  resolveDemoProjectors,
+} from '@looms/demo/demo-config'
 import { demoModules } from '@looms/demo/runtime'
 import {
   LoomsDurableObject,
@@ -10,6 +14,8 @@ export interface Env {
   readonly LOOMS_RUN: DurableObjectNamespace<LoomsRun>
   readonly OPENROUTER_API_KEY?: string
   readonly LOOMS_MODEL?: string
+  readonly TYPESAFE_AI_API_KEY?: string
+  readonly LOOMS_EVALUATOR_MODEL?: string
   readonly LOOMS_S2_ACCESS_TOKEN?: string
   readonly LOOMS_S2_BASIN?: string
   readonly LOOMS_S2_ENDPOINT?: string
@@ -18,7 +24,7 @@ export interface Env {
 export class LoomsRun extends LoomsDurableObject<Env> {
   override configure(env: Env): LoomsDurableObjectConfig {
     return {
-      modules: demoModules({ llm: resolveDemoLlm(env) }),
+      modules: demoModules({ llm: resolveDemoLlm(env), evaluator: resolveDemoEvaluator(env) }),
 
       projectors: resolveDemoProjectors(env),
     }

@@ -16,7 +16,10 @@ describe('demo definitions', () => {
     const body = decodeCatalog(await response?.json())
 
     expect(response?.status).toBe(200)
-    expect(body.definitions.map((definition) => definition.name)).toContain('checkout')
+
+    expect(body.definitions.map((definition) => definition.name)).toEqual(
+      expect.arrayContaining(['checkout', 'refund', 'triage-refund']),
+    )
 
     expect(
       body.definitions.find((definition) => definition.name === 'checkout')?.inputSchema,
@@ -25,7 +28,7 @@ describe('demo definitions', () => {
     })
 
     expect(body.projections).toEqual(
-      expect.arrayContaining(['pendingApprovals', 'nodes', 'ledger']),
+      expect.arrayContaining(['pendingApprovals', 'nodes', 'ledger', 'evaluations']),
     )
 
     await looms.stop()

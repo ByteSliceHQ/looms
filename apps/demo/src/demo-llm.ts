@@ -49,6 +49,11 @@ function toolResults(
   return results
 }
 
+function refundArguments(text: string) {
+  const amountMatch = text.match(/\b(\d+(?:\.\d+)?)\b/)
+  return { amount: amountMatch ? Number(amountMatch[1]) : 40, reason: text }
+}
+
 function emitDelta(
   args: LlmCompleteArgs,
   delta: string,
@@ -75,6 +80,36 @@ export const demoLlm: LlmAdapter = {
               toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
             },
             toolCalls: [{ id: 'tc_greet', name: 'greet', arguments: { name: 'Ada' } }],
+          })
+        }
+
+        if (
+          lower.includes('refund') &&
+          /\b(score|evaluate|assess|risk)\b/.test(lower) &&
+          hasTool(args.tools, 'triage_refund')
+        ) {
+          const scoreArgs = refundArguments(taskOrTopic)
+
+          return emitDelta(args, `Scoring a ${scoreArgs.amount} USD refund with the evaluator…`, {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{ id: 'tc_triage', name: 'triage_refund', arguments: scoreArgs }],
+            },
+            toolCalls: [{ id: 'tc_triage', name: 'triage_refund', arguments: scoreArgs }],
+          })
+        }
+
+        if (lower.includes('refund') && hasTool(args.tools, 'refund')) {
+          const refundArgs = refundArguments(taskOrTopic)
+
+          return emitDelta(args, `Triaging a ${refundArgs.amount} USD refund…`, {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{ id: 'tc_refund', name: 'refund', arguments: refundArgs }],
+            },
+            toolCalls: [{ id: 'tc_refund', name: 'refund', arguments: refundArgs }],
           })
         }
 
@@ -151,9 +186,16 @@ export const demoLlm: LlmAdapter = {
         )
       })
 
-      const reply = checkoutLike
-        ? `Checkout finished. Outcome:\n${details}`
-        : `Done. Tool results:\n${details}`
+      const refundLike = results.some((r) => r.name === 'refund')
+      const scoredLike = results.some((r) => r.name === 'triage_refund')
+
+      const reply = scoredLike
+        ? `The evaluator scored the refund. Nothing was paid or queued for review. Evaluation:\n${details}`
+        : refundLike
+          ? `Refund triage finished. Outcome:\n${details}`
+          : checkoutLike
+            ? `Checkout finished. Outcome:\n${details}`
+            : `Done. Tool results:\n${details}`
 
       return emitDelta(args, reply, {
         message: { role: 'assistant', content: reply },

@@ -9,7 +9,12 @@ import { bunSqliteEventStore } from '@swirls/looms/core/bun-sqlite'
 import { withProjectors } from '@swirls/looms/projectors'
 import { s2Projector, startS2Lite } from '@swirls/looms/s2'
 
-import { demoEnvFromProcess, resolveDemoLlm, resolveDemoProjectors } from './demo-config'
+import {
+  demoEnvFromProcess,
+  resolveDemoEvaluator,
+  resolveDemoLlm,
+  resolveDemoProjectors,
+} from './demo-config'
 import { demoModules } from './runtime'
 
 const runsDir = join(process.cwd(), '.looms')
@@ -45,7 +50,7 @@ function createStore(): Promise<EventStore> {
 }
 
 createLooms({
-  modules: demoModules({ llm: resolveDemoLlm(env) }),
+  modules: demoModules({ llm: resolveDemoLlm(env), evaluator: resolveDemoEvaluator(env) }),
   store: createStore(),
   debugger: debuggerUi({ root: debuggerRoot }),
   serve: { port, hostname },

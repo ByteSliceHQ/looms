@@ -82,7 +82,7 @@ Looms supports pluggable runtime hosts for actor single-writer execution:
 
 `apps/demo-worker` is a separate Cloudflare Durable Object host and does not serve the debugger. Run it with wrangler. It loads secrets from `apps/demo/.env` or `apps/demo-worker/.dev.vars`.
 
-Both use `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads).
+Both use `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads). With `TYPESAFE_AI_API_KEY`, `resolveDemoEvaluator` answers the `triage-refund` evaluator with TypeSafe Jev (`LOOMS_EVALUATOR_MODEL`, default `jev-latest`); without it the evaluator module uses its stub.
 
 > **Note on `GET /runs`:** Actor cells are isolated databases keyed by `runId` (the local actor host, Durable Objects, and celld). Global run enumeration (`GET /runs`) returns `501 Not Implemented` there; recent-run lists should come from an async projector lake (such as S2). A single-store `createLooms` host, including the Bun demo, lists runs directly.
 

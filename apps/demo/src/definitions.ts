@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   asAgentTool,
   asEffectsTool,
+  asEvaluatorTool,
   defineAgent,
   defineAgentSession,
   defineTool,
@@ -18,6 +19,8 @@ import {
   type JsonValue,
 } from '@swirls/looms/core'
 import { defineWorkflow } from '@swirls/looms/workflow'
+
+import { refund, triageRefund } from './refunds'
 
 const decodeJsonValue = Schema.decodeOption(Schema.fromJsonString(Schema.Json))
 
@@ -388,6 +391,13 @@ const askApproval = asEffectsTool({
   waitOn: { type: 'approval.decided' },
 })
 
+const scoreRefund = asEvaluatorTool({
+  name: 'triage_refund',
+  description:
+    'Score a refund request without acting on it. Returns the route (auto or review), the reason, and the answer to each question.',
+  evaluator: triageRefund,
+})
+
 export const assistant = defineAgent({
   name: 'assistant',
   description: 'Conversational agent with tools',
@@ -396,9 +406,11 @@ export const assistant = defineAgent({
   instructions: [
     'You are the Looms demo assistant.',
     'You can greet people, delegate complex tasks to the specialist agent,',
-    'run checkout (approval + payments), or ask for a standalone approval.',
+    'run checkout (approval + payments), triage a refund, or ask for a standalone approval.',
     'When a user asks to investigate, research, analyze, or run specialist tasks, call the specialist tool.',
     'The checkout tool already includes its own human approval gate and payment charge.',
+    'The refund tool scores the request with an evaluator and only asks a human when the evaluator routes it to review.',
+    'When the user only wants a refund scored or assessed, call triage_refund and explain its answers instead of processing the refund.',
     'After a tool returns, report the actual outcome from the tool result.',
     'Never ask the user to approve or reject again after checkout (or ask_approval) has already returned a decision.',
     'Use tools when they help; otherwise answer directly.',
@@ -426,6 +438,8 @@ export const assistant = defineAgent({
       },
     }),
     checkout,
+    refund,
+    scoreRefund,
     askApproval,
   ],
 })
@@ -456,6 +470,8 @@ export const definitions = [
   researcher,
   orchestrator,
   checkout,
+  refund,
+  triageRefund,
   pipeline,
   assistant,
   sessionResponder,

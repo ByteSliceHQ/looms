@@ -104,6 +104,33 @@ evaluator({
         uses a deterministic stub. See <Link to="/docs/agents">agents and model providers</Link> for
         chat adapters, and <Link to="/docs/examples">examples</Link> for the stubbed script.
       </p>
+      <h2 id="bring-your-own-key">
+        Use your own TypeSafe key
+        <a className="heading-anchor" href="#bring-your-own-key" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        To call TypeSafe directly instead of through the AI Gateway, pass a provider. It resolves
+        the adapter&apos;s <code>model</code> and any <code>model</code> set on a definition, so
+        omit <code>model</code> from the definition or use a TypeSafe id such as{' '}
+        <code>jev-latest</code>.
+      </p>
+      <CodeBlock lang="ts">{`import { createTypeSafeAi } from '@ai-sdk/typesafe-ai'
+import { vercelEvaluator } from '@swirls/looms/ai-vercel'
+import { evaluator } from '@swirls/looms/evaluator'
+
+evaluator({
+  definitions: [scoreRefund],
+  evaluator: vercelEvaluator({
+    provider: createTypeSafeAi({ apiKey: process.env.TYPESAFE_AI_API_KEY }),
+    model: 'jev-latest',
+  }),
+})`}</CodeBlock>
+      <p>
+        Any AI SDK provider with an <code>evaluationModel(id)</code> factory works the same way. The
+        demo host reads <code>TYPESAFE_AI_API_KEY</code> this way and uses the stub without it.
+      </p>
     </>
   )
 }

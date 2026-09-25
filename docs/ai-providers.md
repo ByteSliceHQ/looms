@@ -95,6 +95,17 @@ const looms = createLooms({
 
 `vercelEvaluator` needs the Vercel AI SDK `experimental_evaluate` API (`ai` 7.0.105+) and `AI_GATEWAY_API_KEY`. If you omit `model`, it calls `typesafe-ai/jev`, with a 2s timeout and zero-data-retention, then maps boolean/choice/score answers onto `evaluator.evaluated`. Without an adapter, the evaluator module uses a deterministic stub suitable for tests and examples.
 
+To use your own TypeSafe key instead of the AI Gateway, pass a provider. It resolves the adapter's `model` and any `model` on a definition, so omit `model` from the definition or use a TypeSafe id such as `jev-latest`:
+
+```ts
+import { createTypeSafeAi } from '@ai-sdk/typesafe-ai'
+
+vercelEvaluator({
+  provider: createTypeSafeAi({ apiKey: process.env.TYPESAFE_AI_API_KEY }),
+  model: 'jev-latest',
+})
+```
+
 ## Custom adapter
 
 Implement `complete` for one model call: map Looms messages and tool specs into your SDK, return an assistant message plus optional `{ id, name, arguments }` tool calls. Do not execute tools in the adapter — Looms does that so results are on the log.
