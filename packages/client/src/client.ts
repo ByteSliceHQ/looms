@@ -281,7 +281,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
     workerCallback,
-    listRunSummaries: () => request('/runs?include=summary', RunSummariesSchema),
+    listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),

@@ -17,7 +17,9 @@ import type {
   ProjectionDefinition,
   ReplayStep,
   RunState,
+  RunSummary,
   SnapshotStore,
+  SnapshotStoreError,
 } from '@looms/core'
 import type { EventStoreTrimmedError } from '@looms/core'
 
@@ -178,6 +180,12 @@ export interface LoomsRuntime<
     input: WorkerCallbackInput,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
+  /** Indexed run rows. Folds a run only when its header has not been written yet. */
+  readonly listRunSummaries: Effect.Effect<
+    readonly RunSummary[],
+    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | SnapshotStoreError,
+    EventStoreTag
+  >
   readonly rescanTimers: Effect.Effect<
     number,
     EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,

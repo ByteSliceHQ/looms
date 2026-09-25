@@ -30,7 +30,7 @@ export function Workspace({
     )
   }
 
-  const View = workspaceFor(plugins, definition.kind)?.component ?? StartForm
+  const View = workspaceFor(plugins, definition)?.component ?? StartForm
 
   return (
     <div className="flex h-full min-h-0 flex-col">

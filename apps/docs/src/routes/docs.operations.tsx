@@ -28,10 +28,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Actor hosts return 501 for global GET /runs. Maintain an application run registry when
-        starting work, or attach a projector that writes a shared index. Store runId, tenant
-        ownership, definition version, and creation time. Use that registry to route a dashboard to
-        each run's current state and authorized event stream.
+        Actor hosts return 501 for global GET /runs and GET /runs/summaries. Maintain an application
+        run registry when starting work, or attach a projector that writes a shared index. Store
+        runId, tenant ownership, definition version, and creation time. Use that registry to route a
+        dashboard to each run's current state and authorized event stream.
       </p>
       <p>
         The projectors page shows memory, SQLite, and Postgres index helpers. Actor-local SQLite is

@@ -110,7 +110,7 @@ createLooms({ modules, authorize, debugger: debuggerUi(), serve: true })`}</Code
         Export it from a <code>/debugger</code> subpath so a Worker or other headless host can
         import the module root without React.
       </p>
-      <CodeBlock lang="tsx">{`import { jsonFields, jsonText, projectionView, type DebuggerPlugin } from '@swirls/looms/debugger'
+      <CodeBlock lang="tsx">{`import { jsonFields, jsonText, type DebuggerPlugin } from '@swirls/looms/debugger'
 
 import { invoices } from '../projections'
 import { BillingRun } from './billing-run'
@@ -129,7 +129,7 @@ export const billingDebugger: DebuggerPlugin = {
     },
   ],
   workspace: { kinds: ['billing'], component: BillingRun },
-  projections: [projectionView(invoices, InvoicesView)],
+  projections: [{ name: invoices.name, component: InvoicesView }],
 }`}</CodeBlock>
       <ul>
         <li>
@@ -140,12 +140,13 @@ export const billingDebugger: DebuggerPlugin = {
         </li>
         <li>
           <code>workspace</code> renders the middle column for definitions whose <code>kind</code>{' '}
-          is listed. It receives the definition, the selected run ID, and <code>onStarted</code> for
-          runs it starts.
+          is listed. Set <code>matches</code> when only some definitions of that kind should use it.
+          It receives the definition, the selected run ID, and <code>onStarted</code> for runs it
+          starts. Definitions it does not claim keep the schema form for the whole run.
         </li>
         <li>
-          <code>projections</code> pairs a projection with a component. The component receives the
-          run ID and the state the module folds on the server.
+          <code>projections</code> names a projection and a component. The component receives the
+          run ID and reads that projection itself.
         </li>
       </ul>
       <p>

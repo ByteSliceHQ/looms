@@ -2,12 +2,12 @@ import { ChevronRight, Layers } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { asJson, type JsonValue } from '@looms/core'
-import { useProjection, useRunSelector, useRunStore, type LoomsClientStore } from '@looms/react'
+import { useRunSelector, useRunStore, type LoomsClientStore } from '@looms/react'
 
 import { JsonTree } from '../components/json-tree'
 import { useDebugger } from '../context'
 import { cn, errorMessage } from '../lib/cn'
-import { projectionFor, type ProjectionView } from '../plugin'
+import { projectionFor } from '../plugin'
 import { EmptyState, PanelHeader, PanelTitle } from '../ui/panel'
 import { ScrollArea } from '../ui/scroll-area'
 
@@ -34,14 +34,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       {open ? <div className="px-3 pt-0.5 pb-3">{children}</div> : null}
     </section>
   )
-}
-
-function ClaimedProjection({ runId, view }: { runId: string; view: ProjectionView<any> }) {
-  const store = useRunStore(runId)
-  const state = useProjection(store, view.projection)
-  const View = view.component
-
-  return <View runId={runId} state={state} />
 }
 
 function lastDurableSeq(store: LoomsClientStore): number {
@@ -92,7 +84,8 @@ function ProjectionBody({ runId, name }: { runId: string; name: string }) {
   const view = projectionFor(plugins, name)
 
   if (view) {
-    return <ClaimedProjection runId={runId} view={view} />
+    const View = view.component
+    return <View runId={runId} />
   }
 
   return <FetchedProjection runId={runId} name={name} />

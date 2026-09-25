@@ -12,6 +12,7 @@ import {
   foldRun,
   project,
   replayTo,
+  summarizeRun,
   type AnyRuntimeModule,
   type EventInput,
   type SignalInterruptRule,
@@ -237,6 +238,29 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     listRuns: Effect.gen(function* () {
       const store = yield* EventStoreTag
       return yield* store.listRuns
+    }),
+
+    listRunSummaries: Effect.gen(function* () {
+      const store = yield* EventStoreTag
+      const runIds = yield* store.listRuns
+      const indexed = yield* snapshotStore.listHeaders
+      const byId = new Map(indexed.map((header) => [header.runId, header]))
+      const missing = runIds.filter((runId) => !byId.has(runId))
+
+      const filled = yield* Effect.forEach(
+        missing,
+        (runId) => runtime.getRun(runId).pipe(Effect.map(summarizeRun)),
+        { concurrency: 8 },
+      )
+
+      for (const header of filled) {
+        byId.set(header.runId, header)
+      }
+
+      return runIds.flatMap((runId) => {
+        const header = byId.get(runId)
+        return header ? [header] : []
+      })
     }),
 
     getEvents: (runId, readOptions) =>

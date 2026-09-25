@@ -86,7 +86,7 @@ describe('createLoomsClient', () => {
     })
 
     const { runs } = await client.listRunSummaries()
-    expect(calls).toEqual(['/runs?include=summary'])
+    expect(calls).toEqual(['/runs/summaries'])
     expect(runs[0]?.definitionName).toBe('checkout')
   })
 

@@ -1,4 +1,4 @@
-import { projectionView, type DebuggerPlugin } from '@looms/debugger'
+import type { DebuggerPlugin } from '@looms/debugger'
 
 import { pendingApprovals } from '../projections'
 import { ApprovalsView } from './approvals-view'
@@ -9,7 +9,7 @@ export const approvalDebugger: DebuggerPlugin = {
   families: [
     { family: 'approval', color: 'oklch(0.72 0.15 45)', summarize: summarizeApprovalEvent },
   ],
-  projections: [projectionView(pendingApprovals, ApprovalsView)],
+  projections: [{ name: pendingApprovals.name, component: ApprovalsView }],
 }
 
 export { ApprovalsView }

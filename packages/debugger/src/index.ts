@@ -12,11 +12,9 @@ export { summarizeProtocolEvent } from './events/protocol-summarize'
 export { DebuggerProvider, useDebugger, type DebuggerContextValue } from './context'
 export {
   projectionFor,
-  projectionView,
   workspaceFor,
   type DebuggerPlugin,
   type EventFamilyView,
-  type ProjectionContext,
   type ProjectionView,
   type WorkspaceContext,
   type WorkspaceView,

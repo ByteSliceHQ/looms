@@ -87,14 +87,17 @@ try {
 
   const debuggerStyles = await readFile(join(packageRoot, 'dist/debugger/styles.css'), 'utf8')
 
-  const stylesSources = ['.', '../agent/debugger', '../workflow/debugger', '../approval/debugger']
-
-  const unscanned = stylesSources.filter(
-    (directory) => !debuggerStyles.includes(`@source "${directory}/**/*.js";`),
+  const debuggerSources = [...debuggerStyles.matchAll(/@source "([^"]+)";/g)].map(
+    (match) => match[1] ?? '',
   )
 
-  if (unscanned.length > 0 || debuggerStyles.includes('{ts,tsx}')) {
-    throw new Error(`dist/debugger/styles.css does not scan built views: ${unscanned.join(', ')}`)
+  if (
+    debuggerSources.length < 2 ||
+    debuggerSources.some((source) => !source.endsWith('/**/*.js')) ||
+    debuggerStyles.includes('{ts,tsx}') ||
+    !debuggerSources.some((source) => source.startsWith('../'))
+  ) {
+    throw new Error('dist/debugger/styles.css was not rewritten to scan built .js views')
   }
 
   const uiImport =

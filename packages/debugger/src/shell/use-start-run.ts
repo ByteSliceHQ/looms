@@ -6,9 +6,14 @@ import { useDebugger } from '../context'
 import { errorMessage } from '../lib/cn'
 import type { WorkspaceContext } from '../plugin'
 
+export interface StartedRun {
+  readonly runId: string
+  readonly threadId: string
+}
+
 export interface StartRun {
   /** Starts a run of the workspace definition, then runs `after` once the start is accepted. */
-  readonly start: <T>(input: JsonValue, after?: (runId: string) => Promise<T>) => void
+  readonly start: <T>(input: JsonValue, after?: (started: StartedRun) => Promise<T>) => void
   readonly fail: (cause: unknown) => void
   readonly pending: boolean
   readonly error: string | null
@@ -19,7 +24,7 @@ export function useStartRun({ definition, onStarted }: WorkspaceContext): StartR
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function start<T>(input: JsonValue, after?: (runId: string) => Promise<T>) {
+  function start<T>(input: JsonValue, after?: (started: StartedRun) => Promise<T>) {
     const runId = createRunId()
     setPending(true)
     setError(null)
@@ -33,7 +38,7 @@ export function useStartRun({ definition, onStarted }: WorkspaceContext): StartR
         input,
         runId,
       })
-      .then(() => after?.(runId))
+      .then((result) => after?.({ runId: result.runId, threadId: result.threadId }))
       .catch((cause: unknown) => setError(errorMessage(cause)))
       .finally(() => setPending(false))
   }

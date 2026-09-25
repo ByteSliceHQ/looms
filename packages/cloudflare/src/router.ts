@@ -12,7 +12,7 @@ export interface DurableObjectNamespaceLike<
 
 /**
  * Routes incoming HTTP requests to the appropriate Durable Object actor cell.
- * Handles `/health` locally, returns 501 for global `GET /runs`, and forwards
+ * Handles `/health` locally, returns 501 for global run lists, and forwards
  * all other run and event-stream requests to `namespace.getByName(runId)`.
  */
 export function routeToDurableObject(
@@ -25,7 +25,7 @@ export function routeToDurableObject(
     return Promise.resolve(Response.json({ ok: true }))
   }
 
-  if (req.method === 'GET' && url.pathname === '/runs') {
+  if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/runs/summaries')) {
     return Promise.resolve(
       Response.json(
         {

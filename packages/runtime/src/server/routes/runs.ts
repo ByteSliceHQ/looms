@@ -5,7 +5,6 @@ import {
   EventStoreTag,
   JsonValueSchema,
   stringifyJson,
-  summarizeRun,
   type EventStore,
   type JsonValue,
 } from '@looms/core'
@@ -132,23 +131,20 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       path: '/runs',
       name: 'runs.list',
       access: 'read',
-      handle: ({ url }) =>
+      handle: () =>
         provideStore(
-          Effect.gen(function* () {
-            const runIds = yield* runtime.listRuns
-
-            if (url.searchParams.get('include') !== 'summary') {
-              return Response.json({ runIds })
-            }
-
-            const runs = yield* Effect.forEach(
-              runIds,
-              (runId) => runtime.getRun(runId).pipe(Effect.map(summarizeRun)),
-              { concurrency: 8 },
-            )
-
-            return Response.json({ runIds, runs })
-          }),
+          runtime.listRuns.pipe(Effect.map((runIds) => Response.json({ runIds }))),
+          store,
+        ),
+    }),
+    route({
+      method: 'GET',
+      path: '/runs/summaries',
+      name: 'runs.summaries',
+      access: 'read',
+      handle: () =>
+        provideStore(
+          runtime.listRunSummaries.pipe(Effect.map((runs) => Response.json({ runs }))),
           store,
         ),
     }),

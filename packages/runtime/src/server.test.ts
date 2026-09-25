@@ -434,13 +434,13 @@ describe('server routing', () => {
     await looms.stop()
   })
 
-  test('GET /runs?include=summary lists each run with its status and definition', async () => {
+  test('GET /runs/summaries lists each run with its status and definition', async () => {
     const flow = defineWorkflow({ name: 'summarized', nodes: [{ id: 'step', run: () => null }] })
     const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
     const started = await looms.start(flow, null)
 
     const plain = await looms.fetch(new Request('http://looms.test/runs'))
-    const summarized = await looms.fetch(new Request('http://looms.test/runs?include=summary'))
+    const summarized = await looms.fetch(new Request('http://looms.test/runs/summaries'))
     const body = Schema.decodeUnknownSync(RunSummariesSchema)(await summarized?.json())
 
     expect(await plain?.json()).toEqual({ runIds: [started.runId] })

@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 
-import type { ProjectionDefinition, PublishedDefinition } from '@looms/core'
+import type { PublishedDefinition } from '@looms/core'
 
 import type { DebuggerEvent, EventSummary } from './contracts'
 
@@ -21,45 +21,41 @@ export interface WorkspaceContext {
 export interface WorkspaceView {
   readonly kinds: readonly string[]
   readonly component: ComponentType<WorkspaceContext>
+  /** Narrows `kinds`. When omitted, every definition of those kinds uses the workspace. */
+  readonly matches?: (definition: PublishedDefinition) => boolean
 }
 
-export interface ProjectionContext<S> {
-  readonly runId: string
-  readonly state: S
-}
-
-export interface ProjectionView<S> {
-  readonly projection: ProjectionDefinition<S>
-  readonly component: ComponentType<ProjectionContext<S>>
+/** A projection pane. The component reads the projection for `runId` itself. */
+export interface ProjectionView {
+  readonly name: string
+  readonly component: ComponentType<{ readonly runId: string }>
 }
 
 export interface DebuggerPlugin {
   readonly name: string
   readonly families?: readonly EventFamilyView[]
   readonly workspace?: WorkspaceView
-  readonly projections?: readonly ProjectionView<any>[]
-}
-
-export function projectionView<S>(
-  projection: ProjectionDefinition<S>,
-  component: ComponentType<ProjectionContext<S>>,
-): ProjectionView<S> {
-  return { projection, component }
+  readonly projections?: readonly ProjectionView[]
 }
 
 export function workspaceFor(
   plugins: readonly DebuggerPlugin[],
-  kind: string,
+  definition: PublishedDefinition,
 ): WorkspaceView | undefined {
-  return plugins.find((plugin) => plugin.workspace?.kinds.includes(kind))?.workspace
+  return plugins.find(
+    (plugin) =>
+      plugin.workspace !== undefined &&
+      plugin.workspace.kinds.includes(definition.kind) &&
+      (plugin.workspace.matches?.(definition) ?? true),
+  )?.workspace
 }
 
 export function projectionFor(
   plugins: readonly DebuggerPlugin[],
   name: string,
-): ProjectionView<any> | undefined {
+): ProjectionView | undefined {
   for (const plugin of plugins) {
-    const view = plugin.projections?.find((candidate) => candidate.projection.name === name)
+    const view = plugin.projections?.find((candidate) => candidate.name === name)
 
     if (view) {
       return view

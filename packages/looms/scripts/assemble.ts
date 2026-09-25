@@ -86,22 +86,29 @@ await mkdir(outputRoot, { recursive: true })
 
 await Promise.all(modules.map(copyBuild))
 
-// The source stylesheet scans workspace .tsx files; the published one must scan the built .js
-// for the kit and each module's debugger views.
-const debuggerSources = ['.', '../agent/debugger', '../workflow/debugger', '../approval/debugger']
-  .map((directory) => `@source "${directory}/**/*.js";`)
-  .join('\n')
+// Source @source paths point at workspace .tsx. The published file sits one directory higher
+// and must scan the built .js next to it.
+function publishDebuggerSource(spec: string): string {
+  return spec
+    .replaceAll('*.{ts,tsx}', '*.js')
+    .replaceAll('/src/debugger/', '/debugger/')
+    .replace(/^\.\.\/\.\.\//, '../')
+}
 
 const debuggerStyles = await readFile(join(packagesRoot, 'debugger', 'src', 'styles.css'), 'utf8')
 
-if (!debuggerStyles.includes('@source "./**/*.{ts,tsx}";')) {
-  throw new Error('packages/debugger/src/styles.css no longer declares its workspace @source')
+const publishedDebuggerStyles = debuggerStyles.replaceAll(
+  /@source "([^"]+)";/g,
+  (_match, spec: string) => `@source "${publishDebuggerSource(spec)}";`,
+)
+
+if (publishedDebuggerStyles.includes('{ts,tsx}')) {
+  throw new Error(
+    'packages/debugger/src/styles.css has an @source path the publisher cannot rewrite',
+  )
 }
 
-await writeFile(
-  join(outputRoot, 'debugger', 'styles.css'),
-  debuggerStyles.replace('@source "./**/*.{ts,tsx}";', debuggerSources),
-)
+await writeFile(join(outputRoot, 'debugger', 'styles.css'), publishedDebuggerStyles)
 
 await chmod(join(outputRoot, 'cli', 'cli.js'), 0o755)
 

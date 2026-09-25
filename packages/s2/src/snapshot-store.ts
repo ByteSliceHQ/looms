@@ -5,10 +5,12 @@ import {
   createKeyedSerializer,
   assertSnapshotByteLimit,
   RunStateSchema,
+  RunSummarySchema,
   SnapshotStoreError,
   SnapshotPayloadTooLargeError,
   SnapshotStoreTag,
   type RunSnapshot,
+  type RunSummary,
   type SnapshotStore,
 } from '@looms/core'
 
@@ -43,6 +45,9 @@ const SnapshotFrameSchema = Schema.Struct({
 const SnapshotFrameJson = Schema.fromJsonString(SnapshotFrameSchema)
 const decodeFrame = Schema.decodeSync(SnapshotFrameJson)
 const encodeFrame = Schema.encodeSync(SnapshotFrameJson)
+const HeaderJson = Schema.fromJsonString(RunSummarySchema)
+const decodeHeader = Schema.decodeUnknownOption(HeaderJson)
+const encodeHeader = Schema.encodeSync(HeaderJson)
 
 export function frameSnapshot(
   snapshot: RunSnapshot,
@@ -266,7 +271,9 @@ export function s2SnapshotStore(config: S2Config): SnapshotStore {
   const prefix = parsed.snapshotPrefix ?? DEFAULT_PREFIX
   const appends = createKeyedSerializer()
   const ensured = new Set<string>()
+  const headers = new Map<string, RunSummary>()
   let basinEnsured = false
+  let headersLoaded = false
 
   const streamName = (runId: string) => `${prefix}/${runId}`
 
@@ -460,6 +467,69 @@ export function s2SnapshotStore(config: S2Config): SnapshotStore {
           catch: (cause) => toSnapshotError(cause, `Failed to prune snapshots for ${runId}`),
         })
       }),
+
+    saveHeader: (header) =>
+      Effect.gen(function* () {
+        const stream = yield* ensureStream('__headers')
+
+        yield* Effect.tryPromise({
+          try: () =>
+            appends.run('__headers', () =>
+              stream.append(
+                AppendInput.create([AppendRecord.string({ body: encodeHeader(header) })]),
+              ),
+            ),
+          catch: (cause) => toSnapshotError(cause, `Failed to save run header for ${header.runId}`),
+        })
+
+        headers.set(header.runId, header)
+      }),
+
+    listHeaders: Effect.gen(function* () {
+      if (headersLoaded) {
+        return [...headers.values()]
+      }
+
+      const stream = yield* ensureStream('__headers')
+
+      const records = yield* paginateS2Stream((cursor, count) =>
+        Effect.tryPromise({
+          try: () =>
+            stream.read({
+              start: { from: { seqNum: cursor }, clamp: true },
+              stop: { limits: { count } },
+              ignoreCommandRecords: true,
+            }),
+          catch: (cause) => toSnapshotError(cause, 'Failed to read run headers'),
+        }).pipe(
+          Effect.catchIf(
+            (error) =>
+              error.cause instanceof S2Error &&
+              (error.cause.status === 404 || error.cause.status === 416),
+            () => Effect.succeed(null),
+          ),
+        ),
+      ).pipe(Stream.runCollect)
+
+      const loaded = new Map<string, RunSummary>()
+
+      for (const record of records) {
+        const decoded = decodeHeader(record.body)
+
+        if (Option.isSome(decoded)) {
+          loaded.set(decoded.value.runId, decoded.value)
+        }
+      }
+
+      for (const [runId, header] of loaded) {
+        if (!headers.has(runId)) {
+          headers.set(runId, header)
+        }
+      }
+
+      headersLoaded = true
+      return [...headers.values()]
+    }),
   }
 
   return service

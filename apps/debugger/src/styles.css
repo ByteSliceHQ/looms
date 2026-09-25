@@ -1,8 +1,5 @@
 @import 'tailwindcss';
 @import '@looms/debugger/styles.css';
-@source '../../../packages/agent/src/debugger/**/*.{ts,tsx}';
-@source '../../../packages/workflow/src/debugger/**/*.{ts,tsx}';
-@source '../../../packages/approval/src/debugger/**/*.{ts,tsx}';
 
 @theme inline {
   --radius-sm: calc(var(--radius) * 0.6);

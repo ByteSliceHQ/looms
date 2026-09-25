@@ -1,10 +1,12 @@
-import { Button, StatusBadge, useDebugger, type ProjectionContext } from '@looms/debugger'
+import { Button, StatusBadge, useDebugger } from '@looms/debugger'
+import { useProjection, useRunStore } from '@looms/react'
 
-import type { PendingApprovalsState } from '../projections'
+import { pendingApprovals } from '../projections'
 import { decision } from '../signals'
 
-export function ApprovalsView({ runId, state }: ProjectionContext<PendingApprovalsState>) {
+export function ApprovalsView({ runId }: { runId: string }) {
   const { client } = useDebugger()
+  const state = useProjection(useRunStore(runId), pendingApprovals)
 
   if (state.items.length === 0) {
     return <p className="text-muted-foreground text-xs">No approvals requested.</p>

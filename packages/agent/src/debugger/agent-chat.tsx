@@ -1,7 +1,7 @@
 import { Bot, CornerDownRight, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import { createEventId, isJsonObject, isJsonString, type EventInput } from '@looms/core'
+import { createEventId, isJsonObject, isJsonString, type JsonValue } from '@looms/core'
 import {
   cn,
   Composer,
@@ -18,23 +18,44 @@ import {
   SelectTrigger,
   SelectValue,
   shortId,
-  StartForm,
   useDebugger,
   useStartRun,
-  type DebuggerContextValue,
   type WorkspaceContext,
 } from '@looms/debugger'
 import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import { conversation } from '../projections'
-import { sendAgentSessionMessage, userMessage } from '../signals'
+import { agentSessionMessageEvents, userMessage } from '../signals'
 import type { AgentMessageDelivery, Message, ToolCall } from '../types'
 
-function sessionClient(client: DebuggerContextValue['client']) {
-  return {
-    getRun: (runId: string) => client.getRun(runId).then((result) => result.state),
-    signal: (runId: string, events: readonly EventInput[]) => client.signal(runId, events),
+/** Child thread of the session turn that is still open, from the events the store already has. */
+function activeSessionChild(
+  events: readonly { type: string; payload: JsonValue }[],
+): string | undefined {
+  let child: string | undefined
+
+  for (const event of events) {
+    if (!isJsonObject(event.payload)) {
+      continue
+    }
+
+    if (event.type === 'agent.session.turn.started' && isJsonString(event.payload.childThreadId)) {
+      child = event.payload.childThreadId
+      continue
+    }
+
+    const tag = event.payload.tag
+
+    if (
+      event.type === 'runtime.wait.satisfied' &&
+      isJsonObject(tag) &&
+      tag.kind === 'agent-session-turn'
+    ) {
+      child = undefined
+    }
   }
+
+  return child
 }
 
 interface StreamingState {
@@ -305,10 +326,6 @@ export function AgentChat(context: WorkspaceContext) {
   const session = definition.kind === 'agent-session'
   const form = inputForm(definition.inputSchema)
 
-  if (!runId && !session && messageInput(form, '') === undefined) {
-    return <StartForm {...context} />
-  }
-
   function send() {
     const content = draft.trim()
     const input = session ? null : messageInput(form, content)
@@ -322,7 +339,11 @@ export function AgentChat(context: WorkspaceContext) {
     start(
       input,
       session
-        ? (id) => sendAgentSessionMessage(sessionClient(client), id, createEventId(), content)
+        ? (started) =>
+            client.signal(
+              started.runId,
+              agentSessionMessageEvents(createEventId(), content, { threadId: started.threadId }),
+            )
         : undefined,
     )
   }
@@ -374,7 +395,6 @@ function FollowUp({
   setDelivery: (delivery: AgentMessageDelivery) => void
   startError: string | null
 }) {
-  const { client } = useDebugger()
   const store = useRunStore(runId)
   const { rootThreadId } = useRunSummary(store)
   const [draft, setDraft] = useState('')
@@ -391,12 +411,17 @@ function FollowUp({
     setPending(true)
     setError(null)
 
-    const commit = session
-      ? sendAgentSessionMessage(sessionClient(client), runId, createEventId(), content, {
+    const events = session
+      ? agentSessionMessageEvents(createEventId(), content, {
           delivery,
           threadId: rootThreadId,
+          activeChildThreadId:
+            delivery === 'steer' ? activeSessionChild(store.events()) : undefined,
         })
-      : store.commit(userMessage(content, { threadId: rootThreadId }))
+      : [userMessage(content, { threadId: rootThreadId })]
+
+    const [only] = events
+    const commit = events.length === 1 && only ? store.commit(only) : store.commit(events)
 
     commit
       .then(() => setDraft(''))

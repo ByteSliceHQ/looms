@@ -89,6 +89,12 @@ describe('LocalActorHost', () => {
 
     expect(listRes?.status).toBe(501)
 
+    const summaries = await host.fetch(
+      new Request('http://localhost:8787/runs/summaries', { method: 'GET' }),
+    )
+
+    expect(summaries?.status).toBe(501)
+
     await host.dispose()
   })
 })

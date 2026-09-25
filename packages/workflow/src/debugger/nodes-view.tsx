@@ -1,9 +1,11 @@
 import { asJson } from '@looms/core'
-import { JsonTree, StatusBadge, type ProjectionContext } from '@looms/debugger'
+import { JsonTree, StatusBadge } from '@looms/debugger'
+import { useProjection, useRunStore } from '@looms/react'
 
-import type { NodesProjectionState } from '../projections'
+import { nodes } from '../projections'
 
-export function WorkflowNodesView({ state }: ProjectionContext<NodesProjectionState>) {
+export function WorkflowNodesView({ runId }: { runId: string }) {
+  const state = useProjection(useRunStore(runId), nodes)
   const entries = Object.entries(state.nodes)
 
   if (entries.length === 0) {

@@ -34,7 +34,7 @@ export function publishDefinition(definition: RegisteredDefinition): PublishedDe
   }
 }
 
-/** A run as `GET /runs?include=summary` lists it. */
+/** A run as `GET /runs/summaries` lists it. */
 export const RunSummarySchema = Schema.Struct({
   runId: Schema.String,
   status: RunStateSchema.fields.status,

@@ -7,6 +7,7 @@ import {
   EventPayloadTooLargeError,
   SnapshotPayloadTooLargeError,
 } from './limits'
+import type { RunSummary } from './published'
 import {
   SnapshotStoreError,
   withSnapshotStore,
@@ -52,6 +53,13 @@ CREATE TABLE IF NOT EXISTS looms_commands (
   fingerprint TEXT,
   committed_tail INTEGER NOT NULL,
   PRIMARY KEY (run_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS looms_run_headers (
+  run_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  kind TEXT,
+  definition_name TEXT
 );
 `.trim()
 
@@ -188,6 +196,24 @@ function toSnapshot(row: Schema.Schema.Type<typeof SnapshotRowSchema>): RunSnaps
   }
 }
 
+const HeaderRowSchema = Schema.Struct({
+  run_id: Schema.String,
+  status: RunStateSchema.fields.status,
+  kind: Schema.NullOr(Schema.String),
+  definition_name: Schema.NullOr(Schema.String),
+})
+
+const decodeHeaderRow = Schema.decodeUnknownSync(HeaderRowSchema)
+
+function headerFromRow(row: Schema.Schema.Type<typeof HeaderRowSchema>): RunSummary {
+  return {
+    runId: row.run_id,
+    status: row.status,
+    kind: row.kind,
+    definitionName: row.definition_name,
+  }
+}
+
 function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
   return {
     loadLatest: (runId) =>
@@ -258,6 +284,31 @@ function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
         },
         catch: (cause) => new SnapshotStoreError(`Failed to prune snapshots for ${runId}`, cause),
       }),
+
+    saveHeader: (header) =>
+      Effect.try({
+        try: () => {
+          exec.run(
+            `INSERT INTO looms_run_headers (run_id, status, kind, definition_name)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (run_id) DO UPDATE SET
+               status = excluded.status,
+               kind = excluded.kind,
+               definition_name = excluded.definition_name`,
+            [header.runId, header.status, header.kind, header.definitionName],
+          )
+        },
+        catch: (cause) =>
+          new SnapshotStoreError(`Failed to save run header for ${header.runId}`, cause),
+      }),
+
+    listHeaders: Effect.try({
+      try: () =>
+        exec
+          .rows('SELECT run_id, status, kind, definition_name FROM looms_run_headers')
+          .map((row) => headerFromRow(decodeHeaderRow(row))),
+      catch: (cause) => new SnapshotStoreError('Failed to list run headers', cause),
+    }),
   }
 }
 

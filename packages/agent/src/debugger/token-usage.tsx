@@ -1,6 +1,6 @@
-import type { ProjectionContext } from '@looms/debugger'
+import { useProjection, useRunStore } from '@looms/react'
 
-import type { TokenUsage } from '../types'
+import { tokenUsage } from '../projections'
 
 const format = new Intl.NumberFormat()
 
@@ -13,7 +13,8 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-export function TokenUsageView({ state }: ProjectionContext<TokenUsage>) {
+export function TokenUsageView({ runId }: { runId: string }) {
+  const state = useProjection(useRunStore(runId), tokenUsage)
   return (
     <div className="grid grid-cols-3 gap-2">
       <Stat label="Input" value={state.input} />
