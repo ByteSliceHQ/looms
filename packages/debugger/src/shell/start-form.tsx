@@ -1,10 +1,17 @@
+import { Play } from 'lucide-react'
 import { useState } from 'react'
 
 import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
 import { useRunEvents, useRunStore, useRunSummary, useThreadTree } from '@looms/react'
 
-import { JsonView } from '../components/json-view'
+import { JsonTree } from '../components/json-tree'
+import { StatusBadge } from '../components/status-dot'
 import type { WorkspaceContext } from '../plugin'
+import { Button } from '../ui/button'
+import { Checkbox } from '../ui/checkbox'
+import { Input } from '../ui/input'
+import { ScrollArea } from '../ui/scroll-area'
+import { Textarea } from '../ui/textarea'
 import {
   formInput,
   initialValues,
@@ -14,8 +21,6 @@ import {
   type InputForm,
 } from './schema-form'
 import { useStartRun } from './use-start-run'
-
-const inputClass = 'border-border bg-background rounded border px-2 py-1'
 
 function RunResult({ runId }: { runId: string }) {
   const store = useRunStore(runId)
@@ -36,13 +41,22 @@ function RunResult({ runId }: { runId: string }) {
   const failure = failed && isJsonObject(failed.payload) ? failed.payload.error : undefined
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs">
-        <span className="text-muted-foreground">Status </span>
-        {summary.status}
-      </p>
-      {output !== undefined ? <JsonView value={output} /> : null}
-      {isJsonString(failure) ? <p className="text-status-failed text-xs">{failure}</p> : null}
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground text-xs">Status</span>
+        <StatusBadge status={summary.status} />
+      </div>
+      {output !== undefined ? (
+        <section className="border-border bg-card rounded-lg border p-3">
+          <h3 className="text-muted-foreground mb-1.5 text-[11px] font-medium">Output</h3>
+          <JsonTree value={output} defaultExpandDepth={2} />
+        </section>
+      ) : null}
+      {isJsonString(failure) ? (
+        <p className="text-status-failed bg-status-failed/10 rounded-md px-3 py-2 text-xs">
+          {failure}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -59,25 +73,24 @@ function FieldInput({
   switch (field.type) {
     case 'boolean':
       return (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={value === 'true'}
-          onChange={(event) => onChange(String(event.target.checked))}
+          onCheckedChange={(checked) => onChange(String(checked === true))}
         />
       )
     case 'number':
       return (
-        <input
+        <Input
           type="number"
-          className={inputClass}
+          className="h-8 font-mono text-xs"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
       )
     case 'string':
       return (
-        <input
-          className={inputClass}
+        <Input
+          className="h-8 text-[13px]"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -102,8 +115,8 @@ function InputFields({
   switch (form.kind) {
     case 'text':
       return (
-        <textarea
-          className={`${inputClass} min-h-16 w-full text-sm`}
+        <Textarea
+          className="max-h-64 min-h-20"
           value={values.source}
           onChange={(event) => onChange({ ...values, source: event.target.value })}
           aria-label="Input"
@@ -111,8 +124,13 @@ function InputFields({
       )
     case 'fields':
       return form.fields.map((field) => (
-        <label key={field.name} className="grid gap-1 text-xs">
-          <span className="text-muted-foreground">{field.label}</span>
+        <label
+          key={field.name}
+          className={
+            field.type === 'boolean' ? 'flex items-center gap-2 text-xs' : 'grid gap-1.5 text-xs'
+          }
+        >
+          <span className="text-foreground font-medium">{field.label}</span>
           <FieldInput
             field={field}
             value={values.fields[field.name] ?? ''}
@@ -124,11 +142,12 @@ function InputFields({
       ))
     case 'json':
       return (
-        <textarea
-          className={`${inputClass} min-h-24 w-full font-mono text-xs`}
+        <Textarea
+          className="max-h-80 min-h-28 font-mono text-xs"
           value={values.source}
           onChange={(event) => onChange({ ...values, source: event.target.value })}
           aria-label="JSON input"
+          spellCheck={false}
         />
       )
 
@@ -159,30 +178,38 @@ export function StartForm(context: WorkspaceContext) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+    <ScrollArea className="h-full">
+      <div className="p-4">
         {context.runId ? (
           <RunResult runId={context.runId} />
         ) : (
           <form
-            className="space-y-2"
+            className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault()
               submit()
             }}
           >
+            <div>
+              <p className="text-[13px] font-medium">Input</p>
+              <p className="text-muted-foreground text-xs">
+                Fields come from the definition&apos;s input schema.
+              </p>
+            </div>
             <InputFields form={form} values={values} onChange={setValues} />
-            <button
-              type="submit"
-              className="bg-primary text-primary-foreground rounded px-3 py-1 text-xs"
-              disabled={pending}
-            >
-              Start
-            </button>
+            <div className="flex items-center gap-3">
+              <Button type="submit" size="sm" disabled={pending}>
+                <Play />
+                Start run
+              </Button>
+              {error ? <p className="text-status-failed min-w-0 text-[11px]">{error}</p> : null}
+            </div>
           </form>
         )}
+        {context.runId && error ? (
+          <p className="text-status-failed mt-3 text-[11px]">{error}</p>
+        ) : null}
       </div>
-      {error ? <p className="text-status-failed px-3 pb-3 text-xs">{error}</p> : null}
-    </div>
+    </ScrollArea>
   )
 }

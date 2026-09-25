@@ -1,5 +1,5 @@
 import { asJson } from '@looms/core'
-import { JsonView, StatusDot, statusClass, type ProjectionContext } from '@looms/debugger'
+import { JsonTree, StatusBadge, type ProjectionContext } from '@looms/debugger'
 
 import type { NodesProjectionState } from '../projections'
 
@@ -7,20 +7,21 @@ export function WorkflowNodesView({ state }: ProjectionContext<NodesProjectionSt
   const entries = Object.entries(state.nodes)
 
   if (entries.length === 0) {
-    return <p className="text-muted-foreground text-xs">No nodes</p>
+    return <p className="text-muted-foreground text-xs">No nodes yet.</p>
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="grid gap-2">
       {entries.map(([id, node]) => (
-        <li key={id} className="space-y-1 text-xs">
-          <div className="flex items-center gap-1.5">
-            <StatusDot status={node.status} />
-            <span className="font-mono">{id}</span>
-            <span className={statusClass(node.status)}>{node.status}</span>
+        <li key={id} className="border-border bg-card/60 rounded-lg border p-2.5 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate font-mono font-medium">{id}</span>
+            <StatusBadge status={node.status} />
           </div>
-          {node.result !== null ? <JsonView value={asJson(node.result)} /> : null}
-          {node.error ? <p className="text-status-failed">{node.error}</p> : null}
+          {node.result !== null ? (
+            <JsonTree value={asJson(node.result)} className="mt-1.5" />
+          ) : null}
+          {node.error ? <p className="text-status-failed mt-1.5">{node.error}</p> : null}
         </li>
       ))}
     </ul>

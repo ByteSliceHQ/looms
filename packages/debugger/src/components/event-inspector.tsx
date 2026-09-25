@@ -1,17 +1,46 @@
-import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import { asJson, type ReplayStep } from '@looms/core'
+import { asJson, type JsonValue, type ReplayStep } from '@looms/core'
 
 import type { DebuggerEvent, ReplayLoader } from '../contracts'
+import { Button } from '../ui/button'
+import { ScrollArea } from '../ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
-import { JsonView } from './json-view'
+import { JsonTree } from './json-tree'
+
+function Pane({ value, children }: { value: string; children: ReactNode }) {
+  return (
+    <TabsContent value={value} className="min-h-0">
+      <ScrollArea className="h-full">
+        <div className="px-3 pb-3">{children}</div>
+      </ScrollArea>
+    </TabsContent>
+  )
+}
+
+function StepJson({
+  step,
+  pick,
+}: {
+  step: ReplayStep | null
+  pick: (step: ReplayStep) => JsonValue
+}) {
+  return step ? (
+    <JsonTree value={pick(step)} defaultExpandDepth={2} />
+  ) : (
+    <p className="text-muted-foreground text-xs">Loading…</p>
+  )
+}
 
 export function EventInspector({
   event,
   loadReplayStep,
+  onClose,
 }: {
   event: DebuggerEvent
   loadReplayStep?: ReplayLoader
+  onClose?: () => void
 }) {
   const [step, setStep] = useState<ReplayStep | null>(null)
   const canReplay = loadReplayStep !== undefined
@@ -36,24 +65,30 @@ export function EventInspector({
   }, [event.runId, event.seq, loadReplayStep])
 
   return (
-    <div className="border-border flex max-h-[45%] min-h-0 shrink-0 flex-col border-t">
-      <div className="text-muted-foreground flex items-center gap-2 px-3 py-1.5 text-[11px]">
-        <span className="font-mono">{event.seq}</span>
-        <span className="text-foreground truncate font-mono">{event.type}</span>
-      </div>
-      <Tabs defaultValue="payload" className="min-h-0 flex-1 px-3 pb-2">
-        <TabsList>
-          <TabsTrigger value="payload">Payload</TabsTrigger>
-          <TabsTrigger value="envelope">Envelope</TabsTrigger>
-          {canReplay ? <TabsTrigger value="before">Before</TabsTrigger> : null}
-          {canReplay ? <TabsTrigger value="after">After</TabsTrigger> : null}
-          {canReplay ? <TabsTrigger value="effects">Effects</TabsTrigger> : null}
-        </TabsList>
-        <TabsContent value="payload" className="overflow-auto">
-          <JsonView value={event.payload} />
-        </TabsContent>
-        <TabsContent value="envelope" className="overflow-auto">
-          <JsonView
+    <div className="border-border bg-sidebar flex h-[45%] min-h-40 shrink-0 flex-col border-t">
+      <Tabs defaultValue="payload" className="min-h-0 flex-1 gap-0">
+        <div className="flex h-10 shrink-0 items-center gap-2 pr-2 pl-3">
+          <span className="text-muted-foreground font-mono text-[11px] tabular-nums">
+            #{event.seq}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs">{event.type}</span>
+          <TabsList>
+            <TabsTrigger value="payload">Payload</TabsTrigger>
+            <TabsTrigger value="envelope">Envelope</TabsTrigger>
+            {canReplay ? <TabsTrigger value="state">State</TabsTrigger> : null}
+            {canReplay ? <TabsTrigger value="effects">Effects</TabsTrigger> : null}
+          </TabsList>
+          {onClose ? (
+            <Button variant="ghost" size="icon-sm" aria-label="Close inspector" onClick={onClose}>
+              <X />
+            </Button>
+          ) : null}
+        </div>
+        <Pane value="payload">
+          <JsonTree value={event.payload} defaultExpandDepth={2} />
+        </Pane>
+        <Pane value="envelope">
+          <JsonTree
             value={asJson({
               id: event.id,
               runId: event.runId,
@@ -69,33 +104,25 @@ export function EventInspector({
               ephemeral: event.ephemeral ?? false,
             })}
           />
-        </TabsContent>
+        </Pane>
         {canReplay ? (
-          <TabsContent value="before" className="overflow-auto">
-            {step ? (
-              <JsonView value={asJson(step.before)} />
-            ) : (
-              <p className="text-muted-foreground text-xs">Loading…</p>
-            )}
-          </TabsContent>
+          <Pane value="state">
+            <div className="grid gap-3">
+              <section>
+                <h4 className="text-muted-foreground mb-1 text-[11px] font-medium">Before</h4>
+                <StepJson step={step} pick={(loaded) => asJson(loaded.before)} />
+              </section>
+              <section>
+                <h4 className="text-muted-foreground mb-1 text-[11px] font-medium">After</h4>
+                <StepJson step={step} pick={(loaded) => asJson(loaded.after)} />
+              </section>
+            </div>
+          </Pane>
         ) : null}
         {canReplay ? (
-          <TabsContent value="after" className="overflow-auto">
-            {step ? (
-              <JsonView value={asJson(step.after)} />
-            ) : (
-              <p className="text-muted-foreground text-xs">Loading…</p>
-            )}
-          </TabsContent>
-        ) : null}
-        {canReplay ? (
-          <TabsContent value="effects" className="overflow-auto">
-            {step ? (
-              <JsonView value={asJson(step.effects)} />
-            ) : (
-              <p className="text-muted-foreground text-xs">Loading…</p>
-            )}
-          </TabsContent>
+          <Pane value="effects">
+            <StepJson step={step} pick={(loaded) => asJson(loaded.effects)} />
+          </Pane>
         ) : null}
       </Tabs>
     </div>

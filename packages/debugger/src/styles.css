@@ -6,14 +6,72 @@
   --color-status-completed: var(--status-completed);
   --color-status-failed: var(--status-failed);
   --color-status-cancelled: var(--status-cancelled);
+  --color-json-key: var(--json-key);
+  --color-json-string: var(--json-string);
+  --color-json-number: var(--json-number);
+  --color-json-boolean: var(--json-boolean);
+  --color-json-null: var(--json-null);
+  --ease-snappy: var(--debugger-ease);
 }
 
 :root {
+  --debugger-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --status-running: oklch(0.74 0.12 240);
   --status-waiting: oklch(0.8 0.14 85);
   --status-completed: oklch(0.76 0.13 155);
   --status-failed: oklch(0.68 0.18 25);
   --status-cancelled: oklch(0.62 0.01 260);
+  --json-key: oklch(0.8 0.06 280);
+  --json-string: oklch(0.8 0.1 150);
+  --json-number: oklch(0.8 0.1 230);
+  --json-boolean: oklch(0.82 0.11 70);
+  --json-null: oklch(0.6 0.01 260);
+}
+
+@keyframes debugger-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes debugger-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Anchored overlays grow from their trigger; keyboard-opened ones appear instantly. */
+.debugger-pop {
+  transform-origin: var(--radix-popper-transform-origin);
+  animation: debugger-pop-in 150ms var(--debugger-ease);
+}
+
+.debugger-pop[data-instant] {
+  animation: none;
+}
+
+.debugger-float-in {
+  transition:
+    opacity 150ms var(--debugger-ease),
+    transform 150ms var(--debugger-ease),
+    scale 150ms var(--debugger-ease),
+    background-color 150ms var(--debugger-ease);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .debugger-pop {
+    animation-name: debugger-fade-in;
+  }
+
+  .debugger-float-in {
+    transition-property: opacity;
+  }
 }
 
 .debugger-event-stream {
@@ -41,19 +99,5 @@
 @container (min-width: 44rem) {
   .debugger-event-causation {
     display: inline;
-  }
-}
-
-@container (max-width: 22rem) {
-  .debugger-follow-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 }

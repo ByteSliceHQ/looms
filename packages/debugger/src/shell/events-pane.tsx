@@ -8,6 +8,7 @@ import {
   useThreadTree,
 } from '@looms/react'
 
+import { findThreadName } from '../components/debugger-split'
 import { EventStream } from '../components/event-stream'
 import { RunTree } from '../components/run-tree'
 import { useDebugger } from '../context'
@@ -19,11 +20,13 @@ export function EventsPane({
   threadId,
   seq,
   onSelectSeq,
+  onClearThread,
 }: {
   runId: string
   threadId?: string
   seq?: number
   onSelectSeq: (seq: number | undefined) => void
+  onClearThread: () => void
 }) {
   const { client, plugins } = useDebugger()
   const catalog = useMemo(() => createEventCatalog(plugins), [plugins])
@@ -43,7 +46,8 @@ export function EventsPane({
       events={events}
       startedAt={summary.startedAt}
       threadId={threadId}
-      threadLabel={threadId ? tree.root?.definitionName : undefined}
+      threadLabel={findThreadName(tree.root, threadId)}
+      onClearThread={onClearThread}
       selectedSeq={seq}
       onSelectSeq={onSelectSeq}
       loadReplayStep={loadReplayStep}

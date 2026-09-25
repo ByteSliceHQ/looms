@@ -1,14 +1,20 @@
+import { Activity, GitBranch, ListTree } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useDefaultLayout } from 'react-resizable-panels'
 
 import type { DefinitionCatalog } from '@looms/core'
 
 import { DebuggerProvider, useDebugger } from '../context'
 import { errorMessage } from '../lib/cn'
 import type { DebuggerPlugin } from '../plugin'
+import { EmptyState, PanelHeader, PanelTitle } from '../ui/panel'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resizable'
 import { definitionKey } from './definition-key'
-import { EventsPane } from './events-pane'
+import { EventsPane, RunTreePane } from './events-pane'
 import { ProjectionsPanel } from './projections-panel'
-import { Sidebar } from './sidebar'
+import { RunControls } from './run-controls'
+import { RunSearch } from './run-search'
+import { RunTypeMenu } from './run-type-menu'
 import { Workspace } from './workspace'
 
 export interface DebuggerSelection {
@@ -33,6 +39,17 @@ function useDefinitionCatalog() {
   return { catalog, error }
 }
 
+function Brand() {
+  return (
+    <div className="flex shrink-0 items-center gap-2 pr-1">
+      <span className="bg-foreground text-background flex size-5 items-center justify-center rounded-md">
+        <GitBranch className="size-3" strokeWidth={2.5} />
+      </span>
+      <span className="text-[13px] font-semibold tracking-tight">Looms</span>
+    </div>
+  )
+}
+
 function DebuggerFrame({
   selection,
   onSelectionChange,
@@ -48,61 +65,116 @@ function DebuggerFrame({
     (definition) => definitionKey(definition) === selectedKey,
   )
 
+  const layout = useDefaultLayout({ id: 'looms-debugger-columns', storage: localStorage })
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <header className="border-border flex items-center gap-3 border-b px-3 py-2">
-        <h1 className="text-sm font-medium">Looms debugger</h1>
-        {error ? <p className="text-status-failed text-xs">{error}</p> : null}
-      </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1.1fr)_minmax(0,1.4fr)_18rem]">
-        <section className="border-border bg-sidebar min-h-0 overflow-auto border-r">
-          <Sidebar
-            definitions={catalog.definitions}
-            selectedKey={selectedKey}
-            runId={selection.run}
-            threadId={selection.thread}
-            onSelectDefinition={(definition) =>
-              onSelectionChange({ kind: definition.kind, name: definition.name })
-            }
-            onSelectRun={(run) =>
-              onSelectionChange({
-                kind: run.kind ?? undefined,
-                name: run.definitionName ?? undefined,
-                run: run.runId,
-              })
-            }
-            onSelectThread={(thread) => onSelectionChange({ ...selection, thread })}
-          />
-        </section>
-        <section className="border-border min-h-0 overflow-hidden border-r">
-          <Workspace
-            definition={selected}
-            runId={selection.run}
-            onStarted={(run) => onSelectionChange({ kind, name, run })}
-          />
-        </section>
-        <section className="border-border min-h-0 overflow-hidden border-r">
-          {selection.run ? (
-            <EventsPane
-              runId={selection.run}
-              threadId={selection.thread}
-              seq={selection.seq}
-              onSelectSeq={(seq) => onSelectionChange({ ...selection, seq })}
-            />
-          ) : (
-            <p className="text-muted-foreground p-3 text-xs">Events appear after a run starts.</p>
-          )}
-        </section>
-        <section className="min-h-0 overflow-auto">
-          {selection.run ? (
-            <ProjectionsPanel runId={selection.run} names={catalog.projections} />
-          ) : (
-            <p className="text-muted-foreground p-3 text-xs">
-              Projections fold the same event log.
+    <div className="bg-background flex h-screen flex-col overflow-hidden">
+      <header className="border-border bg-sidebar flex h-11 shrink-0 items-center gap-2 border-b px-3">
+        <Brand />
+        <span className="text-border text-lg font-light select-none" aria-hidden>
+          /
+        </span>
+        <RunTypeMenu
+          definitions={catalog.definitions}
+          selected={selected}
+          onSelect={(definition) =>
+            onSelectionChange({ kind: definition.kind, name: definition.name })
+          }
+        />
+        <RunSearch
+          runId={selection.run}
+          fallbackLabel={selected?.name}
+          onSelectRun={(run) =>
+            onSelectionChange({
+              kind: run.kind ?? undefined,
+              name: run.definitionName ?? undefined,
+              run: run.runId,
+            })
+          }
+        />
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {error ? (
+            <p className="text-status-failed truncate text-[11px]" title={error}>
+              {error}
             </p>
-          )}
-        </section>
-      </div>
+          ) : null}
+          {selection.run ? <RunControls runId={selection.run} /> : null}
+        </div>
+      </header>
+      <ResizablePanelGroup
+        id="looms-debugger-columns"
+        className="min-h-0 flex-1"
+        defaultLayout={layout.defaultLayout}
+        onLayoutChanged={layout.onLayoutChanged}
+      >
+        <ResizablePanel
+          id="tree"
+          defaultSize="17%"
+          minSize="12rem"
+          maxSize="30%"
+          className="bg-sidebar"
+        >
+          <section aria-label="Run tree" className="h-full min-h-0 overflow-hidden">
+            {selection.run ? (
+              <RunTreePane
+                runId={selection.run}
+                threadId={selection.thread}
+                onSelectThread={(thread) =>
+                  onSelectionChange({ ...selection, thread, seq: undefined })
+                }
+              />
+            ) : (
+              <div className="flex h-full flex-col">
+                <PanelHeader>
+                  <PanelTitle>Run tree</PanelTitle>
+                </PanelHeader>
+                <EmptyState icon={<ListTree />} title="No run selected">
+                  Threads and child runs appear here once a run starts.
+                </EmptyState>
+              </div>
+            )}
+          </section>
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="workspace" defaultSize="29%" minSize="16rem">
+          <section aria-label="Workspace" className="@container h-full min-h-0 overflow-hidden">
+            <Workspace
+              definition={selected}
+              runId={selection.run}
+              onStarted={(run) => onSelectionChange({ kind, name, run })}
+            />
+          </section>
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="events" defaultSize="32%" minSize="16rem">
+          <section aria-label="Events" className="h-full min-h-0 overflow-hidden">
+            {selection.run ? (
+              <EventsPane
+                runId={selection.run}
+                threadId={selection.thread}
+                seq={selection.seq}
+                onSelectSeq={(seq) => onSelectionChange({ ...selection, seq })}
+                onClearThread={() => onSelectionChange({ ...selection, thread: undefined })}
+              />
+            ) : (
+              <div className="flex h-full flex-col">
+                <PanelHeader>
+                  <PanelTitle>Events</PanelTitle>
+                </PanelHeader>
+                <EmptyState icon={<Activity />} title="No events yet">
+                  Events stream in live once a run starts.
+                </EmptyState>
+              </div>
+            )}
+          </section>
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="projections" defaultSize="22%" minSize="14rem" className="bg-sidebar">
+          <section aria-label="Projections" className="h-full min-h-0 overflow-hidden">
+            <ProjectionsPanel runId={selection.run} names={catalog.projections} />
+          </section>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   )
 }

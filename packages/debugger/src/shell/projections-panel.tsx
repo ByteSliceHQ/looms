@@ -1,20 +1,37 @@
+import { ChevronRight, Layers } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { asJson, type JsonValue } from '@looms/core'
 import { useProjection, useRunSelector, useRunStore, type LoomsClientStore } from '@looms/react'
 
-import { JsonView } from '../components/json-view'
+import { JsonTree } from '../components/json-tree'
 import { useDebugger } from '../context'
-import { errorMessage } from '../lib/cn'
+import { cn, errorMessage } from '../lib/cn'
 import { projectionFor, type ProjectionView } from '../plugin'
+import { EmptyState, PanelHeader, PanelTitle } from '../ui/panel'
+import { ScrollArea } from '../ui/scroll-area'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true)
+
   return (
-    <section className="border-border border-b px-2 py-2">
-      <h3 className="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">
-        {title}
-      </h3>
-      {children}
+    <section className="border-border border-b last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="bg-background/95 hover:bg-accent/40 sticky top-0 z-10 flex h-8 w-full items-center gap-1.5 px-3 text-left backdrop-blur"
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            'text-muted-foreground ease-snappy size-3 transition-transform duration-100',
+            open && 'rotate-90',
+          )}
+        />
+        <h3 className="font-mono text-[11px] font-medium">{title}</h3>
+      </button>
+      {open ? <div className="px-3 pt-0.5 pb-3">{children}</div> : null}
     </section>
   )
 }
@@ -67,7 +84,7 @@ function FetchedProjection({ runId, name }: { runId: string; name: string }) {
     return <p className="text-muted-foreground text-xs">Loading…</p>
   }
 
-  return <JsonView value={value} />
+  return <JsonTree value={value} defaultExpandDepth={2} />
 }
 
 function ProjectionBody({ runId, name }: { runId: string; name: string }) {
@@ -81,20 +98,26 @@ function ProjectionBody({ runId, name }: { runId: string; name: string }) {
   return <FetchedProjection runId={runId} name={name} />
 }
 
-export function ProjectionsPanel({ runId, names }: { runId: string; names: readonly string[] }) {
+export function ProjectionsPanel({ runId, names }: { runId?: string; names: readonly string[] }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto">
-      <div className="border-border text-muted-foreground border-b px-2 py-1.5 text-[11px] font-medium tracking-wide uppercase">
-        Projections
-      </div>
-      {names.length === 0 ? (
-        <p className="text-muted-foreground p-2 text-xs">No projections</p>
+    <div className="flex h-full min-h-0 flex-col">
+      <PanelHeader>
+        <PanelTitle meta={names.length}>Projections</PanelTitle>
+      </PanelHeader>
+      {!runId ? (
+        <EmptyState icon={<Layers />} title="No run selected">
+          Projections fold the run&apos;s event log into live views.
+        </EmptyState>
+      ) : names.length === 0 ? (
+        <EmptyState icon={<Layers />} title="No projections" />
       ) : (
-        names.map((name) => (
-          <Section key={name} title={name}>
-            <ProjectionBody runId={runId} name={name} />
-          </Section>
-        ))
+        <ScrollArea className="min-h-0 flex-1">
+          {names.map((name) => (
+            <Section key={name} title={name}>
+              <ProjectionBody runId={runId} name={name} />
+            </Section>
+          ))}
+        </ScrollArea>
       )}
     </div>
   )

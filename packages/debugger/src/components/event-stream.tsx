@@ -1,27 +1,32 @@
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { Effect, Fiber } from 'effect'
-import { Check, Search, SlidersHorizontal } from 'lucide-react'
-import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowDownToLine, Search, SlidersHorizontal, X } from 'lucide-react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 
 import type { DebuggerEvent, EventStreamCatalog, ReplayLoader } from '../contracts'
 import { defaultEventCatalog } from '../events/catalog'
 import { cn, shortId } from '../lib/cn'
 import { getEventMeta } from '../lib/event-meta'
 import { useVisibleEvents } from '../lib/visible-events'
-import { Checkbox } from '../ui/checkbox'
+import { Button } from '../ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
 import { Input } from '../ui/input'
-import { ScrollArea } from '../ui/scroll-area'
+import { PanelHeader, PanelTitle } from '../ui/panel'
 import { EventInspector } from './event-inspector'
+import { FollowList } from './follow-list'
 
-const ROW_ESTIMATE = 28
-const FOLLOW_THRESHOLD = 24
+const ROW_ESTIMATE = 26
 
 export function EventStream<TEvent extends DebuggerEvent>({
   events,
   startedAt,
   threadId,
   threadLabel,
+  onClearThread,
   selectedSeq,
   onSelectSeq,
   catalog,
@@ -32,6 +37,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
   startedAt?: number
   threadId?: string
   threadLabel?: string
+  onClearThread?: () => void
   selectedSeq?: number
   onSelectSeq: (seq: number | undefined) => void
   catalog?: EventStreamCatalog<TEvent>
@@ -42,8 +48,6 @@ export function EventStream<TEvent extends DebuggerEvent>({
   const [query, setQuery] = useState('')
   const [follow, setFollow] = useState(true)
   const [families, setFamilies] = useState(() => new Set(eventCatalog.families))
-  const parentRef = useRef<HTMLDivElement>(null)
-  const followLock = useRef(false)
 
   const selected = useMemo(() => {
     if (selectedSeq === undefined) {
@@ -67,72 +71,6 @@ export function EventStream<TEvent extends DebuggerEvent>({
     catalog: eventCatalog,
   })
 
-  const virtualizer = useVirtualizer({
-    count: visible.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_ESTIMATE,
-    overscan: 16,
-    paddingStart: 4,
-    paddingEnd: 4,
-    getItemKey: (index) => visible[index]?.id ?? index,
-    // Avoid flushSync during ref measurement / follow-scroll under high event rates.
-    useFlushSync: false,
-  })
-
-  useEffect(() => {
-    if (!follow || visible.length === 0) {
-      return () => undefined
-    }
-
-    followLock.current = true
-
-    let followRelease: Fiber.Fiber<void> | undefined
-
-    const rafId = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
-
-      followRelease = Effect.runFork(
-        Effect.sleep(50).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              followLock.current = false
-            }),
-          ),
-        ),
-      )
-    })
-
-    return () => {
-      cancelAnimationFrame(rafId)
-
-      if (followRelease !== undefined) {
-        Effect.runFork(Fiber.interrupt(followRelease))
-      }
-
-      followLock.current = false
-    }
-  }, [follow, visible.length, virtualizer])
-
-  const onScroll = useCallback(() => {
-    if (followLock.current) {
-      return
-    }
-
-    const el = parentRef.current
-
-    if (!el) {
-      return
-    }
-
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD
-
-    if (follow && !atBottom) {
-      setFollow(false)
-    } else if (!follow && atBottom) {
-      setFollow(true)
-    }
-  }, [follow])
-
   const toggleFamily = useCallback((family: string) => {
     setFamilies((prev) => {
       const next = new Set(prev)
@@ -148,11 +86,18 @@ export function EventStream<TEvent extends DebuggerEvent>({
   }, [])
 
   const hiddenFamilyCount = eventCatalog.families.length - families.size
+  const filtered = visible.length !== events.length
 
   return (
     <div className="debugger-event-stream flex h-full min-h-0 flex-col">
-      <div className="border-border flex min-h-10 items-center gap-1.5 border-b px-2 py-1.5">
-        <div className="relative min-w-0 flex-1">
+      <PanelHeader className="gap-1.5 pr-2">
+        <PanelTitle
+          className="hidden @md:flex"
+          meta={filtered ? `${visible.length}/${events.length}` : events.length}
+        >
+          Events
+        </PanelTitle>
+        <div className="relative ml-auto min-w-0 flex-1 @md:max-w-64">
           <Search
             aria-hidden
             className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2"
@@ -165,100 +110,105 @@ export function EventStream<TEvent extends DebuggerEvent>({
             className="h-7 w-full pl-7 text-xs"
           />
         </div>
-
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <button
-              type="button"
-              className="border-input text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring/50 relative inline-flex size-7 shrink-0 items-center justify-center rounded-md border outline-none focus-visible:ring-[3px]"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="relative"
               aria-label="Filter event families"
             >
-              <SlidersHorizontal className="size-3.5" />
+              <SlidersHorizontal />
               {hiddenFamilyCount > 0 ? (
-                <span className="bg-foreground text-background absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full font-mono text-[8px]">
+                <span className="bg-foreground text-background absolute top-0.5 right-0.5 flex size-3.5 items-center justify-center rounded-full font-mono text-[8px]">
                   {hiddenFamilyCount}
                 </span>
               ) : null}
-            </button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              sideOffset={5}
-              className="bg-background text-foreground border-border z-50 min-w-36 rounded-md border p-1 shadow-lg"
-            >
-              <DropdownMenuPrimitive.Label className="text-muted-foreground px-2 py-1 text-[10px] font-medium tracking-wide uppercase">
-                Event families
-              </DropdownMenuPrimitive.Label>
-              {eventCatalog.families.map((family) => (
-                <DropdownMenuPrimitive.CheckboxItem
-                  key={family}
-                  checked={families.has(family)}
-                  onCheckedChange={() => toggleFamily(family)}
-                  onSelect={(event) => event.preventDefault()}
-                  className="focus:bg-accent relative flex cursor-default items-center rounded-sm py-1.5 pr-2 pl-7 font-mono text-xs outline-none select-none"
-                >
-                  <span className="absolute left-2 flex size-3.5 items-center justify-center">
-                    <DropdownMenuPrimitive.ItemIndicator>
-                      <Check className="size-3" />
-                    </DropdownMenuPrimitive.ItemIndicator>
-                  </span>
-                  {family}
-                </DropdownMenuPrimitive.CheckboxItem>
-              ))}
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-
-        <label className="text-muted-foreground hover:text-foreground flex shrink-0 cursor-pointer items-center gap-1.5 px-1 text-[10px]">
-          <Checkbox
-            checked={follow}
-            onCheckedChange={(checked) => setFollow(checked === true)}
-            aria-label="Follow newest events"
-          />
-          <span className="debugger-follow-label">Follow</span>
-        </label>
-      </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Event families</DropdownMenuLabel>
+            {eventCatalog.families.map((family) => (
+              <DropdownMenuCheckboxItem
+                key={family}
+                checked={families.has(family)}
+                onCheckedChange={() => toggleFamily(family)}
+                onSelect={(event) => event.preventDefault()}
+                className="font-mono"
+              >
+                <span
+                  aria-hidden
+                  className="size-1.5 rounded-full"
+                  style={{ backgroundColor: eventCatalog.familyColor(family) }}
+                />
+                {family}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={follow}
+          aria-label="Follow newest events"
+          onClick={() => setFollow(!follow)}
+          className="aria-pressed:bg-accent aria-pressed:text-foreground px-2"
+        >
+          <ArrowDownToLine />
+          <span className="hidden @lg:inline">Follow</span>
+        </Button>
+      </PanelHeader>
       {threadId ? (
-        <div className="border-border text-muted-foreground flex items-center gap-1.5 border-b px-2 py-1 font-mono text-[10px]">
-          <span className="text-[9px] tracking-wide uppercase">Thread</span>
-          <span className="text-foreground truncate" title={threadId}>
-            {threadLabel ?? shortId(threadId)}
+        <div className="border-border flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[11px]">
+          <span className="text-muted-foreground">Thread</span>
+          <span className="bg-accent text-foreground inline-flex h-5 min-w-0 items-center gap-1 rounded-sm pr-0.5 pl-1.5 font-mono">
+            <span className="truncate" title={threadId}>
+              {threadLabel ?? shortId(threadId)}
+            </span>
+            {onClearThread ? (
+              <button
+                type="button"
+                aria-label="Show all threads"
+                onClick={onClearThread}
+                className="text-muted-foreground hover:text-foreground hover:bg-background/60 flex size-4 items-center justify-center rounded-sm"
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
           </span>
         </div>
       ) : null}
-      <ScrollArea viewportRef={parentRef} className="min-h-32 flex-1" onViewportScroll={onScroll}>
-        <div className="relative w-full px-1" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((row) => {
-            const event = visible[row.index]
-
-            if (!event) {
-              return null
-            }
-
-            return (
-              <div
-                key={event.id}
-                data-index={row.index}
-                ref={virtualizer.measureElement}
-                className="absolute top-0 left-0 w-full"
-                style={{ transform: `translateY(${row.start}px)` }}
-              >
-                <EventRow
-                  event={event}
-                  catalog={eventCatalog}
-                  startedAt={startedAt}
-                  selected={selectedSeq === event.seq}
-                  onSelectSeq={onSelectSeq}
-                />
-              </div>
-            )
-          })}
-        </div>
-      </ScrollArea>
+      <FollowList
+        items={visible}
+        getKey={(event) => event.id}
+        estimateSize={ROW_ESTIMATE}
+        overscan={16}
+        follow={follow}
+        onFollowChange={setFollow}
+        className="min-h-32"
+        itemClassName="px-1.5"
+        empty={
+          <p className="text-muted-foreground p-6 text-center text-xs">
+            {events.length === 0 ? 'Waiting for events…' : 'No events match these filters.'}
+          </p>
+        }
+        renderItem={(event) => (
+          <EventRow
+            event={event}
+            catalog={eventCatalog}
+            startedAt={startedAt}
+            selected={selectedSeq === event.seq}
+            onSelectSeq={onSelectSeq}
+          />
+        )}
+      />
       {selected
         ? (renderInspector?.(selected) ?? (
-            <EventInspector event={selected} loadReplayStep={loadReplayStep} />
+            <EventInspector
+              event={selected}
+              loadReplayStep={loadReplayStep}
+              onClose={() => onSelectSeq(undefined)}
+            />
           ))
         : null}
     </div>
@@ -283,44 +233,40 @@ function EventRow<TEvent extends DebuggerEvent>({
   const meta = getEventMeta(event, catalog)
   const offset = startedAt !== undefined ? Math.max(0, event.ts - startedAt) : undefined
 
-  const handleClick = useCallback(() => {
-    onSelectSeq(selected ? undefined : event.seq)
-  }, [onSelectSeq, selected, event.seq])
-
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onClick={() => onSelectSeq(selected ? undefined : event.seq)}
       title={[meta.summary.title, meta.summary.detail].filter(Boolean).join(' — ')}
       className={cn(
-        'flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left font-mono text-[11px]',
+        'flex h-[26px] w-full items-center gap-2 rounded-sm px-1.5 text-left font-mono text-[11px]',
         selected ? 'bg-accent' : 'hover:bg-accent/40',
         event.ephemeral && 'opacity-50',
       )}
     >
       <span
-        className="mt-1.5 size-1.5 shrink-0 rounded-full"
+        className="size-1.5 shrink-0 rounded-full"
         style={{ backgroundColor: catalog.familyColor(meta.family) }}
       />
-      <span className="text-muted-foreground w-6 shrink-0 text-right tabular-nums">
+      <span className="text-muted-foreground w-7 shrink-0 text-right tabular-nums">
         {event.seq}
       </span>
-      <span className="debugger-event-offset text-muted-foreground w-10 shrink-0 text-right tabular-nums">
+      <span className="debugger-event-offset text-muted-foreground/70 w-12 shrink-0 text-right tabular-nums">
         {offset !== undefined ? `+${offset}` : ''}
       </span>
       <span className="min-w-0 flex-1 truncate whitespace-nowrap">
         <span className="text-foreground">{meta.summary.title}</span>
         {meta.summary.detail ? (
-          <span className="text-muted-foreground ml-1">{meta.summary.detail}</span>
+          <span className="text-muted-foreground ml-1.5">{meta.summary.detail}</span>
         ) : null}
       </span>
       {event.causationId ? (
-        <span className="debugger-event-causation text-muted-foreground shrink-0">
+        <span className="debugger-event-causation text-muted-foreground/70 shrink-0">
           ← {shortId(event.causationId)}
         </span>
       ) : null}
       {event.threadId ? (
-        <span className="debugger-event-thread text-muted-foreground shrink-0">
+        <span className="debugger-event-thread text-muted-foreground/70 shrink-0">
           {shortId(event.threadId)}
         </span>
       ) : null}

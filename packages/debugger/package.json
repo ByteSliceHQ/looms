@@ -40,9 +40,11 @@
     "@looms/react": "workspace:*",
     "@tanstack/react-virtual": "^3.14.11",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "effect": "4.0.0-rc.112",
     "lucide-react": "^1.43.0",
     "radix-ui": "^1.6.7",
+    "react-resizable-panels": "^4.13.3",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
