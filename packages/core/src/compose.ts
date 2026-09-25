@@ -100,6 +100,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
         name: definition.name,
         version,
         input: definition.input,
+        description: definition.description,
         value: definition,
       })
     }

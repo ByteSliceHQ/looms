@@ -1,6 +1,6 @@
 # Examples
 
-Small, self-contained scripts that show how to stand up a Looms runtime. The full demo app under `apps/demo` is richer; start here if you want the minimal shape of each pattern.
+Small, self-contained scripts that show how to stand up a Looms runtime. `apps/demo` is a Bun host with the debugger turned on; start here if you want the minimal shape of each pattern.
 
 | Script                                     | What it shows                                                    |
 | ------------------------------------------ | ---------------------------------------------------------------- |

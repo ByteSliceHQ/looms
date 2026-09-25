@@ -3,6 +3,7 @@ import { Data, Effect, Option, Schema, Stream } from 'effect'
 import {
   createRunId,
   EventEnvelopeSchema,
+  JsonValueSchema,
   ReplayStepSchema,
   RunStateSchema,
   stringifyJson,
@@ -54,6 +55,43 @@ const ProjectionResultSchema = Schema.Struct({
   name: Schema.String,
   value: Schema.Unknown,
 })
+
+const RunListSchema = Schema.Struct({
+  runIds: Schema.Array(Schema.String),
+})
+
+const DefinitionSchema = Schema.Struct({
+  kind: Schema.String,
+  name: Schema.String,
+  version: Schema.String,
+  description: Schema.optional(Schema.String),
+  inputSchema: Schema.optional(JsonValueSchema),
+})
+
+const DefinitionsResultSchema = Schema.Struct({
+  definitions: Schema.Array(DefinitionSchema),
+  projections: Schema.Array(Schema.String),
+})
+
+const StatusResultSchema = Schema.Struct({
+  runId: Schema.String,
+  state: RunStateSchema,
+  head: Schema.Finite,
+  tail: Schema.Finite,
+  effects: Schema.Array(
+    Schema.Struct({
+      effectId: Schema.String,
+      threadId: Schema.String,
+      type: Schema.String,
+      attempt: Schema.Finite,
+      status: Schema.String,
+      deadlineAt: Schema.NullOr(Schema.Finite),
+      lastError: Schema.NullOr(Schema.String),
+    }),
+  ),
+})
+
+export type LoomsDefinition = Schema.Schema.Type<typeof DefinitionSchema>
 
 export interface LoomsClientOptions {
   baseUrl?: string
@@ -279,6 +317,10 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
     workerCallback,
+    listRuns: () => request('/runs', RunListSchema),
+    listDefinitions: () => request('/definitions', DefinitionsResultSchema),
+    getStatus: (runId: string) =>
+      request(`/runs/${encodeURIComponent(runId)}/status`, StatusResultSchema),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>

@@ -28,6 +28,12 @@ export function authDenied(status: number, error: string): AuthDecision {
   return { allowed: false, status, error }
 }
 
+export function authResponse(decision: AuthDecision): Response | null {
+  return decision.allowed
+    ? null
+    : Response.json({ error: decision.error }, { status: decision.status })
+}
+
 const unauthorized = authDenied(401, 'Unauthorized')
 
 function notConfigured(access: 'worker' | 'operations'): AuthDecision {

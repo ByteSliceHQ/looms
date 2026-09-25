@@ -37,7 +37,7 @@ Existing development commands:
 bun run verify          # build, type checks, tests, lint, and formatting checks
 bun run fmt             # oxfmt (write)
 bun run fmt:check       # oxfmt --check
-bun run demo            # demo at http://127.0.0.1:8787
+bun run demo            # host at http://127.0.0.1:8787, debugger at /debugger
 bun run docs            # docs at http://127.0.0.1:8788
 ```
 
@@ -74,7 +74,7 @@ flox activate -- bun run doctor
 | ------------------ | ----------------------------------------------------------- |
 | `packages/*`       | Private module workspaces (`@looms/*`)                      |
 | `packages/looms`   | Assembled public package (`@swirls/looms`)                  |
-| `apps/demo`        | Interactive demo application                                |
+| `apps/demo`        | Demo host that serves the debugger                          |
 | `apps/demo-worker` | Cloudflare demo backend                                     |
 | `apps/docs`        | Source for [looms.sh](https://looms.sh)                     |
 | `examples/`        | Small runnable examples and the persisted-review quickstart |

@@ -1,7 +1,10 @@
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useState } from 'react'
 
-import { DebuggerSplit, defaultEventCatalog, projectRunView } from '@swirls/looms/debugger'
+import { agentDebugger } from '@swirls/looms/agent/debugger'
+import { approvalDebugger } from '@swirls/looms/approval/debugger'
+import { createEventCatalog, DebuggerSplit, projectRunView } from '@swirls/looms/debugger'
+import { workflowDebugger } from '@swirls/looms/workflow/debugger'
 
 import { landingOrchestrationEvents } from '../landing/orchestration-run'
 import {
@@ -13,6 +16,8 @@ import {
   type PlaybackAction,
   type PlaybackState,
 } from '../landing/playback'
+
+const landingCatalog = createEventCatalog([agentDebugger, workflowDebugger, approvalDebugger])
 
 function playbackReducer(state: PlaybackState, action: PlaybackAction): PlaybackState {
   return reducePlayback(state, action)
@@ -155,7 +160,7 @@ export function LandingDebugger() {
             onSelectThread={inspectThread}
             selectedSeq={selectedSeq}
             onSelectSeq={inspectSeq}
-            catalog={defaultEventCatalog}
+            catalog={landingCatalog}
             orientation="vertical"
             showTreeHeading={false}
           />

@@ -398,4 +398,118 @@ describe('server routing', () => {
     expect(worker?.status).toBe(503)
     await looms.stop()
   })
+
+  test('GET /definitions lists registered definitions and projections', async () => {
+    const flow = defineWorkflow({
+      name: 'checkout',
+      description: 'Charge after review',
+      input: Schema.Struct({ amount: Schema.Finite }),
+      nodes: [{ id: 'step', run: () => null }],
+    })
+
+    const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
+
+    const response = await looms.fetch(new Request('http://looms.test/definitions'))
+
+    const body = Schema.decodeUnknownSync(
+      Schema.Struct({
+        definitions: Schema.Array(
+          Schema.Struct({
+            kind: Schema.String,
+            name: Schema.String,
+            version: Schema.String,
+            description: Schema.optional(Schema.String),
+            inputSchema: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+          }),
+        ),
+        projections: Schema.Array(Schema.String),
+      }),
+    )(await response?.json())
+
+    expect(response?.status).toBe(200)
+
+    expect(body.definitions).toEqual([
+      {
+        kind: 'workflow',
+        name: 'checkout',
+        version: 'v1',
+        description: 'Charge after review',
+        inputSchema: body.definitions[0]?.inputSchema,
+      },
+    ])
+
+    expect(body.definitions[0]?.inputSchema).toMatchObject({ type: 'object' })
+    expect(body.projections).toContain('nodes')
+    await looms.stop()
+  })
+
+  test('serves a debugger under its base path after read authorization', async () => {
+    const seen: RouteInfo[] = []
+
+    const looms = createLooms({
+      modules: [],
+      authorize: (request, route) =>
+        Effect.sync(() => {
+          if (route.name === 'debugger') {
+            seen.push(route)
+          }
+
+          return request.headers.get('x-allow') === 'yes'
+            ? authAllowed
+            : authDenied(403, 'Forbidden')
+        }),
+      debugger: {
+        basePath: '/debugger/',
+        fetch: (request) =>
+          Promise.resolve(
+            new Response(new URL(request.url).pathname, {
+              headers: { 'content-type': 'text/html' },
+            }),
+          ),
+      },
+    })
+
+    const denied = await looms.fetch(
+      new Request('http://looms.test/debugger', { headers: { accept: 'text/html' } }),
+    )
+
+    const page = await looms.fetch(
+      new Request('http://looms.test/debugger/runs', {
+        headers: { accept: 'text/html', 'x-allow': 'yes' },
+      }),
+    )
+
+    const health = await looms.fetch(
+      new Request('http://looms.test/health', { headers: { 'x-allow': 'yes' } }),
+    )
+
+    const outside = await looms.fetch(
+      new Request('http://looms.test/debugger-other', { headers: { 'x-allow': 'yes' } }),
+    )
+
+    expect(denied?.status).toBe(403)
+    expect(await denied?.json()).toEqual({ error: 'Forbidden' })
+    expect(page?.status).toBe(200)
+    expect(await page?.text()).toBe('/debugger/runs')
+    expect(health?.status).toBe(200)
+    expect(outside).toBeNull()
+
+    expect(seen).toEqual([
+      { access: 'read', name: 'debugger' },
+      { access: 'read', name: 'debugger' },
+    ])
+
+    await looms.stop()
+  })
+
+  test('rejects a debugger mount that overlaps the HTTP API', () => {
+    expect(() =>
+      createLooms({
+        debugger: {
+          basePath: '/runs',
+          fetch: () => Promise.resolve(null),
+        },
+      }),
+    ).toThrow('overlaps the HTTP API')
+  })
 })

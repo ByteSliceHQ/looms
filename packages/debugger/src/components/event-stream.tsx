@@ -299,7 +299,8 @@ function EventRow<TEvent extends DebuggerEvent>({
       )}
     >
       <span
-        className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', catalog.familyClass(meta.family))}
+        className="mt-1.5 size-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: catalog.familyColor(meta.family) }}
       />
       <span className="text-muted-foreground w-6 shrink-0 text-right tabular-nums">
         {event.seq}

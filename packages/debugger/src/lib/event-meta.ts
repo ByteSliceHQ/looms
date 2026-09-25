@@ -1,6 +1,5 @@
-import type { DebuggerEvent, EventStreamCatalog } from '../contracts'
+import type { DebuggerEvent, EventStreamCatalog, EventSummary } from '../contracts'
 import { searchText, summarizeEvent } from '../events/catalog'
-import type { EventSummary } from '../events/family'
 
 export interface CachedEventMeta {
   summary: EventSummary

@@ -1,6 +1,11 @@
 import type { EventEnvelope, JsonValue, ReplayStep, ThreadTree } from '@looms/core'
 
-import type { EventFamily, EventSummary } from './events/family'
+export type EventFamily = string
+
+export type EventSummary = {
+  title: string
+  detail?: string
+}
 
 export type DebuggerEvent<TType extends string = string> = Pick<
   EventEnvelope<TType>,
@@ -11,7 +16,7 @@ export type DebuggerEvent<TType extends string = string> = Pick<
 export type EventStreamCatalog<TEvent extends DebuggerEvent = DebuggerEvent> = {
   families: readonly string[]
   familyOf: (type: string) => string
-  familyClass: (family: string) => string
+  familyColor: (family: string) => string
   summarize: (event: TEvent) => EventSummary
   searchText?: (event: TEvent) => string
 }
@@ -26,4 +31,4 @@ export type RunTreeModel = {
   totalEventCount?: number
 }
 
-export type { EventFamily, EventSummary, JsonValue, ReplayStep, ThreadTree }
+export type { JsonValue, ReplayStep, ThreadTree }

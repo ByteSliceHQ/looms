@@ -2,6 +2,7 @@ export {
   createLoomsClient,
   type LoomsClient,
   type LoomsClientOptions,
+  type LoomsDefinition,
   type StartResult,
   type StreamHandle,
 } from './client'

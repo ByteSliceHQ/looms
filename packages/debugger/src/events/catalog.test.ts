@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import { createEvent, type JsonValue } from '@looms/core'
 
-import { searchText, summarizeEvent } from './catalog'
+import type { DebuggerPlugin } from '../plugin'
+import { createEventCatalog, searchText, summarizeEvent } from './catalog'
 import { summarizeProtocolEvent } from './protocol-summarize'
 
 const runId = 'run_catalog'
@@ -36,13 +37,7 @@ describe('summarizeProtocolEvent', () => {
 })
 
 describe('summarizeEvent', () => {
-  test('covers protocol and domain families', () => {
-    expect(
-      summarizeEvent(
-        event('agent.message.received', { message: { role: 'user', content: 'charge 42' } }),
-      ),
-    ).toEqual({ title: 'user message', detail: 'charge 42' })
-
+  test('falls back to the event type when no plugin claims it', () => {
     expect(summarizeEvent(event('custom.unknown', { foo: 1 }))).toEqual({
       title: 'custom.unknown',
       detail: '{"foo":1}',
@@ -55,6 +50,44 @@ describe('searchText', () => {
     const item = event('agent.message', { message: { role: 'assistant', content: 'ready' } })
     expect(searchText(item)).toContain('agent.message')
     expect(searchText(item)).toContain('thr_a')
-    expect(searchText(item)).toContain('ready')
+    expect(searchText(item)).toContain('evt_1')
+  })
+})
+
+describe('createEventCatalog', () => {
+  const plugin: DebuggerPlugin = {
+    name: 'payments',
+    families: [
+      {
+        family: 'payments',
+        prefix: 'payments.',
+        color: 'oklch(0.78 0.1 175)',
+        summarize: (item) =>
+          item.type === 'payments.charge.authorized' ? { title: 'charge authorized' } : undefined,
+      },
+    ],
+  }
+
+  test('prefers the longest matching prefix', () => {
+    const catalog = createEventCatalog([plugin])
+
+    expect(catalog.familyOf('runtime.wait.registered')).toBe('wait')
+    expect(catalog.familyOf('runtime.run.started')).toBe('runtime')
+    expect(catalog.familyOf('payments.charge.authorized')).toBe('payments')
+    expect(catalog.familyOf('custom.thing')).toBe('runtime')
+    expect(catalog.familyColor('payments')).toBe('oklch(0.78 0.1 175)')
+    expect(catalog.familyColor('missing')).toBe(catalog.familyColor('runtime'))
+  })
+
+  test('uses a plugin summary before the generic fallback', () => {
+    const catalog = createEventCatalog([plugin])
+
+    expect(catalog.summarize(event('payments.charge.authorized', { amount: 42 }))).toEqual({
+      title: 'charge authorized',
+    })
+
+    expect(catalog.summarize(event('payments.charge.declined', { amount: 42 })).title).toBe(
+      'payments.charge.declined',
+    )
   })
 })

@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Data, Effect, Predicate, Schema } from 'effect'
 
-import type { JsonValue } from './types'
+import { isJsonObject, type JsonValue } from './types'
 
 export class InvalidInputError extends Data.TaggedError('InvalidInputError')<{
   readonly message: string
@@ -157,4 +157,58 @@ export function validateInputSync(
   }
 
   return result.value
+}
+
+interface StandardJsonSchemaHolder {
+  readonly '~standard': {
+    readonly jsonSchema?: {
+      readonly input?: (options: { readonly target: string }) => JsonValue
+    }
+  }
+}
+
+type SchemaCandidate = SchemaInput | StandardJsonSchemaHolder
+
+function isStandardJsonSchemaHolder(value: SchemaCandidate): value is StandardJsonSchemaHolder {
+  return '~standard' in value
+}
+
+function jsonSchemaFromHolder(value: SchemaCandidate): JsonValue | undefined {
+  if (!isStandardJsonSchemaHolder(value)) {
+    return undefined
+  }
+
+  const input = value['~standard'].jsonSchema?.input
+
+  if (!input) {
+    return undefined
+  }
+
+  try {
+    const schema = input({ target: 'draft-2020-12' })
+    return isJsonObject(schema) ? schema : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** JSON Schema for a definition input, when the schema can describe itself. */
+export function jsonSchemaOfInput(input: SchemaInput | null | undefined): JsonValue | undefined {
+  if (!input) {
+    return undefined
+  }
+
+  if (isStandardSchema(input)) {
+    return jsonSchemaFromHolder(input)
+  }
+
+  if (!Schema.isSchema(input)) {
+    return undefined
+  }
+
+  try {
+    return jsonSchemaFromHolder(Schema.toStandardJSONSchemaV1(input))
+  } catch {
+    return undefined
+  }
 }

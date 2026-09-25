@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { CodeBlock } from '../components/code-block'
 import { pageHead } from '../page-head'
 
 export const Route = createFileRoute('/docs/operations')({
@@ -114,6 +115,66 @@ function Page() {
         Set retention based on recovery, audit, and privacy requirements. Replication to a lake is
         not automatically a verified backup; confirm completeness and a restore procedure. Trimming
         old events changes the history available to replay and new projections.
+      </p>
+      <h2 id="debugger">
+        Debugger
+        <a className="heading-anchor" href="#debugger" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        <code>createLooms</code> can serve a debugger next to the HTTP API. Pass{' '}
+        <code>debuggerUi()</code> from <code>@swirls/looms/debugger/server</code> and open{' '}
+        <code>/debugger</code>. The page lists definitions, starts runs, and shows the run tree,
+        event log, replay, and projections for that process.
+      </p>
+      <CodeBlock lang="ts">{`import { createLooms } from '@swirls/looms'
+import { debuggerUi } from '@swirls/looms/debugger/server'
+
+createLooms({
+  modules,
+  debugger: debuggerUi({ path: '/debugger' }),
+  serve: true,
+})`}</CodeBlock>
+      <p>
+        Debugger requests are authorized as a read of the route named <code>debugger</code>. A
+        bearer token on reads blocks ordinary browser navigation, because the address bar cannot
+        send that header. Use a cookie or session <code>authorize</code> policy when the debugger
+        should require a signed-in user. Leave reads open only on a trusted local host.
+      </p>
+      <h2 id="debugger-plugins">
+        Debugger plugins
+        <a className="heading-anchor" href="#debugger-plugins" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        The debugger kit renders a run tree, event log, and JSON fallback. A module owns the views
+        that are specific to its events. Ship them from a <code>/debugger</code> subpath so a Worker
+        or other headless host can keep importing the module root without React.
+      </p>
+      <CodeBlock lang="ts">{`import { defineDebuggerPlugin } from '@swirls/looms/debugger'
+
+export const billingDebugger = defineDebuggerPlugin({
+  name: 'billing',
+  families: [
+    {
+      family: 'billing',
+      prefix: 'billing.',
+      color: 'oklch(0.78 0.1 175)',
+    },
+  ],
+  workspace: {
+    kinds: ['billing'],
+    component: BillingRun,
+  },
+})`}</CodeBlock>
+      <p>
+        Pass plugins to <code>DebuggerShell</code>. The hosted debugger composes the agent,
+        workflow, and approval plugins. A workspace matches <code>definition.kind</code>. A
+        projection view receives the same projection the module folds on the server. Event families
+        supply the color and summary for their prefix. Anything a plugin does not claim stays a
+        form, a JSON projection, or the event type.
       </p>
       <h2 id="local-hosts-and-timers">
         Local hosts and timers

@@ -39,6 +39,7 @@ function findLastToolMessage(messages: readonly { role: string; content: string 
 
 export const echo = defineAgent({
   name: 'echo',
+  description: 'Repeats the input as an assistant message',
   instructions: 'Echo the user message.',
   input: z.object({ text: z.string() }),
   runTurn: ({ input }) => ({
@@ -110,6 +111,7 @@ export const queryKb = defineTool({
 
 export const pipeline = defineWorkflow({
   name: 'pipeline',
+  description: 'Double a number, spawn echo, format the result',
   input: z.object({ n: z.number().default(21) }),
   nodes: [
     {
@@ -138,6 +140,7 @@ export const pipeline = defineWorkflow({
 
 export const researcher = defineAgent({
   name: 'researcher',
+  description: 'Sub-agent that queries telemetry and triggers data pipelines',
   instructions: [
     'You are a specialized researcher agent.',
     'Your goal is to gather facts, search telemetry knowledge bases, or trigger the data pipeline workflow.',
@@ -167,6 +170,7 @@ export const SpecialistInputSchema = z.object({
 
 export const specialist = defineAgent({
   name: 'specialist',
+  description: 'Specialist agent that delegates to researcher and pipeline tools',
   instructions: [
     'You are the Specialist agent.',
     'You handle in-depth domain problems by coordinating sub-specialists, analytical calculations, and workflows.',
@@ -200,6 +204,7 @@ export const specialist = defineAgent({
 
 export const orchestrator = defineAgent({
   name: 'orchestrator',
+  description: 'Spawns the specialist child agent',
   instructions: 'Delegate work to the specialist tool.',
   input: z.object({ task: z.string().optional().default('default') }),
   tools: [
@@ -250,6 +255,7 @@ export const orchestrator = defineAgent({
 
 export const greeter = defineAgent({
   name: 'greeter',
+  description: 'Calls the greet tool, then finishes',
   instructions: 'Greet using the greet tool.',
   input: z.object({ name: z.string().optional().default('world') }),
   tools: [
@@ -384,6 +390,7 @@ const askApproval = asEffectsTool({
 
 export const assistant = defineAgent({
   name: 'assistant',
+  description: 'Conversational agent with tools',
   conversational: true,
   input: z.string(),
   instructions: [
@@ -425,6 +432,7 @@ export const assistant = defineAgent({
 
 const sessionResponder = defineAgent({
   name: 'session-responder',
+  description: 'Replies to the current session message',
   input: z.object({ text: z.string() }),
   instructions: 'Reply to the current session message.',
   runTurn: ({ input }) => ({
@@ -436,6 +444,7 @@ const sessionResponder = defineAgent({
 
 export const assistantSession = defineAgentSession({
   name: 'assistant-session',
+  description: 'Durable mailbox with follow-up, steer, and next-turn delivery',
   agent: sessionResponder,
   idleTimeoutMs: 30 * 60 * 1_000,
 })

@@ -8,15 +8,28 @@ export type {
   RunTreeModel,
   ThreadTree,
 } from './contracts'
-export { DEFAULT_FAMILIES, familyClass, familyFromPrefix } from './events/family'
-export { summarizeProtocolEvent } from './events/protocol-summarize'
-export { summarizeDomainEvent } from './events/domain-summarize'
 export {
   createDefaultCatalog,
+  createEventCatalog,
   defaultEventCatalog,
   searchText,
   summarizeEvent,
 } from './events/catalog'
+export { summarizeProtocolEvent } from './events/protocol-summarize'
+export { DebuggerProvider, useDebugger, type DebuggerContextValue } from './context'
+export {
+  defineDebuggerPlugin,
+  projectionFor,
+  projectionView,
+  workspaceFor,
+  type DebuggerPlugin,
+  type EventFamilyView,
+  type ProjectionContext,
+  type ProjectionView,
+  type WorkspaceContext,
+  type WorkspaceView,
+} from './plugin'
+export { DebuggerShell, type DebuggerSelection } from './shell/debugger-shell'
 export { cn, compactJson, shortId } from './lib/cn'
 export { statusClass, statusDotClass, type StatusKind } from './lib/status'
 export { countEventsByThread, runStatusFromEvents, startedAtFromEvents } from './lib/event-counts'

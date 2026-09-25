@@ -1,0 +1,33 @@
+{
+  "name": "@looms/debugger-app",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Hosted Looms debugger",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@looms/agent": "workspace:*",
+    "@looms/approval": "workspace:*",
+    "@looms/debugger": "workspace:*",
+    "@looms/react": "workspace:*",
+    "@looms/workflow": "workspace:*",
+    "@tanstack/react-router": "^1.170.32",
+    "react": "19",
+    "react-dom": "19"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/router-plugin": "^1.168.18",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "7.0.2",
+    "vite": "^8.2.2"
+  }
+}

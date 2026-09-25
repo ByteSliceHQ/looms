@@ -6,12 +6,6 @@
   --color-status-completed: var(--status-completed);
   --color-status-failed: var(--status-failed);
   --color-status-cancelled: var(--status-cancelled);
-  --color-family-runtime: var(--family-runtime);
-  --color-family-agent: var(--family-agent);
-  --color-family-workflow: var(--family-workflow);
-  --color-family-approval: var(--family-approval);
-  --color-family-payments: var(--family-payments);
-  --color-family-wait: var(--family-wait);
 }
 
 :root {
@@ -20,12 +14,6 @@
   --status-completed: oklch(0.76 0.13 155);
   --status-failed: oklch(0.68 0.18 25);
   --status-cancelled: oklch(0.62 0.01 260);
-  --family-runtime: oklch(0.76 0.13 155);
-  --family-agent: oklch(0.74 0.12 240);
-  --family-workflow: oklch(0.76 0.12 300);
-  --family-approval: oklch(0.8 0.14 85);
-  --family-payments: oklch(0.78 0.1 175);
-  --family-wait: oklch(0.8 0.14 85);
 }
 
 .debugger-event-stream {

@@ -29,10 +29,16 @@ import {
   type WorkerCallbackInput,
 } from './runtime'
 import {
+  authResponse,
   createFetchHandler,
+  debuggerRoute,
+  defaultAuthorize,
+  isDebuggerRequestPath,
   isLoomsApiPath,
+  normalizeDebuggerBasePath,
   serveHttp,
   type Authorize,
+  type DebuggerHost,
   type RunningServer,
 } from './server'
 
@@ -64,8 +70,16 @@ export interface CreateLoomsOptions {
   /**
    * Authorizes HTTP API requests. Without it, run reads and writes are open while worker callback
    * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
+   *
+   * A mounted debugger is authorized as `{ access: 'read', name: 'debugger' }`. Bearer tokens on
+   * reads block browser navigation, so hosts that need auth should use a cookie or session policy.
    */
   readonly authorize?: Authorize
+  /**
+   * Serves a debugger UI under `debugger.basePath` (for example `/debugger`). The runtime does not
+   * bundle a UI; pass `debuggerUi()` from `@swirls/looms/debugger/server`.
+   */
+  readonly debugger?: DebuggerHost
 }
 
 export interface StartResult {
@@ -139,6 +153,14 @@ class LoomsInitializationError extends Data.TaggedError('LoomsInitializationErro
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
+
+  const debuggerHost = options.debugger
+    ? {
+        fetch: options.debugger.fetch.bind(options.debugger),
+        basePath: normalizeDebuggerBasePath(options.debugger.basePath),
+      }
+    : undefined
+
   let initPromise: Promise<Initialized> | undefined
   let runningServer: RunningServer | undefined
 
@@ -248,7 +270,17 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
     workerCallback: (runId, input) => runEffect((i) => i.runtime.workerCallback(runId, input)),
     fetch: (req) => {
-      if (!isLoomsApiPath(new URL(req.url).pathname)) {
+      const pathname = new URL(req.url).pathname
+
+      if (debuggerHost && isDebuggerRequestPath(pathname, debuggerHost.basePath)) {
+        const authorize = options.authorize ?? defaultAuthorize
+
+        return Effect.runPromise(authorize(req, debuggerRoute).pipe(Effect.map(authResponse))).then(
+          (denied) => denied ?? debuggerHost.fetch(req),
+        )
+      }
+
+      if (!isLoomsApiPath(pathname)) {
         return Promise.resolve(null)
       }
 

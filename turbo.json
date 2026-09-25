@@ -45,6 +45,11 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
+    },
+    "@looms/demo#dev": {
+      "dependsOn": ["^build", "@looms/debugger-app#build"],
+      "cache": false,
+      "persistent": true
     }
   }
 }

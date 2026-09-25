@@ -82,7 +82,7 @@ function toolInputCandidate(tool: ToolLike): SchemaCandidate | undefined {
 }
 
 export function toolJsonSchema(tool: ToolLike): JsonValue {
-  return tool.inputSchema ?? fromInputCandidate(toolInputCandidate(tool)) ?? EMPTY_OBJECT_SCHEMA
+  return fromInputCandidate(toolInputCandidate(tool)) ?? EMPTY_OBJECT_SCHEMA
 }
 
 export function toolSpecs(tools: ReadonlyArray<AgentToolEntry> = []): LlmToolSpec[] {

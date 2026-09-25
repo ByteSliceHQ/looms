@@ -6,9 +6,8 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import type { DebuggerEvent } from '../contracts'
+import type { DebuggerEvent, EventSummary } from '../contracts'
 import { compactJson } from '../lib/cn'
-import type { EventSummary } from './family'
 
 function obj(value: JsonValue | null): { [key: string]: JsonValue } {
   return isJsonObject(value) ? value : {}

@@ -3,9 +3,10 @@ import { Effect, Predicate } from 'effect'
 import type { EventStore } from '@looms/core'
 
 import type { LoomsRuntime } from '../runtime'
-import { defaultAuthorize, type Authorize } from './auth'
+import { authResponse, defaultAuthorize, type Authorize } from './auth'
 import { acceptsEventStream, toErrorResponse, type RouteOptions } from './http'
 import { matchRoute, type MatchedRoute, type Route } from './route-table'
+import { definitionRoutes } from './routes/definitions'
 import { effectRoutes } from './routes/effects'
 import { operationRoutes } from './routes/operations'
 import { runRoutes } from './routes/runs'
@@ -21,7 +22,12 @@ export interface FetchHandlerOptions {
 }
 
 function createRoutes(options: RouteOptions): readonly Route[] {
-  return [...runRoutes(options), ...effectRoutes(options), ...operationRoutes(options)]
+  return [
+    ...definitionRoutes(options),
+    ...runRoutes(options),
+    ...effectRoutes(options),
+    ...operationRoutes(options),
+  ]
 }
 
 function authorizeRoute(
@@ -40,22 +46,19 @@ function authorizeRoute(
   return authorize(
     req,
     Predicate.isString(runId) ? { access, name, runId } : { access, name },
-  ).pipe(
-    Effect.map((decision) =>
-      decision.allowed
-        ? null
-        : Response.json({ error: decision.error }, { status: decision.status }),
-    ),
-  )
+  ).pipe(Effect.map(authResponse))
 }
 
+export const LOOMS_API_ROOTS = ['/health', '/runs', '/definitions', '/operations'] as const
+
 export function isLoomsApiPath(path: string): boolean {
-  return (
-    path === '/health' ||
-    path === '/runs' ||
-    path.startsWith('/runs/') ||
-    path.startsWith('/operations/')
-  )
+  for (const root of LOOMS_API_ROOTS) {
+    if (path === root || path.startsWith(`${root}/`)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 export function createFetchHandler(

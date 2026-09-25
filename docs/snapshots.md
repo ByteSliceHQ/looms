@@ -76,16 +76,15 @@ Looms supports pluggable runtime hosts for actor single-writer execution:
 2. **Cloudflare Durable Objects (`@swirls/looms/cloudflare`)**: Named actor cells on Cloudflare. Each cell owns a private SQLite database via `ctx.storage.sql` and schedules durable timer wakes via `ctx.storage.setAlarm()`.
 3. **celld (`denoland/celld`)**: Self-hosted virtual actor daemon running the same Workers / Durable Objects bundle with S3-compatible bucket replication (`celld dev .` or `celld deploy . --bucket $CELLD_BUCKET`).
 
-### Swapping backends in the demo
+### Demo host
 
-Set `LOOMS_BACKEND` in your environment:
+`apps/demo` is a Bun `createLooms` process. It stores runs in `.looms/demo.sqlite` and serves the debugger at `/debugger`. It can start `s2-lite` for projections.
 
-- `LOOMS_BACKEND=bun` (default): Runs `createLocalActorHost` inside the TanStack app server (per-run SQLite under `.looms/runs/`).
-- `LOOMS_BACKEND=cloudflare`: Proxies `/runs*` requests to `LOOMS_WORKER_URL` (default `http://127.0.0.1:8788`), where the Durable Object worker (`apps/demo-worker`) executes each run in its own cell.
+`apps/demo-worker` is a separate Cloudflare Durable Object host and does not serve the debugger. Run it with wrangler. It loads secrets from `apps/demo/.env` or `apps/demo-worker/.dev.vars`.
 
-Both backends share `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads). Cloudflare mode loads secrets from `apps/demo/.env` via `wrangler dev --env-file ../demo/.env` (or `apps/demo-worker/.dev.vars`).
+Both use `resolveDemoLlm` / `resolveDemoProjectors` and the same default model (`LOOMS_MODEL`, default `openai/gpt-4o-mini`) when `OPENROUTER_API_KEY` is set. Without a key they use the stub `demoLlm` (scripted tool calls; assistant replies may include raw JSON tool payloads).
 
-> **Note on `GET /runs`:** Actor cells are isolated databases keyed by `runId` (Bun host, Durable Objects, and celld). Global run enumeration (`GET /runs`) returns `501 Not Implemented`; recent-run lists should come from an async projector lake (such as S2) or client-side storage (as the demo UI does).
+> **Note on `GET /runs`:** Actor cells are isolated databases keyed by `runId` (the local actor host, Durable Objects, and celld). Global run enumeration (`GET /runs`) returns `501 Not Implemented` there; recent-run lists should come from an async projector lake (such as S2). A single-store `createLooms` host, including the Bun demo, lists runs directly.
 
 Durable Object request serialization and SQLite transactions provide a
 single-writer boundary per object. Alarms are durable but can be late or

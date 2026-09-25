@@ -76,8 +76,8 @@
     },
     {
       "files": [
-        "apps/demo/src/looms.bun.ts",
-        "apps/demo/src/looms.server.ts",
+        "apps/demo/src/server.ts",
+        "packages/debugger/src/server/**/*.ts",
         "packages/s2/src/lite.ts"
       ],
       "rules": {
@@ -98,6 +98,45 @@
         "effecttsgo/global-console": "off",
         "effecttsgo/node-builtin-import": "off",
         "effecttsgo/process-env": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/agent/src/**/*.ts",
+        "packages/workflow/src/**/*.ts",
+        "packages/approval/src/**/*.ts"
+      ],
+      "excludeFiles": [
+        "packages/agent/src/debugger/**",
+        "packages/workflow/src/debugger/**",
+        "packages/approval/src/debugger/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "message": "Import React from the module debugger entry, not the runtime package."
+              },
+              {
+                "name": "react-dom",
+                "message": "Import React from the module debugger entry, not the runtime package."
+              },
+              {
+                "name": "@looms/debugger",
+                "message": "Import the debugger kit from the module debugger entry, not the runtime package."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["./debugger", "./debugger/*", "../debugger", "../debugger/*"],
+                "message": "The package root must not import debugger UI."
+              }
+            ]
+          }
+        ]
       }
     }
   ],

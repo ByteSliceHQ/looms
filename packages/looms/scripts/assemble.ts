@@ -104,3 +104,9 @@ await writeFile(
 )
 
 await rewriteImports(outputRoot)
+
+const debuggerApp = fileURLToPath(new URL('../../../apps/debugger/dist', import.meta.url))
+
+await cp(debuggerApp, join(outputRoot, 'debugger', 'app'), {
+  recursive: true,
+})

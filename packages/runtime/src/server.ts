@@ -1,11 +1,19 @@
 export {
   createFetchHandler,
   isLoomsApiPath,
+  LOOMS_API_ROOTS,
   type FetchHandlerOptions,
 } from './server/fetch-handler'
 export {
+  debuggerRoute,
+  isDebuggerRequestPath,
+  normalizeDebuggerBasePath,
+  type DebuggerHost,
+} from './server/debugger-host'
+export {
   authAllowed,
   authDenied,
+  authResponse,
   bearerAuth,
   defaultAuthorize,
   type AuthDecision,
