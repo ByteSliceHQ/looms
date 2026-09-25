@@ -19,6 +19,10 @@ async function fixture(): Promise<string> {
   return root
 }
 
+function get(path: string): [Request, { basePath: string; path: string }] {
+  return [new Request(`http://looms.test/debugger${path}`), { basePath: '/debugger', path }]
+}
+
 describe('debuggerUi', () => {
   test('resolves the bundled app next to the server module', () => {
     expect(debuggerAppRoot('file:///opt/looms/dist/debugger/server/index.js')).toBe(
@@ -27,12 +31,12 @@ describe('debuggerUi', () => {
   })
 
   test('injects the mount path and falls back to the SPA shell', async () => {
-    const root = await fixture()
-    const ui = debuggerUi({ path: '/debugger', root })
+    const ui = debuggerUi({ root: await fixture() })
 
-    const page = await ui.fetch(new Request('http://looms.test/debugger/runs'))
+    const page = await ui.fetch(...get('/runs'))
     const html = await page?.text()
 
+    expect(ui.basePath).toBe('/debugger')
     expect(page?.status).toBe(200)
     expect(page?.headers.get('content-type')).toContain('text/html')
     expect(page?.headers.get('cache-control')).toBe('no-cache')
@@ -40,15 +44,22 @@ describe('debuggerUi', () => {
   })
 
   test('serves built assets with a long-lived cache', async () => {
-    const root = await fixture()
-    const ui = debuggerUi({ root })
+    const ui = debuggerUi({ root: await fixture() })
 
-    const asset = await ui.fetch(new Request('http://looms.test/debugger/assets/app.js'))
+    const asset = await ui.fetch(...get('/assets/app.js'))
 
     expect(asset?.status).toBe(200)
     expect(asset?.headers.get('content-type')).toContain('text/javascript')
     expect(asset?.headers.get('cache-control')).toContain('immutable')
     expect(await asset?.text()).toContain('console.log')
+  })
+
+  test('returns 404 for a missing asset instead of the SPA shell', async () => {
+    const ui = debuggerUi({ root: await fixture() })
+
+    const missing = await ui.fetch(...get('/assets/stale.js'))
+
+    expect(missing?.status).toBe(404)
   })
 
   test('rejects paths that escape the bundle directory', async () => {
@@ -58,11 +69,11 @@ describe('debuggerUi', () => {
     await symlink(outside, join(root, 'assets', 'escape'))
     const ui = debuggerUi({ root })
 
-    const escaped = await ui.fetch(new Request('http://looms.test/debugger/assets/escape'))
-    const dotted = await ui.fetch(new Request('http://looms.test/debugger/../../secret'))
+    const escaped = await ui.fetch(...get('/assets/escape'))
+    const dotted = await ui.fetch(...get('/%2e%2e/secret'))
 
     expect(escaped?.status).toBe(400)
-    expect(dotted?.status).toBe(404)
+    expect(dotted?.status).toBe(400)
     expect(await escaped?.text()).not.toContain('secret')
   })
 })

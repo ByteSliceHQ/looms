@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { defineEventCatalog, defineModule } from '@looms/core'
+import {
+  DefinitionCatalogSchema,
+  defineEventCatalog,
+  defineModule,
+  RunSummariesSchema,
+} from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
@@ -410,21 +415,7 @@ describe('server routing', () => {
     const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
 
     const response = await looms.fetch(new Request('http://looms.test/definitions'))
-
-    const body = Schema.decodeUnknownSync(
-      Schema.Struct({
-        definitions: Schema.Array(
-          Schema.Struct({
-            kind: Schema.String,
-            name: Schema.String,
-            version: Schema.String,
-            description: Schema.optional(Schema.String),
-            inputSchema: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-          }),
-        ),
-        projections: Schema.Array(Schema.String),
-      }),
-    )(await response?.json())
+    const body = Schema.decodeUnknownSync(DefinitionCatalogSchema)(await response?.json())
 
     expect(response?.status).toBe(200)
 
@@ -440,6 +431,29 @@ describe('server routing', () => {
 
     expect(body.definitions[0]?.inputSchema).toMatchObject({ type: 'object' })
     expect(body.projections).toContain('nodes')
+    await looms.stop()
+  })
+
+  test('GET /runs?include=summary lists each run with its status and definition', async () => {
+    const flow = defineWorkflow({ name: 'summarized', nodes: [{ id: 'step', run: () => null }] })
+    const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })
+    const started = await looms.start(flow, null)
+
+    const plain = await looms.fetch(new Request('http://looms.test/runs'))
+    const summarized = await looms.fetch(new Request('http://looms.test/runs?include=summary'))
+    const body = Schema.decodeUnknownSync(RunSummariesSchema)(await summarized?.json())
+
+    expect(await plain?.json()).toEqual({ runIds: [started.runId] })
+
+    expect(body.runs).toEqual([
+      {
+        runId: started.runId,
+        status: 'completed',
+        kind: 'workflow',
+        definitionName: 'summarized',
+      },
+    ])
+
     await looms.stop()
   })
 
@@ -460,9 +474,9 @@ describe('server routing', () => {
         }),
       debugger: {
         basePath: '/debugger/',
-        fetch: (request) =>
+        fetch: (_request, mount) =>
           Promise.resolve(
-            new Response(new URL(request.url).pathname, {
+            new Response(`${mount.basePath} ${mount.path}`, {
               headers: { 'content-type': 'text/html' },
             }),
           ),
@@ -490,7 +504,7 @@ describe('server routing', () => {
     expect(denied?.status).toBe(403)
     expect(await denied?.json()).toEqual({ error: 'Forbidden' })
     expect(page?.status).toBe(200)
-    expect(await page?.text()).toBe('/debugger/runs')
+    expect(await page?.text()).toBe('/debugger /runs')
     expect(health?.status).toBe(200)
     expect(outside).toBeNull()
 

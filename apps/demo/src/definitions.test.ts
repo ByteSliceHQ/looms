@@ -3,21 +3,11 @@ import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
 
 import { createLooms } from '@swirls/looms'
+import { DefinitionCatalogSchema } from '@swirls/looms/core'
 
 import { demoModules } from './runtime'
 
-const decodeCatalog = Schema.decodeUnknownSync(
-  Schema.Struct({
-    definitions: Schema.Array(
-      Schema.Struct({
-        kind: Schema.String,
-        name: Schema.String,
-        inputSchema: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-      }),
-    ),
-    projections: Schema.Array(Schema.String),
-  }),
-)
+const decodeCatalog = Schema.decodeUnknownSync(DefinitionCatalogSchema)
 
 describe('demo definitions', () => {
   test('publishes runnable definitions and projections', async () => {

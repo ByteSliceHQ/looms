@@ -1,27 +1,18 @@
-import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
-import type { DebuggerEvent, EventSummary } from '@looms/debugger'
-
-function obj(value: JsonValue | null): { [key: string]: JsonValue } {
-  return isJsonObject(value) ? value : {}
-}
-
-function text(value: JsonValue | undefined): string | undefined {
-  return isJsonString(value) ? value : undefined
-}
+import { jsonFields, jsonText, type DebuggerEvent, type EventSummary } from '@looms/debugger'
 
 export function summarizeApprovalEvent(event: DebuggerEvent): EventSummary | undefined {
-  const payload = obj(event.payload)
+  const payload = jsonFields(event.payload)
 
   switch (event.type) {
     case 'approval.requested':
-      return { title: 'approval requested', detail: text(payload.title) }
+      return { title: 'approval requested', detail: jsonText(payload.title) }
     case 'approval.decided':
       return {
-        title: `approval ${text(payload.outcome) ?? 'decided'}`,
-        detail: text(payload.approvalId),
+        title: `approval ${jsonText(payload.outcome) ?? 'decided'}`,
+        detail: jsonText(payload.approvalId),
       }
     case 'approval.timed_out':
-      return { title: 'approval timed out', detail: text(payload.approvalId) }
+      return { title: 'approval timed out', detail: jsonText(payload.approvalId) }
     default:
       return undefined
   }

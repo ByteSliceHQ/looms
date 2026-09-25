@@ -4,7 +4,8 @@ import type { EventStore } from '@looms/core'
 
 import type { LoomsRuntime } from '../runtime'
 import { authResponse, defaultAuthorize, type Authorize } from './auth'
-import { acceptsEventStream, toErrorResponse, type RouteOptions } from './http'
+import { debuggerPath, serveDebugger, type DebuggerMount } from './debugger-host'
+import { acceptsEventStream, isLoomsApiPath, toErrorResponse, type RouteOptions } from './http'
 import { matchRoute, type MatchedRoute, type Route } from './route-table'
 import { definitionRoutes } from './routes/definitions'
 import { effectRoutes } from './routes/effects'
@@ -19,6 +20,8 @@ export interface FetchHandlerOptions {
    * operations routes unavailable; use `bearerAuth` or your own policy to change that.
    */
   readonly authorize?: Authorize
+  /** Debugger UI served beside the API and authorized as `{ access: 'read', name: 'debugger' }`. */
+  readonly debugger?: DebuggerMount
 }
 
 function createRoutes(options: RouteOptions): readonly Route[] {
@@ -49,16 +52,9 @@ function authorizeRoute(
   ).pipe(Effect.map(authResponse))
 }
 
-export const LOOMS_API_ROOTS = ['/health', '/runs', '/definitions', '/operations'] as const
-
-export function isLoomsApiPath(path: string): boolean {
-  for (const root of LOOMS_API_ROOTS) {
-    if (path === root || path.startsWith(`${root}/`)) {
-      return true
-    }
-  }
-
-  return false
+/** Whether the fetch handler answers `pathname`: the HTTP API or the debugger mount. */
+export function handlesPath(pathname: string, mount: DebuggerMount | undefined): boolean {
+  return isLoomsApiPath(pathname) || (mount !== undefined && debuggerPath(mount, pathname) !== null)
 }
 
 export function createFetchHandler(
@@ -66,9 +62,15 @@ export function createFetchHandler(
 ): (req: Request) => Promise<Response | null> {
   const routes = createRoutes(options)
   const authorize = options.authorize ?? defaultAuthorize
+  const mount = options.debugger
 
   return (req) => {
     const url = new URL(req.url)
+    const mountedPath = mount ? debuggerPath(mount, url.pathname) : null
+
+    if (mount && mountedPath !== null) {
+      return respond(serveDebugger(req, mount, mountedPath, authorize))
+    }
 
     if (!isLoomsApiPath(url.pathname)) {
       return Promise.resolve(null)
@@ -80,7 +82,7 @@ export function createFetchHandler(
       return Promise.resolve(null)
     }
 
-    return Effect.runPromise(
+    return respond(
       Effect.gen(function* () {
         const matched = matchRoute(routes, req.method, url.pathname)
 
@@ -95,14 +97,20 @@ export function createFetchHandler(
         }
 
         return yield* matched.route.handle({ req, url, params: matched.params })
-      }).pipe(
-        Effect.catch((error) => Effect.succeed(toErrorResponse(error))),
-        Effect.catchCause((cause) =>
-          Effect.logError('[@looms/runtime] request failed', cause).pipe(
-            Effect.as(Response.json({ error: 'Internal server error' }, { status: 500 })),
-          ),
-        ),
-      ),
+      }),
     )
   }
+}
+
+function respond(effect: Effect.Effect<Response | null, Error>): Promise<Response | null> {
+  return Effect.runPromise(
+    effect.pipe(
+      Effect.catch((error) => Effect.succeed(toErrorResponse(error))),
+      Effect.catchCause((cause) =>
+        Effect.logError('[@looms/runtime] request failed', cause).pipe(
+          Effect.as(Response.json({ error: 'Internal server error' }, { status: 500 })),
+        ),
+      ),
+    ),
+  )
 }

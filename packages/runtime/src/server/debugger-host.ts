@@ -1,38 +1,57 @@
-import type { RouteInfo } from './auth'
-import { LOOMS_API_ROOTS } from './fetch-handler'
+import { Effect } from 'effect'
 
-export const debuggerRoute: RouteInfo = { access: 'read', name: 'debugger' }
+import type { DebuggerHost } from '@looms/core'
 
-/**
- * Serves a debugger UI for requests under `basePath`. The runtime does not read the filesystem;
- * the host implementation does.
- */
-export interface DebuggerHost {
-  /** Absolute mount path, such as `/debugger`. Must not overlap the HTTP API. */
+import { authResponse, type Authorize } from './auth'
+import { isLoomsApiPath } from './http'
+
+export interface DebuggerMount {
   readonly basePath: string
-  fetch(req: Request): Promise<Response | null>
+  readonly host: DebuggerHost
 }
 
-export function normalizeDebuggerBasePath(path: string): string {
+export function mountDebugger(host: DebuggerHost): DebuggerMount {
+  const path = host.basePath
+
   if (!path.startsWith('/') || path.includes('//') || path.split('/').includes('..')) {
     throw new Error(`debugger basePath must be an absolute URL path: ${path}`)
   }
 
-  const base = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
+  const basePath = path.endsWith('/') ? path.slice(0, -1) : path
 
-  if (base === '/') {
+  if (basePath === '') {
     throw new Error('debugger basePath must not be /')
   }
 
-  for (const reserved of LOOMS_API_ROOTS) {
-    if (base === reserved || base.startsWith(`${reserved}/`) || reserved.startsWith(`${base}/`)) {
-      throw new Error(`debugger basePath overlaps the HTTP API: ${base}`)
-    }
+  if (isLoomsApiPath(basePath)) {
+    throw new Error(`debugger basePath overlaps the HTTP API: ${basePath}`)
   }
 
-  return base
+  return { basePath, host }
 }
 
-export function isDebuggerRequestPath(pathname: string, basePath: string): boolean {
-  return pathname === basePath || pathname.startsWith(`${basePath}/`)
+/** Path below the mount, or null when `pathname` is outside it. */
+export function debuggerPath(mount: DebuggerMount, pathname: string): string | null {
+  if (pathname === mount.basePath) {
+    return ''
+  }
+
+  return pathname.startsWith(`${mount.basePath}/`) ? pathname.slice(mount.basePath.length) : null
+}
+
+export function serveDebugger(
+  req: Request,
+  mount: DebuggerMount,
+  path: string,
+  authorize: Authorize,
+): Effect.Effect<Response | null> {
+  return authorize(req, { access: 'read', name: 'debugger' }).pipe(
+    Effect.flatMap((decision) => {
+      const denied = authResponse(decision)
+
+      return denied
+        ? Effect.succeed(denied)
+        : Effect.promise(() => mount.host.fetch(req, { basePath: mount.basePath, path }))
+    }),
+  )
 }

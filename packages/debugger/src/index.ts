@@ -1,6 +1,5 @@
 export type {
   DebuggerEvent,
-  EventFamily,
   EventStreamCatalog,
   EventSummary,
   ReplayLoader,
@@ -8,17 +7,10 @@ export type {
   RunTreeModel,
   ThreadTree,
 } from './contracts'
-export {
-  createDefaultCatalog,
-  createEventCatalog,
-  defaultEventCatalog,
-  searchText,
-  summarizeEvent,
-} from './events/catalog'
+export { createEventCatalog, defaultEventCatalog } from './events/catalog'
 export { summarizeProtocolEvent } from './events/protocol-summarize'
 export { DebuggerProvider, useDebugger, type DebuggerContextValue } from './context'
 export {
-  defineDebuggerPlugin,
   projectionFor,
   projectionView,
   workspaceFor,
@@ -30,7 +22,18 @@ export {
   type WorkspaceView,
 } from './plugin'
 export { DebuggerShell, type DebuggerSelection } from './shell/debugger-shell'
-export { cn, compactJson, shortId } from './lib/cn'
+export { StartForm } from './shell/start-form'
+export { useStartRun, type StartRun } from './shell/use-start-run'
+export {
+  formInput,
+  inputForm,
+  messageInput,
+  type FormField,
+  type FormValues,
+  type InputForm,
+} from './shell/schema-form'
+export { cn, compactJson, errorMessage, shortId } from './lib/cn'
+export { jsonFields, jsonNumberText, jsonText } from './lib/payload'
 export { statusClass, statusDotClass, type StatusKind } from './lib/status'
 export { countEventsByThread, runStatusFromEvents, startedAtFromEvents } from './lib/event-counts'
 export { projectRunView, type ProjectedRunView } from './lib/project-run'

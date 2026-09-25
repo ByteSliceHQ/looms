@@ -6,6 +6,7 @@ import {
   snapshotStoreOf,
   SnapshotStoreTag,
   type AnyRuntimeModule,
+  type DebuggerHost,
   type DefinitionInput,
   type DefinitionRef,
   type EventEnvelope,
@@ -29,16 +30,11 @@ import {
   type WorkerCallbackInput,
 } from './runtime'
 import {
-  authResponse,
   createFetchHandler,
-  debuggerRoute,
-  defaultAuthorize,
-  isDebuggerRequestPath,
-  isLoomsApiPath,
-  normalizeDebuggerBasePath,
+  handlesPath,
+  mountDebugger,
   serveHttp,
   type Authorize,
-  type DebuggerHost,
   type RunningServer,
 } from './server'
 
@@ -154,13 +150,7 @@ class LoomsInitializationError extends Data.TaggedError('LoomsInitializationErro
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
 
-  const debuggerHost = options.debugger
-    ? {
-        fetch: options.debugger.fetch.bind(options.debugger),
-        basePath: normalizeDebuggerBasePath(options.debugger.basePath),
-      }
-    : undefined
-
+  const debuggerMount = options.debugger ? mountDebugger(options.debugger) : undefined
   let initPromise: Promise<Initialized> | undefined
   let runningServer: RunningServer | undefined
 
@@ -210,6 +200,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             runtime,
             store,
             authorize: options.authorize,
+            debugger: debuggerMount,
           })
 
           return { runtime, store, snapshotStore: snapshotStoreOf(store), fetchHandler }
@@ -270,17 +261,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
     workerCallback: (runId, input) => runEffect((i) => i.runtime.workerCallback(runId, input)),
     fetch: (req) => {
-      const pathname = new URL(req.url).pathname
-
-      if (debuggerHost && isDebuggerRequestPath(pathname, debuggerHost.basePath)) {
-        const authorize = options.authorize ?? defaultAuthorize
-
-        return Effect.runPromise(authorize(req, debuggerRoute).pipe(Effect.map(authResponse))).then(
-          (denied) => denied ?? debuggerHost.fetch(req),
-        )
-      }
-
-      if (!isLoomsApiPath(pathname)) {
+      if (!handlesPath(new URL(req.url).pathname, debuggerMount)) {
         return Promise.resolve(null)
       }
 

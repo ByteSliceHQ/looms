@@ -189,7 +189,6 @@ export function defineAgent<
   return {
     kind: 'agent',
     ...def,
-    description: def.description ?? def.instructions,
     version: def.version ?? DEFAULT_DEFINITION_VERSION,
     tools: def.tools ? normalizeTools(def.tools) : undefined,
   }

@@ -1,7 +1,5 @@
 import type { EventEnvelope, JsonValue, ReplayStep, ThreadTree } from '@looms/core'
 
-export type EventFamily = string
-
 export type EventSummary = {
   title: string
   detail?: string
@@ -18,7 +16,7 @@ export type EventStreamCatalog<TEvent extends DebuggerEvent = DebuggerEvent> = {
   familyOf: (type: string) => string
   familyColor: (family: string) => string
   summarize: (event: TEvent) => EventSummary
-  searchText?: (event: TEvent) => string
+  searchText: (event: TEvent) => string
 }
 
 export type ReplayLoader = (input: { runId: string; seq: number }) => Promise<ReplayStep | null>

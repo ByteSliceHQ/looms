@@ -1,22 +1,28 @@
 import { useState } from 'react'
 
+import { createEventId, isJsonObject, isJsonString, type EventInput } from '@looms/core'
 import {
-  createEventId,
-  createRunId,
-  isJsonObject,
-  isJsonString,
-  type EventInput,
-} from '@looms/core'
-import { compactJson, useDebugger, type WorkspaceContext } from '@looms/debugger'
+  compactJson,
+  errorMessage,
+  inputForm,
+  messageInput,
+  StartForm,
+  useDebugger,
+  useStartRun,
+  type DebuggerContextValue,
+  type WorkspaceContext,
+} from '@looms/debugger'
 import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import { conversation } from '../projections'
 import { sendAgentSessionMessage, userMessage } from '../signals'
 import type { AgentMessageDelivery } from '../types'
-import { chatInput } from './chat-input'
 
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause)
+function sessionClient(client: DebuggerContextValue['client']) {
+  return {
+    getRun: (runId: string) => client.getRun(runId).then((result) => result.state),
+    signal: (runId: string, events: readonly EventInput[]) => client.signal(runId, events),
+  }
 }
 
 interface StreamingState {
@@ -98,57 +104,39 @@ function Transcript({ runId }: { runId: string }) {
   )
 }
 
-export function AgentChat({ definition, runId, onStarted }: WorkspaceContext) {
+export function AgentChat(context: WorkspaceContext) {
+  const { definition, runId } = context
   const { client } = useDebugger()
   const [draft, setDraft] = useState('')
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [delivery, setDelivery] = useState<AgentMessageDelivery>('followUp')
+  const { start, pending, error } = useStartRun(context)
   const session = definition.kind === 'agent-session'
+  const form = inputForm(definition.inputSchema)
 
-  const sessionClient = {
-    getRun: (id: string) => client.getRun(id).then((result) => result.state),
-    signal: (id: string, events: readonly EventInput[]) => client.signal(id, events),
+  if (!runId && !session && messageInput(form, '') === undefined) {
+    return <StartForm {...context} />
   }
 
-  function start() {
+  function send() {
     const content = draft.trim()
+    const input = session ? null : messageInput(form, content)
 
-    if (!content) {
+    if (!content || input === undefined) {
       return
     }
 
-    setPending(true)
-    setError(null)
-    const nextRunId = createRunId()
     setDraft('')
-    onStarted(nextRunId)
 
-    client
-      .startRun({
-        kind: definition.kind,
-        definitionName: definition.name,
-        definitionVersion: definition.version,
-        input: session ? null : chatInput(definition.inputSchema, content),
-        runId: nextRunId,
-      })
-      .then(() =>
-        session
-          ? sendAgentSessionMessage(sessionClient, nextRunId, createEventId(), content)
-          : undefined,
-      )
-      .catch((cause: unknown) => setError(messageOf(cause)))
-      .finally(() => setPending(false))
+    start(
+      input,
+      session
+        ? (id) => sendAgentSessionMessage(sessionClient(client), id, createEventId(), content)
+        : undefined,
+    )
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-border border-b px-3 py-2">
-        <h2 className="text-sm font-medium">{definition.name}</h2>
-        {definition.description ? (
-          <p className="text-muted-foreground text-xs">{definition.description}</p>
-        ) : null}
-      </div>
       <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
         {runId ? (
           <Transcript runId={runId} />
@@ -158,13 +146,12 @@ export function AgentChat({ definition, runId, onStarted }: WorkspaceContext) {
       </div>
       {runId ? (
         <FollowUp runId={runId} session={session} delivery={delivery} setDelivery={setDelivery} />
-      ) : null}
-      {!runId ? (
+      ) : (
         <form
           className="border-border flex gap-2 border-t p-3"
           onSubmit={(event) => {
             event.preventDefault()
-            start()
+            send()
           }}
         >
           <textarea
@@ -181,7 +168,7 @@ export function AgentChat({ definition, runId, onStarted }: WorkspaceContext) {
             Start
           </button>
         </form>
-      ) : null}
+      )}
       {error ? <p className="text-status-failed px-3 pb-3 text-xs">{error}</p> : null}
     </div>
   )
@@ -216,24 +203,15 @@ function FollowUp({
     setError(null)
 
     const commit = session
-      ? sendAgentSessionMessage(
-          {
-            getRun: (id) => client.getRun(id).then((result) => result.state),
-            signal: (id, events) => client.signal(id, events),
-          },
-          runId,
-          createEventId(),
-          content,
-          {
-            delivery,
-            threadId: rootThreadId,
-          },
-        )
+      ? sendAgentSessionMessage(sessionClient(client), runId, createEventId(), content, {
+          delivery,
+          threadId: rootThreadId,
+        })
       : store.commit(userMessage(content, { threadId: rootThreadId }))
 
     commit
       .then(() => setDraft(''))
-      .catch((cause: unknown) => setError(messageOf(cause)))
+      .catch((cause: unknown) => setError(errorMessage(cause)))
       .finally(() => setPending(false))
   }
 

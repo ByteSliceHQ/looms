@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 import { createLoomsClient, type LoomsClient } from '@looms/client'
+import { LoomsProvider } from '@looms/react'
 
 import type { DebuggerPlugin } from './plugin'
 
@@ -11,21 +12,26 @@ export interface DebuggerContextValue {
 
 const DebuggerContext = createContext<DebuggerContextValue | null>(null)
 
+/** Supplies one Looms host to both the API client and the run stores. */
 export function DebuggerProvider({
-  client,
+  endpoint = '',
   plugins,
   children,
 }: {
-  client?: LoomsClient
+  endpoint?: string
   plugins: readonly DebuggerPlugin[]
   children: ReactNode
 }) {
   const value = useMemo<DebuggerContextValue>(
-    () => ({ client: client ?? createLoomsClient(), plugins }),
-    [client, plugins],
+    () => ({ client: createLoomsClient({ baseUrl: endpoint }), plugins }),
+    [endpoint, plugins],
   )
 
-  return <DebuggerContext.Provider value={value}>{children}</DebuggerContext.Provider>
+  return (
+    <LoomsProvider endpoint={endpoint}>
+      <DebuggerContext.Provider value={value}>{children}</DebuggerContext.Provider>
+    </LoomsProvider>
+  )
 }
 
 export function useDebugger(): DebuggerContextValue {

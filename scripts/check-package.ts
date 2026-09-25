@@ -85,11 +85,20 @@ try {
     throw new Error(`Tarball is missing:\n${missing.join('\n')}`)
   }
 
-  for (const entry of ['agent', 'approval', 'workflow']) {
-    const source = await readFile(join(packageRoot, 'dist', entry, 'index.js'), 'utf8')
+  const uiImport =
+    /\b(?:from|import)\s*\(?\s*['"](?:react(?:\/[^'"]*)?|[^'"]*\/(?:react|debugger)(?:\/[^'"]*)?)['"]/
 
-    if (/\bfrom\s+['"]react['"]/.test(source) || source.includes('/debugger')) {
-      throw new Error(`@swirls/looms/${entry} imports react or its debugger UI`)
+  for (const entry of ['agent', 'approval', 'workflow']) {
+    const entryRoot = join(packageRoot, 'dist', entry)
+
+    for (const file of new Bun.Glob('**/*.js').scanSync(entryRoot)) {
+      if (file.startsWith('debugger/')) {
+        continue
+      }
+
+      if (uiImport.test(await readFile(join(entryRoot, file), 'utf8'))) {
+        throw new Error(`@swirls/looms/${entry}/${file} imports react or debugger UI`)
+      }
     }
   }
 

@@ -16,7 +16,7 @@ const runsDir = join(process.cwd(), '.looms')
 const env = demoEnvFromProcess()
 const port = Number(process.env.PORT ?? 8787)
 const hostname = process.env.HOST ?? '127.0.0.1'
-// The kit default sits beside the server module (`packages/debugger/src/app` from source).
+// The default root only exists in the published package; a source checkout serves the app build.
 const debuggerRoot = fileURLToPath(new URL('../../debugger/dist', import.meta.url))
 
 function createStore(): Promise<EventStore> {

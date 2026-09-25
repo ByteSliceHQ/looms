@@ -1,12 +1,6 @@
 import { Option, Predicate, Schema } from 'effect'
 
-export interface DebuggerSearch {
-  kind?: string
-  name?: string
-  run?: string
-  thread?: string
-  seq?: number
-}
+import type { DebuggerSelection } from '@looms/debugger'
 
 const optionalId = Schema.decodeUnknownOption(Schema.NonEmptyString)
 const integer = Schema.decodeUnknownOption(Schema.Int)
@@ -41,14 +35,12 @@ export function parseSearch(search: {
   run?: string
   thread?: string
   seq?: number | string
-}): DebuggerSearch {
-  const seq = readSeq(search.seq)
-
+}): DebuggerSelection {
   return {
     kind: readId(search.kind),
     name: readId(search.name),
     run: readId(search.run),
     thread: readId(search.thread),
-    seq,
+    seq: readSeq(search.seq),
   }
 }

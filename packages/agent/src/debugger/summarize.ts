@@ -1,25 +1,20 @@
-import { isJsonNumber, isJsonObject, isJsonString, type JsonValue } from '@looms/core'
-import { compactJson, type DebuggerEvent, type EventSummary } from '@looms/debugger'
-
-function obj(value: JsonValue | null): { [key: string]: JsonValue } {
-  return isJsonObject(value) ? value : {}
-}
-
-function text(value: JsonValue | undefined): string | undefined {
-  return isJsonString(value) ? value : undefined
-}
-
-function numeric(value: JsonValue | undefined): string | undefined {
-  return isJsonNumber(value) ? String(value) : undefined
-}
+import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
+import {
+  compactJson,
+  jsonFields,
+  jsonNumberText,
+  jsonText,
+  type DebuggerEvent,
+  type EventSummary,
+} from '@looms/debugger'
 
 function messageContent(payload: JsonValue | null): string | undefined {
-  const message = obj(payload).message
+  const message = jsonFields(payload).message
   return isJsonObject(message) && isJsonString(message.content) ? message.content : undefined
 }
 
 function toolCallSummary(payload: JsonValue | null) {
-  const call = obj(payload).toolCall
+  const call = jsonFields(payload).toolCall
 
   if (!isJsonObject(call)) {
     return { name: 'tool', args: null }
@@ -32,15 +27,15 @@ function toolCallSummary(payload: JsonValue | null) {
 }
 
 export function summarizeAgentEvent(event: DebuggerEvent): EventSummary | undefined {
-  const payload = obj(event.payload)
+  const payload = jsonFields(event.payload)
 
   switch (event.type) {
     case 'agent.message.received':
       return { title: 'user message', detail: messageContent(event.payload) }
     case 'agent.turn.started':
-      return { title: 'turn started', detail: `turn ${numeric(payload.turn) ?? ''}` }
+      return { title: 'turn started', detail: `turn ${jsonNumberText(payload.turn) ?? ''}` }
     case 'agent.turn.text_delta':
-      return { title: 'text delta', detail: text(payload.delta) }
+      return { title: 'text delta', detail: jsonText(payload.delta) }
     case 'agent.message':
       return { title: 'agent message', detail: messageContent(event.payload) }
 
@@ -51,20 +46,20 @@ export function summarizeAgentEvent(event: DebuggerEvent): EventSummary | undefi
 
     case 'agent.tool.result':
       return {
-        title: text(payload.error)
-          ? `tool error ${text(payload.name)}`
-          : `tool result ${text(payload.name)}`,
-        detail: text(payload.error) ?? compactJson(payload.result ?? null),
+        title: jsonText(payload.error)
+          ? `tool error ${jsonText(payload.name)}`
+          : `tool result ${jsonText(payload.name)}`,
+        detail: jsonText(payload.error) ?? compactJson(payload.result ?? null),
       }
     case 'agent.steered':
       return { title: 'steered', detail: messageContent(event.payload) }
     case 'agent.spawn.requested':
       return {
         title: 'agent spawn',
-        detail: `${text(payload.kind) ?? 'agent'}:${text(payload.definitionName) ?? 'unknown'}`,
+        detail: `${jsonText(payload.kind) ?? 'agent'}:${jsonText(payload.definitionName) ?? 'unknown'}`,
       }
     case 'agent.effects.requested':
-      return { title: 'agent effects', detail: text(payload.toolCallId) }
+      return { title: 'agent effects', detail: jsonText(payload.toolCallId) }
     default:
       return undefined
   }

@@ -1,19 +1,19 @@
 import type { ComponentType } from 'react'
 
-import type { LoomsDefinition } from '@looms/client'
-import type { ProjectionDefinition } from '@looms/core'
+import type { ProjectionDefinition, PublishedDefinition } from '@looms/core'
 
 import type { DebuggerEvent, EventSummary } from './contracts'
 
 export interface EventFamilyView {
   readonly family: string
-  readonly prefix: string
+  /** Event type prefix the family owns. Defaults to `${family}.`. */
+  readonly prefix?: string
   readonly color: string
   readonly summarize?: (event: DebuggerEvent) => EventSummary | undefined
 }
 
 export interface WorkspaceContext {
-  readonly definition: LoomsDefinition
+  readonly definition: PublishedDefinition
   readonly runId?: string
   readonly onStarted: (runId: string) => void
 }
@@ -40,10 +40,6 @@ export interface DebuggerPlugin {
   readonly projections?: readonly ProjectionView<any>[]
 }
 
-export function defineDebuggerPlugin(plugin: DebuggerPlugin): DebuggerPlugin {
-  return plugin
-}
-
 export function projectionView<S>(
   projection: ProjectionDefinition<S>,
   component: ComponentType<ProjectionContext<S>>,
@@ -55,13 +51,7 @@ export function workspaceFor(
   plugins: readonly DebuggerPlugin[],
   kind: string,
 ): WorkspaceView | undefined {
-  for (const plugin of plugins) {
-    if (plugin.workspace?.kinds.includes(kind)) {
-      return plugin.workspace
-    }
-  }
-
-  return undefined
+  return plugins.find((plugin) => plugin.workspace?.kinds.includes(kind))?.workspace
 }
 
 export function projectionFor(

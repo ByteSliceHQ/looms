@@ -1,54 +1,42 @@
 import { useState } from 'react'
 
-import { cleanUndefined } from '@looms/core'
+import { cleanUndefined, type EventInput } from '@looms/core'
 import { useRunStore, useRunSummary } from '@looms/react'
 
 import { useDebugger } from '../context'
+import { errorMessage } from '../lib/cn'
 
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause)
-}
+const CANCEL_TYPE = 'runtime.thread.cancel.requested'
 
-export function RunTools({ runId, threadId }: { runId: string; threadId?: string }) {
+export function RunTools({ runId }: { runId: string }) {
   const { client } = useDebugger()
-  const store = useRunStore(runId)
-  const summary = useRunSummary(store)
-  const [type, setType] = useState('runtime.thread.cancel.requested')
+  const { rootThreadId } = useRunSummary(useRunStore(runId))
+  const [type, setType] = useState(CANCEL_TYPE)
   const [payload, setPayload] = useState('{}')
-  const [thread, setThread] = useState(threadId ?? '')
+  const [thread, setThread] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const threadId = thread || rootThreadId
 
-  function run(action: () => Promise<void>) {
+  function run<T>(action: () => Promise<T>) {
     setPending(true)
     setError(null)
 
     action()
-      .catch((cause: unknown) => setError(messageOf(cause)))
+      .catch((cause: unknown) => setError(errorMessage(cause)))
       .finally(() => setPending(false))
   }
 
+  function send(event: EventInput) {
+    run(() => client.signal(runId, [event]))
+  }
+
   function signal() {
-    let parsed
-
     try {
-      parsed = cleanUndefined(JSON.parse(payload))
+      send({ type, payload: cleanUndefined(JSON.parse(payload)), threadId })
     } catch (cause: unknown) {
-      setError(messageOf(cause))
-      return
+      setError(errorMessage(cause))
     }
-
-    run(() =>
-      client
-        .signal(runId, [
-          {
-            type,
-            payload: parsed,
-            threadId: thread || summary.rootThreadId,
-          },
-        ])
-        .then(() => undefined),
-    )
   }
 
   return (
@@ -58,7 +46,7 @@ export function RunTools({ runId, threadId }: { runId: string; threadId?: string
           type="button"
           className="bg-secondary rounded px-2 py-1 text-xs"
           disabled={pending}
-          onClick={() => run(() => client.wake(runId).then(() => undefined))}
+          onClick={() => run(() => client.wake(runId))}
         >
           Wake
         </button>
@@ -66,18 +54,7 @@ export function RunTools({ runId, threadId }: { runId: string; threadId?: string
           type="button"
           className="bg-secondary rounded px-2 py-1 text-xs"
           disabled={pending}
-          onClick={() =>
-            run(() =>
-              client
-                .signal(runId, [
-                  {
-                    type: 'runtime.thread.cancel.requested',
-                    payload: { threadId: thread || summary.rootThreadId || '' },
-                  },
-                ])
-                .then(() => undefined),
-            )
-          }
+          onClick={() => send({ type: CANCEL_TYPE, payload: { threadId: threadId ?? '' } })}
         >
           Cancel
         </button>

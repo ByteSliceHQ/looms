@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { asJson, type JsonValue } from '@looms/core'
-import { useProjection, useRunEvents, useRunStore } from '@looms/react'
+import { useProjection, useRunSelector, useRunStore, type LoomsClientStore } from '@looms/react'
 
 import { JsonView } from '../components/json-view'
 import { useDebugger } from '../context'
+import { errorMessage } from '../lib/cn'
 import { projectionFor, type ProjectionView } from '../plugin'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -26,34 +27,37 @@ function ClaimedProjection({ runId, view }: { runId: string; view: ProjectionVie
   return <View runId={runId} state={state} />
 }
 
+function lastDurableSeq(store: LoomsClientStore): number {
+  return store.events().reduce((seq, event) => (event.ephemeral ? seq : event.seq), 0)
+}
+
 function FetchedProjection({ runId, name }: { runId: string; name: string }) {
   const { client } = useDebugger()
-  const store = useRunStore(runId)
-  const events = useRunEvents(store)
+  const durableSeq = useRunSelector(useRunStore(runId), lastDurableSeq)
   const [value, setValue] = useState<JsonValue | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
 
-    client
-      .project(runId, name)
-      .then((result) => {
+    client.project(runId, name).then(
+      (result) => {
         if (active) {
           setValue(asJson(result.value))
           setError(null)
         }
-      })
-      .catch((cause: unknown) => {
+      },
+      (cause: unknown) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : String(cause))
+          setError(errorMessage(cause))
         }
-      })
+      },
+    )
 
     return () => {
       active = false
     }
-  }, [client, events.length, name, runId])
+  }, [client, durableSeq, name, runId])
 
   if (error) {
     return <p className="text-status-failed text-xs">{error}</p>
@@ -78,27 +82,20 @@ function ProjectionBody({ runId, name }: { runId: string; name: string }) {
 }
 
 export function ProjectionsPanel({ runId, names }: { runId: string; names: readonly string[] }) {
-  if (names.length === 0) {
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        <div className="border-border text-muted-foreground border-b px-2 py-1.5 text-[11px] font-medium tracking-wide uppercase">
-          Projections
-        </div>
-        <p className="text-muted-foreground p-2 text-xs">No projections</p>
-      </div>
-    )
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       <div className="border-border text-muted-foreground border-b px-2 py-1.5 text-[11px] font-medium tracking-wide uppercase">
         Projections
       </div>
-      {names.map((name) => (
-        <Section key={name} title={name}>
-          <ProjectionBody runId={runId} name={name} />
-        </Section>
-      ))}
+      {names.length === 0 ? (
+        <p className="text-muted-foreground p-2 text-xs">No projections</p>
+      ) : (
+        names.map((name) => (
+          <Section key={name} title={name}>
+            <ProjectionBody runId={runId} name={name} />
+          </Section>
+        ))
+      )}
     </div>
   )
 }

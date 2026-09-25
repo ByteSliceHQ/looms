@@ -1,22 +1,21 @@
 import { useState } from 'react'
 
-import type { LoomsDefinition } from '@looms/client'
-import {
-  cleanUndefined,
-  createRunId,
-  isJsonObject,
-  isJsonString,
-  type JsonValue,
-} from '@looms/core'
+import { isJsonObject, isJsonString, type JsonValue } from '@looms/core'
 import { useRunEvents, useRunStore, useRunSummary, useThreadTree } from '@looms/react'
 
 import { JsonView } from '../components/json-view'
-import { useDebugger } from '../context'
-import { formFields, valuesToInput } from './schema-form'
+import type { WorkspaceContext } from '../plugin'
+import {
+  formInput,
+  initialValues,
+  inputForm,
+  type FormField,
+  type FormValues,
+  type InputForm,
+} from './schema-form'
+import { useStartRun } from './use-start-run'
 
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause)
-}
+const inputClass = 'border-border bg-background rounded border px-2 py-1'
 
 function RunResult({ runId }: { runId: string }) {
   const store = useRunStore(runId)
@@ -48,116 +47,131 @@ function RunResult({ runId }: { runId: string }) {
   )
 }
 
-export function StartForm({
-  definition,
-  runId,
-  onStarted,
+function FieldInput({
+  field,
+  value,
+  onChange,
 }: {
-  definition: LoomsDefinition
-  runId?: string
-  onStarted: (runId: string) => void
+  field: FormField
+  value: string
+  onChange: (value: string) => void
 }) {
-  const { client } = useDebugger()
-  const fields = formFields(definition.inputSchema)
+  switch (field.type) {
+    case 'boolean':
+      return (
+        <input
+          type="checkbox"
+          checked={value === 'true'}
+          onChange={(event) => onChange(String(event.target.checked))}
+        />
+      )
+    case 'number':
+      return (
+        <input
+          type="number"
+          className={inputClass}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )
+    case 'string':
+      return (
+        <input
+          className={inputClass}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )
 
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries((fields ?? []).map((field) => [field.name, field.defaultValue])),
-  )
-
-  const [raw, setRaw] = useState('{}')
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const stringInput =
-    isJsonObject(definition.inputSchema) && definition.inputSchema.type === 'string'
-
-  function input(): JsonValue {
-    if (stringInput) {
-      return values.text ?? ''
+    default: {
+      const exhaustive: never = field.type
+      return exhaustive
     }
-
-    if (fields) {
-      return valuesToInput(fields, values)
-    }
-
-    return cleanUndefined(JSON.parse(raw))
   }
+}
 
-  function start() {
-    setPending(true)
-    setError(null)
-    const nextRunId = createRunId()
+function InputFields({
+  form,
+  values,
+  onChange,
+}: {
+  form: InputForm
+  values: FormValues
+  onChange: (values: FormValues) => void
+}) {
+  switch (form.kind) {
+    case 'text':
+      return (
+        <textarea
+          className={`${inputClass} min-h-16 w-full text-sm`}
+          value={values.source}
+          onChange={(event) => onChange({ ...values, source: event.target.value })}
+          aria-label="Input"
+        />
+      )
+    case 'fields':
+      return form.fields.map((field) => (
+        <label key={field.name} className="grid gap-1 text-xs">
+          <span className="text-muted-foreground">{field.label}</span>
+          <FieldInput
+            field={field}
+            value={values.fields[field.name] ?? ''}
+            onChange={(value) =>
+              onChange({ ...values, fields: { ...values.fields, [field.name]: value } })
+            }
+          />
+        </label>
+      ))
+    case 'json':
+      return (
+        <textarea
+          className={`${inputClass} min-h-24 w-full font-mono text-xs`}
+          value={values.source}
+          onChange={(event) => onChange({ ...values, source: event.target.value })}
+          aria-label="JSON input"
+        />
+      )
 
-    let parsed: JsonValue
+    default: {
+      const exhaustive: never = form
+      return exhaustive
+    }
+  }
+}
+
+/** Starts a run from a form built from the definition's input schema, then shows its result. */
+export function StartForm(context: WorkspaceContext) {
+  const form = inputForm(context.definition.inputSchema)
+  const [values, setValues] = useState(() => initialValues(form))
+  const { start, fail, pending, error } = useStartRun(context)
+
+  function submit() {
+    let input: JsonValue
 
     try {
-      parsed = input()
+      input = formInput(form, values)
     } catch (cause: unknown) {
-      setPending(false)
-      setError(messageOf(cause))
+      fail(cause)
       return
     }
 
-    onStarted(nextRunId)
-
-    client
-      .startRun({
-        kind: definition.kind,
-        definitionName: definition.name,
-        definitionVersion: definition.version,
-        input: parsed,
-        runId: nextRunId,
-      })
-      .catch((cause: unknown) => setError(messageOf(cause)))
-      .finally(() => setPending(false))
+    start(input)
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-border border-b px-3 py-2">
-        <h2 className="text-sm font-medium">{definition.name}</h2>
-        {definition.description ? (
-          <p className="text-muted-foreground text-xs">{definition.description}</p>
-        ) : null}
-      </div>
       <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
-        {runId ? (
-          <RunResult runId={runId} />
+        {context.runId ? (
+          <RunResult runId={context.runId} />
         ) : (
           <form
             className="space-y-2"
             onSubmit={(event) => {
               event.preventDefault()
-              start()
+              submit()
             }}
           >
-            {stringInput ? (
-              <textarea
-                className="border-border bg-background min-h-16 w-full rounded border px-2 py-1 text-sm"
-                value={values.text ?? ''}
-                onChange={(event) => setValues({ text: event.target.value })}
-              />
-            ) : fields ? (
-              fields.map((field) => (
-                <label key={field.name} className="grid gap-1 text-xs">
-                  <span className="text-muted-foreground">{field.label}</span>
-                  <input
-                    className="border-border bg-background rounded border px-2 py-1"
-                    value={values[field.name] ?? ''}
-                    onChange={(event) =>
-                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                    }
-                  />
-                </label>
-              ))
-            ) : (
-              <textarea
-                className="border-border bg-background min-h-24 w-full rounded border px-2 py-1 font-mono text-xs"
-                value={raw}
-                onChange={(event) => setRaw(event.target.value)}
-                aria-label="JSON input"
-              />
-            )}
+            <InputFields form={form} values={values} onChange={setValues} />
             <button
               type="submit"
               className="bg-primary text-primary-foreground rounded px-3 py-1 text-xs"

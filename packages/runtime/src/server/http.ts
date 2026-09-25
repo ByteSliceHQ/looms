@@ -36,6 +36,12 @@ export const EventInputBodySchema = Schema.Struct({
   threadId: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
+const LOOMS_API_ROOTS = ['/health', '/runs', '/definitions', '/operations'] as const
+
+export function isLoomsApiPath(path: string): boolean {
+  return LOOMS_API_ROOTS.some((root) => path === root || path.startsWith(`${root}/`))
+}
+
 export function provideStore<A, E>(
   effect: Effect.Effect<A, E, EventStoreTag>,
   store: EventStore,

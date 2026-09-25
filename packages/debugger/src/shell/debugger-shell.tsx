@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 
-import type { LoomsClient, LoomsDefinition } from '@looms/client'
-import { LoomsProvider } from '@looms/react'
+import type { DefinitionCatalog } from '@looms/core'
 
 import { DebuggerProvider, useDebugger } from '../context'
+import { errorMessage } from '../lib/cn'
 import type { DebuggerPlugin } from '../plugin'
+import { definitionKey } from './definition-key'
 import { EventsPane } from './events-pane'
 import { ProjectionsPanel } from './projections-panel'
 import { Sidebar } from './sidebar'
@@ -18,8 +19,18 @@ export interface DebuggerSelection {
   readonly seq?: number
 }
 
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause)
+const emptyCatalog: DefinitionCatalog = { definitions: [], projections: [] }
+
+function useDefinitionCatalog() {
+  const { client } = useDebugger()
+  const [catalog, setCatalog] = useState(emptyCatalog)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    client.listDefinitions().then(setCatalog, (cause: unknown) => setError(errorMessage(cause)))
+  }, [client])
+
+  return { catalog, error }
 }
 
 function DebuggerFrame({
@@ -29,27 +40,13 @@ function DebuggerFrame({
   selection: DebuggerSelection
   onSelectionChange: (selection: DebuggerSelection) => void
 }) {
-  const { client } = useDebugger()
-  const [definitions, setDefinitions] = useState<readonly LoomsDefinition[]>([])
-  const [projections, setProjections] = useState<readonly string[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const { catalog, error } = useDefinitionCatalog()
+  const { kind, name } = selection
+  const selectedKey = kind && name ? definitionKey({ kind, name }) : undefined
 
-  useEffect(() => {
-    client
-      .listDefinitions()
-      .then((catalog) => {
-        setDefinitions(catalog.definitions)
-        setProjections(catalog.projections)
-      })
-      .catch((cause: unknown) => {
-        setError(messageOf(cause))
-      })
-  }, [client])
-
-  const selected =
-    definitions.find(
-      (definition) => definition.kind === selection.kind && definition.name === selection.name,
-    ) ?? definitions.find((definition) => definition.name === selection.name)
+  const selected = catalog.definitions.find(
+    (definition) => definitionKey(definition) === selectedKey,
+  )
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -60,34 +57,28 @@ function DebuggerFrame({
       <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1.1fr)_minmax(0,1.4fr)_18rem]">
         <section className="border-border bg-sidebar min-h-0 overflow-auto border-r">
           <Sidebar
-            definitions={definitions}
-            selectedName={selected?.name}
+            definitions={catalog.definitions}
+            selectedKey={selectedKey}
             runId={selection.run}
             threadId={selection.thread}
             onSelectDefinition={(definition) =>
               onSelectionChange({ kind: definition.kind, name: definition.name })
             }
             onSelectRun={(run) =>
-              onSelectionChange({ kind: run.kind, name: run.definitionName, run: run.runId })
-            }
-            onSelectThread={(thread) =>
               onSelectionChange({
-                kind: selection.kind,
-                name: selection.name,
-                run: selection.run,
-                thread,
-                seq: selection.seq,
+                kind: run.kind ?? undefined,
+                name: run.definitionName ?? undefined,
+                run: run.runId,
               })
             }
+            onSelectThread={(thread) => onSelectionChange({ ...selection, thread })}
           />
         </section>
         <section className="border-border min-h-0 overflow-hidden border-r">
           <Workspace
             definition={selected}
             runId={selection.run}
-            onStarted={(runId) =>
-              onSelectionChange({ kind: selected?.kind, name: selected?.name, run: runId })
-            }
+            onStarted={(run) => onSelectionChange({ kind, name, run })}
           />
         </section>
         <section className="border-border min-h-0 overflow-hidden border-r">
@@ -96,15 +87,7 @@ function DebuggerFrame({
               runId={selection.run}
               threadId={selection.thread}
               seq={selection.seq}
-              onSelectSeq={(seq) =>
-                onSelectionChange({
-                  kind: selection.kind,
-                  name: selection.name,
-                  run: selection.run,
-                  thread: selection.thread,
-                  seq,
-                })
-              }
+              onSelectSeq={(seq) => onSelectionChange({ ...selection, seq })}
             />
           ) : (
             <p className="text-muted-foreground p-3 text-xs">Events appear after a run starts.</p>
@@ -112,7 +95,7 @@ function DebuggerFrame({
         </section>
         <section className="min-h-0 overflow-auto">
           {selection.run ? (
-            <ProjectionsPanel runId={selection.run} names={projections} />
+            <ProjectionsPanel runId={selection.run} names={catalog.projections} />
           ) : (
             <p className="text-muted-foreground p-3 text-xs">
               Projections fold the same event log.
@@ -128,18 +111,17 @@ export function DebuggerShell({
   plugins,
   selection,
   onSelectionChange,
-  client,
+  endpoint,
 }: {
   plugins: readonly DebuggerPlugin[]
   selection: DebuggerSelection
   onSelectionChange: (selection: DebuggerSelection) => void
-  client?: LoomsClient
+  /** Looms host base URL. Defaults to the page origin. */
+  endpoint?: string
 }) {
   return (
-    <LoomsProvider>
-      <DebuggerProvider client={client} plugins={plugins}>
-        <DebuggerFrame selection={selection} onSelectionChange={onSelectionChange} />
-      </DebuggerProvider>
-    </LoomsProvider>
+    <DebuggerProvider endpoint={endpoint} plugins={plugins}>
+      <DebuggerFrame selection={selection} onSelectionChange={onSelectionChange} />
+    </DebuggerProvider>
   )
 }

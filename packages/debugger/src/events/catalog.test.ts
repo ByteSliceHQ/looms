@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { createEvent, type JsonValue } from '@looms/core'
 
 import type { DebuggerPlugin } from '../plugin'
-import { createEventCatalog, searchText, summarizeEvent } from './catalog'
+import { createEventCatalog, defaultEventCatalog } from './catalog'
 import { summarizeProtocolEvent } from './protocol-summarize'
 
 const runId = 'run_catalog'
@@ -36,21 +36,21 @@ describe('summarizeProtocolEvent', () => {
   })
 })
 
-describe('summarizeEvent', () => {
+describe('defaultEventCatalog', () => {
   test('falls back to the event type when no plugin claims it', () => {
-    expect(summarizeEvent(event('custom.unknown', { foo: 1 }))).toEqual({
+    expect(defaultEventCatalog.summarize(event('custom.unknown', { foo: 1 }))).toEqual({
       title: 'custom.unknown',
       detail: '{"foo":1}',
     })
   })
-})
 
-describe('searchText', () => {
-  test('joins type, thread, summary, and id', () => {
-    const item = event('agent.message', { message: { role: 'assistant', content: 'ready' } })
-    expect(searchText(item)).toContain('agent.message')
-    expect(searchText(item)).toContain('thr_a')
-    expect(searchText(item)).toContain('evt_1')
+  test('search text joins type, thread, summary, and id', () => {
+    const text = defaultEventCatalog.searchText(event('agent.message', { note: 'ready' }))
+
+    expect(text).toContain('agent.message')
+    expect(text).toContain('thr_a')
+    expect(text).toContain('ready')
+    expect(text).toContain('evt_1')
   })
 })
 
@@ -60,30 +60,40 @@ describe('createEventCatalog', () => {
     families: [
       {
         family: 'payments',
-        prefix: 'payments.',
         color: 'oklch(0.78 0.1 175)',
         summarize: (item) =>
           item.type === 'payments.charge.authorized' ? { title: 'charge authorized' } : undefined,
       },
+      {
+        family: 'refunds',
+        prefix: 'payments.refund.',
+        color: 'oklch(0.7 0.1 20)',
+        summarize: () => ({ title: 'refund' }),
+      },
     ],
   }
 
-  test('prefers the longest matching prefix', () => {
+  test('prefers the longest matching prefix and defaults the prefix to the family', () => {
     const catalog = createEventCatalog([plugin])
 
     expect(catalog.familyOf('runtime.wait.registered')).toBe('wait')
     expect(catalog.familyOf('runtime.run.started')).toBe('runtime')
     expect(catalog.familyOf('payments.charge.authorized')).toBe('payments')
+    expect(catalog.familyOf('payments.refund.issued')).toBe('refunds')
     expect(catalog.familyOf('custom.thing')).toBe('runtime')
     expect(catalog.familyColor('payments')).toBe('oklch(0.78 0.1 175)')
     expect(catalog.familyColor('missing')).toBe(catalog.familyColor('runtime'))
   })
 
-  test('uses a plugin summary before the generic fallback', () => {
+  test('summarizes with the owning family before the generic fallback', () => {
     const catalog = createEventCatalog([plugin])
 
     expect(catalog.summarize(event('payments.charge.authorized', { amount: 42 }))).toEqual({
       title: 'charge authorized',
+    })
+
+    expect(catalog.summarize(event('payments.refund.issued', { amount: 42 }))).toEqual({
+      title: 'refund',
     })
 
     expect(catalog.summarize(event('payments.charge.declined', { amount: 42 })).title).toBe(

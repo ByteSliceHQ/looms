@@ -153,28 +153,23 @@ createLooms({
         that are specific to its events. Ship them from a <code>/debugger</code> subpath so a Worker
         or other headless host can keep importing the module root without React.
       </p>
-      <CodeBlock lang="ts">{`import { defineDebuggerPlugin } from '@swirls/looms/debugger'
+      <CodeBlock lang="ts">{`import type { DebuggerPlugin } from '@swirls/looms/debugger'
 
-export const billingDebugger = defineDebuggerPlugin({
+export const billingDebugger: DebuggerPlugin = {
   name: 'billing',
-  families: [
-    {
-      family: 'billing',
-      prefix: 'billing.',
-      color: 'oklch(0.78 0.1 175)',
-    },
-  ],
+  families: [{ family: 'billing', color: 'oklch(0.78 0.1 175)' }],
   workspace: {
     kinds: ['billing'],
     component: BillingRun,
   },
-})`}</CodeBlock>
+}`}</CodeBlock>
       <p>
         Pass plugins to <code>DebuggerShell</code>. The hosted debugger composes the agent,
         workflow, and approval plugins. A workspace matches <code>definition.kind</code>. A
-        projection view receives the same projection the module folds on the server. Event families
-        supply the color and summary for their prefix. Anything a plugin does not claim stays a
-        form, a JSON projection, or the event type.
+        projection view receives the same projection the module folds on the server. An event family
+        claims events whose type starts with <code>{'<family>.'}</code>, or with its{' '}
+        <code>prefix</code> when set. The longest matching prefix supplies the color and summary.
+        Anything a plugin does not claim stays a form, a JSON projection, or the event type.
       </p>
       <h2 id="local-hosts-and-timers">
         Local hosts and timers
