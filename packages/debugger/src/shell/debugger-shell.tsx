@@ -68,7 +68,7 @@ function DebuggerFrame({
   const layout = useDefaultLayout({ id: 'looms-debugger-columns', storage: localStorage })
 
   return (
-    <div className="bg-background flex h-screen flex-col overflow-hidden">
+    <div className="looms-debugger bg-background text-foreground flex h-full flex-col overflow-hidden font-sans antialiased">
       <header className="border-border bg-sidebar flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Brand />
         <span className="text-border text-lg font-light select-none" aria-hidden>

@@ -111,6 +111,7 @@ Looms publishes as one package. Explicit subpaths keep browser, server, provider
 | `@swirls/looms/client`            | HTTP client                                                    |
 | `@swirls/looms/react`             | React hooks and live run stores                                |
 | `@swirls/looms/debugger`          | Debugger kit. Modules add views from their `/debugger` subpath |
+| `@swirls/looms/debugger/server`   | `debuggerUi()` serves the debugger from a Bun or Node host     |
 | `@swirls/looms/evaluator`         | Typed evaluations that branch agents and workflows             |
 | `@swirls/looms/s2`                | S2 event storage, snapshots, and projection support            |
 | `@swirls/looms/ai-vercel`         | Vercel AI SDK model adapters                                   |
@@ -127,7 +128,7 @@ bun run docs            # docs at http://127.0.0.1:8788
 bun run dev             # demo and docs together
 ```
 
-`bun run demo` starts a Bun host at http://127.0.0.1:8787 and the debugger at http://127.0.0.1:8787/debugger. The same command starts the debugger's Vite server at http://127.0.0.1:5173, which proxies API calls to that host. The Bun demo uses local SQLite and can start `s2-lite` for projections when the S2 CLI is available. See [contributor setup](./CONTRIBUTING.md#local-development) for optional tooling.
+`bun run demo` starts a Bun host at http://127.0.0.1:8787 and the debugger at http://127.0.0.1:8787/debugger. The same command starts the debugger's Vite server at http://127.0.0.1:5173, which proxies API calls to that host. The Bun demo uses local SQLite and can start `s2-lite` for projections when the S2 CLI is available. See [contributor setup](./CONTRIBUTING.md#local-development) for optional tooling. To add the debugger to your own host, see the [debugger guide](https://looms.sh/docs/debugger).
 
 The published documentation lives at [looms.sh/docs](https://looms.sh/docs). Markdown in [`docs/`](./docs) contains supplementary architecture and protocol notes.
 

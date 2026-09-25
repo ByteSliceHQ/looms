@@ -85,6 +85,18 @@ try {
     throw new Error(`Tarball is missing:\n${missing.join('\n')}`)
   }
 
+  const debuggerStyles = await readFile(join(packageRoot, 'dist/debugger/styles.css'), 'utf8')
+
+  const stylesSources = ['.', '../agent/debugger', '../workflow/debugger', '../approval/debugger']
+
+  const unscanned = stylesSources.filter(
+    (directory) => !debuggerStyles.includes(`@source "${directory}/**/*.js";`),
+  )
+
+  if (unscanned.length > 0 || debuggerStyles.includes('{ts,tsx}')) {
+    throw new Error(`dist/debugger/styles.css does not scan built views: ${unscanned.join(', ')}`)
+  }
+
   const uiImport =
     /\b(?:from|import)\s*\(?\s*['"](?:react(?:\/[^'"]*)?|[^'"]*\/(?:react|debugger)(?:\/[^'"]*)?)['"]/
 

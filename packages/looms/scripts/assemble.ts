@@ -86,9 +86,21 @@ await mkdir(outputRoot, { recursive: true })
 
 await Promise.all(modules.map(copyBuild))
 
-await cp(
-  join(packagesRoot, 'debugger', 'src', 'styles.css'),
+// The source stylesheet scans workspace .tsx files; the published one must scan the built .js
+// for the kit and each module's debugger views.
+const debuggerSources = ['.', '../agent/debugger', '../workflow/debugger', '../approval/debugger']
+  .map((directory) => `@source "${directory}/**/*.js";`)
+  .join('\n')
+
+const debuggerStyles = await readFile(join(packagesRoot, 'debugger', 'src', 'styles.css'), 'utf8')
+
+if (!debuggerStyles.includes('@source "./**/*.{ts,tsx}";')) {
+  throw new Error('packages/debugger/src/styles.css no longer declares its workspace @source')
+}
+
+await writeFile(
   join(outputRoot, 'debugger', 'styles.css'),
+  debuggerStyles.replace('@source "./**/*.{ts,tsx}";', debuggerSources),
 )
 
 await chmod(join(outputRoot, 'cli', 'cli.js'), 0o755)

@@ -43,6 +43,7 @@ export const docsNav = [
       { to: '/docs/evaluator', label: 'Evaluations' },
       { to: '/docs/examples', label: 'Examples' },
       { to: '/docs/modules', label: 'Custom modules' },
+      { to: '/docs/debugger', label: 'Debugger' },
       { to: '/docs/projectors', label: 'Live UI & indexes' },
       { to: '/docs/testing', label: 'Testing' },
     ],

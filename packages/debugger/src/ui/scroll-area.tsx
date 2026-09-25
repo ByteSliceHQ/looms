@@ -30,7 +30,7 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className={cn(
           // Radix wraps content in `display: table`, which lets long lines widen the viewport.
-          'size-full rounded-[inherit] outline-none [&>div]:block!',
+          'size-full overscroll-contain rounded-[inherit] outline-none [&>div]:block!',
           viewportClassName,
         )}
         onScroll={onViewportScroll}
