@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { makeMemoryEventStore } from '@looms/core'
+import {
+  defineEffect,
+  defineRuntimeModule,
+  EventStoreTag,
+  invoke,
+  makeMemoryEventStore,
+} from '@looms/core'
+import { bearerAuth, type EffectWorkerTask } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLocalActorHost } from './host'
@@ -97,4 +104,73 @@ describe('LocalActorHost', () => {
 
     await host.dispose()
   })
+})
+
+test('local actor host forwards external execution and admits authenticated callbacks', async () => {
+  const tasks: EffectWorkerTask[] = []
+  const effect = defineEffect({ type: 'external.check' })
+
+  const flow = defineWorkflow({
+    name: 'external-flow',
+    nodes: [{ id: 'check', run: (ctx) => ctx.effects([invoke(effect, {})]) }],
+  })
+
+  const host = createLocalActorHost({
+    createStore: () => Effect.runPromise(makeMemoryEventStore),
+    modules: [
+      defineRuntimeModule({ namespace: 'external', protocolVersion: '1', effects: { effect } }),
+      workflow({ definitions: [flow] }),
+    ],
+    worker: {
+      handles: [effect.type],
+      dispatch: (task) => {
+        tasks.push(task)
+        return Promise.resolve()
+      },
+    },
+    authorize: bearerAuth({ worker: 'test-worker' }),
+  })
+
+  try {
+    await host.fetch(
+      new Request('http://looms/runs', {
+        method: 'POST',
+        body: JSON.stringify({ kind: 'workflow', definitionName: flow.name }),
+      }),
+    )
+
+    expect(tasks).toHaveLength(1)
+    const task = tasks[0]
+
+    if (!task) {
+      throw new Error('No external dispatch')
+    }
+
+    const callback = await host.fetch(
+      new Request(
+        `http://looms/runs/${task.runId}/effects/${task.effectId}/${task.attempt}/complete`,
+        {
+          method: 'POST',
+          headers: { authorization: 'Bearer test-worker' },
+          body: JSON.stringify({
+            kind: 'complete',
+            effectId: task.effectId,
+            attempt: task.attempt,
+            events: [],
+          }),
+        },
+      ),
+    )
+
+    expect(callback?.status).toBe(200)
+    const cell = await host.getCell(task.runId)
+
+    const state = await Effect.runPromise(
+      cell.runtime.getRun(task.runId).pipe(Effect.provideService(EventStoreTag, cell.store)),
+    )
+
+    expect(state.completedEffectIds).toContain(task.effectId)
+  } finally {
+    await host.dispose()
+  }
 })

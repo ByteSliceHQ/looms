@@ -12,6 +12,7 @@ import {
   createFetchHandler,
   createRuntime,
   type Authorize,
+  type EffectWorker,
   type LoomsRuntime,
   type WakeScheduler,
 } from '@looms/runtime'
@@ -35,6 +36,8 @@ export interface ActorCellOptions<
   }
   /** Authorizes the cell's HTTP API; see `createFetchHandler`. */
   readonly authorize?: Authorize
+  /** Optional external executor for explicitly registered effect types. */
+  readonly worker?: EffectWorker
 }
 
 export interface ActorCell<
@@ -62,6 +65,7 @@ export function createActorCell<
     modules: options.modules,
     store,
     scheduler,
+    worker: options.worker,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,
     maxPendingRunOperations: options.maxPendingRunOperations,

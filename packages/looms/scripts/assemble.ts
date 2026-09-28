@@ -11,6 +11,7 @@ const modules = [
   'agent',
   'ai-vercel',
   'approval',
+  'ax',
   'cli',
   'client',
   'cloudflare',

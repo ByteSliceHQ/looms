@@ -158,6 +158,42 @@ Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(re
         recovery policy. See <Link to="/docs/operations">operations</Link> and{' '}
         <Link to="/docs/reliability">reliability</Link>.
       </p>
+      <h2 id="ax">
+        Optional AX effect execution
+        <a className="heading-anchor" href="#ax" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        The experimental <code>@swirls/looms/ax</code> adapter sends selected effect attempts to
+        Google AX sandboxes. Looms keeps its event log, workflow decisions, approvals, retries, and
+        deadlines. Configure the adapter as the host's optional <code>worker</code>; the same option
+        is available on actor hosts and <code>LoomsDurableObject.configure()</code>.
+      </p>
+      <CodeBlock lang="ts">{`import { createAxWorker } from '@swirls/looms/ax'
+
+const worker = createAxWorker({
+  endpoint: 'https://your-private-bridge.example',
+  token: bridgeToken,
+  scope: 'your-app',
+  callbackTarget: 'your-app',
+  routes: { 'repository.analyze.v1': { profile: 'repository-analyzer-v1' } },
+})
+// createLooms({ modules, store, worker, authorize })`}</CodeBlock>
+      <p>
+        The separate TypeScript bridge needs PostgreSQL, AX, and Agent Substrate. Execution profiles
+        pin image digests and permitted domain events. Configure finite effect deadlines and retain
+        callback receipts. This is a trusted workload prototype; the pinned upstream does not
+        enforce task resource limits through its generated actor templates, and the local
+        destination egress qualification fails.
+      </p>
+      <p>
+        The repository's{' '}
+        <a href="https://github.com/ByteSliceHQ/looms/tree/main/examples/ax">AX example</a> includes
+        a K3s deployment on the OrbStack Docker daemon, real sandbox execution, approval recovery,
+        cancellation tests, and a local Cloudflare fixture. Its validation report distinguishes
+        local integration coverage from production qualification.
+      </p>
       <h2 id="other-hosts">
         Other hosts
         <a className="heading-anchor" href="#other-hosts" aria-label="Link to this section">

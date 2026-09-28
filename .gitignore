@@ -27,3 +27,4 @@ dump.rdb
 .looms/
 **/.looms/
 examples/cloudflare/worker-configuration.d.ts
+.ax-local/

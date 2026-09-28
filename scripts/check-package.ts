@@ -69,6 +69,8 @@ try {
     'dist/index.d.ts',
     'dist/core/index.js',
     'dist/runtime/index.js',
+    'dist/ax/index.js',
+    'dist/ax/worker-entry.js',
     'dist/debugger/styles.css',
     'dist/debugger/app/index.html',
     'dist/debugger/server/index.js',
@@ -146,6 +148,8 @@ try {
   const imports = [
     '@swirls/looms',
     '@swirls/looms/actor',
+    '@swirls/looms/ax',
+    '@swirls/looms/ax/worker',
     '@swirls/looms/agent',
     '@swirls/looms/agent/debugger',
     '@swirls/looms/ai-vercel',

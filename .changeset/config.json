@@ -27,7 +27,9 @@
     "@looms/demo",
     "@looms/demo-worker",
     "@looms/docs",
-    "@looms/examples"
+    "@looms/examples",
+    "@looms/ax",
+    "@looms/ax-bridge"
   ],
   "privatePackages": {
     "version": false,

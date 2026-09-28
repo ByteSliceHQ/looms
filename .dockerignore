@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/.turbo
+.git
+.agents
+.codex
+.claude
+.agent
+.env*
+**/.env*
+**/.dev.vars
+**/.looms
+**/.wrangler
+**/.output
+**/*.log
+.ax-local
+!.ax-local/ax-task-runner

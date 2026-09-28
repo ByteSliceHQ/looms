@@ -8,7 +8,12 @@ import type {
   SnapshotStore,
 } from '@looms/core'
 import { EventStoreTag } from '@looms/core'
-import { createTimeoutScheduler, isLoomsApiPath, type Authorize } from '@looms/runtime'
+import {
+  createTimeoutScheduler,
+  isLoomsApiPath,
+  type Authorize,
+  type EffectWorker,
+} from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
 import { resolveRunTarget, RunTargetError } from './routing'
@@ -60,6 +65,8 @@ export interface LocalActorHostOptions<
   readonly rescanTimers?: boolean
   /** Authorizes each cell's HTTP API; see `createFetchHandler`. */
   readonly authorize?: Authorize
+  /** Optional external executor for explicitly registered effect types. */
+  readonly worker?: EffectWorker
 }
 
 export interface LocalActorHost<
@@ -111,6 +118,7 @@ export function createLocalActorHost<
           store,
           scheduler,
           modules: options.modules,
+          worker: options.worker,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,

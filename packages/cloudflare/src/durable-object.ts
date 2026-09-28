@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import { createActorCell, type ActorCell } from '@looms/actor'
 import type { AnyRuntimeModule, EventStoreTrimCoverage } from '@looms/core'
 import type { Projector } from '@looms/projectors'
-import type { Authorize } from '@looms/runtime'
+import type { Authorize, EffectWorker } from '@looms/runtime'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
@@ -21,6 +21,8 @@ export interface LoomsDurableObjectConfig {
   }
   /** Authorizes the actor's HTTP API; see `createFetchHandler`. */
   readonly authorize?: Authorize
+  /** Optional external executor for explicitly registered effect types. */
+  readonly worker?: EffectWorker
 }
 
 /**
@@ -81,6 +83,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         store,
         scheduler: alarms.scheduler,
         modules: config.modules,
+        worker: config.worker,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,

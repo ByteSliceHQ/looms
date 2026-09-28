@@ -4,5 +4,6 @@
     "noEmit": true,
     "rootDir": "."
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "ax/**/*.ts"],
+  "exclude": ["ax/cloudflare"]
 }
