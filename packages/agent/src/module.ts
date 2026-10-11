@@ -1,6 +1,6 @@
 import { Layer, Predicate } from 'effect'
 
-import { defineModule, makeDefinitionStore } from '@looms/core'
+import { defineModule, makeDefinitionStore, type EventInput, type RunState } from '@looms/core'
 
 import { createAgentSessionThread } from './agent-session'
 import type { AgentDefinition, AgentSessionDefinition } from './definitions'
@@ -51,12 +51,33 @@ export function agent(options: AgentModuleOptions = {}) {
       tokenUsage,
     },
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
-    interruptsOnSignal: (event) =>
-      event.type === 'agent.steered' &&
-      Predicate.isObject(event.payload) &&
-      event.payload.interrupt === true &&
-      event.threadId
-        ? [event.threadId]
-        : [],
+    interruptsOnSignal,
   }))
+}
+
+/** A stopped session interrupts its active turn's child; a stopped or steered agent, itself. */
+function interruptsOnSignal(event: EventInput, state: RunState): readonly string[] {
+  const threadId = event.threadId
+
+  if (!threadId) {
+    return []
+  }
+
+  if (event.type === 'agent.turn.stopped') {
+    const thread = state.threads[threadId]
+    const activeTurn = Predicate.isObject(thread?.state) ? thread.state.activeTurn : undefined
+
+    const childThreadId =
+      thread?.kind === 'agent-session' && Predicate.isObject(activeTurn)
+        ? activeTurn.childThreadId
+        : undefined
+
+    return [Predicate.isString(childThreadId) ? childThreadId : threadId]
+  }
+
+  return event.type === 'agent.steered' &&
+    Predicate.isObject(event.payload) &&
+    event.payload.interrupt === true
+    ? [threadId]
+    : []
 }

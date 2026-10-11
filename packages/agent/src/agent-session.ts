@@ -200,6 +200,7 @@ export function createAgentSessionThread(
             ),
           }
         case 'agent.session.cancel.requested':
+        case 'agent.turn.stopped':
         case 'runtime.thread.cancel.requested':
           return state.activeTurn ? { ...state, cancelling: true } : state
 

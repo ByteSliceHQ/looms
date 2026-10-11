@@ -56,6 +56,14 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         Use <code>userMessage(text)</code> with signal. For long conversations, decide how much
         history to send to the model and when to summarize it.
       </p>
+      <p>
+        Signal <code>stopAgentTurn()</code> to end the turn in progress without ending the run. The
+        agent aborts its in-flight model call or tool, cancels child threads its tool calls started,
+        answers open tool calls with a stopped result, and waits for the next message. The same
+        signal sent to an agent session cancels its active turn and keeps the session open. Use{' '}
+        <code>looms.cancel</code> to end the run instead.
+      </p>
+      <CodeBlock lang="ts">{`await looms.signal(runId, [stopAgentTurn({ threadId })])`}</CodeBlock>
       <h2 id="agent-sessions">
         Agent sessions
         <a className="heading-anchor" href="#agent-sessions" aria-label="Link to this section">

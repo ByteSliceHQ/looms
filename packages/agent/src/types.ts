@@ -92,6 +92,8 @@ export interface AgentState {
   output: JsonValue | null
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
   consumedSteerMessageIds: string[]
+  /** Tool-call children that a stopped turn cancels. Optional so older snapshots still fold. */
+  stoppedChildThreadIds?: string[]
 }
 
 export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'

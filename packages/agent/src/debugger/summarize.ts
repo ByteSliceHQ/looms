@@ -53,6 +53,8 @@ export function summarizeAgentEvent(event: DebuggerEvent): EventSummary | undefi
       }
     case 'agent.steered':
       return { title: 'steered', detail: messageContent(event.payload) }
+    case 'agent.turn.stopped':
+      return { title: 'turn stopped' }
     case 'agent.spawn.requested':
       return {
         title: 'agent spawn',

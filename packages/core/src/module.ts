@@ -5,6 +5,7 @@ import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
 import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
 import type { InferDefinedSchema, SchemaInput } from './schema'
+import type { RunState } from './state'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
@@ -21,10 +22,10 @@ export type EffectMiddleware = (
 
 /**
  * Names the threads whose in-process effects an admitted signal event interrupts, so a running
- * effect (such as a model call) can stop early. Return an empty array when the event interrupts
- * nothing.
+ * effect (such as a model call) can stop early. `state` is the run as it was before the signal.
+ * Return an empty array when the event interrupts nothing.
  */
-export type SignalInterruptRule = (event: EventInput) => readonly string[]
+export type SignalInterruptRule = (event: EventInput, state: RunState) => readonly string[]
 
 export interface RuntimeModuleDependency {
   readonly namespace: string

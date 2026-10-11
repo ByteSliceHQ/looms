@@ -25,7 +25,7 @@ import {
 import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import { conversation } from '../projections'
-import { agentSessionMessageEvents, userMessage } from '../signals'
+import { agentSessionMessageEvents, stopAgentTurn, userMessage } from '../signals'
 import type { AgentMessageDelivery, Message, ToolCall } from '../types'
 
 /** Child thread of the session turn that is still open, from the events the store already has. */
@@ -69,7 +69,11 @@ const streamingFold = createFold<StreamingState>({
   initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
   includeEphemeral: true,
   reduce(state, event) {
-    if (event.type === 'agent.message') {
+    if (
+      event.type === 'agent.message' ||
+      event.type === 'agent.turn.stopped' ||
+      event.type === 'runtime.thread.cancelled'
+    ) {
       return { lastMessageSeq: event.seq, turnStarted: false, parts: [] }
     }
 
@@ -94,6 +98,56 @@ const streamingFold = createFold<StreamingState>({
     }
 
     return state
+  },
+})
+
+interface TurnActivity {
+  readonly rootThreadId: string | null
+  readonly active: boolean
+}
+
+/** Whether the root agent or session has a turn in progress that Stop can end. */
+const turnActivityFold = createFold<TurnActivity>({
+  name: 'agentTurnActivity',
+  initialState: { rootThreadId: null, active: false },
+  reduce(state, event) {
+    if (state.rootThreadId === null) {
+      return event.type === 'runtime.thread.started' && event.threadId
+        ? {
+            rootThreadId: event.threadId,
+            active: isJsonObject(event.payload) && event.payload.kind === 'agent',
+          }
+        : state
+    }
+
+    if (event.threadId !== state.rootThreadId) {
+      return state
+    }
+
+    switch (event.type) {
+      case 'agent.message.received':
+      case 'agent.tool_call.requested':
+      case 'agent.session.turn.started':
+        return { ...state, active: true }
+      case 'agent.steered':
+        return isJsonObject(event.payload) && event.payload.interrupt === true
+          ? { ...state, active: true }
+          : state
+      case 'agent.message':
+      case 'agent.turn.stopped':
+      case 'runtime.thread.completed':
+      case 'runtime.thread.failed':
+      case 'runtime.thread.cancelled':
+        return { ...state, active: false }
+      case 'runtime.wait.satisfied':
+        return isJsonObject(event.payload) &&
+          isJsonObject(event.payload.tag) &&
+          event.payload.tag.kind === 'agent-session-turn'
+          ? { ...state, active: false }
+          : state
+      default:
+        return state
+    }
   },
 })
 
@@ -397,9 +451,25 @@ function FollowUp({
 }) {
   const store = useRunStore(runId)
   const { rootThreadId, status, finished } = useRunSummary(store)
+  const turn = useEventFold(store, turnActivityFold)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function stop() {
+    if (!rootThreadId) {
+      return
+    }
+
+    setStopping(true)
+    setError(null)
+
+    store
+      .commit(stopAgentTurn({ threadId: rootThreadId }))
+      .catch((cause: unknown) => setError(errorMessage(cause)))
+      .finally(() => setStopping(false))
+  }
 
   function send() {
     const content = draft.trim()
@@ -434,6 +504,8 @@ function FollowUp({
       value={draft}
       onChange={setDraft}
       onSubmit={send}
+      onStop={turn.active && !finished ? stop : undefined}
+      stopping={stopping}
       pending={pending}
       disabled={!rootThreadId || finished}
       placeholder={finished ? `Run ${status}. Start a new run to continue.` : 'Send a follow-up…'}

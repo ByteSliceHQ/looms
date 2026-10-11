@@ -41,6 +41,14 @@ export function steer(
   )
 }
 
+/**
+ * Build the `agent.turn.stopped` event. A conversational agent aborts its in-flight turn and
+ * waits for the next message; an agent session cancels its active turn and stays open.
+ */
+export function stopAgentTurn(options: AgentSignalOptions = {}): EventInput {
+  return agentModule.input('turn.stopped', {}, { threadId: options.threadId })
+}
+
 export interface AgentSessionMessageOptions extends AgentSignalOptions {
   readonly delivery?: AgentMessageDelivery
   /** Set by the client helper when a steer is aimed at an active child. */

@@ -1,6 +1,7 @@
 import { Predicate } from 'effect'
 
 import {
+  cancel,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   emit,
@@ -17,6 +18,7 @@ import {
 
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
+import { closeOpenToolCalls } from './transcript'
 import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
@@ -213,6 +215,25 @@ export const agentThread = agentModule.thread<AgentState>({
           lines: [...state.lines, message],
           pendingSteer: message,
           consumedSteerMessageIds,
+        }
+      }
+
+      case 'agent.turn.stopped': {
+        return {
+          ...state,
+          lines: closeOpenToolCalls(state.lines),
+          pendingSteer: null,
+          pendingToolCalls: [],
+          executingToolCalls: [],
+          pendingSpawns: [],
+          pendingEffects: [],
+          pendingEmits: [],
+          pendingEffectTools: {},
+          needsLlmCall: false,
+          stoppedChildThreadIds: [
+            ...(state.stoppedChildThreadIds ?? []),
+            ...state.pendingSpawns.map((item) => item.childThreadId),
+          ],
         }
       }
 
@@ -474,6 +495,10 @@ export const agentThread = agentModule.thread<AgentState>({
 
     for (const emitReq of state.pendingEmits) {
       effects.push(emit(emitReq.event))
+    }
+
+    for (const childThreadId of state.stoppedChildThreadIds ?? []) {
+      effects.push(cancel(childThreadId))
     }
 
     return effects

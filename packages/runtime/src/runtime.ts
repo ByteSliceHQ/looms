@@ -16,6 +16,7 @@ import {
   summarizeRun,
   type AnyRuntimeModule,
   type EventInput,
+  type RunState,
   type SignalInterruptRule,
   type InvalidEventError,
 } from '@looms/core'
@@ -74,6 +75,7 @@ function currentTimeMillis(): number {
 function interruptedThreadIds(
   events: readonly EventInput[],
   rules: readonly SignalInterruptRule[],
+  state: RunState,
 ): ReadonlySet<string> {
   const threadIds = new Set<string>()
 
@@ -85,7 +87,7 @@ function interruptedThreadIds(
     }
 
     for (const rule of rules) {
-      for (const threadId of rule(event)) {
+      for (const threadId of rule(event, state)) {
         threadIds.add(threadId)
       }
     }
@@ -195,7 +197,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       if (committed.append) {
         executionContexts.abort(
           runId,
-          interruptedThreadIds(events, registry.interruptRules),
+          interruptedThreadIds(events, registry.interruptRules, committed.value),
           'Effect interrupted',
         )
       }
