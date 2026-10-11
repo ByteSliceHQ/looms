@@ -36,6 +36,17 @@ export class StartRunConflictError extends Data.TaggedError('StartRunConflictErr
   }
 }
 
+export class RunTerminalError extends Data.TaggedError('RunTerminalError')<{
+  readonly runId: string
+  readonly status: string
+  readonly message: string
+}> {
+  constructor(runId: string, status: string) {
+    super({ runId, status, message: `Run "${runId}" is ${status} and accepts no new events` })
+    this.name = 'RunTerminalError'
+  }
+}
+
 export class DuplicateEffectDispatchError extends Data.TaggedError('DuplicateEffectDispatchError')<{
   readonly runId: string
   readonly effectId: string

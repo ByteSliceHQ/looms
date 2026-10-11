@@ -88,9 +88,11 @@ try {
       </h3>
       <p>
         signal validates and appends inputs, then wakes execution and returns state. Its optional
-        idempotencyKey identifies retries of the same request within a run. wake processes pending
-        work without appending a new domain signal. cancel records cancellation for a run or thread;
-        it cannot undo an external action.
+        idempotencyKey identifies retries of the same request within a run. A completed, failed, or
+        cancelled run rejects new signals with RunTerminalError; a retry of an already-accepted
+        idempotencyKey still returns state. wake processes pending work without appending a new
+        domain signal. cancel records cancellation for a run or thread; it cannot undo an external
+        action.
       </p>
       <h3 id="read">
         Read and inspect
@@ -132,15 +134,17 @@ GET  /runs/:id/status                → run, deadline, and effect status
 GET  /runs/:id/effects               → { runId, effects }
 POST /runs/:id/effects/:effect/retry → operator-reviewed retry
 POST /runs/:id/wake                  → { runId, state }
+POST /runs/:id/cancel                → { runId, state }
 GET  /runs/:id/replay?seq=10          → { runId, step }
 GET  /runs/:id/projections/:name      → { runId, name, value }
 GET  /runs/:id/events?live=true       → SSE
 POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       <p>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
-        POST /runs/:id/events accepts an events array and optionally idempotencyKey. The embed
-        handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and
-        limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
+        POST /runs/:id/events accepts an events array and optionally idempotencyKey. POST
+        /runs/:id/cancel accepts an optional threadId and cancels the root thread without one. The
+        embed handler also recognizes the Idempotency-Key header. GET event history supports fromSeq
+        and limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
         Streams resume after Last-Event-ID, or begin at fromSeq when that header is absent.
       </p>
       <CodeBlock lang="bash">{`curl -X POST http://localhost:8787/runs \\
@@ -149,9 +153,9 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       <p>
         Actor hosts return 501 for global GET /runs; use an application registry or shared index.
         The embed handler maps InvalidInputError and InvalidEventError to 400, unknown projections
-        to 404, and other caught execution failures to 500. Routing behavior differs by host;
-        inspect status and body. Client request helpers reject non-success responses. Cancellation
-        is currently an embed runtime method, not a client HTTP endpoint.
+        to 404, RunTerminalError to 409, and other caught execution failures to 500. Routing
+        behavior differs by host; inspect status and body. Client request helpers reject non-success
+        responses.
       </p>
       <h2 id="client">
         Client and streaming
@@ -160,12 +164,12 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         </a>
       </h2>
       <p>
-        createLoomsClient accepts baseUrl and an optional fetch implementation. getRun and signal
-        resolve to objects containing state; getEvents resolves to an object containing events.
-        subscribeEvents returns an unsubscribe function and reconnects using its last cursor.
-        stream(definition, input) or streamRun(args) returns an async iterable with a runId for
-        events during the initial wake cycle. A stream ending does not mean a parked workflow has
-        finished.
+        createLoomsClient accepts baseUrl and an optional fetch implementation. getRun, signal,
+        wake, and cancel resolve to objects containing state; getEvents resolves to an object
+        containing events. subscribeEvents returns an unsubscribe function and reconnects using its
+        last cursor. stream(definition, input) or streamRun(args) returns an async iterable with a
+        runId for events during the initial wake cycle. A stream ending does not mean a parked
+        workflow has finished.
       </p>
       <p>
         The current client start/signal helpers do not expose every embed idempotency option. For

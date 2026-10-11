@@ -10,6 +10,7 @@ import {
   definitionKey,
   EventStoreTag,
   foldRun,
+  isRunTerminal,
   project,
   replayTo,
   summarizeRun,
@@ -21,7 +22,7 @@ import {
 
 import { createCancellation } from './cancellation'
 import { nextRuntimeDeadline } from './deadline-transition-planner'
-import { RuntimeExecutionError, type StartRunConflictError } from './errors'
+import { RunTerminalError, RuntimeExecutionError, type StartRunConflictError } from './errors'
 import {
   admitExternalEvents,
   moduleServices,
@@ -47,6 +48,7 @@ export { createTimeoutScheduler } from './wake-scheduler'
 export {
   DuplicateEffectDispatchError,
   MaxWakeIterationsError,
+  RunTerminalError,
   StartRunConflictError,
 } from './errors'
 export { RunOverloadedError } from './ingress'
@@ -171,6 +173,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             })),
             { origin: { type: 'external' } },
           )
+
+          if (isRunTerminal(current.state)) {
+            return yield* new RunTerminalError(runId, current.state.status)
+          }
 
           const folded = foldRun(batch, registry, { runId, initial: current.state })
 

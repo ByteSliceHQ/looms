@@ -16,6 +16,19 @@ describe('indexOpsFor', () => {
     expect(indexOpsFor(event)[0]?.type).toBe('upsertActor')
   })
 
+  test('indexes run cancelled', () => {
+    const event = createEvent('run_1', {
+      type: 'runtime.run.cancelled',
+      payload: { reason: 'cancelled' },
+      threadId: null,
+      origin: { type: 'system' },
+    })
+
+    expect(indexOpsFor(event)).toEqual([
+      { type: 'setActorStatus', actorId: 'run_1', status: 'cancelled', updatedAt: event.ts },
+    ])
+  })
+
   test('indexes approval requested', () => {
     const event = createEvent('run_1', {
       type: 'approval.requested',

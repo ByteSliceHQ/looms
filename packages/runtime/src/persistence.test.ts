@@ -722,6 +722,7 @@ describe('createLooms runtime', () => {
     const echo = defineAgent({
       name: 'echo-test',
       instructions: 'echo',
+      conversational: true,
       runTurn: ({ input }) => ({
         message: { role: 'assistant', content: 'done' },
         done: true,

@@ -125,6 +125,7 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
           updatedAt: event.ts,
         },
       ]
+    case 'runtime.run.cancelled':
     case 'runtime.thread.cancelled':
       return [
         {

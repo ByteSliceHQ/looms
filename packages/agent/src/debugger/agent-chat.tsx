@@ -396,7 +396,7 @@ function FollowUp({
   startError: string | null
 }) {
   const store = useRunStore(runId)
-  const { rootThreadId } = useRunSummary(store)
+  const { rootThreadId, status, finished } = useRunSummary(store)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -404,7 +404,7 @@ function FollowUp({
   function send() {
     const content = draft.trim()
 
-    if (!content || !rootThreadId) {
+    if (!content || !rootThreadId || finished) {
       return
     }
 
@@ -435,8 +435,8 @@ function FollowUp({
       onChange={setDraft}
       onSubmit={send}
       pending={pending}
-      disabled={!rootThreadId}
-      placeholder="Send a follow-up…"
+      disabled={!rootThreadId || finished}
+      placeholder={finished ? `Run ${status}. Start a new run to continue.` : 'Send a follow-up…'}
       error={error ?? startError}
       toolbar={session ? <DeliverySelect value={delivery} onChange={setDelivery} /> : null}
     />

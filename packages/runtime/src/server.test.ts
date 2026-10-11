@@ -7,6 +7,7 @@ import {
   defineEventCatalog,
   defineModule,
   RunSummariesSchema,
+  wait,
 } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
@@ -171,7 +172,7 @@ describe('server HTTP idempotency', () => {
       nodes: [
         {
           id: 'step1',
-          run: () => ({ ok: true }),
+          run: (ctx) => ctx.effects([wait({ waitId: 'hold', on: { type: 'custom.release' } })]),
         },
       ],
     })

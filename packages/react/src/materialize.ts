@@ -40,12 +40,21 @@ export function materializeEvents(
         break
       }
 
-      case 'runtime.run.completed': {
+      case 'runtime.run.completed':
+
+      case 'runtime.run.cancelled': {
         const existing = tables.runs.get(event.runId)
+
+        const status =
+          event.type === 'runtime.run.cancelled'
+            ? 'cancelled'
+            : readString(payload, 'error')
+              ? 'failed'
+              : 'completed'
 
         tables.runs.set(event.runId, {
           runId: event.runId,
-          status: readString(payload, 'error') ? 'failed' : 'completed',
+          status,
           rootThreadId: existing?.rootThreadId ?? null,
           kind: existing?.kind ?? null,
           definitionName: existing?.definitionName ?? null,

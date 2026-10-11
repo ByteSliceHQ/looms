@@ -280,6 +280,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       }),
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
+    /** Cancel a thread and its descendants; omit `threadId` to cancel the whole run. */
+    cancel: (runId: string, threadId?: string) =>
+      request(`/runs/${encodeURIComponent(runId)}/cancel`, RunResultSchema, {
+        method: 'POST',
+        body: stringifyJson(threadId === undefined ? {} : { threadId }),
+      }),
     workerCallback,
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),

@@ -11,6 +11,7 @@ import {
   createEvent,
   invoke,
   makeMemoryEventStore,
+  wait,
   type EventStore,
 } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
@@ -163,7 +164,7 @@ describe('createLooms runtime', () => {
       nodes: [
         {
           id: 'wait-node',
-          run: (ctx) => ctx.wait({ type: 'test.signal' }),
+          run: (ctx) => ctx.effects([wait({ waitId: 'test-signal', on: { type: 'test.signal' } })]),
         },
       ],
     })
@@ -172,7 +173,8 @@ describe('createLooms runtime', () => {
       modules: [workflow({ definitions: [workflowDef] })],
     })
 
-    const { runId } = await looms.start(workflowDef, {})
+    const { runId, state } = await looms.start(workflowDef, {})
+    expect(state.status).toBe('running')
 
     // Send signal with idempotencyKey
     const idempotencyKey = 'sig_key_456'

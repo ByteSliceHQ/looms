@@ -1,12 +1,14 @@
 import { Button, StatusBadge, useDebugger } from '@looms/debugger'
-import { useProjection, useRunStore } from '@looms/react'
+import { useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import { pendingApprovals } from '../projections'
 import { decision } from '../signals'
 
 export function ApprovalsView({ runId }: { runId: string }) {
   const { client } = useDebugger()
-  const state = useProjection(useRunStore(runId), pendingApprovals)
+  const store = useRunStore(runId)
+  const state = useProjection(store, pendingApprovals)
+  const { finished } = useRunSummary(store)
 
   if (state.items.length === 0) {
     return <p className="text-muted-foreground text-xs">No approvals requested.</p>
@@ -26,7 +28,7 @@ export function ApprovalsView({ runId }: { runId: string }) {
             </span>
             <StatusBadge status={item.status} />
           </div>
-          {item.status === 'pending' ? (
+          {item.status === 'pending' && !finished ? (
             <div className="mt-2 flex gap-1.5">
               <Button size="xs" onClick={() => decide(item.approvalId, 'approve')}>
                 Approve
