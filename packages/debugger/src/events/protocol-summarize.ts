@@ -24,6 +24,13 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
       }
     case 'runtime.run.cancelled':
       return { title: 'run cancelled', detail: jsonText(payload.reason) }
+    case 'runtime.run.forked':
+      return {
+        title: 'run forked',
+        detail: `from ${jsonText(payload.sourceRunId) ?? 'unknown'} at seq ${jsonNumberText(payload.sourceSeq) ?? '?'}`,
+      }
+    case 'runtime.fork.elided':
+      return { title: 'left out of fork', detail: jsonText(payload.type) }
     case 'runtime.thread.started':
       return {
         title: 'thread started',

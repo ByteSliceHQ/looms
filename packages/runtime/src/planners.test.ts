@@ -23,6 +23,7 @@ function runningState(overrides: Partial<RunState> = {}): RunState {
     status: 'running',
     rootThreadId: null,
     startIdentity: null,
+    forkedFrom: null,
     threads: {},
     waits: {},
     outstandingEffects: [],

@@ -2,6 +2,7 @@ import { Data, Effect, Schema } from 'effect'
 
 import {
   EventStoreTag,
+  ForkSourceError,
   InvalidEventError,
   InvalidInputError,
   JsonValueSchema,
@@ -10,6 +11,9 @@ import {
 } from '@looms/core'
 
 import {
+  ForkConflictError,
+  RunNotFinishedError,
+  RunNotFoundError,
   RunOverloadedError,
   RunTerminalError,
   StartRunConflictError,
@@ -123,12 +127,24 @@ export function toErrorResponse(err: Error): Response {
     return Response.json({ error: err.message }, { status: 429 })
   }
 
+  if (err instanceof RunNotFoundError) {
+    return Response.json({ error: err.message }, { status: 404 })
+  }
+
   if (err instanceof RunTerminalError) {
     return Response.json({ error: err.message, status: err.status }, { status: 409 })
   }
 
   if (err instanceof StartRunConflictError) {
     return Response.json({ error: err.message, mismatches: err.mismatches }, { status: 409 })
+  }
+
+  if (
+    err instanceof RunNotFinishedError ||
+    err instanceof ForkConflictError ||
+    err instanceof ForkSourceError
+  ) {
+    return Response.json({ error: err.message }, { status: 409 })
   }
 
   return Response.json({ error: err.message }, { status: 500 })

@@ -174,6 +174,15 @@ export interface LoomsRuntime<
     runId: string,
     threadId?: string,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  /**
+   * Start a new run that continues where a finished run ended. The fork copies the source's
+   * history up to the point it finished and re-issues the effects outstanding there. Retrying
+   * with the same `runId` returns the existing fork.
+   */
+  fork(
+    sourceRunId: string,
+    options?: { runId?: string },
+  ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
   workerCallback(
     runId: string,

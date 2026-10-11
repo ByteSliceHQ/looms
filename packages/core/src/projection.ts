@@ -285,6 +285,7 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
     status: 'running',
     rootThreadId: state.rootThreadId,
     startIdentity: null,
+    forkedFrom: null,
     threads: state.records,
     waits: {},
     outstandingEffects: [],

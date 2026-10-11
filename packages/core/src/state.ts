@@ -70,11 +70,18 @@ export interface RunStartIdentity {
   rootThreadId: string
 }
 
+/** The run and last sequence a fork copied its history from. */
+export interface RunForkSource {
+  runId: string
+  seq: number
+}
+
 export interface RunState {
   runId: string
   status: RunStatus
   rootThreadId: string | null
   startIdentity: RunStartIdentity | null
+  forkedFrom: RunForkSource | null
   threads: { [threadId: string]: ThreadRecord }
   waits: { [waitId: string]: WaitRecord }
   outstandingEffects: readonly OutstandingEffect[]
@@ -103,6 +110,9 @@ export const RunStateSchema = Schema.Struct({
       rootThreadId: Schema.String,
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  forkedFrom: Schema.NullOr(Schema.Struct({ runId: Schema.String, seq: Schema.Finite })).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
   threads: Schema.Record(
     Schema.String,
     Schema.Struct({
@@ -187,6 +197,7 @@ export function emptyRunState(runId: string): RunState {
     status: 'running',
     rootThreadId: null,
     startIdentity: null,
+    forkedFrom: null,
     threads: {},
     waits: {},
     outstandingEffects: [],

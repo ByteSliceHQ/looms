@@ -25,6 +25,13 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'run.cancelled': Schema.Struct({
     reason: Schema.optional(Schema.String),
   }),
+  'run.forked': Schema.Struct({
+    sourceRunId: Schema.String,
+    sourceSeq: Schema.Finite,
+  }),
+  'fork.elided': Schema.Struct({
+    type: Schema.String,
+  }),
   'thread.started': Schema.Struct({
     threadId: Schema.String,
     kind: Schema.String,
@@ -44,6 +51,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'thread.cancelled': Schema.Struct({
     threadId: Schema.String,
     reason: Schema.optional(Schema.String),
+    /** The run's last seq before this cancellation began; a fork of the run resumes there. */
+    resumeSeq: Schema.optional(Schema.Finite),
   }),
   'thread.cancel.requested': Schema.Struct({
     threadId: Schema.String,
@@ -147,6 +156,8 @@ export const PROTOCOL_TYPES = [
   'runtime.run.started',
   'runtime.run.completed',
   'runtime.run.cancelled',
+  'runtime.run.forked',
+  'runtime.fork.elided',
   'runtime.thread.started',
   'runtime.thread.completed',
   'runtime.thread.failed',

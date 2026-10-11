@@ -48,13 +48,14 @@ interface CancellationPlan {
  */
 function planCancellation(input: {
   readonly runId: string
+  readonly seq: number
   readonly state: RunState
   readonly threadId: string | undefined
   readonly registry: ComposedRegistry
   readonly worker: EffectWorker | undefined
   readonly now: number
 }): CancellationPlan {
-  const { runId, state, registry, now } = input
+  const { runId, seq, state, registry, now } = input
   const targetThreadId = input.threadId ?? state.rootThreadId ?? ''
   const idempotencyKey = `cancel:${targetThreadId}`
 
@@ -111,20 +112,19 @@ function planCancellation(input: {
     )
   }
 
-  const threadEvents = [
-    ...descendants.map((_, index) => descendants[descendants.length - 1 - index]!),
-    targetThreadId,
-  ]
+  const threadEvents = [...descendants.toReversed(), targetThreadId]
     .filter((threadId) => threadId.length > 0)
-    .map((threadId) =>
-      createEvent(runId, {
+    .map((threadId): EventEnvelope => {
+      const payload = { threadId, reason: 'cancelled' }
+
+      return createEvent(runId, {
         type: 'runtime.thread.cancelled',
-        payload: { threadId, reason: 'cancelled' },
+        payload: threadId === targetThreadId ? { ...payload, resumeSeq: seq } : payload,
         threadId,
         origin: { type: 'external' },
         idempotencyKey,
-      }),
-    )
+      })
+    })
 
   const batch = [...effectEvents, ...threadEvents]
   const folded = foldRun(batch, registry, { runId, initial: state })
@@ -148,6 +148,7 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
           return yield* repository.commit(store, runId, (current) => {
             const plan = planCancellation({
               runId,
+              seq: current.seq,
               state: current.state,
               threadId,
               registry,

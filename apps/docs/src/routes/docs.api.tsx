@@ -94,6 +94,23 @@ try {
         domain signal. cancel records cancellation for a run or thread; it cannot undo an external
         action.
       </p>
+      <h3 id="fork">
+        fork
+        <a className="heading-anchor" href="#fork" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        fork(sourceRunId, {'{ runId? }'}) starts a new run that continues where a failed or
+        cancelled run stopped, and resolves like start. See{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          continue a finished run
+        </Link>
+        . It rejects a missing run with RunNotFoundError, a run that has not finished with
+        RunNotFinishedError, a runId that already holds a different run with ForkConflictError, and
+        a source without its full history from seq 1 with ForkSourceError. Retrying with the same
+        runId returns the existing fork.
+      </p>
       <h3 id="read">
         Read and inspect
         <a className="heading-anchor" href="#read" aria-label="Link to this section">
@@ -135,6 +152,7 @@ GET  /runs/:id/effects               → { runId, effects }
 POST /runs/:id/effects/:effect/retry → operator-reviewed retry
 POST /runs/:id/wake                  → { runId, state, appended }
 POST /runs/:id/cancel                → { runId, state }
+POST /runs/:id/fork                  → { runId, threadId, state } (embed only)
 GET  /runs/:id/replay?seq=10          → { runId, step }
 GET  /runs/:id/projections/:name      → { runId, name, value }
 GET  /runs/:id/events?live=true       → SSE
@@ -143,20 +161,22 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
         POST /runs/:id/events accepts an events array and optionally idempotencyKey. POST
         /runs/:id/cancel accepts an optional threadId and cancels the root thread without one. POST
-        /runs/:id/wake reports in appended how many events the run gained while it ran. The embed
-        handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and
-        limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
-        Streams resume after Last-Event-ID, or begin at fromSeq when that header is absent.
+        /runs/:id/wake reports in appended how many events the run gained while it ran. POST
+        /runs/:id/fork accepts an optional runId for the new run. The embed handler also recognizes
+        the Idempotency-Key header. GET event history supports fromSeq and limit. Request the same
+        resource with Accept: text/event-stream or live=true for SSE. Streams resume after
+        Last-Event-ID, or begin at fromSeq when that header is absent.
       </p>
       <CodeBlock lang="bash">{`curl -X POST http://localhost:8787/runs \\
   -H 'content-type: application/json' \\
   -d '{"kind":"workflow","definitionName":"release-v1","input":{"topic":"Launch"}}'`}</CodeBlock>
       <p>
-        Actor hosts return 501 for global GET /runs; use an application registry or shared index.
-        The embed handler maps InvalidInputError and InvalidEventError to 400, unknown projections
-        to 404, RunTerminalError to 409, and other caught execution failures to 500. Routing
-        behavior differs by host; inspect status and body. Client request helpers reject non-success
-        responses.
+        Actor hosts return 501 for global GET /runs, where you would use an application registry or
+        shared index, and for POST /runs/:id/fork, because each run lives in its own cell. The embed
+        handler maps InvalidInputError and InvalidEventError to 400, unknown projections and
+        RunNotFoundError to 404, RunTerminalError and the fork errors to 409, and other caught
+        execution failures to 500. Routing behavior differs by host; inspect status and body. Client
+        request helpers reject non-success responses.
       </p>
       <h2 id="client">
         Client and streaming
@@ -166,7 +186,7 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       </h2>
       <p>
         createLoomsClient accepts baseUrl and an optional fetch implementation. getRun, signal,
-        wake, and cancel resolve to objects containing state; getEvents resolves to an object
+        wake, cancel, and fork resolve to objects containing state; getEvents resolves to an object
         containing events. subscribeEvents returns an unsubscribe function and reconnects using its
         last cursor. stream(definition, input) or streamRun(args) returns an async iterable with a
         runId for events during the initial wake cycle. A stream ending does not mean a parked

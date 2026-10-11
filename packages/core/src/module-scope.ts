@@ -132,6 +132,7 @@ export interface ModuleScope<
     input?: TSchema
     retry?: RetryPolicy
     execution?: EffectExecution
+    deterministic?: boolean
     execute?: (
       input: TInput,
       ctx: ScopedEffectContext<EventInputOf<U>>,

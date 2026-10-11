@@ -222,6 +222,8 @@ export interface RunSummary {
   readonly status: RunStatus
   /** True once the run is completed, failed, or cancelled and accepts no new signals. */
   readonly finished: boolean
+  /** True when the run failed or was cancelled, so a fork can continue it from where it stopped. */
+  readonly resumable: boolean
   readonly kind: string | undefined
   readonly definitionName: string | undefined
   readonly rootThreadId: string | undefined
@@ -251,6 +253,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
     return {
       status,
       finished: isTerminalStatus(status),
+      resumable: status === 'failed' || status === 'cancelled',
       kind: run?.kind ?? undefined,
       definitionName: run?.definitionName ?? undefined,
       rootThreadId: run?.rootThreadId ?? undefined,

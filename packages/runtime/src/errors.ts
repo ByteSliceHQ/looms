@@ -47,6 +47,48 @@ export class RunTerminalError extends Data.TaggedError('RunTerminalError')<{
   }
 }
 
+export class RunNotFoundError extends Data.TaggedError('RunNotFoundError')<{
+  readonly runId: string
+  readonly message: string
+}> {
+  constructor(runId: string) {
+    super({ runId, message: `Run "${runId}" does not exist` })
+    this.name = 'RunNotFoundError'
+  }
+}
+
+export class RunNotFinishedError extends Data.TaggedError('RunNotFinishedError')<{
+  readonly runId: string
+  readonly status: string
+  readonly message: string
+}> {
+  constructor(runId: string, status: string) {
+    super({
+      runId,
+      status,
+      message: `Run "${runId}" is ${status}; only finished runs can be forked`,
+    })
+
+    this.name = 'RunNotFinishedError'
+  }
+}
+
+export class ForkConflictError extends Data.TaggedError('ForkConflictError')<{
+  readonly runId: string
+  readonly sourceRunId: string
+  readonly message: string
+}> {
+  constructor(runId: string, sourceRunId: string) {
+    super({
+      runId,
+      sourceRunId,
+      message: `Run "${runId}" already exists and is not a fork of "${sourceRunId}"`,
+    })
+
+    this.name = 'ForkConflictError'
+  }
+}
+
 export class DuplicateEffectDispatchError extends Data.TaggedError('DuplicateEffectDispatchError')<{
   readonly runId: string
   readonly effectId: string

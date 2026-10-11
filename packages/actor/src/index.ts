@@ -1,5 +1,6 @@
 export { createActorCell, type ActorCell, type ActorCellOptions } from './cell'
 export {
+  crossRunResponse,
   runIdFromRequest,
   resolveRunTarget,
   RunTargetError,

@@ -40,6 +40,7 @@ function cloneState(state: RunState): RunState {
     status: state.status,
     rootThreadId: state.rootThreadId,
     startIdentity: state.startIdentity,
+    forkedFrom: state.forkedFrom,
     threads: { ...state.threads },
     waits: { ...state.waits },
     outstandingEffects: [...state.outstandingEffects],
@@ -140,6 +141,16 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
 
     case 'runtime.run.cancelled':
       return { ...state, status: 'cancelled' }
+
+    case 'runtime.run.forked': {
+      const sourceRunId = readString(payload, 'sourceRunId')
+      const sourceSeq = payload.sourceSeq
+
+      // Attempts recorded in the copied history belong to the source run's processes.
+      return sourceRunId && Predicate.isNumber(sourceSeq)
+        ? { ...state, forkedFrom: { runId: sourceRunId, seq: sourceSeq }, effectExecutions: {} }
+        : state
+    }
 
     case 'runtime.thread.started': {
       const threadId = readString(payload, 'threadId') ?? event.threadId
