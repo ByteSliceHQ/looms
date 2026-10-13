@@ -4,7 +4,9 @@ import { completedRunStatus, type EventEnvelope, type JsonValue } from '@looms/c
 
 import type { Projector } from './projector'
 
+/** A run (`actorId === runId`) or one of its threads. Thread ids are unique within a run. */
 export interface ActorIndexRow {
+  runId: string
   actorId: string
   kind: string | null
   status: string | null
@@ -14,8 +16,8 @@ export interface ActorIndexRow {
 }
 
 export interface ReviewIndexRow {
+  runId: string
   reviewId: string
-  actorId: string
   status: string
   title: string
   updatedAt: number
@@ -24,6 +26,7 @@ export interface ReviewIndexRow {
 export type IndexOp =
   | {
       type: 'upsertActor'
+      runId: string
       actorId: string
       kind: string | null
       status: string | null
@@ -33,20 +36,22 @@ export type IndexOp =
     }
   | {
       type: 'setActorStatus'
+      runId: string
       actorId: string
       status: string
       updatedAt: number
     }
   | {
       type: 'upsertReview'
+      runId: string
       reviewId: string
-      actorId: string
       status: string
       title: string
       updatedAt: number
     }
   | {
       type: 'setReviewStatus'
+      runId: string
       reviewId: string
       status: string
       updatedAt: number
@@ -54,15 +59,16 @@ export type IndexOp =
 
 export interface IndexBackend {
   applyOps: (ops: ReadonlyArray<IndexOp>) => Promise<void>
-  getActor: (actorId: string) => Promise<ActorIndexRow | null>
-  listReviews: (actorId?: string) => Promise<ReviewIndexRow[]>
+  getActor: (runId: string, actorId: string) => Promise<ActorIndexRow | null>
+  listReviews: (runId?: string) => Promise<ReviewIndexRow[]>
   init?: () => Promise<void>
   dispose?: () => Promise<void>
 }
 
 export interface IndexProjector extends Projector {
-  getActor: (actorId: string) => Promise<ActorIndexRow | null>
-  listReviews: (actorId?: string) => Promise<ReviewIndexRow[]>
+  /** The run's row, or one of its threads when `actorId` is given. */
+  getActor: (runId: string, actorId?: string) => Promise<ActorIndexRow | null>
+  listReviews: (runId?: string) => Promise<ReviewIndexRow[]>
 }
 
 function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
@@ -80,13 +86,16 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
 
 export function indexOpsFor(event: EventEnvelope): IndexOp[] {
   const payload = payloadObject(event)
+  const runId = event.runId
+  const actorId = readString(payload, 'threadId') ?? event.threadId ?? runId
 
   switch (event.type) {
     case 'runtime.run.started':
       return [
         {
           type: 'upsertActor',
-          actorId: event.runId,
+          runId,
+          actorId: runId,
           kind: readString(payload, 'kind') ?? null,
           status: 'running',
           definitionName: readString(payload, 'definitionName') ?? null,
@@ -98,7 +107,8 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
       return [
         {
           type: 'upsertActor',
-          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
+          runId,
+          actorId,
           kind: readString(payload, 'kind') ?? null,
           status: 'running',
           definitionName: readString(payload, 'definitionName') ?? null,
@@ -110,45 +120,25 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
       return [
         {
           type: 'setActorStatus',
-          actorId: event.runId,
+          runId,
+          actorId: runId,
           status: completedRunStatus(event.payload),
           updatedAt: event.ts,
         },
       ]
     case 'runtime.thread.completed':
-      return [
-        {
-          type: 'setActorStatus',
-          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
-          status: 'completed',
-          updatedAt: event.ts,
-        },
-      ]
+      return [{ type: 'setActorStatus', runId, actorId, status: 'completed', updatedAt: event.ts }]
     case 'runtime.thread.failed':
-      return [
-        {
-          type: 'setActorStatus',
-          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
-          status: 'failed',
-          updatedAt: event.ts,
-        },
-      ]
+      return [{ type: 'setActorStatus', runId, actorId, status: 'failed', updatedAt: event.ts }]
     case 'runtime.run.cancelled':
     case 'runtime.thread.cancelled':
-      return [
-        {
-          type: 'setActorStatus',
-          actorId: readString(payload, 'threadId') ?? event.threadId ?? event.runId,
-          status: 'cancelled',
-          updatedAt: event.ts,
-        },
-      ]
+      return [{ type: 'setActorStatus', runId, actorId, status: 'cancelled', updatedAt: event.ts }]
     case 'approval.requested':
       return [
         {
           type: 'upsertReview',
+          runId,
           reviewId: readString(payload, 'approvalId') ?? 'unknown',
-          actorId: event.runId,
           status: 'pending',
           title: readString(payload, 'title') ?? 'Approval',
           updatedAt: event.ts,
@@ -158,8 +148,8 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
       return [
         {
           type: 'upsertReview',
+          runId,
           reviewId: readString(payload, 'approvalId') ?? 'unknown',
-          actorId: event.runId,
           status: payload.outcome === 'reject' ? 'rejected' : 'approved',
           title: 'Approval',
           updatedAt: event.ts,
@@ -169,6 +159,7 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
       return [
         {
           type: 'setReviewStatus',
+          runId,
           reviewId: readString(payload, 'approvalId') ?? 'unknown',
           status: 'timed_out',
           updatedAt: event.ts,
@@ -182,7 +173,7 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
 export function createIndexProjector(
   name: string,
   backend: IndexBackend,
-  version = '1',
+  version = '2',
 ): IndexProjector {
   return {
     name,
@@ -193,7 +184,7 @@ export function createIndexProjector(
       const ops = events.flatMap(indexOpsFor)
       return ops.length === 0 ? Promise.resolve() : backend.applyOps(ops)
     },
-    getActor: (actorId) => backend.getActor(actorId),
-    listReviews: (actorId) => backend.listReviews(actorId),
+    getActor: (runId, actorId) => backend.getActor(runId, actorId ?? runId),
+    listReviews: (runId) => backend.listReviews(runId),
   }
 }

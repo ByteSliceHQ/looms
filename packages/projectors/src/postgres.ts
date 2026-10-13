@@ -15,6 +15,7 @@ export { POSTGRES_SCHEMA_SQL } from './schema'
 export type PostgresProjectorOptions = { url: string } | { sql: Sql }
 
 type PostgresActorRow = {
+  run_id: string
   actor_id: string
   kind: string | null
   status: string | null
@@ -24,8 +25,8 @@ type PostgresActorRow = {
 }
 
 type PostgresReviewRow = {
+  run_id: string
   review_id: string
-  actor_id: string
   status: string
   title: string
   updated_at: Date
@@ -44,9 +45,9 @@ function applyOp(
   switch (op.type) {
     case 'upsertActor':
       return sql`
-        INSERT INTO looms_actors (actor_id, kind, status, definition_name, parent_actor_id, updated_at)
-        VALUES (${op.actorId}, ${op.kind}, ${op.status}, ${op.definitionName}, ${op.parentActorId}, ${date})
-        ON CONFLICT (actor_id) DO UPDATE SET
+        INSERT INTO looms_run_actors (run_id, actor_id, kind, status, definition_name, parent_actor_id, updated_at)
+        VALUES (${op.runId}, ${op.actorId}, ${op.kind}, ${op.status}, ${op.definitionName}, ${op.parentActorId}, ${date})
+        ON CONFLICT (run_id, actor_id) DO UPDATE SET
           kind = EXCLUDED.kind,
           status = EXCLUDED.status,
           definition_name = EXCLUDED.definition_name,
@@ -55,24 +56,24 @@ function applyOp(
       `
     case 'setActorStatus':
       return sql`
-        INSERT INTO looms_actors (actor_id, status, updated_at)
-        VALUES (${op.actorId}, ${op.status}, ${date})
-        ON CONFLICT (actor_id) DO UPDATE SET
+        INSERT INTO looms_run_actors (run_id, actor_id, status, updated_at)
+        VALUES (${op.runId}, ${op.actorId}, ${op.status}, ${date})
+        ON CONFLICT (run_id, actor_id) DO UPDATE SET
           status = EXCLUDED.status,
           updated_at = EXCLUDED.updated_at
       `
     case 'upsertReview':
       return sql`
-        INSERT INTO looms_reviews (review_id, actor_id, status, title, updated_at)
-        VALUES (${op.reviewId}, ${op.actorId}, ${op.status}, ${op.title}, ${date})
-        ON CONFLICT (review_id) DO UPDATE SET
+        INSERT INTO looms_run_reviews (run_id, review_id, status, title, updated_at)
+        VALUES (${op.runId}, ${op.reviewId}, ${op.status}, ${op.title}, ${date})
+        ON CONFLICT (run_id, review_id) DO UPDATE SET
           status = EXCLUDED.status,
           updated_at = EXCLUDED.updated_at
       `
     case 'setReviewStatus':
       return sql`
-        UPDATE looms_reviews SET status = ${op.status}, updated_at = ${date}
-        WHERE review_id = ${op.reviewId}
+        UPDATE looms_run_reviews SET status = ${op.status}, updated_at = ${date}
+        WHERE run_id = ${op.runId} AND review_id = ${op.reviewId}
       `
 
     default: {
@@ -99,17 +100,18 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
           ),
         ),
       ).then(() => undefined),
-    getActor: (actorId) =>
+    getActor: (runId, actorId) =>
       runProjectorPromise(
         'postgres',
         () => sql<PostgresActorRow[]>`
-          SELECT actor_id, kind, status, definition_name, parent_actor_id, updated_at
-          FROM looms_actors WHERE actor_id = ${actorId}
+          SELECT run_id, actor_id, kind, status, definition_name, parent_actor_id, updated_at
+          FROM looms_run_actors WHERE run_id = ${runId} AND actor_id = ${actorId}
         `,
       ).then((rows) => {
         const row = rows[0]
         return row
           ? {
+              runId: row.run_id,
               actorId: row.actor_id,
               kind: row.kind,
               status: row.status,
@@ -119,20 +121,20 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
             }
           : null
       }),
-    listReviews: (actorId) =>
+    listReviews: (runId) =>
       runProjectorPromise('postgres', () =>
-        actorId
+        runId
           ? sql<PostgresReviewRow[]>`
-            SELECT review_id, actor_id, status, title, updated_at
-            FROM looms_reviews WHERE actor_id = ${actorId}
+            SELECT run_id, review_id, status, title, updated_at
+            FROM looms_run_reviews WHERE run_id = ${runId}
           `
           : sql<PostgresReviewRow[]>`
-            SELECT review_id, actor_id, status, title, updated_at FROM looms_reviews
+            SELECT run_id, review_id, status, title, updated_at FROM looms_run_reviews
           `,
       ).then((rows) =>
         rows.map((row) => ({
+          runId: row.run_id,
           reviewId: row.review_id,
-          actorId: row.actor_id,
           status: row.status,
           title: row.title,
           updatedAt: row.updated_at.getTime(),
