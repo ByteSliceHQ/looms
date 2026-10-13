@@ -231,6 +231,100 @@ describe('stopping an agent turn', () => {
     await looms.stop()
   })
 
+  test('aborts a model call running in a tool child and cancels the child', async () => {
+    let helperStarted = false
+    let helperAborted = false
+
+    const helper = defineAgent({
+      name: 'slow_helper',
+      instructions: 'help',
+      runTurn: ({ signal }) => {
+        helperStarted = true
+        signal?.addEventListener('abort', () => (helperAborted = true), { once: true })
+        return blockUntilAborted(signal)
+      },
+    })
+
+    const assistant = defineAgent({
+      name: 'delegating-to-agent',
+      instructions: 'delegate',
+      conversational: true,
+      tools: [helper],
+      runTurn: ({ turn }) => {
+        const toolCalls = turn === 1 ? [{ id: 'help-1', name: 'slow_helper', arguments: {} }] : []
+        return { message: { role: 'assistant', content: '', toolCalls }, toolCalls }
+      },
+    })
+
+    const looms = createLooms({ modules: [agent({ definitions: [assistant, helper] })] })
+    const starting = looms.start(assistant, 'get help')
+    await waitFor(() => helperStarted)
+    const [runId] = await looms.listRuns()
+    const { rootThreadId } = await looms.getRun(runId!)
+
+    const stopped = await looms.signal(runId!, [stopAgentTurn({ threadId: rootThreadId! })])
+    await starting
+
+    const child = Object.values(stopped.threads).find(
+      (thread) => thread.definitionName === 'slow_helper',
+    )
+
+    expect(helperAborted).toBe(true)
+    expect(child?.status).toBe('cancelled')
+    expect(stopped.threads[rootThreadId!]?.status).toBe('waiting')
+    await looms.stop()
+  })
+
+  test('cancels what a cancelled tool child started in turn', async () => {
+    const job = defineWorkflow({
+      name: 'nested_job',
+      nodes: [
+        {
+          id: 'hold',
+          run: (ctx) => ctx.effects([wait({ waitId: 'hold', on: { type: 'never' } })]),
+        },
+      ],
+    })
+
+    const helper = defineAgent({
+      name: 'job_runner',
+      instructions: 'run the job',
+      tools: [job],
+      runTurn: () => {
+        const toolCalls = [{ id: 'job-1', name: 'nested_job', arguments: {} }]
+        return { message: { role: 'assistant', content: '', toolCalls }, toolCalls }
+      },
+    })
+
+    const assistant = defineAgent({
+      name: 'delegating-twice',
+      instructions: 'delegate',
+      conversational: true,
+      tools: [helper],
+      runTurn: ({ turn }) => {
+        const toolCalls = turn === 1 ? [{ id: 'run-1', name: 'job_runner', arguments: {} }] : []
+        return { message: { role: 'assistant', content: '', toolCalls }, toolCalls }
+      },
+    })
+
+    const looms = createLooms({
+      modules: [agent({ definitions: [assistant, helper] }), workflow({ definitions: [job] })],
+    })
+
+    const { runId, threadId, state } = await looms.start(assistant, 'go')
+
+    const byName = (name: string) =>
+      Object.values(state.threads).find((thread) => thread.definitionName === name)
+
+    expect(byName('nested_job')?.status).toBe('waiting')
+
+    const stopped = await looms.signal(runId, [stopAgentTurn({ threadId })])
+
+    expect(stopped.threads[byName('job_runner')!.threadId]?.status).toBe('cancelled')
+    expect(stopped.threads[byName('nested_job')!.threadId]?.status).toBe('cancelled')
+    await looms.stop()
+  })
+
   test('cancels the active turn of an agent session and keeps the session open', async () => {
     const calls: string[] = []
 

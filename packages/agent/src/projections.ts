@@ -2,7 +2,13 @@ import { Predicate } from 'effect'
 
 import { agentModule } from './scope'
 import { closeOpenToolCalls } from './transcript'
-import { ConversationSchema, TokenUsageSchema, type Message, type ToolCall } from './types'
+import {
+  ConversationSchema,
+  TokenUsageSchema,
+  TurnActivitySchema,
+  type Message,
+  type ToolCall,
+} from './types'
 
 export const conversation = agentModule.projection({
   name: 'conversation',
@@ -56,7 +62,8 @@ export const conversation = agentModule.projection({
           toolCalls,
         }
 
-        return { lines: [...state.lines, line] }
+        const interrupted = event.type === 'agent.steered' && event.payload.interrupt === true
+        return { lines: [...(interrupted ? closeOpenToolCalls(state.lines) : state.lines), line] }
       }
 
       case 'agent.tool.result': {
@@ -81,6 +88,46 @@ export const conversation = agentModule.projection({
       case 'agent.turn.stopped':
         return { lines: closeOpenToolCalls(state.lines) }
 
+      default:
+        return state
+    }
+  },
+})
+
+/** Whether the run's root agent or session has a turn in progress that `stopAgentTurn` can end. */
+export const turnActivity = agentModule.projection({
+  name: 'turnActivity',
+  shape: TurnActivitySchema,
+  initialState: { rootThreadId: null, active: false },
+  reduce(state, event) {
+    if (event.type === 'runtime.run.started') {
+      return { ...state, rootThreadId: event.payload.rootThreadId ?? null }
+    }
+
+    if (event.threadId === null || event.threadId !== state.rootThreadId) {
+      return state
+    }
+
+    switch (event.type) {
+      case 'runtime.thread.started':
+        return { ...state, active: event.payload.kind === 'agent' }
+      case 'agent.message.received':
+      case 'agent.tool_call.requested':
+      case 'agent.session.turn.started':
+        return { ...state, active: true }
+      case 'agent.steered':
+        return event.payload.interrupt === true ? { ...state, active: true } : state
+      case 'agent.message':
+      case 'agent.turn.stopped':
+      case 'runtime.thread.completed':
+      case 'runtime.thread.failed':
+      case 'runtime.thread.cancelled':
+        return { ...state, active: false }
+      case 'runtime.wait.satisfied':
+        return Predicate.isObject(event.payload.tag) &&
+          event.payload.tag.kind === 'agent-session-turn'
+          ? { ...state, active: false }
+          : state
       default:
         return state
     }

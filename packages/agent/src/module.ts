@@ -1,13 +1,13 @@
 import { Layer, Predicate } from 'effect'
 
-import { defineModule, makeDefinitionStore, type EventInput, type RunState } from '@looms/core'
+import { defineModule, makeDefinitionStore, type EventInput } from '@looms/core'
 
 import { createAgentSessionThread } from './agent-session'
 import type { AgentDefinition, AgentSessionDefinition } from './definitions'
 import { AgentDefinitionsLive } from './definitions-store'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { llmFromAdapter, LlmTag, StubLlmLive, type LlmAdapter, type StubLlmPolicy } from './llm'
-import { conversation, tokenUsage } from './projections'
+import { conversation, tokenUsage, turnActivity } from './projections'
 import { agentModule } from './scope'
 import { agentThread } from './threads'
 
@@ -49,35 +49,20 @@ export function agent(options: AgentModuleOptions = {}) {
     projections: {
       conversation,
       tokenUsage,
+      turnActivity,
     },
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
     interruptsOnSignal,
   }))
 }
 
-/** A stopped session interrupts its active turn's child; a stopped or steered agent, itself. */
-function interruptsOnSignal(event: EventInput, state: RunState): readonly string[] {
-  const threadId = event.threadId
+/** A stop or an interrupting steer abandons the turn in progress on its thread. */
+function interruptsOnSignal(event: EventInput): readonly string[] {
+  const abandonsTurn =
+    event.type === 'agent.turn.stopped' ||
+    (event.type === 'agent.steered' &&
+      Predicate.isObject(event.payload) &&
+      event.payload.interrupt === true)
 
-  if (!threadId) {
-    return []
-  }
-
-  if (event.type === 'agent.turn.stopped') {
-    const thread = state.threads[threadId]
-    const activeTurn = Predicate.isObject(thread?.state) ? thread.state.activeTurn : undefined
-
-    const childThreadId =
-      thread?.kind === 'agent-session' && Predicate.isObject(activeTurn)
-        ? activeTurn.childThreadId
-        : undefined
-
-    return [Predicate.isString(childThreadId) ? childThreadId : threadId]
-  }
-
-  return event.type === 'agent.steered' &&
-    Predicate.isObject(event.payload) &&
-    event.payload.interrupt === true
-    ? [threadId]
-    : []
+  return abandonsTurn && event.threadId ? [event.threadId] : []
 }

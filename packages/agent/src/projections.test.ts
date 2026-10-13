@@ -1,12 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createEvent, project } from '@looms/core'
+import { createEvent, project, type JsonValue } from '@looms/core'
 
-import { conversation, tokenUsage } from './projections'
+import { conversation, tokenUsage, turnActivity } from './projections'
 import { ConversationSchema, TokenUsageSchema } from './types'
 
 function assignSeq<T extends { seq: number }>(events: T[]): T[] {
   return events.map((e, idx) => ({ ...e, seq: idx + 1 }))
+}
+
+function at(type: string, payload: JsonValue, threadId: string | null = 'thr_root') {
+  return createEvent('run_agent_3', { type, payload, threadId })
 }
 
 describe('agent projections with Effect schemas', () => {
@@ -72,5 +76,33 @@ describe('agent projections with Effect schemas', () => {
 
     const result = project(tokenUsage, events)
     expect(result).toEqual({ input: 25, output: 45 })
+  })
+
+  test('turnActivity follows the root agent turn and ignores other threads', () => {
+    const activity = (...events: ReturnType<typeof at>[]) =>
+      project(turnActivity, assignSeq(events)).active
+
+    const started = [
+      at('runtime.run.started', { rootThreadId: 'thr_root' }, null),
+      at('runtime.thread.started', { threadId: 'thr_root', kind: 'agent' }),
+    ]
+
+    const answered = at('agent.message', { message: { role: 'assistant', content: 'hi' } })
+
+    expect(activity(...started)).toBe(true)
+    expect(activity(...started, answered)).toBe(false)
+    expect(activity(...started, at('agent.turn.stopped', {}))).toBe(false)
+
+    expect(activity(...started, answered, at('agent.message.received', {}, 'thr_child'))).toBe(
+      false,
+    )
+
+    expect(
+      activity(
+        ...started,
+        answered,
+        at('agent.message.received', { message: { role: 'user', content: 'again' } }),
+      ),
+    ).toBe(true)
   })
 })

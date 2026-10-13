@@ -2,6 +2,7 @@ import { Clock, Effect } from 'effect'
 
 import {
   createEvent,
+  descendantThreadIds,
   EventStoreTag,
   foldRun,
   type ComposedRegistry,
@@ -39,24 +40,6 @@ interface CancellationPlan {
   readonly events: ReadonlyArray<EventEnvelope>
   readonly threadIds: ReadonlySet<string>
   readonly workerCancellations: ReadonlyArray<WorkerCancellation>
-}
-
-function descendantThreadIds(state: RunState, targetThreadId: string): string[] {
-  return Object.values(state.threads)
-    .filter((record) => {
-      let parentThreadId = record.parentThreadId
-
-      while (parentThreadId) {
-        if (parentThreadId === targetThreadId) {
-          return true
-        }
-
-        parentThreadId = state.threads[parentThreadId]?.parentThreadId ?? null
-      }
-
-      return false
-    })
-    .map((record) => record.threadId)
 }
 
 /**

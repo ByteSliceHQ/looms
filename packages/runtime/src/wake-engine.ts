@@ -21,7 +21,12 @@ import {
   MaxWakeIterationsError,
   RuntimeExecutionError,
 } from './errors'
-import { stripSeq, synthesizedThreadFailed, waitSatisfiedEvents } from './helpers'
+import {
+  cascadedCancellations,
+  stripSeq,
+  synthesizedThreadFailed,
+  waitSatisfiedEvents,
+} from './helpers'
 import { executeLocalEffects } from './local-effect-executor'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
@@ -383,7 +388,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             yield* liveAppends.drain(runId)
             const beforeFold = cursor.state
             const intermediateState = foldRun(produced, registry, { runId, initial: beforeFold })
-            const synthesized = synthesizedThreadFailed(beforeFold, intermediateState, produced)
+
+            const synthesized = [
+              ...synthesizedThreadFailed(beforeFold, intermediateState, produced),
+              ...cascadedCancellations(intermediateState, produced),
+            ]
+
             const synthesizedEvents = synthesized.map((input) => createEvent(runId, input))
 
             const stateAfterSynth =

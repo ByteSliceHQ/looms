@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { Schema } from 'effect'
 
-import { composeModules, createEvent, emptyRunState, foldRun } from '@looms/core'
+import { composeModules, createEvent, foldRun } from '@looms/core'
 
 import { defineAgent } from './definitions'
 import { agent } from './module'
@@ -209,30 +209,9 @@ describe('@looms/agent module', () => {
 
   test('registers a signal interrupt rule for interrupting steers', () => {
     const [rule] = composeModules([agent()]).interruptRules
-    const state = emptyRunState('run_a')
 
-    expect(rule?.(steer('stop', { threadId: 'thr_a' }), state)).toEqual(['thr_a'])
-    expect(rule?.(steer('later', { threadId: 'thr_a', interrupt: false }), state)).toEqual([])
-  })
-
-  test('a stop interrupts the agent itself, or a session’s active turn', () => {
-    const [rule] = composeModules([agent()]).interruptRules
-    const state = emptyRunState('run_a')
-
-    state.threads.thr_session = {
-      threadId: 'thr_session',
-      kind: 'agent-session',
-      definitionName: 'session',
-      definitionVersion: '1',
-      parentThreadId: null,
-      status: 'running',
-      input: null,
-      output: null,
-      error: null,
-      state: { activeTurn: { messageId: 'm1', childThreadId: 'thr_turn', text: 'hi' } },
-    }
-
-    expect(rule?.(stopAgentTurn({ threadId: 'thr_a' }), state)).toEqual(['thr_a'])
-    expect(rule?.(stopAgentTurn({ threadId: 'thr_session' }), state)).toEqual(['thr_turn'])
+    expect(rule?.(steer('stop', { threadId: 'thr_a' }))).toEqual(['thr_a'])
+    expect(rule?.(steer('later', { threadId: 'thr_a', interrupt: false }))).toEqual([])
+    expect(rule?.(stopAgentTurn({ threadId: 'thr_a' }))).toEqual(['thr_a'])
   })
 })
