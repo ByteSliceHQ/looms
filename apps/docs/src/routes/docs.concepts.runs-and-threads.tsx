@@ -148,6 +148,15 @@ const { runId } = await looms.start(vintageWatch, {
           Terminal: <code>completed</code>, <code>failed</code>, or <code>cancelled</code>
         </li>
       </ul>
+      <p>
+        Cancelling a thread also cancels every live thread below it. A terminal run stays terminal:
+        it rejects new signals with <code>RunTerminalError</code>. To continue a failed or cancelled
+        run,{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          fork it
+        </Link>{' '}
+        into a new run.
+      </p>
 
       <h2 id="three-orthogonal-structures">
         Three orthogonal structures

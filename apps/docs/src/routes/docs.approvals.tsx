@@ -94,7 +94,9 @@ await looms.signal(runId, [decision(pending.approvalId, 'reject')], {
         application workflow or custom thread that records a deadline, waits for a correlated
         decision or timer, and fails closed on timeout. Record expiration explicitly and reject late
         decisions at the gateway. Emitting approval.timed_out does not satisfy a gate waiting for
-        approval.decided.
+        approval.decided. A decision sent after the run has finished is rejected with
+        RunTerminalError (HTTP 409); a run that is still going accepts it, so keep the gateway
+        check.
       </p>
       <h2 id="review-ui">
         Review UI

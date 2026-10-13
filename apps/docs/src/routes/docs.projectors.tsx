@@ -435,6 +435,16 @@ const run = await index.getActor(runId)
 const thread = await index.getActor(runId, threadId)
 const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
       <p>
+        <code>getActor(runId)</code> returns the run&apos;s row and{' '}
+        <code>getActor(runId, threadId)</code> one of its threads. Each row&apos;s status is{' '}
+        <code>running</code>, <code>completed</code>, <code>failed</code>, or <code>cancelled</code>
+        ; a run that completes with an error is <code>failed</code>. Review rows carry the{' '}
+        <code>runId</code> they belong to, and <code>listReviews()</code> without a run lists every
+        run&apos;s reviews. A custom projector can read the same outcome from a{' '}
+        <code>runtime.run.completed</code> payload with <code>completedRunStatus</code> from{' '}
+        <code>@swirls/looms/core</code>.
+      </p>
+      <p>
         Index rows are keyed by run, so two runs that share a thread or approval id stay apart. The
         tables are <code>looms_run_actors</code> and <code>looms_run_reviews</code>. The built-in
         index projectors are version 2, so delivery rebuilds them from each run&apos;s log. The

@@ -56,18 +56,42 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         Use <code>userMessage(text)</code> with signal. For long conversations, decide how much
         history to send to the model and when to summarize it.
       </p>
+      <h2 id="stop-a-turn">
+        Stop a turn
+        <a className="heading-anchor" href="#stop-a-turn" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
       <p>
         Signal <code>stopAgentTurn()</code> to end the turn in progress without ending the run. The
         agent aborts its in-flight model call or tool, cancels child threads its tool calls started
-        along with anything they started, answers open tool calls with a stopped result, and waits
-        for the next message. The same signal sent to an agent session cancels its active turn and
-        keeps the session open. Use <code>looms.cancel</code> to end the run instead.
+        along with anything they started, answers open tool calls with a stopped result, records{' '}
+        <code>agent.turn.stopped</code>, and waits for the next message. The same signal sent to an
+        agent session cancels its active turn and keeps the session open. Use{' '}
+        <code>looms.cancel</code> to end the run instead.
       </p>
       <p>
-        A <code>steer</code> with <code>interrupt: true</code> ends the turn the same way, then
-        starts a new turn with the steering message.
+        <code>steer(text)</code> interrupts by default: it ends the turn the same way, then starts a
+        new turn with the steering message. Pass <code>{'{ interrupt: false }'}</code> to let the
+        turn continue and include the message in its next model call.
       </p>
-      <CodeBlock lang="ts">{`await looms.signal(runId, [stopAgentTurn({ threadId })])`}</CodeBlock>
+      <CodeBlock lang="ts">{`import { stopAgentTurn } from '@swirls/looms/agent'
+
+// Targets the root thread; pass { threadId } to stop a different agent thread.
+await looms.signal(runId, [stopAgentTurn()])`}</CodeBlock>
+      <p>
+        The <code>turnActivity</code> projection reports whether the run&apos;s root agent or
+        session has a turn in progress. Use it to decide when a chat UI shows a Stop button, and
+        send the stop through an application endpoint that authorizes the user.
+      </p>
+      <CodeBlock lang="tsx">{`import { turnActivity } from '@swirls/looms/agent'
+import { useProjection, useRunStore } from '@swirls/looms/react'
+
+function StopButton({ runId, onStop }: { runId: string; onStop: () => void }) {
+  const store = useRunStore(runId)
+  const { active } = useProjection(store, turnActivity)
+  return active ? <button onClick={onStop}>Stop</button> : null
+}`}</CodeBlock>
       <h2 id="agent-sessions">
         Agent sessions
         <a className="heading-anchor" href="#agent-sessions" aria-label="Link to this section">
@@ -137,10 +161,20 @@ await looms.signal(runId, [
         should not be treated as a billing ledger.
       </p>
       <p>
-        Use <code>looms.cancel(runId, threadId?)</code> to request cancellation. External operations
-        already accepted by another system cannot be undone by cancellation. Tool handlers receive
-        an abort signal where available; forward it to cancellable I/O. Inspect failure events and
-        test your recovery policy.
+        Use <code>looms.cancel(runId, threadId?)</code> to request cancellation. Cancelling a thread
+        also cancels every live thread below it, such as tool children. External operations already
+        accepted by another system cannot be undone by cancellation. Tool handlers receive an abort
+        signal where available; forward it to cancellable I/O. Inspect failure events and test your
+        recovery policy.
+      </p>
+      <p>
+        A failed or cancelled run stays finished. To pick it up, fork it with{' '}
+        <code>looms.fork(runId)</code>: the new run re-runs the model call or tool that the failure
+        or cancel cut off. See{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          continue a finished run
+        </Link>
+        .
       </p>
       <h2 id="structured-output-and-custom-models">
         Structured output and custom models

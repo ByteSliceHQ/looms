@@ -78,9 +78,11 @@ function Page() {
       </h2>
       <p>
         Use <code>looms.cancel</code> or <code>POST /runs/:id/cancel</code> for the whole run or a
-        child thread. Cancellation can abort cooperative work but cannot retract a payment or
-        message already accepted externally. Record operator decisions. If an external action needs
-        to be reversed, perform and record that reversal separately.
+        child thread. Cancelling a thread also cancels every live thread below it. A finished run
+        rejects later signals with <code>RunTerminalError</code> (HTTP 409); fork it to continue.
+        Cancellation can abort cooperative work but cannot retract a payment or message already
+        accepted externally. Record operator decisions. If an external action needs to be reversed,
+        perform and record that reversal separately.
       </p>
       <h2 id="continue-a-finished-run">
         Continue a finished run

@@ -113,6 +113,23 @@ export function App({ runId }: { runId: string }) {
         the allowed event. See <Link to="/docs/security">authentication and tenancy</Link> before
         connecting real users.
       </p>
+      <p>
+        <code>useRunSummary(store)</code> returns the run&apos;s <code>status</code> and two flags
+        for gating controls. <code>finished</code> is true once the run is completed, failed, or
+        cancelled. A finished run rejects new signals with HTTP 409, so disable inputs that would
+        send one. <code>resumable</code> is true for failed and cancelled runs, which{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          a fork can continue
+        </Link>
+        .
+      </p>
+      <CodeBlock lang="tsx">{`import { useRunStore, useRunSummary } from '@swirls/looms/react'
+
+function Composer({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const { finished } = useRunSummary(store)
+  return <textarea disabled={finished} />
+}`}</CodeBlock>
       <h2 id="keep-your-agent-logic">
         Keep your agent logic
         <a

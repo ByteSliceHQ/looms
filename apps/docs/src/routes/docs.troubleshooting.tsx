@@ -118,6 +118,22 @@ function Page() {
         handwritten envelopes. Compile-time payload markers do not add runtime validation. Inspect
         HTTP status and body; different hosts may map routing failures differently.
       </p>
+      <h2 id="a-signal-returns-409">
+        A signal returns 409
+        <a
+          className="heading-anchor"
+          href="#a-signal-returns-409"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        The run has completed, failed, or been cancelled, and a finished run rejects new signals
+        with RunTerminalError. Check the run status before sending, for example with useRunSummary
+        in React. To continue a failed or cancelled run, fork it. A retry of a signal whose
+        idempotencyKey was already accepted still succeeds.
+      </p>
       <h2 id="global-run-listing-returns-501">
         Global run listing returns 501
         <a
@@ -130,7 +146,8 @@ function Page() {
       </h2>
       <p>
         This is the actor host contract. Use your application registry or a cross-run index; see the
-        operations guide.
+        operations guide. Forking a run returns 501 on the same hosts, because a fork writes a
+        second run; only the embedded runtime forks runs.
       </p>
       <h2 id="timers-do-not-fire-after-a-local-restart">
         Timers do not fire after a local restart
