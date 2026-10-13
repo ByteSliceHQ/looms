@@ -36,12 +36,8 @@ function flatten(root: ThreadNode | null, collapsed: ReadonlySet<string>): FlatN
     rows.push(next)
 
     if (!collapsed.has(next.node.threadId)) {
-      for (let index = next.node.children.length - 1; index >= 0; index--) {
-        const child = next.node.children[index]
-
-        if (child) {
-          stack.push({ node: child, depth: next.depth + 1 })
-        }
+      for (const child of next.node.children.toReversed()) {
+        stack.push({ node: child, depth: next.depth + 1 })
       }
     }
   }

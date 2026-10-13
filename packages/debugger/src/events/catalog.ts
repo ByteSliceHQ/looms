@@ -19,9 +19,7 @@ export function createEventCatalog<TEvent extends DebuggerEvent = DebuggerEvent>
   plugins: readonly DebuggerPlugin[] = [],
 ): EventStreamCatalog<TEvent> {
   const views = [...plugins.flatMap((plugin) => plugin.families ?? []), ...builtinFamilies]
-  // ES2022 has no Array#toSorted. `views` is a fresh array.
-  // oxlint-disable-next-line unicorn/no-array-sort
-  const byPrefix = views.sort((left, right) => prefixOf(right).length - prefixOf(left).length)
+  const byPrefix = views.toSorted((left, right) => prefixOf(right).length - prefixOf(left).length)
   const colors = new Map(views.map((view) => [view.family, view.color]))
 
   function viewOf(type: string): EventFamilyView {

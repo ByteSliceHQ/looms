@@ -10,10 +10,7 @@ function canonicalJson(value: JsonValue): string {
   }
 
   if (Predicate.isObject(value)) {
-    const keys = Object.keys(value)
-
-    // oxlint-disable-next-line unicorn/no-array-sort
-    keys.sort()
+    const keys = Object.keys(value).toSorted()
 
     return `{${keys
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key] ?? null)}`)

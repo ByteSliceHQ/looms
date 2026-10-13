@@ -69,9 +69,7 @@ function indexRuns(runs: readonly RunSummary[]): IndexedRun[] {
       .toLowerCase(),
   }))
 
-  // ES2022 has no Array#toSorted. `indexed` is a fresh array.
-  // oxlint-disable-next-line unicorn/no-array-sort
-  return indexed.sort((left, right) => right.createdAt - left.createdAt)
+  return indexed.toSorted((left, right) => right.createdAt - left.createdAt)
 }
 
 function matches(entry: IndexedRun, terms: readonly string[]): boolean {

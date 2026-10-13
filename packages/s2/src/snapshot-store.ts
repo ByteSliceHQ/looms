@@ -79,9 +79,7 @@ export function assembleSnapshot(frames: readonly SnapshotFrame[]): RunSnapshot 
   }
 
   const first = frames[0]!
-  // Oxlint's immutable alternative requires ES2023; sorting a fresh copy is safe on ES2022.
-  // oxlint-disable-next-line unicorn/no-array-sort
-  const ordered = [...frames].sort((a, b) => a.chunk - b.chunk)
+  const ordered = frames.toSorted((a, b) => a.chunk - b.chunk)
 
   for (const frame of ordered) {
     if (
@@ -259,9 +257,7 @@ function groupCompleteSnapshots(records: readonly SnapshotRecord[]): RunSnapshot
     }
   }
 
-  // `assembled` is function-local, so in-place sorting cannot mutate caller-owned data.
-  // oxlint-disable-next-line unicorn/no-array-sort
-  return assembled.sort((a, b) => a.cursor - b.cursor)
+  return assembled.toSorted((a, b) => a.cursor - b.cursor)
 }
 
 export function s2SnapshotStore(config: S2Config): SnapshotStore {

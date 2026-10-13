@@ -8,19 +8,15 @@ export function countEventsByThread(events: readonly EventEnvelope[]): Map<strin
 }
 
 export function runStatusFromEvents(events: readonly EventEnvelope[]): RunStatus {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
+  const ended = events.findLast(
+    (event) => event.type === 'runtime.run.cancelled' || event.type === 'runtime.run.completed',
+  )
 
-    if (event?.type === 'runtime.run.cancelled') {
-      return 'cancelled'
-    }
-
-    if (event?.type === 'runtime.run.completed') {
-      return completedRunStatus(event.payload)
-    }
+  if (!ended) {
+    return 'running'
   }
 
-  return 'running'
+  return ended.type === 'runtime.run.cancelled' ? 'cancelled' : completedRunStatus(ended.payload)
 }
 
 export function startedAtFromEvents(events: readonly EventEnvelope[]): number | undefined {
