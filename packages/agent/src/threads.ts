@@ -1,6 +1,7 @@
 import { Predicate } from 'effect'
 
 import {
+  cancel,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   emit,
@@ -17,6 +18,7 @@ import {
 
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
+import { closeOpenToolCalls } from './transcript'
 import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
@@ -50,25 +52,34 @@ function inputToLine(input: JsonValue): Message | null {
 }
 
 function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[] {
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index]
+  const index = lines.findLastIndex((line) => line.role === 'assistant')
+  const line = lines[index]
 
-    if (line?.role !== 'assistant') {
-      continue
-    }
-
-    const existing = line.toolCalls ?? []
-
-    if (existing.some((item) => item.id === toolCall.id)) {
-      return [...lines]
-    }
-
-    const next = [...lines]
-    next[index] = { ...line, toolCalls: [...existing, toolCall] }
-    return next
+  if (!line || line.toolCalls?.some((item) => item.id === toolCall.id)) {
+    return [...lines]
   }
 
-  return [...lines]
+  return lines.with(index, { ...line, toolCalls: [...(line.toolCalls ?? []), toolCall] })
+}
+
+/** Drop the turn in progress: answer its open tool calls and cancel the children they started. */
+function abandonTurn(state: AgentState): AgentState {
+  return {
+    ...state,
+    lines: closeOpenToolCalls(state.lines),
+    pendingSteer: null,
+    pendingToolCalls: [],
+    executingToolCalls: [],
+    pendingSpawns: [],
+    pendingEffects: [],
+    pendingEmits: [],
+    pendingEffectTools: {},
+    needsLlmCall: false,
+    abandonedChildThreadIds: [
+      ...(state.abandonedChildThreadIds ?? []),
+      ...state.pendingSpawns.map((item) => item.childThreadId),
+    ],
+  }
 }
 
 export const agentThread = agentModule.thread<AgentState>({
@@ -120,6 +131,7 @@ export const agentThread = agentModule.thread<AgentState>({
           turn: event.payload.turn,
           needsLlmCall: false,
           pendingSteer: null,
+          abandonedChildThreadIds: [],
         }
       }
 
@@ -194,15 +206,12 @@ export const agentThread = agentModule.thread<AgentState>({
             : state.consumedSteerMessageIds
 
         if (interrupt) {
+          const abandoned = abandonTurn(state)
+
           return {
-            ...state,
-            lines: [...state.lines, message],
+            ...abandoned,
+            lines: [...abandoned.lines, message],
             pendingSteer: message,
-            pendingToolCalls: [],
-            executingToolCalls: [],
-            pendingSpawns: [],
-            pendingEffects: [],
-            pendingEmits: [],
             needsLlmCall: true,
             consumedSteerMessageIds,
           }
@@ -215,6 +224,9 @@ export const agentThread = agentModule.thread<AgentState>({
           consumedSteerMessageIds,
         }
       }
+
+      case 'agent.turn.stopped':
+        return abandonTurn(state)
 
       case 'agent.spawn.requested': {
         const { childThreadId, kind, definitionName, definitionVersion, toolCallId, input } =
@@ -474,6 +486,10 @@ export const agentThread = agentModule.thread<AgentState>({
 
     for (const emitReq of state.pendingEmits) {
       effects.push(emit(emitReq.event))
+    }
+
+    for (const childThreadId of state.abandonedChildThreadIds ?? []) {
+      effects.push(cancel(childThreadId))
     }
 
     return effects

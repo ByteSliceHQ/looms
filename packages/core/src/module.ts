@@ -21,8 +21,8 @@ export type EffectMiddleware = (
 
 /**
  * Names the threads whose in-process effects an admitted signal event interrupts, so a running
- * effect (such as a model call) can stop early. Return an empty array when the event interrupts
- * nothing.
+ * effect (such as a model call) can stop early. The runtime also interrupts each named thread's
+ * descendants. Return an empty array when the event interrupts nothing.
  */
 export type SignalInterruptRule = (event: EventInput) => readonly string[]
 

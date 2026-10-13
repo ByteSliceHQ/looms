@@ -8,6 +8,7 @@ import {
   DEFAULT_DEFINITION_VERSION,
   DEFAULT_SNAPSHOT_EVERY,
   definitionKey,
+  descendantThreadIds,
   EventStoreTag,
   foldRun,
   isRunTerminal,
@@ -16,6 +17,7 @@ import {
   summarizeRun,
   type AnyRuntimeModule,
   type EventInput,
+  type RunState,
   type SignalInterruptRule,
   type InvalidEventError,
 } from '@looms/core'
@@ -70,28 +72,24 @@ function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
 }
 
-/** Threads whose in-process effects an admitted signal interrupts. */
+/** Threads whose in-process effects an admitted signal interrupts: each named one and its subtree. */
 function interruptedThreadIds(
   events: readonly EventInput[],
   rules: readonly SignalInterruptRule[],
+  state: RunState,
 ): ReadonlySet<string> {
-  const threadIds = new Set<string>()
-
-  for (const event of events) {
+  const named = events.flatMap((event) => {
     const payload = Predicate.isObject(event.payload) ? event.payload : {}
 
-    if (event.type === 'runtime.thread.cancel.requested' && Predicate.isString(payload.threadId)) {
-      threadIds.add(payload.threadId)
-    }
+    const cancelled =
+      event.type === 'runtime.thread.cancel.requested' && Predicate.isString(payload.threadId)
+        ? [payload.threadId]
+        : []
 
-    for (const rule of rules) {
-      for (const threadId of rule(event)) {
-        threadIds.add(threadId)
-      }
-    }
-  }
+    return [...cancelled, ...rules.flatMap((rule) => rule(event))]
+  })
 
-  return threadIds
+  return new Set(named.flatMap((threadId) => [threadId, ...descendantThreadIds(state, threadId)]))
 }
 
 const DEFAULT_RUN_CACHE_SIZE = 0
@@ -195,7 +193,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       if (committed.append) {
         executionContexts.abort(
           runId,
-          interruptedThreadIds(events, registry.interruptRules),
+          interruptedThreadIds(events, registry.interruptRules, committed.value),
           'Effect interrupted',
         )
       }

@@ -24,8 +24,8 @@ import {
 } from '@looms/debugger'
 import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
-import { conversation } from '../projections'
-import { agentSessionMessageEvents, userMessage } from '../signals'
+import { conversation, turnActivity } from '../projections'
+import { agentSessionMessageEvents, stopAgentTurn, userMessage } from '../signals'
 import type { AgentMessageDelivery, Message, ToolCall } from '../types'
 
 /** Child thread of the session turn that is still open, from the events the store already has. */
@@ -69,7 +69,11 @@ const streamingFold = createFold<StreamingState>({
   initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
   includeEphemeral: true,
   reduce(state, event) {
-    if (event.type === 'agent.message') {
+    if (
+      event.type === 'agent.message' ||
+      event.type === 'agent.turn.stopped' ||
+      event.type === 'runtime.thread.cancelled'
+    ) {
       return { lastMessageSeq: event.seq, turnStarted: false, parts: [] }
     }
 
@@ -397,9 +401,25 @@ function FollowUp({
 }) {
   const store = useRunStore(runId)
   const { rootThreadId, status, finished } = useRunSummary(store)
+  const turn = useProjection(store, turnActivity)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function stop() {
+    if (!rootThreadId) {
+      return
+    }
+
+    setStopping(true)
+    setError(null)
+
+    store
+      .commit(stopAgentTurn({ threadId: rootThreadId }))
+      .catch((cause: unknown) => setError(errorMessage(cause)))
+      .finally(() => setStopping(false))
+  }
 
   function send() {
     const content = draft.trim()
@@ -434,6 +454,8 @@ function FollowUp({
       value={draft}
       onChange={setDraft}
       onSubmit={send}
+      onStop={turn.active && !finished ? stop : undefined}
+      stopping={stopping}
       pending={pending}
       disabled={!rootThreadId || finished}
       placeholder={finished ? `Run ${status}. Start a new run to continue.` : 'Send a follow-up…'}

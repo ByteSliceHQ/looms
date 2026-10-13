@@ -42,6 +42,12 @@ export const TokenUsageSchema = Schema.Struct({
 })
 export type TokenUsage = Schema.Schema.Type<typeof TokenUsageSchema>
 
+export const TurnActivitySchema = Schema.Struct({
+  rootThreadId: Schema.NullOr(Schema.String),
+  active: Schema.Boolean,
+})
+export type TurnActivity = Schema.Schema.Type<typeof TurnActivitySchema>
+
 export const ThreadStartedPayloadSchema = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
   definitionVersion: Schema.String.pipe(
@@ -92,6 +98,11 @@ export interface AgentState {
   output: JsonValue | null
   pendingEffectTools: { [causingSeq: string]: PendingEffectTool }
   consumedSteerMessageIds: string[]
+  /**
+   * Children of an abandoned turn that still need cancelling, cleared when the next turn starts.
+   * Optional so snapshots taken before turns could be abandoned still fold.
+   */
+  abandonedChildThreadIds?: string[]
 }
 
 export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'

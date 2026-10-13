@@ -4,6 +4,8 @@ import {
   asJson,
   createEvent,
   definitionKey,
+  descendantThreadIds,
+  isTerminalStatus,
   makeMemorySnapshotStore,
   matchingWaits,
   snapshotStoreOf,
@@ -289,6 +291,37 @@ export function synthesizedThreadFailed(
   }
 
   return out
+}
+
+/** Cancel whatever is still live below each thread `written` cancels, deepest first. */
+export function cascadedCancellations(
+  state: RunState,
+  written: readonly EventEnvelope[],
+): EventInput[] {
+  const cancelled = written.flatMap((event) => {
+    if (event.type !== 'runtime.thread.cancelled') {
+      return []
+    }
+
+    const payload = Predicate.isObject(event.payload) ? event.payload : {}
+    const threadId = Predicate.isString(payload.threadId) ? payload.threadId : event.threadId
+    return threadId ? [threadId] : []
+  })
+
+  const live = new Set(
+    cancelled
+      .flatMap((threadId) => descendantThreadIds(state, threadId))
+      .filter((threadId) => {
+        const record = state.threads[threadId]
+        return record !== undefined && !isTerminalStatus(record.status)
+      }),
+  )
+
+  return [...live].toReversed().map((threadId) => ({
+    type: 'runtime.thread.cancelled',
+    payload: { threadId, reason: 'cancelled' },
+    threadId,
+  }))
 }
 
 export function waitSatisfiedEvents(

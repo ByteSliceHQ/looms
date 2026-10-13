@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { agent, defineAgent, steer } from '@looms/agent'
+import { agent, defineAgent, steer, type Message } from '@looms/agent'
+import { wait } from '@looms/core'
+import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
 
@@ -51,6 +53,55 @@ describe('signal interrupts', () => {
     await waitFor(() => aborted)
     expect(aborted).toBe(true)
     await starting.catch(() => undefined)
+    await looms.stop()
+  })
+
+  test('an interrupting steer answers open tool calls and cancels the children they started', async () => {
+    const seen: Message[][] = []
+
+    const job = defineWorkflow({
+      name: 'long_job',
+      nodes: [
+        {
+          id: 'hold',
+          run: (ctx) => ctx.effects([wait({ waitId: 'hold', on: { type: 'never' } })]),
+        },
+      ],
+    })
+
+    const assistant = defineAgent({
+      name: 'steerable-assistant',
+      instructions: 'answer',
+      conversational: true,
+      tools: [job],
+      runTurn: ({ turn, messages }) => {
+        seen.push(messages)
+        const toolCalls = turn === 1 ? [{ id: 'job-1', name: 'long_job', arguments: {} }] : []
+        return { message: { role: 'assistant', content: '', toolCalls }, toolCalls }
+      },
+    })
+
+    const looms = createLooms({
+      modules: [agent({ definitions: [assistant] }), workflow({ definitions: [job] })],
+    })
+
+    const { runId, threadId, state } = await looms.start(assistant, 'start the job')
+
+    const child = Object.values(state.threads).find(
+      (thread) => thread.definitionName === 'long_job',
+    )
+
+    const steered = await looms.signal(runId, [steer('change course', { threadId })])
+
+    expect(steered.threads[child!.threadId]?.status).toBe('cancelled')
+
+    expect(seen.at(-1)?.map((line) => [line.role, line.toolCallId ?? null])).toEqual([
+      ['user', null],
+      ['assistant', null],
+      ['tool', 'job-1'],
+      ['user', null],
+    ])
+
     await looms.stop()
   })
 })

@@ -28,18 +28,6 @@ function parseJsonValue(content: string): JsonValue {
   return Option.getOrElse(decodeJsonValue(content), () => content)
 }
 
-function findLastToolMessage(messages: readonly { role: string; content: string }[]) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-
-    if (msg?.role === 'tool') {
-      return msg
-    }
-  }
-
-  return undefined
-}
-
 export const echo = defineAgent({
   name: 'echo',
   description: 'Repeats the input as an assistant message',
@@ -235,7 +223,7 @@ export const orchestrator = defineAgent({
       }
     }
 
-    const toolMsg = findLastToolMessage(messages)
+    const toolMsg = messages.findLast((message) => message.role === 'tool')
     const output = toolMsg ? parseJsonValue(toolMsg.content) : null
 
     const strParsed = z.string().safeParse(output)
@@ -285,7 +273,7 @@ export const greeter = defineAgent({
       }
     }
 
-    const toolMsg = findLastToolMessage(messages)
+    const toolMsg = messages.findLast((message) => message.role === 'tool')
     const output = toolMsg ? parseJsonValue(toolMsg.content) : null
 
     return {

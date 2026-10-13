@@ -200,6 +200,25 @@ export function isRunTerminal(state: RunState): boolean {
   return isTerminalStatus(state.status)
 }
 
+/** Every thread below `threadId`, in the order they were started. */
+export function descendantThreadIds(state: RunState, threadId: string): string[] {
+  return Object.values(state.threads)
+    .filter((record) => {
+      let parentThreadId = record.parentThreadId
+
+      while (parentThreadId) {
+        if (parentThreadId === threadId) {
+          return true
+        }
+
+        parentThreadId = state.threads[parentThreadId]?.parentThreadId ?? null
+      }
+
+      return false
+    })
+    .map((record) => record.threadId)
+}
+
 /** The status a `runtime.run.completed` payload ends the run with: an error means it failed. */
 export function completedRunStatus(payload: JsonValue): 'completed' | 'failed' {
   const error = Predicate.isObject(payload) ? payload.error : undefined

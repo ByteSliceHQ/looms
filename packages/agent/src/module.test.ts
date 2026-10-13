@@ -6,7 +6,7 @@ import { composeModules, createEvent, foldRun } from '@looms/core'
 
 import { defineAgent } from './definitions'
 import { agent } from './module'
-import { steer } from './signals'
+import { steer, stopAgentTurn } from './signals'
 
 describe('@looms/agent module', () => {
   test('started thread requests callLLM', () => {
@@ -212,5 +212,6 @@ describe('@looms/agent module', () => {
 
     expect(rule?.(steer('stop', { threadId: 'thr_a' }))).toEqual(['thr_a'])
     expect(rule?.(steer('later', { threadId: 'thr_a', interrupt: false }))).toEqual([])
+    expect(rule?.(stopAgentTurn({ threadId: 'thr_a' }))).toEqual(['thr_a'])
   })
 })

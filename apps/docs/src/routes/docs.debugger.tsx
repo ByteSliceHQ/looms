@@ -65,8 +65,9 @@ createLooms({
       <p>
         Loading the page is a read of the route named <code>debugger</code>. The page then reads
         definitions, runs, and event streams. Starting, signaling, waking, and cancelling a run are{' '}
-        <code>write</code> routes. Chat messages are signals. Without <code>authorize</code>, all of
-        these are open. Leave them open only on a trusted local machine.
+        <code>write</code> routes. Chat messages and the chat Stop button are signals. Without{' '}
+        <code>authorize</code>, all of these are open. Leave them open only on a trusted local
+        machine.
       </p>
       <p>
         The debugger sends no <code>Authorization</code> header, so bearer tokens on reads or writes

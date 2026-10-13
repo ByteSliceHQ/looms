@@ -49,6 +49,8 @@ export const AgentSessionDeliverySchema = Schema.Union([
   Schema.Literal('nextTurn'),
 ])
 
+export const AgentTurnStoppedPayloadSchema = Schema.Struct({})
+
 export const AgentSessionMessageSubmittedPayloadSchema = Schema.Struct({
   messageId: Schema.String,
   text: Schema.String,
@@ -108,6 +110,7 @@ export const agentCatalog = defineEventCatalog('agent', {
   'tool_call.requested': AgentToolCallRequestedPayloadSchema,
   'tool.result': AgentToolResultPayloadSchema,
   steered: AgentSteeredPayloadSchema,
+  'turn.stopped': AgentTurnStoppedPayloadSchema,
   'session.message.submitted': AgentSessionMessageSubmittedPayloadSchema,
   'session.steer.delivered': AgentSessionSteerDeliveredPayloadSchema,
   'session.turn.started': AgentSessionTurnStartedPayloadSchema,

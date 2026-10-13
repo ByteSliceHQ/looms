@@ -1,4 +1,4 @@
-import { ArrowUp, LoaderCircle } from 'lucide-react'
+import { ArrowUp, LoaderCircle, Square } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { cn } from '../lib/cn'
@@ -7,12 +7,15 @@ import { Kbd } from '../ui/panel'
 
 /**
  * Message input with one primary action. Enter sends, Shift+Enter adds a newline,
- * and `toolbar` holds secondary controls such as delivery mode.
+ * and `toolbar` holds secondary controls such as delivery mode. `onStop` adds a
+ * Stop button beside Send while work is in progress.
  */
 export function Composer({
   value,
   onChange,
   onSubmit,
+  onStop,
+  stopping = false,
   pending = false,
   disabled = false,
   placeholder = 'Message',
@@ -24,6 +27,8 @@ export function Composer({
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
+  onStop?: () => void
+  stopping?: boolean
   pending?: boolean
   disabled?: boolean
   placeholder?: string
@@ -73,12 +78,30 @@ export function Composer({
             <Kbd className="ml-1.5">⇧↵</Kbd>
             newline
           </span>
+          {onStop ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              aria-label="Stop"
+              title="Stop the current turn"
+              disabled={stopping}
+              onClick={onStop}
+              className="ml-auto rounded-full @sm:ml-0"
+            >
+              {stopping ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Square className="fill-current" />
+              )}
+            </Button>
+          ) : null}
           <Button
             type="submit"
             size="icon-sm"
             aria-label={submitLabel}
             disabled={!canSubmit}
-            className="ml-auto rounded-full @sm:ml-0"
+            className={cn('rounded-full', !onStop && 'ml-auto @sm:ml-0')}
           >
             {pending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
           </Button>
