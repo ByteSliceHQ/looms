@@ -8,6 +8,10 @@ import {
 } from './index-model'
 import { runProjectorSync, type Projector } from './projector'
 
+function rowKey(runId: string, id: string): string {
+  return `${runId}\0${id}`
+}
+
 function applyOp(
   actors: Map<string, ActorIndexRow>,
   reviews: Map<string, ReviewIndexRow>,
@@ -15,7 +19,8 @@ function applyOp(
 ): void {
   switch (op.type) {
     case 'upsertActor':
-      actors.set(op.actorId, {
+      actors.set(rowKey(op.runId, op.actorId), {
+        runId: op.runId,
         actorId: op.actorId,
         kind: op.kind,
         status: op.status,
@@ -27,9 +32,11 @@ function applyOp(
       return
 
     case 'setActorStatus': {
-      const existing = actors.get(op.actorId)
+      const key = rowKey(op.runId, op.actorId)
+      const existing = actors.get(key)
 
-      actors.set(op.actorId, {
+      actors.set(key, {
+        runId: op.runId,
         actorId: op.actorId,
         kind: existing?.kind ?? null,
         status: op.status,
@@ -42,11 +49,12 @@ function applyOp(
     }
 
     case 'upsertReview': {
-      const existing = reviews.get(op.reviewId)
+      const key = rowKey(op.runId, op.reviewId)
+      const existing = reviews.get(key)
 
-      reviews.set(op.reviewId, {
+      reviews.set(key, {
+        runId: op.runId,
         reviewId: op.reviewId,
-        actorId: op.actorId,
         status: op.status,
         title: existing?.title ?? op.title,
         updatedAt: op.updatedAt,
@@ -56,10 +64,11 @@ function applyOp(
     }
 
     case 'setReviewStatus': {
-      const existing = reviews.get(op.reviewId)
+      const key = rowKey(op.runId, op.reviewId)
+      const existing = reviews.get(key)
 
       if (existing) {
-        reviews.set(op.reviewId, { ...existing, status: op.status, updatedAt: op.updatedAt })
+        reviews.set(key, { ...existing, status: op.status, updatedAt: op.updatedAt })
       }
 
       return
@@ -83,11 +92,12 @@ export function memory(): IndexProjector {
           applyOp(actors, reviews, op)
         }
       }),
-    getActor: (actorId) => runProjectorSync('memory', () => actors.get(actorId) ?? null),
-    listReviews: (actorId) =>
+    getActor: (runId, actorId) =>
+      runProjectorSync('memory', () => actors.get(rowKey(runId, actorId)) ?? null),
+    listReviews: (runId) =>
       runProjectorSync('memory', () => {
         const rows = [...reviews.values()]
-        return actorId ? rows.filter((row) => row.actorId === actorId) : rows
+        return runId ? rows.filter((row) => row.runId === runId) : rows
       }),
     dispose: () =>
       runProjectorSync('memory', () => {

@@ -25,7 +25,13 @@ describe('indexOpsFor', () => {
     })
 
     expect(indexOpsFor(event)).toEqual([
-      { type: 'setActorStatus', actorId: 'run_1', status: 'cancelled', updatedAt: event.ts },
+      {
+        type: 'setActorStatus',
+        runId: 'run_1',
+        actorId: 'run_1',
+        status: 'cancelled',
+        updatedAt: event.ts,
+      },
     ])
   })
 
@@ -38,7 +44,13 @@ describe('indexOpsFor', () => {
     })
 
     expect(indexOpsFor(event)).toEqual([
-      { type: 'setActorStatus', actorId: 'run_1', status: 'failed', updatedAt: event.ts },
+      {
+        type: 'setActorStatus',
+        runId: 'run_1',
+        actorId: 'run_1',
+        status: 'failed',
+        updatedAt: event.ts,
+      },
     ])
   })
 
@@ -50,6 +62,10 @@ describe('indexOpsFor', () => {
       origin: { type: 'system' },
     })
 
-    expect(indexOpsFor(event)[0]).toMatchObject({ type: 'upsertReview', reviewId: 'a1' })
+    expect(indexOpsFor(event)[0]).toMatchObject({
+      type: 'upsertReview',
+      runId: 'run_1',
+      reviewId: 'a1',
+    })
   })
 })
