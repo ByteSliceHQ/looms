@@ -1,3 +1,4 @@
+import { Schema } from 'effect'
 import { Bot, CornerDownRight, GitFork, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
@@ -65,14 +66,15 @@ function activeSessionChild(
   return child
 }
 
-interface StreamingState {
-  lastMessageSeq: number
-  turnStarted: boolean
-  parts: string[]
-}
+const StreamingStateSchema = Schema.Struct({
+  lastMessageSeq: Schema.Finite,
+  turnStarted: Schema.Boolean,
+  parts: Schema.Array(Schema.String),
+})
 
-const streamingFold = createFold<StreamingState>({
+const streamingFold = createFold({
   name: 'agentStreamingText',
+  shape: StreamingStateSchema,
   initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
   includeEphemeral: true,
   reduce(state, event) {

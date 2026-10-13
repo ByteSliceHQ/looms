@@ -60,6 +60,52 @@ Wrap your root in `LoomsProvider`:
 | `useLatestEvent(store, type)`                    | Latest event of a given type.                                                                                     | When matching event arrives                    |
 | `useEventFold(store, fold)`                      | App-defined incremental fold (can include ephemeral events like text deltas).                                     | When fold state changes                        |
 
+## Custom Folds
+
+Use `createFold` for client-only derived state. A projection is the read model the host and the client share; a fold stays in the browser and can include ephemeral events such as text deltas.
+
+`shape` is a Zod, Effect Schema, or other Standard Schema object. It infers the state type, so you do not pass a generic when `initialState` is narrower than the state (an empty array would otherwise infer `never[]`).
+
+```tsx
+import { z } from 'zod'
+import { createFold, useEventFold, useRunStore } from '@swirls/looms/react'
+
+const streamingText = createFold({
+  name: 'streamingText',
+  shape: z.object({
+    parts: z.array(z.string()),
+  }),
+  initialState: { parts: [] },
+  includeEphemeral: true,
+  reduce(state, event) {
+    if (event.type !== 'agent.turn.text_delta') {
+      return state
+    }
+
+    const payload = event.payload
+    if (typeof payload !== 'object' || payload === null || !('delta' in payload)) {
+      return state
+    }
+
+    const delta = payload.delta
+    if (typeof delta !== 'string') {
+      return state
+    }
+
+    return { parts: [...state.parts, delta] }
+  },
+})
+
+export function StreamingReply({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const streaming = useEventFold(store, streamingText)
+
+  return <p>{streaming.parts.join('')}</p>
+}
+```
+
+Define the fold at module scope. The store caches incremental state in a `WeakMap` keyed by the definition object. Outside React, `foldEvents(fold, events)` runs the same reducer over an event list.
+
 ## Typed Event Catalogs
 
 Wire events arrive as JSON, but your modules already declare typed Effect Schema catalogs. Register them once so React hooks infer payloads without casts:
@@ -111,7 +157,7 @@ When LLM agents generate dozens of parallel subthreads and stream thousands of t
 
 1. **Subscribe Narrowly**: Containers should call `useRunStore(runId)` for the store handle and pass it down. Do not subscribe parent shells to `useRunEvents` or unselected projections.
 2. **Use Projection Selectors**: Use `useProjection(store, def, (s) => s.specificSlice)` so components skip rendering when other projection fields update.
-3. **Keep Fold Definitions Module-Level**: Define `createFold` objects at module scope so the store's internal `WeakMap` cache can track incremental state across renders.
+3. **Keep Fold Definitions Module-Level**: Define `createFold` objects at module scope, with a `shape` schema when the state is wider than `initialState`, so the store's internal `WeakMap` cache can track incremental state across renders.
 4. **Coalesced Notifications**: By default, `createLoomsStore` uses `coalesce: 'adaptive'`: quiet streams notify on the next macrotask so counters can tick +1, while bursts collapse to at most one notify per animation frame. Other options: `'frame'`, `'immediate'`, or `{ delayMs: number }`.
 5. **Virtualize Lists**: For event feeds or dense logs, virtualize the scroll viewport (e.g. `@tanstack/react-virtual` or `@swirls/looms/debugger`'s `EventStream`).
 

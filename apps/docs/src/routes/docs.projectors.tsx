@@ -216,6 +216,71 @@ export function OrderDashboard({ runId }: { runId: string }) {
         and the components that subscribe to it.
       </p>
 
+      <h3 id="custom-folds-with-createfold">
+        Custom client folds with <code>createFold</code>
+        <a
+          className="heading-anchor"
+          href="#custom-folds-with-createfold"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
+      <p>
+        Use a projection when the host and the client share the read model. Use{' '}
+        <code>createFold</code> from <code>@swirls/looms/react</code> for derived state that only
+        the client needs. Set <code>includeEphemeral: true</code> to fold events a projection skips,
+        such as streaming text deltas.
+      </p>
+      <p>
+        A fold takes <code>name</code>, <code>initialState</code>, and <code>reduce</code>, plus
+        optional <code>includeEphemeral</code>. A Zod, Effect Schema, or other Standard Schema{' '}
+        <code>shape</code> infers the state type, so an empty array in <code>initialState</code>{' '}
+        does not collapse the field to <code>never[]</code>. Subscribe with{' '}
+        <code>useEventFold</code>.
+      </p>
+      <CodeBlock lang="tsx">{`import { z } from 'zod'
+import { createFold, useEventFold, useRunStore } from '@swirls/looms/react'
+
+const streamingText = createFold({
+  name: 'streamingText',
+  shape: z.object({
+    parts: z.array(z.string()),
+  }),
+  initialState: { parts: [] },
+  includeEphemeral: true,
+  reduce(state, event) {
+    if (event.type !== 'agent.turn.text_delta') {
+      return state
+    }
+
+    const payload = event.payload
+    if (typeof payload !== 'object' || payload === null || !('delta' in payload)) {
+      return state
+    }
+
+    const delta = payload.delta
+    if (typeof delta !== 'string') {
+      return state
+    }
+
+    return { parts: [...state.parts, delta] }
+  },
+})
+
+export function StreamingReply({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const streaming = useEventFold(store, streamingText)
+
+  return <p>{streaming.parts.join('')}</p>
+}`}</CodeBlock>
+      <p>
+        Define the fold at module scope. The store caches incremental state in a{' '}
+        <code>WeakMap</code> keyed by the definition object, so a fold created during render starts
+        over on every update. Outside React, <code>foldEvents(fold, events)</code> runs the same
+        reducer over an event list.
+      </p>
+
       <h3 id="step-4-dispatch-user-interactions-via-signals">
         Step 4: Dispatch user interactions via signals
         <a

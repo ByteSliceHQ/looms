@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 
 import { defineProjection, type EventEnvelope } from '@looms/core'
 
@@ -127,6 +127,36 @@ describe('ProjectionCache', () => {
 
     const state2 = cache.fold(textFold, [e1, e2])
     expect(state2).toBe('Hello world!')
+  })
+
+  test('infers fold state from a shape schema', () => {
+    const PartsSchema = Schema.Struct({
+      parts: Schema.Array(Schema.String),
+    })
+
+    const partsFold = createFold({
+      name: 'parts',
+      shape: PartsSchema,
+      initialState: { parts: [] },
+      reduce(state, event) {
+        if (
+          event.type === 'delta' &&
+          Predicate.isObject(event.payload) &&
+          'text' in event.payload &&
+          Predicate.isString(event.payload.text)
+        ) {
+          return { parts: state.parts.concat(event.payload.text) }
+        }
+
+        return state
+      },
+    })
+
+    expect(partsFold.shape).toBe(PartsSchema)
+
+    const cache = new ProjectionCache()
+    const event = { ...makeEvent(1, 'delta'), payload: { text: 'Hello' } }
+    expect(cache.fold(partsFold, [event]).parts).toEqual(['Hello'])
   })
 })
 

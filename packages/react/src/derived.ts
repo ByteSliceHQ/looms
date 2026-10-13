@@ -1,4 +1,10 @@
-import { project, type EventEnvelope, type ProjectionDefinition } from '@looms/core'
+import {
+  project,
+  type EventEnvelope,
+  type InferSchemaOutput,
+  type ProjectionDefinition,
+  type SchemaInput,
+} from '@looms/core'
 
 import type { AnyEventEnvelope, RegisteredEvent } from './register'
 
@@ -7,14 +13,37 @@ export { EventIndex, eventThreadKey } from '@looms/core'
 
 export interface EventFoldDefinition<S, TEvent extends AnyEventEnvelope = RegisteredEvent> {
   readonly name?: string
+  readonly shape?: unknown
   readonly initialState: S
   reduce(state: S, event: TEvent): S
   readonly includeEphemeral?: boolean
 }
 
-export function createFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  def: EventFoldDefinition<S, TEvent>,
-): EventFoldDefinition<S, TEvent> {
+export function createFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(def: {
+  readonly name?: string
+  readonly shape?: undefined
+  readonly initialState: S
+  reduce(state: S, event: TEvent): S
+  readonly includeEphemeral?: boolean
+}): EventFoldDefinition<S, TEvent>
+export function createFold<
+  TShape extends SchemaInput,
+  TEvent extends AnyEventEnvelope = RegisteredEvent,
+>(def: {
+  readonly name?: string
+  readonly shape: TShape
+  readonly initialState: InferSchemaOutput<TShape>
+  reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: TEvent): InferSchemaOutput<TShape>
+  readonly includeEphemeral?: boolean
+}): EventFoldDefinition<InferSchemaOutput<TShape>, TEvent>
+
+export function createFold(def: {
+  readonly name?: string
+  readonly shape?: unknown
+  readonly initialState: any
+  reduce(state: any, event: AnyEventEnvelope): any
+  readonly includeEphemeral?: boolean
+}): EventFoldDefinition<any, any> {
   return def
 }
 
