@@ -1,5 +1,6 @@
+import { Effect, Fiber } from 'effect'
 import { AlarmClock, CircleStop, Radio } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { cleanUndefined, type EventInput } from '@looms/core'
 import { useRunStore, useRunSummary } from '@looms/react'
@@ -12,18 +13,18 @@ import { Kbd } from '../ui/panel'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Textarea } from '../ui/textarea'
 
-const CANCEL_TYPE = 'runtime.thread.cancel.requested'
+const NOTICE_MS = 3_000
 
 function useRunAction() {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  function run<T>(action: () => Promise<T>, onDone?: () => void) {
+  function run<T>(action: () => Promise<T>, onDone?: (value: T) => void) {
     setPending(true)
     setError(null)
 
     action()
-      .then(() => onDone?.())
+      .then((value) => onDone?.(value))
       .catch((cause: unknown) => setError(errorMessage(cause)))
       .finally(() => setPending(false))
   }
@@ -45,7 +46,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function SignalForm({ runId, rootThreadId }: { runId: string; rootThreadId?: string }) {
   const { client } = useDebugger()
-  const [type, setType] = useState(CANCEL_TYPE)
+  const [type, setType] = useState('')
   const [payload, setPayload] = useState('{}')
   const [thread, setThread] = useState('')
   const [sent, setSent] = useState(false)
@@ -88,6 +89,7 @@ function SignalForm({ runId, rootThreadId }: { runId: string; rootThreadId?: str
       <Field label="Type">
         <Input
           value={type}
+          placeholder="module.event"
           onChange={(event) => setType(event.target.value)}
           className="h-7 font-mono text-xs"
           autoFocus
@@ -139,9 +141,41 @@ function SignalForm({ runId, rootThreadId }: { runId: string; rootThreadId?: str
 /** Run-scoped actions that live beside the run switcher. */
 export function RunControls({ runId }: { runId: string }) {
   const { client } = useDebugger()
-  const { rootThreadId, status } = useRunSummary(useRunStore(runId))
-  const { run, pending, error } = useRunAction()
-  const finished = status === 'completed' || status === 'failed' || status === 'cancelled'
+  const { rootThreadId, finished } = useRunSummary(useRunStore(runId))
+  // A wake holds its request open until the run parks, so Cancel needs its own pending state.
+  const waking = useRunAction()
+  const cancelling = useRunAction()
+  const error = cancelling.error ?? waking.error
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!notice) {
+      return undefined
+    }
+
+    const clear = Effect.runFork(
+      Effect.sleep(NOTICE_MS).pipe(Effect.andThen(Effect.sync(() => setNotice(null)))),
+    )
+
+    return () => {
+      Effect.runFork(Fiber.interrupt(clear))
+    }
+  }, [notice])
+
+  function wake() {
+    setNotice(null)
+    cancelling.setError(null)
+
+    waking.run(
+      () => client.wake(runId),
+      ({ appended }) =>
+        setNotice(
+          appended === 0
+            ? 'Nothing pending'
+            : `Woke: ${appended} new event${appended === 1 ? '' : 's'}`,
+        ),
+    )
+  }
 
   return (
     <div className="flex items-center gap-0.5">
@@ -149,12 +183,17 @@ export function RunControls({ runId }: { runId: string }) {
         <span className="text-status-failed mr-2 max-w-60 truncate text-[11px]" title={error}>
           {error}
         </span>
+      ) : notice ? (
+        <span role="status" className="text-muted-foreground mr-2 text-[11px]">
+          {notice}
+        </span>
       ) : null}
       <Button
         variant="ghost"
         size="sm"
-        disabled={pending}
-        onClick={() => run(() => client.wake(runId))}
+        disabled={waking.pending}
+        title="Process pending work: due timers, retries, and effects stalled by a restart"
+        onClick={wake}
       >
         <AlarmClock />
         Wake
@@ -162,14 +201,12 @@ export function RunControls({ runId }: { runId: string }) {
       <Button
         variant="destructive"
         size="sm"
-        disabled={pending || finished}
-        onClick={() =>
-          run(() =>
-            client.signal(runId, [
-              { type: CANCEL_TYPE, payload: { threadId: rootThreadId ?? '' } },
-            ]),
-          )
-        }
+        disabled={cancelling.pending || finished}
+        onClick={() => {
+          setNotice(null)
+          waking.setError(null)
+          cancelling.run(() => client.cancel(runId))
+        }}
       >
         <CircleStop />
         Cancel

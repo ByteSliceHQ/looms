@@ -9,7 +9,12 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import { RunOverloadedError, StartRunConflictError, type LoomsRuntime } from '../runtime'
+import {
+  RunOverloadedError,
+  RunTerminalError,
+  StartRunConflictError,
+  type LoomsRuntime,
+} from '../runtime'
 
 export interface RouteOptions {
   readonly runtime: LoomsRuntime
@@ -59,6 +64,12 @@ export const readJson = (req: Request): Effect.Effect<JsonValue, RequestBodyErro
       cause instanceof RequestBodyError ? cause : new RequestBodyError(cause),
     ),
   )
+
+/** `readJson` for routes whose body is optional: a request without one reads as `{}`. */
+export const readOptionalJson = (req: Request): Effect.Effect<JsonValue, RequestBodyError> =>
+  req.body === null || req.headers.get('content-length') === '0'
+    ? Effect.succeed({})
+    : readJson(req)
 
 export function extractIdempotencyKey(req: Request, bodyKey?: string): string | undefined {
   return (
@@ -110,6 +121,10 @@ export function toErrorResponse(err: Error): Response {
 
   if (err instanceof RunOverloadedError) {
     return Response.json({ error: err.message }, { status: 429 })
+  }
+
+  if (err instanceof RunTerminalError) {
+    return Response.json({ error: err.message, status: err.status }, { status: 409 })
   }
 
   if (err instanceof StartRunConflictError) {

@@ -52,6 +52,24 @@ describe('materializeEvents', () => {
     expect(tables.threads.get('thr_1')?.status).toBe('completed')
   })
 
+  test('marks a cancelled run', () => {
+    const tables = materializeEvents([
+      event({
+        type: 'runtime.run.started',
+        payload: { rootThreadId: 'thr_1', kind: 'agent', definitionName: 'assistant', input: null },
+      }),
+      event({ seq: 2, type: 'runtime.run.cancelled', payload: { reason: 'cancelled' } }),
+    ])
+
+    expect(tables.runs.get('run_1')).toEqual({
+      runId: 'run_1',
+      status: 'cancelled',
+      rootThreadId: 'thr_1',
+      kind: 'agent',
+      definitionName: 'assistant',
+    })
+  })
+
   test('appends into existing tables in O(batch) time without copying maps', () => {
     const initialTables = materializeEvents([
       event({

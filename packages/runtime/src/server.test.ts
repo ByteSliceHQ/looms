@@ -7,6 +7,7 @@ import {
   defineEventCatalog,
   defineModule,
   RunSummariesSchema,
+  wait,
 } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
@@ -17,6 +18,13 @@ const decodeRunResponse = Schema.decodeUnknownSync(
   Schema.Struct({
     runId: Schema.String,
     state: Schema.Struct({ status: Schema.String }),
+  }),
+)
+
+const decodeWakeResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    state: Schema.Struct({ status: Schema.String }),
+    appended: Schema.Finite,
   }),
 )
 
@@ -165,13 +173,47 @@ describe('server HTTP idempotency', () => {
     await looms.stop()
   })
 
+  test('POST /runs/:id/wake reports how many events the wake appended', async () => {
+    const flow = defineWorkflow({
+      name: 'timer-flow',
+      nodes: [
+        {
+          id: 'delay',
+          run: (ctx) => ctx.effects([wait({ waitId: 'delay', on: { timerAt: Date.now() + 10 } })]),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      modules: [workflow({ definitions: [flow] })],
+      scheduler: { schedule: () => Effect.void, cancel: () => Effect.void },
+    })
+
+    const { runId } = await looms.start(flow, {})
+    await Bun.sleep(15)
+
+    const wake = async () => {
+      const response = await looms.fetch(
+        new Request(`http://looms.test/runs/${runId}/wake`, { method: 'POST' }),
+      )
+
+      return decodeWakeResponse(await response?.json())
+    }
+
+    const fired = await wake()
+    expect(fired.appended).toBeGreaterThan(0)
+    expect(fired.state.status).toBe('completed')
+    expect((await wake()).appended).toBe(0)
+    await looms.stop()
+  })
+
   test('POST /runs/:id/events deduplicates signals with identical idempotencyKey', async () => {
     const flow = defineWorkflow({
       name: 'signal-flow',
       nodes: [
         {
           id: 'step1',
-          run: () => ({ ok: true }),
+          run: (ctx) => ctx.effects([wait({ waitId: 'hold', on: { type: 'custom.release' } })]),
         },
       ],
     })

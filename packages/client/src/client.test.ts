@@ -47,6 +47,25 @@ describe('createLoomsClient', () => {
     expect(calls[0]).toBe('/runs')
   })
 
+  test('cancel posts the optional thread to the cancel route', async () => {
+    const calls: { href: string; method?: string; body?: unknown }[] = []
+
+    const client = createLoomsClient({
+      fetch: async (input, init) => {
+        calls.push({ href: hrefOf(input), method: init?.method, body: init?.body })
+        return Response.json({ runId: 'run 1', state: emptyRunState('run 1') })
+      },
+    })
+
+    await client.cancel('run 1')
+    await client.cancel('run 1', 'thr_child')
+
+    expect(calls).toEqual([
+      { href: '/runs/run%201/cancel', method: 'POST', body: '{}' },
+      { href: '/runs/run%201/cancel', method: 'POST', body: '{"threadId":"thr_child"}' },
+    ])
+  })
+
   test('listDefinitions reads the definitions route', async () => {
     const calls: string[] = []
 

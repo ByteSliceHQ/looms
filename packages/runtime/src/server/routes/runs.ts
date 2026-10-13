@@ -18,6 +18,7 @@ import {
   provideStore,
   readIntegerQuery,
   readJson,
+  readOptionalJson,
   RequestQueryError,
   type RouteOptions,
 } from '../http'
@@ -39,6 +40,10 @@ const SignalBodySchema = Schema.Struct({
   payload: Schema.optional(JsonValueSchema),
   threadId: Schema.optional(Schema.NullOr(Schema.String)),
   idempotencyKey: Schema.optional(Schema.String),
+})
+
+const CancelBodySchema = Schema.Struct({
+  threadId: Schema.optional(Schema.String),
 })
 
 function wantsRunStream(req: Request, url: URL): boolean {
@@ -312,9 +317,27 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       name: 'runs.wake',
       access: 'write',
       handle: ({ params }) =>
-        provideStore(runtime.wake(params.runId), store).pipe(
-          Effect.map((state) => Response.json({ runId: params.runId, state })),
-        ),
+        Effect.gen(function* () {
+          const before = yield* store.tail(params.runId)
+          const state = yield* provideStore(runtime.wake(params.runId), store)
+          const appended = (yield* store.tail(params.runId)) - before
+          return Response.json({ runId: params.runId, state, appended })
+        }),
+    }),
+    route({
+      method: 'POST',
+      path: '/runs/:runId/cancel',
+      name: 'runs.cancel',
+      access: 'write',
+      handle: ({ req, params }) =>
+        Effect.gen(function* () {
+          const body = yield* readOptionalJson(req).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(CancelBodySchema)),
+          )
+
+          const state = yield* provideStore(runtime.cancel(params.runId, body.threadId), store)
+          return Response.json({ runId: params.runId, state })
+        }),
     }),
   ]
 }

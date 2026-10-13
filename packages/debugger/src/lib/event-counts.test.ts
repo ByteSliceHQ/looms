@@ -36,7 +36,7 @@ describe('countEventsByThread', () => {
 })
 
 describe('runStatusFromEvents', () => {
-  test('is running until a completed event arrives', () => {
+  test('is running until a completed or cancelled event arrives', () => {
     expect(runStatusFromEvents([])).toBe('running')
     expect(runStatusFromEvents([event(1, 'runtime.run.started', null)])).toBe('running')
 
@@ -53,6 +53,13 @@ describe('runStatusFromEvents', () => {
         event(2, 'runtime.run.completed', null, { output: null, error: 'boom' }),
       ]),
     ).toBe('failed')
+
+    expect(
+      runStatusFromEvents([
+        event(1, 'runtime.run.started', null),
+        event(2, 'runtime.run.cancelled', null, { reason: 'cancelled' }),
+      ]),
+    ).toBe('cancelled')
   })
 })
 

@@ -4,6 +4,7 @@ export {
   DuplicateEffectDispatchError,
   MaxWakeIterationsError,
   RunOverloadedError,
+  RunTerminalError,
   StartRunConflictError,
   type CreateRuntimeOptions,
   type EffectWorker,

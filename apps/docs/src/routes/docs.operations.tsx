@@ -77,10 +77,10 @@ function Page() {
         </a>
       </h2>
       <p>
-        Use the embed cancellation API for the whole run or a child thread. Cancellation can abort
-        cooperative work but cannot retract a payment or message already accepted externally. Record
-        operator decisions. If an external action needs to be reversed, perform and record that
-        reversal separately.
+        Use <code>looms.cancel</code> or <code>POST /runs/:id/cancel</code> for the whole run or a
+        child thread. Cancellation can abort cooperative work but cannot retract a payment or
+        message already accepted externally. Record operator decisions. If an external action needs
+        to be reversed, perform and record that reversal separately.
       </p>
       <h2 id="observe-behavior">
         Monitor execution
