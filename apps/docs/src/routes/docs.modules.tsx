@@ -561,6 +561,16 @@ export function payments(db: DatabaseService) {
         error message. Threads and workflows can match on <code>runtime.effect.failed</code> to
         transition state, trigger compensations, or escalate to human review.
       </p>
+      <p>
+        When a failure ends the run, <code>looms.fork</code> can continue it by running the failed
+        effect again. Set <code>deterministic: true</code> on an effect whose outcome follows from
+        its input alone, such as one that only schedules work from state already folded. A fork then
+        skips past it and retries the effect that produced the failure. See{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          continue a finished run
+        </Link>
+        .
+      </p>
 
       <h3 id="type-safe-invocations-with-invoke">
         Type-Safe Invocations with <code>invoke</code>

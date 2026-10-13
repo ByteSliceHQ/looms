@@ -435,11 +435,12 @@ const run = await index.getActor(runId)
 const thread = await index.getActor(runId, threadId)
 const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
       <p>
-        Index rows are keyed by run, so two runs that share a thread or approval id stay apart. The
-        tables are <code>looms_run_actors</code> and <code>looms_run_reviews</code>. The built-in
-        index projectors are version 2, so delivery rebuilds them from each run&apos;s log. The
-        version 1 tables, <code>looms_actors</code> and <code>looms_reviews</code>, are no longer
-        written and can be dropped.
+        Index rows are keyed by run, so two runs that share a thread or approval id stay apart.
+        Review rows carry <code>runId</code>, and a run that completes with an error has status{' '}
+        <code>failed</code>. The tables are <code>looms_run_actors</code> and{' '}
+        <code>looms_run_reviews</code>. The built-in index projectors are version 2, so delivery
+        rebuilds them from each run&apos;s log. The version 1 tables, <code>looms_actors</code> and{' '}
+        <code>looms_reviews</code>, are no longer written and can be dropped.
       </p>
 
       <h3 id="custom-webhook-and-fan-out-projectors">

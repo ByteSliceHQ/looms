@@ -118,6 +118,20 @@ function Page() {
         handwritten envelopes. Compile-time payload markers do not add runtime validation. Inspect
         HTTP status and body; different hosts may map routing failures differently.
       </p>
+      <h2 id="a-signal-returns-409">
+        A signal returns 409
+        <a
+          className="heading-anchor"
+          href="#a-signal-returns-409"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        The run has completed, failed, or been cancelled, and a finished run rejects new signals
+        with RunTerminalError. To continue a failed or cancelled run, fork it.
+      </p>
       <h2 id="global-run-listing-returns-501">
         Global run listing returns 501
         <a

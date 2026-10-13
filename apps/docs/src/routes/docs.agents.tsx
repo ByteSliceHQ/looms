@@ -64,10 +64,13 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         keeps the session open. Use <code>looms.cancel</code> to end the run instead.
       </p>
       <p>
-        A <code>steer</code> with <code>interrupt: true</code> ends the turn the same way, then
-        starts a new turn with the steering message.
+        <code>steer(text)</code> interrupts by default: it ends the turn the same way, then starts a
+        new turn with the steering message. The <code>turnActivity</code> projection reports whether
+        the root agent or session has a turn in progress, so a UI knows when to show a Stop button.
       </p>
-      <CodeBlock lang="ts">{`await looms.signal(runId, [stopAgentTurn({ threadId })])`}</CodeBlock>
+      <CodeBlock lang="ts">{`import { stopAgentTurn } from '@swirls/looms/agent'
+
+await looms.signal(runId, [stopAgentTurn()])`}</CodeBlock>
       <h2 id="agent-sessions">
         Agent sessions
         <a className="heading-anchor" href="#agent-sessions" aria-label="Link to this section">
