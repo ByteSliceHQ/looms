@@ -5,7 +5,7 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
-import { emptyRunState } from './state'
+import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
@@ -135,11 +135,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       }
     }
 
-    case 'runtime.run.completed': {
-      const error = payload.error
-      const status = Predicate.isString(error) && error.length > 0 ? 'failed' : 'completed'
-      return { ...state, status }
-    }
+    case 'runtime.run.completed':
+      return { ...state, status: completedRunStatus(payload) }
 
     case 'runtime.run.cancelled':
       return { ...state, status: 'cancelled' }

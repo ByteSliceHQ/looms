@@ -1,6 +1,8 @@
+import type { RunStatus, ThreadStatus } from '@looms/core'
+
 export interface RunRow {
   runId: string
-  status: string
+  status: RunStatus
   rootThreadId: string | null
   kind: string | null
   definitionName: string | null
@@ -12,7 +14,7 @@ export interface ThreadRow {
   kind: string
   definitionName: string
   parentThreadId: string | null
-  status: string
+  status: ThreadStatus
 }
 
 /** Materialized run/thread rows. Event log lives only in `store.events()` / EventIndex. */

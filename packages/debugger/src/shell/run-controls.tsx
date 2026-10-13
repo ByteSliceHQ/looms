@@ -141,8 +141,7 @@ function SignalForm({ runId, rootThreadId }: { runId: string; rootThreadId?: str
 /** Run-scoped actions that live beside the run switcher. */
 export function RunControls({ runId }: { runId: string }) {
   const { client } = useDebugger()
-  const store = useRunStore(runId)
-  const { rootThreadId, finished } = useRunSummary(store)
+  const { rootThreadId, finished } = useRunSummary(useRunStore(runId))
   // A wake holds its request open until the run parks, so Cancel needs its own pending state.
   const waking = useRunAction()
   const cancelling = useRunAction()
@@ -164,17 +163,16 @@ export function RunControls({ runId }: { runId: string }) {
   }, [notice])
 
   function wake() {
-    const fromSeq = (store.events().at(-1)?.seq ?? 0) + 1
     setNotice(null)
     cancelling.setError(null)
 
     waking.run(
-      () => client.wake(runId).then(() => client.getEvents(runId, { fromSeq })),
-      ({ events }) =>
+      () => client.wake(runId),
+      ({ appended }) =>
         setNotice(
-          events.length === 0
+          appended === 0
             ? 'Nothing pending'
-            : `Woke: ${events.length} new event${events.length === 1 ? '' : 's'}`,
+            : `Woke: ${appended} new event${appended === 1 ? '' : 's'}`,
         ),
     )
   }

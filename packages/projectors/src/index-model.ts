@@ -1,6 +1,6 @@
 import { Predicate } from 'effect'
 
-import type { EventEnvelope, JsonValue } from '@looms/core'
+import { completedRunStatus, type EventEnvelope, type JsonValue } from '@looms/core'
 
 import type { Projector } from './projector'
 
@@ -107,6 +107,14 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
         },
       ]
     case 'runtime.run.completed':
+      return [
+        {
+          type: 'setActorStatus',
+          actorId: event.runId,
+          status: completedRunStatus(event.payload),
+          updatedAt: event.ts,
+        },
+      ]
     case 'runtime.thread.completed':
       return [
         {

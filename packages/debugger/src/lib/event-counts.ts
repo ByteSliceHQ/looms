@@ -1,4 +1,4 @@
-import { EventIndex, isJsonObject, isJsonString, type EventEnvelope } from '@looms/core'
+import { completedRunStatus, EventIndex, type EventEnvelope, type RunStatus } from '@looms/core'
 
 /** Build thread→count map via the shared EventIndex. */
 export function countEventsByThread(events: readonly EventEnvelope[]): Map<string, number> {
@@ -7,7 +7,7 @@ export function countEventsByThread(events: readonly EventEnvelope[]): Map<strin
   return new Map(index.getCounts())
 }
 
-export function runStatusFromEvents(events: readonly EventEnvelope[]): string {
+export function runStatusFromEvents(events: readonly EventEnvelope[]): RunStatus {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
 
@@ -15,12 +15,9 @@ export function runStatusFromEvents(events: readonly EventEnvelope[]): string {
       return 'cancelled'
     }
 
-    if (!event || event.type !== 'runtime.run.completed') {
-      continue
+    if (event?.type === 'runtime.run.completed') {
+      return completedRunStatus(event.payload)
     }
-
-    const payload = isJsonObject(event.payload) ? event.payload : {}
-    return isJsonString(payload.error) && payload.error.length > 0 ? 'failed' : 'completed'
   }
 
   return 'running'

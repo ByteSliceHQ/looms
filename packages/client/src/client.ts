@@ -41,6 +41,13 @@ const StartResultSchema = Schema.Struct({
 
 const RunResultSchema = Schema.Struct({ runId: Schema.String, state: RunStateSchema })
 
+/** `appended` counts the events the run gained while the wake ran. */
+const WakeResultSchema = Schema.Struct({
+  runId: Schema.String,
+  state: RunStateSchema,
+  appended: Schema.Finite,
+})
+
 const EventsResultSchema = Schema.Struct({
   runId: Schema.String,
   events: Schema.Array(EventEnvelopeSchema),
@@ -279,7 +286,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         body: stringifyJson({ events }),
       }),
     wake: (runId: string) =>
-      request(`/runs/${encodeURIComponent(runId)}/wake`, RunResultSchema, { method: 'POST' }),
+      request(`/runs/${encodeURIComponent(runId)}/wake`, WakeResultSchema, { method: 'POST' }),
     /** Cancel a thread and its descendants; omit `threadId` to cancel the whole run. */
     cancel: (runId: string, threadId?: string) =>
       request(`/runs/${encodeURIComponent(runId)}/cancel`, RunResultSchema, {

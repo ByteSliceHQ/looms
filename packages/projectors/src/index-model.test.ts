@@ -29,6 +29,19 @@ describe('indexOpsFor', () => {
     ])
   })
 
+  test('indexes a run that completed with an error as failed', () => {
+    const event = createEvent('run_1', {
+      type: 'runtime.run.completed',
+      payload: { output: null, error: 'boom' },
+      threadId: null,
+      origin: { type: 'system' },
+    })
+
+    expect(indexOpsFor(event)).toEqual([
+      { type: 'setActorStatus', actorId: 'run_1', status: 'failed', updatedAt: event.ts },
+    ])
+  })
+
   test('indexes approval requested', () => {
     const event = createEvent('run_1', {
       type: 'approval.requested',

@@ -317,9 +317,12 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       name: 'runs.wake',
       access: 'write',
       handle: ({ params }) =>
-        provideStore(runtime.wake(params.runId), store).pipe(
-          Effect.map((state) => Response.json({ runId: params.runId, state })),
-        ),
+        Effect.gen(function* () {
+          const before = yield* store.tail(params.runId)
+          const state = yield* provideStore(runtime.wake(params.runId), store)
+          const appended = (yield* store.tail(params.runId)) - before
+          return Response.json({ runId: params.runId, state, appended })
+        }),
     }),
     route({
       method: 'POST',

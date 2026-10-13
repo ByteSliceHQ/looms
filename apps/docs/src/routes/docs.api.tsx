@@ -133,7 +133,7 @@ GET  /runs/:id/threads               → { runId, threads }
 GET  /runs/:id/status                → run, deadline, and effect status
 GET  /runs/:id/effects               → { runId, effects }
 POST /runs/:id/effects/:effect/retry → operator-reviewed retry
-POST /runs/:id/wake                  → { runId, state }
+POST /runs/:id/wake                  → { runId, state, appended }
 POST /runs/:id/cancel                → { runId, state }
 GET  /runs/:id/replay?seq=10          → { runId, step }
 GET  /runs/:id/projections/:name      → { runId, name, value }
@@ -142,9 +142,10 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       <p>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
         POST /runs/:id/events accepts an events array and optionally idempotencyKey. POST
-        /runs/:id/cancel accepts an optional threadId and cancels the root thread without one. The
-        embed handler also recognizes the Idempotency-Key header. GET event history supports fromSeq
-        and limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
+        /runs/:id/cancel accepts an optional threadId and cancels the root thread without one. POST
+        /runs/:id/wake reports in appended how many events the run gained while it ran. The embed
+        handler also recognizes the Idempotency-Key header. GET event history supports fromSeq and
+        limit. Request the same resource with Accept: text/event-stream or live=true for SSE.
         Streams resume after Last-Event-ID, or begin at fromSeq when that header is absent.
       </p>
       <CodeBlock lang="bash">{`curl -X POST http://localhost:8787/runs \\

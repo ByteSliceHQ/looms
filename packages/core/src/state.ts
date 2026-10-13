@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 
 import {
   RuntimeEffectSchema,
@@ -8,6 +8,7 @@ import {
 } from './effects'
 import { JsonValueSchema } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
 
 export interface ThreadRecord {
@@ -196,7 +197,13 @@ export function emptyRunState(runId: string): RunState {
 }
 
 export function isRunTerminal(state: RunState): boolean {
-  return state.status === 'completed' || state.status === 'failed' || state.status === 'cancelled'
+  return isTerminalStatus(state.status)
+}
+
+/** The status a `runtime.run.completed` payload ends the run with: an error means it failed. */
+export function completedRunStatus(payload: JsonValue): 'completed' | 'failed' {
+  const error = Predicate.isObject(payload) ? payload.error : undefined
+  return Predicate.isString(error) && error.length > 0 ? 'failed' : 'completed'
 }
 
 export function isRunParked(state: RunState): boolean {

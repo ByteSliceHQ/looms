@@ -1,4 +1,11 @@
-import { isJsonObject, isJsonString, type EventEnvelope, type JsonValue } from '@looms/core'
+import {
+  completedRunStatus,
+  isJsonObject,
+  isJsonString,
+  type EventEnvelope,
+  type JsonValue,
+  type RunStatus,
+} from '@looms/core'
 
 import { emptyTables, type ThreadRow, type MaterializedTables, type RunRow } from './tables'
 
@@ -9,6 +16,18 @@ function payloadObject(event: EventEnvelope): { [key: string]: JsonValue } {
 function readString(obj: { [key: string]: JsonValue }, key: string): string | undefined {
   const value = obj[key]
   return isJsonString(value) ? value : undefined
+}
+
+function setRunStatus(tables: MaterializedTables, runId: string, status: RunStatus): void {
+  const existing = tables.runs.get(runId)
+
+  tables.runs.set(runId, {
+    runId,
+    status,
+    rootThreadId: existing?.rootThreadId ?? null,
+    kind: existing?.kind ?? null,
+    definitionName: existing?.definitionName ?? null,
+  })
 }
 
 export function materializeEvents(
@@ -41,27 +60,12 @@ export function materializeEvents(
       }
 
       case 'runtime.run.completed':
-
-      case 'runtime.run.cancelled': {
-        const existing = tables.runs.get(event.runId)
-
-        const status =
-          event.type === 'runtime.run.cancelled'
-            ? 'cancelled'
-            : readString(payload, 'error')
-              ? 'failed'
-              : 'completed'
-
-        tables.runs.set(event.runId, {
-          runId: event.runId,
-          status,
-          rootThreadId: existing?.rootThreadId ?? null,
-          kind: existing?.kind ?? null,
-          definitionName: existing?.definitionName ?? null,
-        })
-
+        setRunStatus(tables, event.runId, completedRunStatus(payload))
         break
-      }
+
+      case 'runtime.run.cancelled':
+        setRunStatus(tables, event.runId, 'cancelled')
+        break
 
       case 'runtime.thread.started': {
         const threadId = readString(payload, 'threadId') ?? event.threadId

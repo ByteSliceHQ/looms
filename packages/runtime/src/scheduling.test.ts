@@ -17,7 +17,7 @@ import {
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
-import { DuplicateEffectDispatchError, MaxWakeIterationsError } from './runtime'
+import { DuplicateEffectDispatchError, MaxWakeIterationsError, RunTerminalError } from './runtime'
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -264,10 +264,15 @@ describe('createLooms runtime', () => {
     const started = await looms.start(gatedFlow, {})
     await Bun.sleep(15)
 
-    await Promise.all([
+    const [, signalled] = await Promise.allSettled([
       looms.wake(started.runId),
       looms.signal(started.runId, [decision(approvalId, 'approve')]),
     ])
+
+    // When the timeout wins, the run has already failed and rejects the late decision.
+    if (signalled.status === 'rejected') {
+      expect(signalled.reason).toBeInstanceOf(RunTerminalError)
+    }
 
     const events = await looms.getEvents(started.runId)
 

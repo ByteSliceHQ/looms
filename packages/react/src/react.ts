@@ -11,7 +11,14 @@ import {
   type ReactNode,
 } from 'react'
 
-import { threadTree, toThreadTree, type ProjectionDefinition, type ThreadTree } from '@looms/core'
+import {
+  isTerminalStatus,
+  threadTree,
+  toThreadTree,
+  type ProjectionDefinition,
+  type RunStatus,
+  type ThreadTree,
+} from '@looms/core'
 
 import { createFold, foldEvents, type EventFoldDefinition } from './derived'
 import type { AnyEventEnvelope, RegisteredEvent } from './register'
@@ -212,7 +219,7 @@ export function useRunSelector<Selected, TEvent extends AnyEventEnvelope = Regis
 }
 
 export interface RunSummary {
-  readonly status: string
+  readonly status: RunStatus
   /** True once the run is completed, failed, or cancelled and accepts no new signals. */
   readonly finished: boolean
   readonly kind: string | undefined
@@ -243,7 +250,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
 
     return {
       status,
-      finished: status === 'completed' || status === 'failed' || status === 'cancelled',
+      finished: isTerminalStatus(status),
       kind: run?.kind ?? undefined,
       definitionName: run?.definitionName ?? undefined,
       rootThreadId: run?.rootThreadId ?? undefined,
