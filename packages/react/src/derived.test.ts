@@ -4,7 +4,7 @@ import { Predicate, Schema } from 'effect'
 
 import { defineProjection, type EventEnvelope } from '@looms/core'
 
-import { createFold, EventIndex, ProjectionCache } from './derived'
+import { defineLiveFold, EventIndex, ProjectionCache } from './derived'
 import { createLoomsStore } from './store'
 
 function makeEvent(
@@ -27,6 +27,10 @@ function makeEvent(
 }
 
 const offlineFetch: typeof fetch = () => Promise.reject(new Error('offline'))
+
+function appendType(state: readonly string[], event: EventEnvelope): readonly string[] {
+  return [...state, event.type]
+}
 
 describe('ProjectionCache', () => {
   test('folds only new events and reuses previous state reference when unchanged', () => {
@@ -99,11 +103,10 @@ describe('ProjectionCache', () => {
     expect(reducerCalls).toBe(2)
   })
 
-  test('custom fold can include ephemeral events', () => {
-    const textFold = createFold({
+  test('live fold includes ephemeral events', () => {
+    const textFold = defineLiveFold({
       name: 'streamingText',
       initialState: '',
-      includeEphemeral: true,
       reduce(state, event) {
         if (
           event.type === 'delta' &&
@@ -129,12 +132,27 @@ describe('ProjectionCache', () => {
     expect(state2).toBe('Hello world!')
   })
 
-  test('infers fold state from a shape schema', () => {
+  test('a projection and a live fold with the same reducer differ only by ephemeral events', () => {
+    const durableOnly = defineProjection({ name: 'types', initialState: [], reduce: appendType })
+    const everything = defineLiveFold({ name: 'types', initialState: [], reduce: appendType })
+
+    const events = [
+      makeEvent(1, 'started'),
+      makeEvent(2, 'delta', 'thr_1', true),
+      makeEvent(3, 'finished'),
+    ]
+
+    const cache = new ProjectionCache()
+    expect(cache.project(durableOnly, events)).toEqual(['started', 'finished'])
+    expect(cache.fold(everything, events)).toEqual(['started', 'delta', 'finished'])
+  })
+
+  test('infers live fold state from a shape schema', () => {
     const PartsSchema = Schema.Struct({
       parts: Schema.Array(Schema.String),
     })
 
-    const partsFold = createFold({
+    const partsFold = defineLiveFold({
       name: 'parts',
       shape: PartsSchema,
       initialState: { parts: [] },

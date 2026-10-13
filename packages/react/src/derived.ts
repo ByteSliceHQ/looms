@@ -11,22 +11,25 @@ import type { AnyEventEnvelope, RegisteredEvent } from './register'
 export type { AnyEventEnvelope } from './register'
 export { EventIndex, eventThreadKey } from '@looms/core'
 
-export interface EventFoldDefinition<S, TEvent extends AnyEventEnvelope = RegisteredEvent> {
+export interface LiveFoldDefinition<S, TEvent extends AnyEventEnvelope = RegisteredEvent> {
   readonly name?: string
   readonly shape?: unknown
   readonly initialState: S
   reduce(state: S, event: TEvent): S
-  readonly includeEphemeral?: boolean
 }
 
-export function createFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(def: {
+/**
+ * Client-side fold that sees ephemeral events, which projections skip. Ephemeral events are
+ * provisional: a retried effect leaves its earlier attempt's events in the log, so the reducer
+ * must reset on the durable events that supersede them. Use a projection for anything else.
+ */
+export function defineLiveFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(def: {
   readonly name?: string
   readonly shape?: undefined
   readonly initialState: S
   reduce(state: S, event: TEvent): S
-  readonly includeEphemeral?: boolean
-}): EventFoldDefinition<S, TEvent>
-export function createFold<
+}): LiveFoldDefinition<S, TEvent>
+export function defineLiveFold<
   TShape extends SchemaInput,
   TEvent extends AnyEventEnvelope = RegisteredEvent,
 >(def: {
@@ -34,32 +37,26 @@ export function createFold<
   readonly shape: TShape
   readonly initialState: InferSchemaOutput<TShape>
   reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: TEvent): InferSchemaOutput<TShape>
-  readonly includeEphemeral?: boolean
-}): EventFoldDefinition<InferSchemaOutput<TShape>, TEvent>
+}): LiveFoldDefinition<InferSchemaOutput<TShape>, TEvent>
 
-export function createFold(def: {
+export function defineLiveFold(def: {
   readonly name?: string
   readonly shape?: unknown
   readonly initialState: any
   reduce(state: any, event: AnyEventEnvelope): any
-  readonly includeEphemeral?: boolean
-}): EventFoldDefinition<any, any> {
+}): LiveFoldDefinition<any, any> {
   return def
 }
 
+/** Fold a live fold over events, including ephemeral ones. */
 export function foldEvents<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  definition: EventFoldDefinition<S, TEvent>,
+  definition: LiveFoldDefinition<S, TEvent>,
   events: readonly TEvent[],
   from?: S,
 ): S {
   let state = from !== undefined ? from : definition.initialState
-  const includeEphemeral = definition.includeEphemeral ?? false
 
   for (const event of events) {
-    if (event.ephemeral && !includeEphemeral) {
-      continue
-    }
-
     state = definition.reduce(state, event)
   }
 
@@ -100,14 +97,14 @@ function advanceCache<D extends object, S, E>(
 
 export class ProjectionCache {
   private projectionCache = new WeakMap<ProjectionDefinition<any>, CacheEntry<any>>()
-  private foldCache = new WeakMap<EventFoldDefinition<any, any>, CacheEntry<any>>()
+  private foldCache = new WeakMap<LiveFoldDefinition<any, any>, CacheEntry<any>>()
 
   project<S>(definition: ProjectionDefinition<S>, events: readonly EventEnvelope[]): S {
     return advanceCache(this.projectionCache, definition, events, project)
   }
 
   fold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-    definition: EventFoldDefinition<S, TEvent>,
+    definition: LiveFoldDefinition<S, TEvent>,
     events: readonly TEvent[],
   ): S {
     return advanceCache(this.foldCache, definition, events, foldEvents)

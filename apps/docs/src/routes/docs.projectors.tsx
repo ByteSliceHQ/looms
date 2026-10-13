@@ -216,66 +216,74 @@ export function OrderDashboard({ runId }: { runId: string }) {
         and the components that subscribe to it.
       </p>
 
-      <h3 id="custom-folds-with-createfold">
-        Custom client folds with <code>createFold</code>
+      <h3 id="client-only-projections">
+        Client-only projections
         <a
           className="heading-anchor"
-          href="#custom-folds-with-createfold"
+          href="#client-only-projections"
           aria-label="Link to this section"
         >
           #
         </a>
       </h3>
       <p>
-        Use a projection when the host and the client share the read model. Use{' '}
-        <code>createFold</code> from <code>@swirls/looms/react</code> for derived state that only
-        the client needs. Set <code>includeEphemeral: true</code> to fold events a projection skips,
-        such as streaming text deltas.
+        A projection does not have to be registered on the host. Pass any{' '}
+        <code>defineProjection</code> definition to <code>useProjection</code> to derive state only
+        the browser needs. To type its events with the catalog you registered through{' '}
+        <code>LoomsRegister</code>, annotate the reducer&apos;s event as{' '}
+        <code>RegisteredEvent</code>.
+      </p>
+
+      <h3 id="live-folds">
+        Live folds over ephemeral events
+        <a className="heading-anchor" href="#live-folds" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        Projections skip ephemeral events. A live fold, defined with <code>defineLiveFold</code>{' '}
+        from <code>@swirls/looms/react</code>, sees them. Use it for provisional UI, such as text an
+        agent is still streaming, and use a projection for everything else.
       </p>
       <p>
-        A fold takes <code>name</code>, <code>initialState</code>, and <code>reduce</code>, plus
-        optional <code>includeEphemeral</code>. A Zod, Effect Schema, or other Standard Schema{' '}
-        <code>shape</code> infers the state type, so an empty array in <code>initialState</code>{' '}
-        does not collapse the field to <code>never[]</code>. Subscribe with{' '}
-        <code>useEventFold</code>.
+        Ephemeral events are not replayable. A retried effect leaves its earlier attempt&apos;s
+        events in the log, and forking a run elides them. A live fold&apos;s reducer must reset when
+        the durable event that supersedes them lands, and when the effect that emitted them is
+        retried. An optional Zod, Effect Schema, or other Standard Schema <code>shape</code> infers
+        the state type. Subscribe with <code>useLiveFold</code>.
       </p>
       <CodeBlock lang="tsx">{`import { z } from 'zod'
-import { createFold, useEventFold, useRunStore } from '@swirls/looms/react'
+import { defineLiveFold, useLiveFold, useRunStore } from '@swirls/looms/react'
 
-const streamingText = createFold({
+const streamingText = defineLiveFold({
   name: 'streamingText',
   shape: z.object({
-    parts: z.array(z.string()),
+    effectId: z.string().nullable(),
+    text: z.string(),
   }),
-  initialState: { parts: [] },
-  includeEphemeral: true,
+  initialState: { effectId: null, text: '' },
   reduce(state, event) {
-    if (event.type !== 'agent.turn.text_delta') {
-      return state
+    switch (event.type) {
+      case 'agent.turn.text_delta':
+        return { effectId: event.effectId ?? null, text: state.text + event.payload.delta }
+      case 'agent.message':
+        return { effectId: null, text: '' }
+      case 'runtime.effect.retry.scheduled':
+        return event.payload.effectId === state.effectId ? { effectId: null, text: '' } : state
+      default:
+        return state
     }
-
-    const payload = event.payload
-    if (typeof payload !== 'object' || payload === null || !('delta' in payload)) {
-      return state
-    }
-
-    const delta = payload.delta
-    if (typeof delta !== 'string') {
-      return state
-    }
-
-    return { parts: [...state.parts, delta] }
   },
 })
 
 export function StreamingReply({ runId }: { runId: string }) {
   const store = useRunStore(runId)
-  const streaming = useEventFold(store, streamingText)
+  const streaming = useLiveFold(store, streamingText)
 
-  return <p>{streaming.parts.join('')}</p>
+  return <p>{streaming.text}</p>
 }`}</CodeBlock>
       <p>
-        Define the fold at module scope. The store caches incremental state in a{' '}
+        Define live folds at module scope. The store caches incremental state in a{' '}
         <code>WeakMap</code> keyed by the definition object, so a fold created during render starts
         over on every update. Outside React, <code>foldEvents(fold, events)</code> runs the same
         reducer over an event list.

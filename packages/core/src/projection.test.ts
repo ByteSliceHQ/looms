@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Effect, Schema, Stream } from 'effect'
 
-import { createEvent } from './envelope'
+import { createEvent, type EventEnvelope } from './envelope'
 import { defineProjection, foldProjection, project, projectStream } from './projection'
 import type { JsonValue } from './types'
 
@@ -176,6 +176,32 @@ describe('defineProjection', () => {
 
     const result = project(simple, [createEvent('run_s', { type: 'inc', payload: {} })])
     expect(result.count).toBe(1)
+  })
+
+  test('types reducer events from the annotated event union', () => {
+    type CounterEvent =
+      | EventEnvelope<'counter.added', { amount: number }>
+      | EventEnvelope<'counter.reset', null>
+
+    const counter = defineProjection({
+      name: 'typedCounter',
+      shape: Schema.Struct({ total: Schema.Finite }),
+      initialState: { total: 0 },
+      reduce(state, event: CounterEvent) {
+        if (event.type === 'counter.added') {
+          return { total: state.total + event.payload.amount }
+        }
+
+        return event.type === 'counter.reset' ? { total: 0 } : state
+      },
+    })
+
+    const result = project(counter, [
+      createEvent('run_t', { type: 'counter.added', payload: { amount: 3 } }),
+      createEvent('run_t', { type: 'counter.added', payload: { amount: 4 } }),
+    ])
+
+    expect(result.total).toBe(7)
   })
 
   test('projectStream reduces events over an Effect Stream', async () => {

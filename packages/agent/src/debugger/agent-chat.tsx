@@ -1,4 +1,3 @@
-import { Schema } from 'effect'
 import { Bot, CornerDownRight, GitFork, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
@@ -30,11 +29,12 @@ import {
   useStartRun,
   type WorkspaceContext,
 } from '@looms/debugger'
-import { createFold, useEventFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
+import { useLiveFold, useProjection, useRunStore, useRunSummary } from '@looms/react'
 
 import { conversation, turnActivity } from '../projections'
 import { agentSessionMessageEvents, stopAgentTurn, userMessage } from '../signals'
 import type { AgentMessageDelivery, Message, ToolCall } from '../types'
+import { streamingText } from './streaming-text'
 
 /** Child thread of the session turn that is still open, from the events the store already has. */
 function activeSessionChild(
@@ -65,50 +65,6 @@ function activeSessionChild(
 
   return child
 }
-
-const StreamingStateSchema = Schema.Struct({
-  lastMessageSeq: Schema.Finite,
-  turnStarted: Schema.Boolean,
-  parts: Schema.Array(Schema.String),
-})
-
-const streamingFold = createFold({
-  name: 'agentStreamingText',
-  shape: StreamingStateSchema,
-  initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
-  includeEphemeral: true,
-  reduce(state, event) {
-    if (
-      event.type === 'agent.message' ||
-      event.type === 'agent.turn.stopped' ||
-      event.type === 'runtime.thread.cancelled'
-    ) {
-      return { lastMessageSeq: event.seq, turnStarted: false, parts: [] }
-    }
-
-    if (event.seq <= state.lastMessageSeq) {
-      return state
-    }
-
-    if (event.type === 'agent.turn.started') {
-      return { ...state, turnStarted: true }
-    }
-
-    if (
-      event.type === 'agent.turn.text_delta' &&
-      isJsonObject(event.payload) &&
-      isJsonString(event.payload.delta)
-    ) {
-      return {
-        ...state,
-        turnStarted: true,
-        parts: state.parts.concat(event.payload.delta),
-      }
-    }
-
-    return state
-  },
-})
 
 type TranscriptItem =
   | { readonly kind: 'line'; readonly line: Message; readonly index: number }
@@ -248,7 +204,7 @@ function StreamingItem({ text }: { text: string }) {
 function Transcript({ runId }: { runId: string }) {
   const store = useRunStore(runId)
   const convo = useProjection(store, conversation)
-  const streaming = useEventFold(store, streamingFold)
+  const streaming = useLiveFold(store, streamingText)
   const stream = streaming.turnStarted ? streaming.parts.join('') : null
 
   const toolNames = useMemo(() => {

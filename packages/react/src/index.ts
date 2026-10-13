@@ -8,11 +8,11 @@ export {
   type StoreListener,
 } from './store'
 export {
-  createFold,
+  defineLiveFold,
   foldEvents,
   EventIndex,
   eventThreadKey,
-  type EventFoldDefinition,
+  type LiveFoldDefinition,
 } from './derived'
 export { materializeEvents } from './materialize'
 export { emptyTables, type MaterializedTables, type RunRow, type ThreadRow } from './tables'
@@ -28,7 +28,7 @@ export {
   useEventCounts,
   useEventBySeq,
   useLatestEvent,
-  useEventFold,
+  useLiveFold,
   type LoomsProviderProps,
   type UseRunStoreOptions,
   type RunSummary,
