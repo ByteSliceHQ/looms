@@ -113,6 +113,15 @@ export function App({ runId }: { runId: string }) {
         the allowed event. See <Link to="/docs/security">authentication and tenancy</Link> before
         connecting real users.
       </p>
+      <p>
+        <code>useRunSummary(store)</code> returns the run&apos;s <code>status</code>,{' '}
+        <code>finished</code>, and <code>resumable</code>. A finished run rejects new signals with
+        HTTP 409, so disable inputs that would send one. A resumable run failed or was cancelled and{' '}
+        <Link to="/docs/operations" hash="continue-a-finished-run">
+          can be forked
+        </Link>
+        .
+      </p>
       <h2 id="keep-your-agent-logic">
         Keep your agent logic
         <a
