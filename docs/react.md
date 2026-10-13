@@ -62,18 +62,17 @@ Wrap your root in `LoomsProvider`:
 
 ## Client-Only Projections
 
-A projection does not have to be registered on the host. Pass any `defineProjection` definition to `useProjection` to derive state only the browser needs. To type its events with your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)), annotate the reducer's event:
+`useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)):
 
 ```ts
 import { defineProjection } from '@swirls/looms/core'
-import type { RegisteredEvent } from '@swirls/looms/react'
 import { z } from 'zod'
 
 export const toolCalls = defineProjection({
   name: 'toolCalls',
   shape: z.object({ names: z.array(z.string()) }),
   initialState: { names: [] },
-  reduce(state, event: RegisteredEvent) {
+  reduce(state, event) {
     if (event.type !== 'agent.tool_call.requested') {
       return state
     }
@@ -147,17 +146,20 @@ declare module '@swirls/looms/react' {
 }
 ```
 
-After that, `useRunEvents(store)` returns `readonly DemoEvents[]`, and narrowing on `event.type` unlocks typed payloads:
+After that, `useRunEvents(store)` returns `readonly DemoEvents[]`, standalone `defineProjection` reducers receive `DemoEvents`, and narrowing on `event.type` unlocks typed payloads:
 
 ```tsx
 const store = useRunStore(runId)
 const events = useRunEvents(store) // readonly DemoEvents[]
 
-const completed = events.find((e) => e.type === 'runtime.thread.completed')
-if (completed) {
-  console.log(completed.payload.output) // typed
+for (const event of events) {
+  if (event.type === 'runtime.thread.completed') {
+    console.log(event.payload.output) // typed
+  }
 }
 ```
+
+`Array.prototype.find` with a plain predicate does not narrow the element type; use a loop or a type-guard predicate.
 
 For multi-runtime apps, skip global registration and pass an explicit event type to the hooks:
 

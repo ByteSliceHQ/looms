@@ -7,11 +7,11 @@ import {
   type EventInput,
   type ProjectionDefinition,
 } from '@looms/core'
+import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
 import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'
 import { createNotifyScheduler, type CoalesceOption } from './notify'
-import type { AnyEventEnvelope, RegisteredEvent } from './register'
 import { consumeSseStreamEffect, eventsFromSseData } from './sse'
 import { emptyTables, type MaterializedTables } from './tables'
 

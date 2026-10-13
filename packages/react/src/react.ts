@@ -19,9 +19,9 @@ import {
   type RunStatus,
   type ThreadTree,
 } from '@looms/core'
+import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
 import { defineLiveFold, foldEvents, type LiveFoldDefinition } from './derived'
-import type { AnyEventEnvelope, RegisteredEvent } from './register'
 import {
   createLoomsStore,
   type CoalesceOption,
@@ -333,4 +333,4 @@ export type {
   StoreListener,
 } from './store'
 export type { LiveFoldDefinition } from './derived'
-export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from './register'
+export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from '@looms/core'

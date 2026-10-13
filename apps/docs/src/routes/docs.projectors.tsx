@@ -227,11 +227,11 @@ export function OrderDashboard({ runId }: { runId: string }) {
         </a>
       </h3>
       <p>
-        A projection does not have to be registered on the host. Pass any{' '}
-        <code>defineProjection</code> definition to <code>useProjection</code> to derive state only
-        the browser needs. To type its events with the catalog you registered through{' '}
-        <code>LoomsRegister</code>, annotate the reducer&apos;s event as{' '}
-        <code>RegisteredEvent</code>.
+        <code>useProjection</code> folds the events the browser already has, so a projection does
+        not have to be registered on the host. Register it in a module when the host, the HTTP API,
+        or the debugger needs it too. A standalone <code>defineProjection</code> reducer receives
+        events from the union you registered through <code>LoomsRegister</code>; see{' '}
+        <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
 
       <h3 id="live-folds">

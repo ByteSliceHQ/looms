@@ -1,23 +1,24 @@
-import type { EventEnvelope, EventsOf } from '@looms/core'
+import type { EventsOf } from './compose'
+import type { EventEnvelope } from './envelope'
 
 /** Looser event bound so catalog-inferred payloads (including Schema.Type) are accepted. */
 export type AnyEventEnvelope = EventEnvelope<string, any>
 
 /**
- * Application-level type registry for Looms React/client stores.
+ * Application-level type registry for Looms.
  *
- * Augment this interface in your app to bind the event catalog used by
- * `useRunEvents`, `createLoomsStore`, and related hooks:
+ * Augment this interface once to bind your event union. `defineProjection` reducers and the
+ * `@swirls/looms/react` hooks and stores use it as their default event type:
  *
  * ```ts
- * declare module '@looms/react' {
+ * declare module '@swirls/looms/react' {
  *   interface LoomsRegister {
  *     modules: typeof demoModules
  *   }
  * }
  * ```
  *
- * You may register either:
+ * Augmenting `@swirls/looms/core` works the same way. You may register either:
  * - `events`: an explicit event union
  * - `modules`: a module array / creator function (via `EventsOf`)
  * - `catalog`: an event catalog or catalog array (via `EventsOf`)
@@ -27,9 +28,9 @@ export interface LoomsRegister {
 }
 
 export type RegisteredEvent = LoomsRegister extends { events: infer E }
-  ? E & AnyEventEnvelope
+  ? Extract<E, AnyEventEnvelope>
   : LoomsRegister extends { modules: infer M }
-    ? EventsOf<M> & AnyEventEnvelope
+    ? Extract<EventsOf<M>, AnyEventEnvelope>
     : LoomsRegister extends { catalog: infer C }
-      ? EventsOf<C> & AnyEventEnvelope
+      ? Extract<EventsOf<C>, AnyEventEnvelope>
       : EventEnvelope

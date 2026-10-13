@@ -2,6 +2,7 @@ import { Predicate, Schema, Stream, type Effect } from 'effect'
 
 import type { EventEnvelope } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import type { RegisteredEvent } from './register'
 import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
@@ -18,13 +19,16 @@ export function defineProjection<S = unknown>(def: {
   readonly name: string
   readonly shape?: undefined
   readonly initialState: S
-  reduce(state: S, event: EventEnvelope): S
+  reduce(state: S, event: RegisteredEvent): S
 }): ProjectionDefinition<S>
 export function defineProjection<TShape extends SchemaInput>(def: {
   readonly name: string
   readonly shape: TShape
   readonly initialState: InferSchemaOutput<TShape>
-  reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: EventEnvelope): InferSchemaOutput<TShape>
+  reduce(
+    state: NoInfer<InferSchemaOutput<TShape>>,
+    event: RegisteredEvent,
+  ): InferSchemaOutput<TShape>
 }): ProjectionDefinition<InferSchemaOutput<TShape>>
 
 export function defineProjection(def: {

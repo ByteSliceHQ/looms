@@ -5,10 +5,8 @@ import {
   type ProjectionDefinition,
   type SchemaInput,
 } from '@looms/core'
+import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
-import type { AnyEventEnvelope, RegisteredEvent } from './register'
-
-export type { AnyEventEnvelope } from './register'
 export { EventIndex, eventThreadKey } from '@looms/core'
 
 export interface LiveFoldDefinition<S, TEvent extends AnyEventEnvelope = RegisteredEvent> {
