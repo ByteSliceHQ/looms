@@ -11,7 +11,7 @@ import { EventStoreTag } from '@looms/core'
 import { createTimeoutScheduler, isLoomsApiPath, type Authorize } from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
-import { resolveRunTarget, RunTargetError } from './routing'
+import { crossRunResponse, resolveRunTarget, RunTargetError } from './routing'
 
 class ActorWakeError extends Data.TaggedError('ActorWakeError')<{
   readonly cause: unknown
@@ -149,18 +149,10 @@ export function createLocalActorHost<
         return Promise.resolve(Response.json({ ok: true }))
       }
 
-      if (
-        req.method === 'GET' &&
-        (url.pathname === '/runs' || url.pathname === '/runs/summaries')
-      ) {
-        return Promise.resolve(
-          Response.json(
-            {
-              error: 'Global run listing is not supported in the actor host without a global index',
-            },
-            { status: 501 },
-          ),
-        )
+      const unsupported = crossRunResponse(req, 'the actor host')
+
+      if (unsupported) {
+        return Promise.resolve(unsupported)
       }
 
       return Effect.runPromise(

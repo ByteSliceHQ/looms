@@ -293,6 +293,12 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         method: 'POST',
         body: stringifyJson(threadId === undefined ? {} : { threadId }),
       }),
+    /** Start a new run that continues where a finished run ended. */
+    fork: (sourceRunId: string, forkOptions?: { runId?: string }) =>
+      request(`/runs/${encodeURIComponent(sourceRunId)}/fork`, StartResultSchema, {
+        method: 'POST',
+        body: stringifyJson(forkOptions?.runId === undefined ? {} : { runId: forkOptions.runId }),
+      }),
     workerCallback,
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),

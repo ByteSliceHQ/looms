@@ -177,6 +177,7 @@ export interface StreamBounds {
 }
 
 export interface AppendOptions {
+  /** Fail unless the stream is at this tail. The batch is numbered from `expectedTail + 1`. */
   readonly expectedTail?: number
   /**
    * Atomically claims an ingress command with the append. Reusing the key

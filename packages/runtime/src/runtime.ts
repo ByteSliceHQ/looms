@@ -12,6 +12,7 @@ import {
   EventStoreTag,
   foldRun,
   isRunTerminal,
+  planFork,
   project,
   replayTo,
   summarizeRun,
@@ -24,7 +25,14 @@ import {
 
 import { createCancellation } from './cancellation'
 import { nextRuntimeDeadline } from './deadline-transition-planner'
-import { RunTerminalError, RuntimeExecutionError, type StartRunConflictError } from './errors'
+import {
+  ForkConflictError,
+  RunNotFinishedError,
+  RunNotFoundError,
+  RunTerminalError,
+  RuntimeExecutionError,
+  type StartRunConflictError,
+} from './errors'
 import {
   admitExternalEvents,
   moduleServices,
@@ -49,7 +57,10 @@ export type { WakeScheduler } from './wake-scheduler'
 export { createTimeoutScheduler } from './wake-scheduler'
 export {
   DuplicateEffectDispatchError,
+  ForkConflictError,
   MaxWakeIterationsError,
+  RunNotFinishedError,
+  RunNotFoundError,
   RunTerminalError,
   StartRunConflictError,
 } from './errors'
@@ -508,6 +519,50 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       ),
 
     cancel: cancellation,
+
+    fork: (sourceRunId, forkOptions) => {
+      const runId = forkOptions?.runId ?? createRunId()
+
+      return withRunIngress(
+        runId,
+        Effect.gen(function* () {
+          const store = yield* EventStoreTag
+          const source = yield* loadCursor(store, sourceRunId)
+
+          if (source.seq === 0) {
+            return yield* new RunNotFoundError(sourceRunId)
+          }
+
+          if (!isRunTerminal(source.state)) {
+            return yield* new RunNotFinishedError(sourceRunId, source.state.status)
+          }
+
+          const plan = yield* planFork({
+            sourceRunId,
+            runId,
+            events: yield* store.read(sourceRunId),
+            registry,
+          })
+
+          // Appending at tail 0 numbers the copied events 1..n, the seqs they had in the source.
+          yield* commit(store, runId, (existing) => {
+            if (existing.seq === 0) {
+              return Effect.succeed({ events: plan.events, value: undefined })
+            }
+
+            return existing.state.forkedFrom?.runId === sourceRunId
+              ? Effect.succeed({ events: [], value: undefined })
+              : Effect.fail(new ForkConflictError(runId, sourceRunId))
+          })
+
+          return plan.rootThreadId
+        }),
+      ).pipe(
+        Effect.flatMap((threadId) =>
+          runtime.wake(runId).pipe(Effect.map((state) => ({ runId, threadId, state }))),
+        ),
+      )
+    },
 
     wake: wakeEngine,
 

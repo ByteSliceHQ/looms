@@ -35,6 +35,30 @@ export function runIdFromRequest(req: Request): string | null {
   return null
 }
 
+/**
+ * A 501 for requests that span runs, which a host with one cell per run cannot answer: listing
+ * runs needs a global index, and a fork writes a second run. `host` names the backend.
+ */
+export function crossRunResponse(req: Request, host: string): Response | null {
+  const { pathname } = new URL(req.url)
+
+  if (req.method === 'GET' && (pathname === '/runs' || pathname === '/runs/summaries')) {
+    return Response.json(
+      { error: `Global run listing is not supported in ${host} without a global index` },
+      { status: 501 },
+    )
+  }
+
+  if (req.method === 'POST' && /^\/runs\/[^/]+\/fork$/.test(pathname)) {
+    return Response.json(
+      { error: `Forking runs is not supported in ${host}; each run lives in its own cell` },
+      { status: 501 },
+    )
+  }
+
+  return null
+}
+
 export interface ResolvedRunTarget {
   readonly runId: string
   readonly request: Request

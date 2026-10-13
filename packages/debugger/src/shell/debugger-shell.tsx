@@ -98,7 +98,12 @@ function DebuggerFrame({
               {error}
             </p>
           ) : null}
-          {selection.run ? <RunControls runId={selection.run} /> : null}
+          {selection.run ? (
+            <RunControls
+              runId={selection.run}
+              onForked={(run) => onSelectionChange({ kind, name, run })}
+            />
+          ) : null}
         </div>
       </header>
       <ResizablePanelGroup

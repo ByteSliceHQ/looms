@@ -82,6 +82,44 @@ function Page() {
         message already accepted externally. Record operator decisions. If an external action needs
         to be reversed, perform and record that reversal separately.
       </p>
+      <h2 id="continue-a-finished-run">
+        Continue a finished run
+        <a
+          className="heading-anchor"
+          href="#continue-a-finished-run"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        A finished run stays finished: its log is the record of what happened. To pick up a failed
+        or cancelled run, fork it with <code>looms.fork(runId)</code> or{' '}
+        <code>POST /runs/:id/fork</code>. The fork is a new run that copies the source&apos;s
+        history up to the point it finished, keeps its thread ids and sequence numbers, and records
+        a <code>runtime.run.forked</code> event naming the source. Its first wake re-issues the
+        effects that were outstanding there.
+      </p>
+      <ul>
+        <li>
+          A cancelled run resumes from just before the cancellation. An agent re-runs the model call
+          or tool the cancel cut off.
+        </li>
+        <li>
+          A failed run resumes from just before the effect whose failure ended it, so that effect
+          runs again. Effects declared <code>deterministic</code>, such as workflow scheduling, only
+          pass a failure on; the fork retries the work behind them instead.
+        </li>
+        <li>
+          A completed run has nothing outstanding. Forking it completes again with the same output.
+        </li>
+      </ul>
+      <p>
+        Re-issued effects run again, so the at-least-once rules for external side effects apply.
+        Streamed output from attempts the fork re-runs is replaced by{' '}
+        <code>runtime.fork.elided</code> markers. Only the embedded runtime forks runs; actor and
+        Durable Object hosts return 501 because each run is its own cell.
+      </p>
       <h2 id="observe-behavior">
         Monitor execution
         <a className="heading-anchor" href="#observe-behavior" aria-label="Link to this section">

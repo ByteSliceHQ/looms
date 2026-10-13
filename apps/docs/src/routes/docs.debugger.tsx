@@ -64,10 +64,10 @@ createLooms({
       </h2>
       <p>
         Loading the page is a read of the route named <code>debugger</code>. The page then reads
-        definitions, runs, and event streams. Starting, signaling, waking, and cancelling a run are{' '}
-        <code>write</code> routes. Chat messages and the chat Stop button are signals. Without{' '}
-        <code>authorize</code>, all of these are open. Leave them open only on a trusted local
-        machine.
+        definitions, runs, and event streams. Starting, signaling, waking, cancelling, and
+        continuing a run are <code>write</code> routes. Chat messages and the chat Stop button are
+        signals. Without <code>authorize</code>, all of these are open. Leave them open only on a
+        trusted local machine.
       </p>
       <p>
         The debugger sends no <code>Authorization</code> header, so bearer tokens on reads or writes
@@ -237,7 +237,8 @@ export function DebuggerPage({ selection, onSelectionChange }: {
         not include those files. The Durable Object router also returns 501 for{' '}
         <code>GET /runs</code> and does not route <code>/definitions</code>, because neither belongs
         to a single run. A debugger pointed at a Worker has no run types to start and no runs to
-        search.
+        search. Continue on a failed or cancelled run also returns 501, because a fork writes a
+        second run.
       </p>
       <p>
         To start and inspect runs during development, load the same modules into a local Bun host

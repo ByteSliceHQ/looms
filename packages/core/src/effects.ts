@@ -225,6 +225,11 @@ export interface EffectDefinition<
   readonly execution?: EffectExecution
   /** Whether `execute` runs a user handler. Without one, the effect can only complete through a worker. */
   readonly hasHandler: boolean
+  /**
+   * The outcome follows from the input alone, like scheduling from state already folded. Forking
+   * a failed run retries the effect that produced the failure, not a deterministic one passing it on.
+   */
+  readonly deterministic?: boolean
   readonly [effectInputType]?: (input: TInput) => TInput
   execute(
     input: JsonValue,
@@ -267,6 +272,7 @@ export function defineEffect<
   input: TSchema
   retry?: RetryPolicy
   execution?: EffectExecution
+  deterministic?: boolean
   execute?: (
     input: InferDefinedSchema<TSchema>,
     ctx: EffectContext,
@@ -282,6 +288,7 @@ export function defineEffect<
   input?: undefined
   retry?: RetryPolicy
   execution?: EffectExecution
+  deterministic?: boolean
   execute?: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
 }): EffectDefinition<JsonValue, R, E>
 
@@ -290,6 +297,7 @@ export function defineEffect<R, E extends EventInput, HandlerError>(def: {
   input?: SchemaInput
   retry?: RetryPolicy
   execution?: EffectExecution
+  deterministic?: boolean
   execute?: (input: any, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
 }): EffectDefinition<any, R, E> {
   const schema = def.input
@@ -302,6 +310,7 @@ export function defineEffect<R, E extends EventInput, HandlerError>(def: {
     retry: def.retry,
     execution: def.execution,
     hasHandler: handler !== undefined,
+    deterministic: def.deterministic,
     execute: (raw: JsonValue, ctx) =>
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw

@@ -95,6 +95,12 @@ describe('LocalActorHost', () => {
 
     expect(summaries?.status).toBe(501)
 
+    const fork = await host.fetch(
+      new Request(`http://localhost:8787/runs/${runId2}/fork`, { method: 'POST' }),
+    )
+
+    expect(fork?.status).toBe(501)
+
     await host.dispose()
   })
 })

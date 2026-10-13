@@ -46,6 +46,10 @@ const CancelBodySchema = Schema.Struct({
   threadId: Schema.optional(Schema.String),
 })
 
+const ForkBodySchema = Schema.Struct({
+  runId: Schema.optional(Schema.String),
+})
+
 function wantsRunStream(req: Request, url: URL): boolean {
   return url.searchParams.get('stream') === 'true' || acceptsEventStream(req)
 }
@@ -337,6 +341,25 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
 
           const state = yield* provideStore(runtime.cancel(params.runId, body.threadId), store)
           return Response.json({ runId: params.runId, state })
+        }),
+    }),
+    route({
+      method: 'POST',
+      path: '/runs/:runId/fork',
+      name: 'runs.fork',
+      access: 'write',
+      handle: ({ req, params }) =>
+        Effect.gen(function* () {
+          const body = yield* readOptionalJson(req).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(ForkBodySchema)),
+          )
+
+          const result = yield* provideStore(
+            runtime.fork(params.runId, { runId: body.runId }),
+            store,
+          )
+
+          return Response.json(result)
         }),
     }),
   ]

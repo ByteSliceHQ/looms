@@ -91,6 +91,7 @@ function threadFailed(threadId: string, error: string): WorkflowEvents {
 export const scheduleEffect = workflowModule.effect({
   type: 'workflow.schedule',
   input: ScheduleInput,
+  deterministic: true,
   execute: (input, ctx) =>
     Effect.gen(function* () {
       const workflows = yield* WorkflowDefinitionsTag

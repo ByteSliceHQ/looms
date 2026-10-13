@@ -1,8 +1,15 @@
-import { Bot, CornerDownRight, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
+import { Bot, CornerDownRight, GitFork, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import { createEventId, isJsonObject, isJsonString, type JsonValue } from '@looms/core'
 import {
+  createEventId,
+  isJsonObject,
+  isJsonString,
+  type JsonValue,
+  type RunStatus,
+} from '@looms/core'
+import {
+  Button,
   cn,
   Composer,
   EmptyState,
@@ -370,6 +377,7 @@ export function AgentChat(context: WorkspaceContext) {
           delivery={delivery}
           setDelivery={setDelivery}
           startError={error}
+          onForked={context.onStarted}
         />
       ) : (
         <Composer
@@ -386,19 +394,65 @@ export function AgentChat(context: WorkspaceContext) {
   )
 }
 
-function FollowUp({
-  runId,
-  session,
-  delivery,
-  setDelivery,
-  startError,
-}: {
+interface ReplyProps {
   runId: string
   session: boolean
   delivery: AgentMessageDelivery
   setDelivery: (delivery: AgentMessageDelivery) => void
   startError: string | null
+}
+
+function FollowUp({ onForked, ...props }: ReplyProps & { onForked: (runId: string) => void }) {
+  const { status, resumable } = useRunSummary(useRunStore(props.runId))
+
+  return resumable ? (
+    <ContinueRun runId={props.runId} status={status} onForked={onForked} />
+  ) : (
+    <Reply {...props} />
+  )
+}
+
+function ContinueRun({
+  runId,
+  status,
+  onForked,
+}: {
+  runId: string
+  status: RunStatus
+  onForked: (runId: string) => void
 }) {
+  const { client } = useDebugger()
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function continueInNewRun() {
+    setPending(true)
+    setError(null)
+
+    client
+      .fork(runId)
+      .then((forked) => onForked(forked.runId))
+      .catch((cause: unknown) => setError(errorMessage(cause)))
+      .finally(() => setPending(false))
+  }
+
+  return (
+    <div className="border-border shrink-0 border-t p-3">
+      <div className="flex items-center gap-2">
+        <p className="text-muted-foreground min-w-0 flex-1 text-xs">
+          Run {status}. Continue from where it stopped in a new run.
+        </p>
+        <Button size="sm" variant="outline" disabled={pending} onClick={continueInNewRun}>
+          <GitFork />
+          Continue in new run
+        </Button>
+      </div>
+      {error ? <p className="text-status-failed mt-2 text-[11px]">{error}</p> : null}
+    </div>
+  )
+}
+
+function Reply({ runId, session, delivery, setDelivery, startError }: ReplyProps) {
   const store = useRunStore(runId)
   const { rootThreadId, status, finished } = useRunSummary(store)
   const turn = useProjection(store, turnActivity)

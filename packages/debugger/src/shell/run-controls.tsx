@@ -1,5 +1,5 @@
 import { Effect, Fiber } from 'effect'
-import { AlarmClock, CircleStop, Radio } from 'lucide-react'
+import { AlarmClock, CircleStop, GitFork, Radio } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { cleanUndefined, type EventInput } from '@looms/core'
@@ -139,13 +139,20 @@ function SignalForm({ runId, rootThreadId }: { runId: string; rootThreadId?: str
 }
 
 /** Run-scoped actions that live beside the run switcher. */
-export function RunControls({ runId }: { runId: string }) {
+export function RunControls({
+  runId,
+  onForked,
+}: {
+  runId: string
+  onForked: (runId: string) => void
+}) {
   const { client } = useDebugger()
-  const { rootThreadId, finished } = useRunSummary(useRunStore(runId))
+  const { rootThreadId, finished, resumable } = useRunSummary(useRunStore(runId))
   // A wake holds its request open until the run parks, so Cancel needs its own pending state.
   const waking = useRunAction()
   const cancelling = useRunAction()
-  const error = cancelling.error ?? waking.error
+  const forking = useRunAction()
+  const error = forking.error ?? cancelling.error ?? waking.error
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
@@ -198,19 +205,40 @@ export function RunControls({ runId }: { runId: string }) {
         <AlarmClock />
         Wake
       </Button>
-      <Button
-        variant="destructive"
-        size="sm"
-        disabled={cancelling.pending || finished}
-        onClick={() => {
-          setNotice(null)
-          waking.setError(null)
-          cancelling.run(() => client.cancel(runId))
-        }}
-      >
-        <CircleStop />
-        Cancel
-      </Button>
+      {resumable ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={forking.pending}
+          title="Start a new run that picks up where this one stopped"
+          onClick={() => {
+            setNotice(null)
+            waking.setError(null)
+
+            forking.run(
+              () => client.fork(runId),
+              (forked) => onForked(forked.runId),
+            )
+          }}
+        >
+          <GitFork />
+          Continue
+        </Button>
+      ) : (
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={cancelling.pending || finished}
+          onClick={() => {
+            setNotice(null)
+            waking.setError(null)
+            cancelling.run(() => client.cancel(runId))
+          }}
+        >
+          <CircleStop />
+          Cancel
+        </Button>
+      )}
       <Popover>
         <PopoverTrigger asChild>
           <Button

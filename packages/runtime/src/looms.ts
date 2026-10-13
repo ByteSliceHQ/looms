@@ -120,6 +120,8 @@ export interface Looms {
   project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   cancel(runId: string, threadId?: string): Promise<RunState>
+  /** Start a new run that continues where a finished run ended. */
+  fork(sourceRunId: string, options?: { runId?: string }): Promise<StartResult>
   workerCallback(runId: string, input: WorkerCallbackInput): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
@@ -259,6 +261,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     project: (runId, definition) => runEffect((i) => i.runtime.project(runId, definition)),
     replayTo: (runId, seq) => runEffect((i) => i.runtime.replayTo(runId, seq)),
     cancel: (runId, threadId) => runEffect((i) => i.runtime.cancel(runId, threadId)),
+    fork: (sourceRunId, forkOpts) => runEffect((i) => i.runtime.fork(sourceRunId, forkOpts)),
     workerCallback: (runId, input) => runEffect((i) => i.runtime.workerCallback(runId, input)),
     fetch: (req) => {
       if (!handlesPath(new URL(req.url).pathname, debuggerMount)) {
