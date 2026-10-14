@@ -39,6 +39,10 @@
       "dependsOn": ["^build"],
       "inputs": ["src/**", "tsconfig.json", "package.json"]
     },
+    "@swirls/looms#check-types": {
+      "dependsOn": ["build"],
+      "inputs": ["type-tests/**", "package.json"]
+    },
     "test": {
       "dependsOn": ["^build"],
       "inputs": ["src/**", "tsconfig.json", "package.json"]
