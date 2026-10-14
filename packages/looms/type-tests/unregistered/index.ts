@@ -77,8 +77,11 @@ export function useHookTypes(store: LoomsClientStore) {
   const events = useRunEvents(store)
   const streamed = useLiveFold(store, parts)
 
+  // @ts-expect-error a projection is not a live fold
+  const projected = useLiveFold(store, count)
+
   type Events = Expect<Equal<typeof events, readonly EventEnvelope[]>>
   type Streamed = Expect<Equal<typeof streamed, Parts>>
 
-  return { events, streamed }
+  return { events, streamed, projected }
 }

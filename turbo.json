@@ -41,7 +41,7 @@
     },
     "@swirls/looms#check-types": {
       "dependsOn": ["build"],
-      "inputs": ["type-tests/**", "package.json"]
+      "inputs": ["type-tests/**", "package.json", "$TURBO_ROOT$/tsconfig.base.json"]
     },
     "test": {
       "dependsOn": ["^build"],

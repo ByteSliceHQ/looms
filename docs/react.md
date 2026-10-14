@@ -62,7 +62,7 @@ Wrap your root in `LoomsProvider`:
 
 ## Client-Only Projections
 
-`useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)):
+`useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)) unless you annotate the `event` parameter. This example assumes the agent module is registered:
 
 ```ts
 import { defineProjection } from '@swirls/looms/core'
@@ -88,7 +88,7 @@ Projections skip ephemeral events. A live fold, defined with `defineLiveFold`, s
 
 Ephemeral events are provisional. When the runtime retries an effect, the reducer never sees the ephemeral events from the attempts the retry replaced, so a failed attempt's partial text disappears without extra code. The reducer still resets on domain events, such as the durable message that replaces streamed text. Forking a run elides ephemeral events entirely.
 
-`shape` is optional. It is a Zod, Effect Schema, or other Standard Schema object that infers the state type, so you do not pass a generic when `initialState` is narrower than the state, such as an empty array.
+`shape` is optional. It is a Zod, Effect Schema, or other Standard Schema object that infers the state type, so you do not pass a generic when `initialState` is narrower than the state, such as an empty array. Like the projection example, this assumes the agent module is registered.
 
 ```tsx
 import { z } from 'zod'

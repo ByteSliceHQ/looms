@@ -3,11 +3,12 @@ import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 import {
   decodeLoomsEvent,
   stringifyJson,
+  type AnyEventEnvelope,
   type EventEnvelope,
   type EventInput,
   type ProjectionDefinition,
+  type RegisteredEvent,
 } from '@looms/core'
-import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
 import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'

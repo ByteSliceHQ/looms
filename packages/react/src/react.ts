@@ -15,11 +15,12 @@ import {
   isTerminalStatus,
   threadTree,
   toThreadTree,
+  type AnyEventEnvelope,
   type ProjectionDefinition,
+  type RegisteredEvent,
   type RunStatus,
   type ThreadTree,
 } from '@looms/core'
-import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
 import { defineLiveFold, foldLive, type LiveFoldDefinition } from './derived'
 import {

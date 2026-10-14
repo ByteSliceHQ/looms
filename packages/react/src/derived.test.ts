@@ -249,7 +249,7 @@ describe('live fold retries', () => {
     }
   })
 
-  test('folds only new events until a retry supersedes folded ones', () => {
+  test('folds only new events until a batch contains a retry', () => {
     let reducerCalls = 0
 
     const counted = defineLiveFold({
@@ -264,13 +264,13 @@ describe('live fold retries', () => {
     const first = [delta(1, 'a', 'eff_model'), delta(2, 'b', 'eff_model')]
     cache.fold(counted, first)
 
-    const unrelatedRetry = [...first, retryScheduled(3, 'eff_tool')]
-    expect(cache.fold(counted, unrelatedRetry)).toBe('ab')
+    const appended = [...first, delta(3, 'c', 'eff_model')]
+    expect(cache.fold(counted, appended)).toBe('abc')
     expect(reducerCalls).toBe(3)
 
-    const supersedingRetry = [...unrelatedRetry, retryScheduled(4, 'eff_model')]
-    expect(cache.fold(counted, supersedingRetry)).toBe('')
-    expect(reducerCalls).toBe(5)
+    const retried = [...appended, retryScheduled(4, 'eff_model')]
+    expect(cache.fold(counted, retried)).toBe('')
+    expect(reducerCalls).toBe(4)
   })
 })
 

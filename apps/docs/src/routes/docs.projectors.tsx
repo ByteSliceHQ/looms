@@ -230,7 +230,8 @@ export function OrderDashboard({ runId }: { runId: string }) {
         <code>useProjection</code> folds the events the browser already has, so a projection does
         not have to be registered on the host. Register it in a module when the host, the HTTP API,
         or the debugger needs it too. A standalone <code>defineProjection</code> reducer receives
-        events from the union you registered through <code>LoomsRegister</code>; see{' '}
+        events from the union you registered through <code>LoomsRegister</code> unless you annotate
+        its <code>event</code> parameter; see{' '}
         <Link to="/docs/concepts/type-safety">Type safety</Link>.
       </p>
 
@@ -255,7 +256,8 @@ export function OrderDashboard({ runId }: { runId: string }) {
       <p>
         An optional Zod, Effect Schema, or other Standard Schema <code>shape</code> infers the state
         type when <code>initialState</code> is narrower than the state, such as an empty array.
-        Subscribe with <code>useLiveFold</code>.
+        Subscribe with <code>useLiveFold</code>. The example assumes <code>LoomsRegister</code>{' '}
+        includes the agent module, so <code>event.payload.delta</code> is typed.
       </p>
       <CodeBlock lang="tsx">{`import { z } from 'zod'
 import { defineLiveFold, useLiveFold, useRunStore } from '@swirls/looms/react'
