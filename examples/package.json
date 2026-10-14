@@ -15,12 +15,21 @@
     "custom-module": "bun run custom-module.ts",
     "custom-thread": "bun run custom-thread.ts",
     "all": "bun run echo-agent && bun run agent-session && bun run workflow && bun run approval && bun run evaluator && bun run custom-module && bun run custom-thread",
-    "check-types": "bun x tsc -p tsconfig.json --noEmit && bun run cloudflare:types && bun x tsc -p cloudflare/tsconfig.json",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit && bun run cloudflare:types && bun x tsc -p cloudflare/tsconfig.json && bun x tsc -p ax/cloudflare/tsconfig.json",
     "test": "bun test",
     "durable-review": "bun durable-review.ts",
     "cloudflare:types": "wrangler types --config cloudflare/wrangler.jsonc cloudflare/worker-configuration.d.ts --include-runtime=false",
     "cloudflare:dev": "wrangler dev --config cloudflare/wrangler.jsonc --port 8791",
-    "cloudflare:check": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc"
+    "cloudflare:check": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc",
+    "ax:local:up": "bun ax/local/scripts/up.ts",
+    "ax:local:doctor": "bun ax/local/scripts/doctor.ts",
+    "ax:local:smoke": "bun ax/local/scripts/test.ts --recovery",
+    "ax:local:test": "bun ax/local/scripts/test.ts --recovery --faults",
+    "ax:local:collect": "bun ax/local/scripts/collect.ts",
+    "ax:local:down": "bun ax/local/scripts/down.ts",
+    "ax:cloudflare:check": "wrangler deploy --dry-run --config ax/cloudflare/wrangler.jsonc",
+    "ax:cloudflare:test": "bun ax/local/scripts/cloudflare.ts",
+    "ax:local:qualify": "bun ax/local/scripts/test.ts --recovery --faults --egress"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

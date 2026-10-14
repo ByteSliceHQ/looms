@@ -1,0 +1,39 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: looms-ax
+servers: 1
+agents: 0
+image: rancher/k3s:v1.35.6-k3s1
+volumes:
+  - volume: looms-ax-sandbox:/var/lib/ateom-gvisor
+    nodeFilters: [server:0]
+kubeAPI:
+  hostIP: 127.0.0.1
+  hostPort: '26543'
+registries:
+  create:
+    name: looms-ax-registry
+    host: 127.0.0.1
+    hostPort: '5007'
+  config: |
+    mirrors:
+      "localhost:5007":
+        endpoint:
+          - http://looms-ax-registry:5000
+options:
+  kubeconfig:
+    updateDefaultKubeconfig: false
+    switchCurrentContext: false
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik,servicelb,metrics-server
+        nodeFilters: [server:*]
+      - arg: --kube-apiserver-arg=feature-gates=ClusterTrustBundle=true,ClusterTrustBundleProjection=true,PodCertificateRequest=true
+        nodeFilters: [server:*]
+      - arg: --kube-apiserver-arg=runtime-config=certificates.k8s.io/v1beta1=true
+        nodeFilters: [server:*]
+      - arg: --kube-controller-manager-arg=feature-gates=ClusterTrustBundle=true,ClusterTrustBundleProjection=true,PodCertificateRequest=true
+        nodeFilters: [server:*]
+      - arg: --kubelet-arg=feature-gates=ClusterTrustBundle=true,ClusterTrustBundleProjection=true,PodCertificateRequest=true
+        nodeFilters: [server:*]

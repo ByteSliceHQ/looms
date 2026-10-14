@@ -1,0 +1,2 @@
+apps/ax-bridge/src/generated/** linguist-generated=true
+apps/ax-bridge/proto/** linguist-vendored=true

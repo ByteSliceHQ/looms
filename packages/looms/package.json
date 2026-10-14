@@ -130,7 +130,15 @@
       "import": "./dist/s2/projector.js"
     },
     "./debugger/styles.css": "./dist/debugger/styles.css",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./ax": {
+      "types": "./dist/ax/index.d.ts",
+      "import": "./dist/ax/index.js"
+    },
+    "./ax/worker": {
+      "types": "./dist/ax/worker-entry.d.ts",
+      "import": "./dist/ax/worker-entry.js"
+    }
   },
   "publishConfig": {
     "access": "public"
@@ -161,6 +169,7 @@
     "@looms/agent": "workspace:*",
     "@looms/ai-vercel": "workspace:*",
     "@looms/approval": "workspace:*",
+    "@looms/ax": "workspace:*",
     "@looms/cli": "workspace:*",
     "@looms/client": "workspace:*",
     "@looms/cloudflare": "workspace:*",

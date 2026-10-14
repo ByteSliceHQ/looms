@@ -22,7 +22,9 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "apps/ax-bridge/src/generated/**",
+    ".ax-local/**"
   ],
   "jsPlugins": [
     {

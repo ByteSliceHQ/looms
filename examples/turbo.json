@@ -1,0 +1,7 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "check-types": { "inputs": ["$TURBO_DEFAULT$"] },
+    "test": { "inputs": ["$TURBO_DEFAULT$"] }
+  }
+}

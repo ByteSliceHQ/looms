@@ -29,6 +29,8 @@
     ".opencode/**",
     ".pi/**",
     ".roo/**",
-    ".windsurf/**"
+    ".windsurf/**",
+    "apps/ax-bridge/src/generated/**",
+    ".ax-local/**"
   ]
 }

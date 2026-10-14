@@ -704,3 +704,74 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 })
+
+test('worker outcomes satisfy registered event waits exactly once', async () => {
+  const remote = defineEffect({
+    type: 'worker.waited',
+    retry: { maxAttempts: 1, scheduleToStartTimeoutMs: 60_000 },
+  })
+
+  const definition = { kind: 'worker-wait', name: 'worker-wait' }
+  const tasks: EffectWorkerTask[] = []
+
+  const module = defineRuntimeModule({
+    namespace: 'worker',
+    protocolVersion: '1.0.0',
+    effects: { remote },
+    definitions: [definition],
+    threads: {
+      'worker-wait': defineThread({
+        kind: 'worker-wait',
+        initialState: () => false,
+        step: (done, event) => done || event.type === 'runtime.wait.satisfied',
+        effects: (done) =>
+          done
+            ? [complete({ resumed: true })]
+            : [
+                invoke(remote, {}, 'remote'),
+                { type: 'runtime.wait', waitId: 'result-wait', on: { type: 'worker.done' } },
+              ],
+      }),
+    },
+  })
+
+  const looms = createLooms({
+    modules: [module],
+    worker: {
+      handles: ['worker.waited'],
+      dispatch: (task) => {
+        tasks.push(task)
+      },
+    },
+  })
+
+  try {
+    const run = await looms.start(definition, {})
+    const task = tasks[0]
+
+    if (!task) {
+      throw new Error('Worker was not dispatched')
+    }
+
+    const callback = {
+      kind: 'complete' as const,
+      effectId: task.effectId,
+      attempt: task.attempt,
+      events: [{ type: 'worker.done', payload: {} }],
+    }
+
+    await looms.workerCallback(run.runId, callback)
+    expect((await looms.getRun(run.runId)).status).toBe('completed')
+    await looms.workerCallback(run.runId, callback)
+    const events = await looms.getEvents(run.runId)
+    expect(events.filter((event) => event.type === 'runtime.wait.satisfied')).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'worker.done')).toHaveLength(1)
+    const result = events.find((event) => event.type === 'worker.done')
+
+    expect(events.find((event) => event.type === 'runtime.wait.satisfied')?.causationId).toBe(
+      result?.id,
+    )
+  } finally {
+    await looms.stop()
+  }
+})
