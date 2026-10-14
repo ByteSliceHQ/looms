@@ -9,7 +9,7 @@ export {
 } from './store'
 export {
   defineLiveFold,
-  foldEvents,
+  foldLive,
   EventIndex,
   eventThreadKey,
   type LiveFoldDefinition,

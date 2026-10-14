@@ -6,7 +6,6 @@ import { defineLiveFold } from '@looms/react'
 const StreamingTextSchema = Schema.Struct({
   lastMessageSeq: Schema.Finite,
   turnStarted: Schema.Boolean,
-  streamEffectId: Schema.NullOr(Schema.String),
   parts: Schema.Array(Schema.String),
 })
 
@@ -14,14 +13,14 @@ const StreamingTextSchema = Schema.Struct({
 export const streamingText = defineLiveFold({
   name: 'agentStreamingText',
   shape: StreamingTextSchema,
-  initialState: { lastMessageSeq: -1, turnStarted: false, streamEffectId: null, parts: [] },
+  initialState: { lastMessageSeq: -1, turnStarted: false, parts: [] },
   reduce(state, event) {
     if (
       event.type === 'agent.message' ||
       event.type === 'agent.turn.stopped' ||
       event.type === 'runtime.thread.cancelled'
     ) {
-      return { lastMessageSeq: event.seq, turnStarted: false, streamEffectId: null, parts: [] }
+      return { lastMessageSeq: event.seq, turnStarted: false, parts: [] }
     }
 
     if (event.seq <= state.lastMessageSeq) {
@@ -33,24 +32,11 @@ export const streamingText = defineLiveFold({
     }
 
     if (
-      event.type === 'runtime.effect.retry.scheduled' &&
-      isJsonObject(event.payload) &&
-      event.payload.effectId === state.streamEffectId
-    ) {
-      return { ...state, streamEffectId: null, parts: [] }
-    }
-
-    if (
       event.type === 'agent.turn.text_delta' &&
       isJsonObject(event.payload) &&
       isJsonString(event.payload.delta)
     ) {
-      return {
-        ...state,
-        turnStarted: true,
-        streamEffectId: event.effectId ?? null,
-        parts: state.parts.concat(event.payload.delta),
-      }
+      return { ...state, turnStarted: true, parts: state.parts.concat(event.payload.delta) }
     }
 
     return state

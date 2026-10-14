@@ -21,7 +21,7 @@ import {
 } from '@looms/core'
 import type { AnyEventEnvelope, RegisteredEvent } from '@looms/core'
 
-import { defineLiveFold, foldEvents, type LiveFoldDefinition } from './derived'
+import { defineLiveFold, foldLive, type LiveFoldDefinition } from './derived'
 import {
   createLoomsStore,
   type CoalesceOption,
@@ -323,7 +323,7 @@ export function useLiveFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent
 }
 
 export { createLoomsStore }
-export { defineLiveFold, foldEvents }
+export { defineLiveFold, foldLive }
 export type {
   LoomsClientStore,
   LoomsClientStoreOptions,

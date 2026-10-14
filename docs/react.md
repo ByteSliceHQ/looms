@@ -86,9 +86,9 @@ export const toolCalls = defineProjection({
 
 Projections skip ephemeral events. A live fold, defined with `defineLiveFold`, sees them; use it for provisional UI such as text an agent is still streaming, and use a projection for everything else.
 
-Ephemeral events are not replayable. A retried effect leaves its earlier attempt's events in the log, and forking a run elides them. A live fold's reducer must reset when the durable event that supersedes them lands, and when the effect that emitted them is retried.
+Ephemeral events are provisional. When the runtime retries an effect, the reducer never sees the ephemeral events from the attempts the retry replaced, so a failed attempt's partial text disappears without extra code. The reducer still resets on domain events, such as the durable message that replaces streamed text. Forking a run elides ephemeral events entirely.
 
-`shape` is optional. It is a Zod, Effect Schema, or other Standard Schema object that infers the state type, so you do not pass a generic when `initialState` is narrower than the state.
+`shape` is optional. It is a Zod, Effect Schema, or other Standard Schema object that infers the state type, so you do not pass a generic when `initialState` is narrower than the state, such as an empty array.
 
 ```tsx
 import { z } from 'zod'
@@ -96,19 +96,14 @@ import { defineLiveFold, useLiveFold, useRunStore } from '@swirls/looms/react'
 
 const streamingText = defineLiveFold({
   name: 'streamingText',
-  shape: z.object({
-    effectId: z.string().nullable(),
-    text: z.string(),
-  }),
-  initialState: { effectId: null, text: '' },
+  shape: z.object({ parts: z.array(z.string()) }),
+  initialState: { parts: [] },
   reduce(state, event) {
     switch (event.type) {
       case 'agent.turn.text_delta':
-        return { effectId: event.effectId ?? null, text: state.text + event.payload.delta }
+        return { parts: [...state.parts, event.payload.delta] }
       case 'agent.message':
-        return { effectId: null, text: '' }
-      case 'runtime.effect.retry.scheduled':
-        return event.payload.effectId === state.effectId ? { effectId: null, text: '' } : state
+        return { parts: [] }
       default:
         return state
     }
@@ -119,11 +114,11 @@ export function StreamingReply({ runId }: { runId: string }) {
   const store = useRunStore(runId)
   const streaming = useLiveFold(store, streamingText)
 
-  return <p>{streaming.text}</p>
+  return <p>{streaming.parts.join('')}</p>
 }
 ```
 
-Define live folds at module scope. The store caches incremental state in a `WeakMap` keyed by the definition object. Outside React, `foldEvents(fold, events)` runs the same reducer over an event list.
+Define live folds at module scope. The store caches incremental state in a `WeakMap` keyed by the definition object. Outside React, `foldLive(fold, events)` returns the same state `useLiveFold` would for that event list.
 
 ## Typed Event Catalogs
 

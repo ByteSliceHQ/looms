@@ -1,4 +1,6 @@
 import {
+  isJsonObject,
+  isJsonString,
   project,
   type EventEnvelope,
   type InferSchemaOutput,
@@ -17,9 +19,10 @@ export interface LiveFoldDefinition<S, TEvent extends AnyEventEnvelope = Registe
 }
 
 /**
- * Client-side fold that sees ephemeral events, which projections skip. Ephemeral events are
- * provisional: a retried effect leaves its earlier attempt's events in the log, so the reducer
- * must reset on the durable events that supersede them. Use a projection for anything else.
+ * Client-side fold that sees ephemeral events, which projections skip. Ephemeral events from an
+ * effect attempt that the runtime later retried never reach the reducer. The reducer still owns
+ * resets on domain events, such as the durable message that replaces streamed text. Use a
+ * projection for anything else.
  */
 export function defineLiveFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(def: {
   readonly name?: string
@@ -46,13 +49,43 @@ export function defineLiveFold(def: {
   return def
 }
 
-/** Fold a live fold over events, including ephemeral ones. */
-export function foldEvents<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
-  definition: LiveFoldDefinition<S, TEvent>,
-  events: readonly TEvent[],
-  from?: S,
+function retriedEffectId(event: AnyEventEnvelope): string | undefined {
+  if (event.type !== 'runtime.effect.retry.scheduled' || !isJsonObject(event.payload)) {
+    return undefined
+  }
+
+  const effectId = event.payload.effectId
+  return isJsonString(effectId) ? effectId : undefined
+}
+
+/** Drops ephemeral events whose effect attempt a later retry in `events` superseded. */
+function currentAttempts<E extends AnyEventEnvelope>(events: readonly E[]): readonly E[] {
+  const lastRetry = new Map<string, number>()
+
+  events.forEach((event, index) => {
+    const effectId = retriedEffectId(event)
+
+    if (effectId !== undefined) {
+      lastRetry.set(effectId, index)
+    }
+  })
+
+  if (lastRetry.size === 0) {
+    return events
+  }
+
+  return events.filter(
+    (event, index) =>
+      !event.ephemeral || !event.effectId || (lastRetry.get(event.effectId) ?? -1) < index,
+  )
+}
+
+function reduceAll<S, E extends AnyEventEnvelope>(
+  definition: LiveFoldDefinition<S, E>,
+  events: readonly E[],
+  from: S,
 ): S {
-  let state = from !== undefined ? from : definition.initialState
+  let state = from
 
   for (const event of events) {
     state = definition.reduce(state, event)
@@ -61,7 +94,20 @@ export function foldEvents<S, TEvent extends AnyEventEnvelope = RegisteredEvent>
   return state
 }
 
+/** Fold events through a live fold, as `useLiveFold` does, including ephemeral events. */
+export function foldLive<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
+  definition: LiveFoldDefinition<S, TEvent>,
+  events: readonly TEvent[],
+): S {
+  return reduceAll(definition, currentAttempts(events), definition.initialState)
+}
+
 type CacheEntry<S> = { state: S; upTo: number }
+
+type FoldCacheEntry<S> = CacheEntry<S> & {
+  /** Effects whose ephemeral events are already folded into `state`. */
+  readonly streamedEffects: Set<string>
+}
 
 function advanceCache<D extends object, S, E>(
   cache: WeakMap<D, CacheEntry<S>>,
@@ -95,17 +141,63 @@ function advanceCache<D extends object, S, E>(
 
 export class ProjectionCache {
   private projectionCache = new WeakMap<ProjectionDefinition<any>, CacheEntry<any>>()
-  private foldCache = new WeakMap<LiveFoldDefinition<any, any>, CacheEntry<any>>()
+  private foldCache = new WeakMap<LiveFoldDefinition<any, any>, FoldCacheEntry<any>>()
 
   project<S>(definition: ProjectionDefinition<S>, events: readonly EventEnvelope[]): S {
     return advanceCache(this.projectionCache, definition, events, project)
   }
 
+  /** Same result as `foldLive`, folding only new events unless a retry supersedes folded ones. */
   fold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
     definition: LiveFoldDefinition<S, TEvent>,
     events: readonly TEvent[],
   ): S {
-    return advanceCache(this.foldCache, definition, events, foldEvents)
+    const cached: FoldCacheEntry<S> | undefined = this.foldCache.get(definition)
+
+    if (cached?.upTo === events.length) {
+      return cached.state
+    }
+
+    if (cached && cached.upTo < events.length) {
+      const batch = events.slice(cached.upTo)
+
+      const supersedesFolded = batch.some((event) => {
+        const effectId = retriedEffectId(event)
+        return effectId !== undefined && cached.streamedEffects.has(effectId)
+      })
+
+      if (!supersedesFolded) {
+        return this.advanceFold(
+          definition,
+          batch,
+          cached.state,
+          cached.streamedEffects,
+          events.length,
+        )
+      }
+    }
+
+    return this.advanceFold(definition, events, definition.initialState, new Set(), events.length)
+  }
+
+  private advanceFold<S, E extends AnyEventEnvelope>(
+    definition: LiveFoldDefinition<S, E>,
+    batch: readonly E[],
+    from: S,
+    streamedEffects: Set<string>,
+    upTo: number,
+  ): S {
+    const kept = currentAttempts(batch)
+
+    for (const event of kept) {
+      if (event.ephemeral && event.effectId) {
+        streamedEffects.add(event.effectId)
+      }
+    }
+
+    const state = reduceAll(definition, kept, from)
+    this.foldCache.set(definition, { state, upTo, streamedEffects })
+    return state
   }
 
   clear(): void {

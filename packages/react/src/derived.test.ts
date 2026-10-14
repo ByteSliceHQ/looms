@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test'
 
 import { Predicate, Schema } from 'effect'
 
-import { defineProjection, type EventEnvelope } from '@looms/core'
+import { defineProjection, isJsonObject, isJsonString, type EventEnvelope } from '@looms/core'
 
-import { defineLiveFold, EventIndex, ProjectionCache } from './derived'
+import { defineLiveFold, EventIndex, foldLive, ProjectionCache } from './derived'
 import { createLoomsStore } from './store'
 
 function makeEvent(
@@ -31,6 +31,29 @@ const offlineFetch: typeof fetch = () => Promise.reject(new Error('offline'))
 function appendType(state: readonly string[], event: EventEnvelope): readonly string[] {
   return [...state, event.type]
 }
+
+function delta(seq: number, text: string, effectId: string): EventEnvelope {
+  return { ...makeEvent(seq, 'delta', 'thr_1', true), effectId, payload: { text } }
+}
+
+function retryScheduled(seq: number, effectId: string): EventEnvelope {
+  return {
+    ...makeEvent(seq, 'runtime.effect.retry.scheduled'),
+    payload: { effectId, attempt: 1, nextAttemptAt: 0, error: 'timed out' },
+  }
+}
+
+const deltaText = defineLiveFold({
+  name: 'deltaText',
+  initialState: '',
+  reduce(state, event) {
+    if (event.type === 'delta' && isJsonObject(event.payload) && isJsonString(event.payload.text)) {
+      return state + event.payload.text
+    }
+
+    return state
+  },
+})
 
 describe('ProjectionCache', () => {
   test('folds only new events and reuses previous state reference when unchanged', () => {
@@ -175,6 +198,79 @@ describe('ProjectionCache', () => {
     const cache = new ProjectionCache()
     const event = { ...makeEvent(1, 'delta'), payload: { text: 'Hello' } }
     expect(cache.fold(partsFold, [event]).parts).toEqual(['Hello'])
+  })
+})
+
+describe('live fold retries', () => {
+  test('drops ephemeral events from every attempt a later retry superseded', () => {
+    const events = [
+      delta(1, 'first ', 'eff_model'),
+      retryScheduled(2, 'eff_model'),
+      delta(3, 'second ', 'eff_model'),
+      retryScheduled(4, 'eff_model'),
+      delta(5, 'third', 'eff_model'),
+    ]
+
+    expect(foldLive(deltaText, events)).toBe('third')
+  })
+
+  test('keeps ephemeral events from other effects and durable events', () => {
+    const durable = { ...makeEvent(2, 'delta'), effectId: 'eff_model', payload: { text: 'kept ' } }
+
+    const events = [
+      delta(1, 'dropped ', 'eff_model'),
+      durable,
+      delta(3, 'tool ', 'eff_tool'),
+      retryScheduled(4, 'eff_model'),
+      delta(5, 'retried', 'eff_model'),
+    ]
+
+    expect(foldLive(deltaText, events)).toBe('kept tool retried')
+  })
+
+  test('the incremental cache matches foldLive at every prefix', () => {
+    const events = [
+      delta(1, 'a', 'eff_model'),
+      delta(2, 'b', 'eff_tool'),
+      retryScheduled(3, 'eff_tool'),
+      delta(4, 'c', 'eff_model'),
+      retryScheduled(5, 'eff_model'),
+      delta(6, 'd', 'eff_model'),
+      delta(7, 'e', 'eff_tool'),
+      retryScheduled(8, 'eff_other'),
+      delta(9, 'f', 'eff_model'),
+    ]
+
+    const cache = new ProjectionCache()
+
+    for (let length = 0; length <= events.length; length++) {
+      const prefix = events.slice(0, length)
+      expect(cache.fold(deltaText, prefix)).toBe(foldLive(deltaText, prefix))
+    }
+  })
+
+  test('folds only new events until a retry supersedes folded ones', () => {
+    let reducerCalls = 0
+
+    const counted = defineLiveFold({
+      initialState: '',
+      reduce(state, event) {
+        reducerCalls += 1
+        return deltaText.reduce(state, event)
+      },
+    })
+
+    const cache = new ProjectionCache()
+    const first = [delta(1, 'a', 'eff_model'), delta(2, 'b', 'eff_model')]
+    cache.fold(counted, first)
+
+    const unrelatedRetry = [...first, retryScheduled(3, 'eff_tool')]
+    expect(cache.fold(counted, unrelatedRetry)).toBe('ab')
+    expect(reducerCalls).toBe(3)
+
+    const supersedingRetry = [...unrelatedRetry, retryScheduled(4, 'eff_model')]
+    expect(cache.fold(counted, supersedingRetry)).toBe('')
+    expect(reducerCalls).toBe(5)
   })
 })
 
