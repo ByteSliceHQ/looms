@@ -15,13 +15,14 @@ import {
   isTerminalStatus,
   threadTree,
   toThreadTree,
+  type AnyEventEnvelope,
   type ProjectionDefinition,
+  type RegisteredEvent,
   type RunStatus,
   type ThreadTree,
 } from '@looms/core'
 
-import { createFold, foldEvents, type EventFoldDefinition } from './derived'
-import type { AnyEventEnvelope, RegisteredEvent } from './register'
+import { defineLiveFold, foldLive, type LiveFoldDefinition } from './derived'
 import {
   createLoomsStore,
   type CoalesceOption,
@@ -313,17 +314,17 @@ export function useLatestEvent<TEvent extends AnyEventEnvelope = RegisteredEvent
   return useRunSelector(store, selector)
 }
 
-/** Subscribe to a custom incremental fold. */
-export function useEventFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
+/** Subscribe to a live fold, which includes ephemeral events. */
+export function useLiveFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
   store: LoomsClientStore<TEvent>,
-  fold: EventFoldDefinition<S, TEvent>,
+  fold: LiveFoldDefinition<S, TEvent>,
 ): S {
   const getSnapshot = useCallback(() => store.fold(fold), [store, fold])
   return useStoreSnapshot(store, getSnapshot)
 }
 
 export { createLoomsStore }
-export { createFold, foldEvents }
+export { defineLiveFold, foldLive }
 export type {
   LoomsClientStore,
   LoomsClientStoreOptions,
@@ -332,5 +333,5 @@ export type {
   CoalesceOption,
   StoreListener,
 } from './store'
-export type { EventFoldDefinition } from './derived'
-export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from './register'
+export type { LiveFoldDefinition } from './derived'
+export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from '@looms/core'

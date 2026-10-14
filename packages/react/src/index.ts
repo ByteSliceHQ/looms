@@ -8,15 +8,15 @@ export {
   type StoreListener,
 } from './store'
 export {
-  createFold,
-  foldEvents,
+  defineLiveFold,
+  foldLive,
   EventIndex,
   eventThreadKey,
-  type EventFoldDefinition,
+  type LiveFoldDefinition,
 } from './derived'
 export { materializeEvents } from './materialize'
 export { emptyTables, type MaterializedTables, type RunRow, type ThreadRow } from './tables'
-export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from './register'
+export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from '@looms/core'
 export {
   LoomsProvider,
   useRunStore,
@@ -28,7 +28,7 @@ export {
   useEventCounts,
   useEventBySeq,
   useLatestEvent,
-  useEventFold,
+  useLiveFold,
   type LoomsProviderProps,
   type UseRunStoreOptions,
   type RunSummary,

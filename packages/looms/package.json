@@ -137,7 +137,7 @@
   },
   "scripts": {
     "build": "bun run scripts/assemble.ts",
-    "check-types": "bun -e \"void 0\"",
+    "check-types": "bun x tsc -p type-tests/unregistered/tsconfig.json --noEmit && bun x tsc -p type-tests/registered/tsconfig.json --noEmit && bun x tsc -p type-tests/registered-core/tsconfig.json --noEmit",
     "test": "bun -e \"void 0\""
   },
   "dependencies": {

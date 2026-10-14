@@ -185,8 +185,8 @@ invoke(charge, { amount: 40, currency: 'USD' })`}</CodeBlock>
         </a>
       </h2>
       <p>
-        Augment <code>LoomsRegister</code> with your composed modules so hooks see the same event
-        union as the host:
+        Augment <code>LoomsRegister</code> with your composed modules so hooks and standalone{' '}
+        <code>defineProjection</code> reducers see the same event union as the host:
       </p>
       <CodeBlock lang="ts">{`import type { EventsOf } from '@swirls/looms/core'
 import type {} from '@swirls/looms/react'
@@ -245,9 +245,10 @@ invoke(charge, { amount: '40' })`}</CodeBlock>
           the application event union to React; trust still depends on the host.
         </li>
         <li>
-          Scoped <code>m.thread</code> / <code>m.projection</code> / <code>m.effect</code> give
-          stronger event narrowing than standalone <code>defineThread</code> /{' '}
-          <code>defineProjection</code> / <code>defineEffect</code>.
+          Scoped <code>m.thread</code> / <code>m.projection</code> / <code>m.effect</code> narrow
+          events to their module. Standalone <code>defineProjection</code> reducers receive the
+          registered union unless their <code>event</code> parameter is annotated;{' '}
+          <code>defineThread</code> and <code>defineEffect</code> do not.
         </li>
         <li>
           <code>wait(&#123; on: &#123; type &#125; &#125;)</code> matches on strings; it is not

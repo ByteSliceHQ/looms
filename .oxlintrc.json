@@ -68,6 +68,13 @@
       }
     },
     {
+      "files": ["packages/looms/type-tests/**/*.ts"],
+      "rules": {
+        "eslint/no-unused-vars": "off",
+        "typescript/no-unnecessary-type-parameters": "off"
+      }
+    },
+    {
       "files": ["**/*.config.ts"],
       "rules": {
         "effecttsgo/node-builtin-import": "off",

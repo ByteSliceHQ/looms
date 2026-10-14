@@ -3,15 +3,16 @@ import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 import {
   decodeLoomsEvent,
   stringifyJson,
+  type AnyEventEnvelope,
   type EventEnvelope,
   type EventInput,
   type ProjectionDefinition,
+  type RegisteredEvent,
 } from '@looms/core'
 
-import { EventIndex, ProjectionCache, type EventFoldDefinition } from './derived'
+import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'
 import { createNotifyScheduler, type CoalesceOption } from './notify'
-import type { AnyEventEnvelope, RegisteredEvent } from './register'
 import { consumeSseStreamEffect, eventsFromSseData } from './sse'
 import { emptyTables, type MaterializedTables } from './tables'
 
@@ -54,7 +55,7 @@ export interface LoomsStoreQuery<TEvent extends AnyEventEnvelope = RegisteredEve
   bySeq: (seq: number) => TEvent | undefined
   startedAt: () => number | undefined
   latest: (type: string) => TEvent | undefined
-  fold: <S>(def: EventFoldDefinition<S, TEvent>) => S
+  fold: <S>(def: LiveFoldDefinition<S, TEvent>) => S
 }
 
 export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEvent> {
@@ -66,7 +67,7 @@ export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEv
   query: LoomsStoreQuery<TEvent>
   subscribe: (listener: StoreListener) => () => void
   project<S>(definition: ProjectionDefinition<S>): S
-  fold<S>(definition: EventFoldDefinition<S, TEvent>): S
+  fold<S>(definition: LiveFoldDefinition<S, TEvent>): S
   flush: () => void
   commit: (event: EventInput | readonly EventInput[]) => Promise<void>
   sync: () => Promise<void>
@@ -422,7 +423,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       bySeq: (seq: number) => eventIndex.getBySeq(seq),
       startedAt: () => eventIndex.getStartedAt(),
       latest: (type: string) => eventIndex.getLatest(type),
-      fold: <S>(def: EventFoldDefinition<S>) => projectionCache.fold(def, publishedEvents()),
+      fold: <S>(def: LiveFoldDefinition<S>) => projectionCache.fold(def, publishedEvents()),
     },
     subscribe: (listener) => {
       listeners.add(listener)

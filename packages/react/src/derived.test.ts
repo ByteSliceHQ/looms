@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Predicate } from 'effect'
+import { Predicate, Schema } from 'effect'
 
-import { defineProjection, type EventEnvelope } from '@looms/core'
+import { defineProjection, isJsonObject, isJsonString, type EventEnvelope } from '@looms/core'
 
-import { createFold, EventIndex, ProjectionCache } from './derived'
+import { defineLiveFold, EventIndex, foldLive, ProjectionCache } from './derived'
 import { createLoomsStore } from './store'
 
 function makeEvent(
@@ -27,6 +27,33 @@ function makeEvent(
 }
 
 const offlineFetch: typeof fetch = () => Promise.reject(new Error('offline'))
+
+function appendType(state: readonly string[], event: EventEnvelope): readonly string[] {
+  return [...state, event.type]
+}
+
+function delta(seq: number, text: string, effectId: string): EventEnvelope {
+  return { ...makeEvent(seq, 'delta', 'thr_1', true), effectId, payload: { text } }
+}
+
+function retryScheduled(seq: number, effectId: string): EventEnvelope {
+  return {
+    ...makeEvent(seq, 'runtime.effect.retry.scheduled'),
+    payload: { effectId, attempt: 1, nextAttemptAt: 0, error: 'timed out' },
+  }
+}
+
+const deltaText = defineLiveFold({
+  name: 'deltaText',
+  initialState: '',
+  reduce(state, event) {
+    if (event.type === 'delta' && isJsonObject(event.payload) && isJsonString(event.payload.text)) {
+      return state + event.payload.text
+    }
+
+    return state
+  },
+})
 
 describe('ProjectionCache', () => {
   test('folds only new events and reuses previous state reference when unchanged', () => {
@@ -99,11 +126,10 @@ describe('ProjectionCache', () => {
     expect(reducerCalls).toBe(2)
   })
 
-  test('custom fold can include ephemeral events', () => {
-    const textFold = createFold({
+  test('live fold includes ephemeral events', () => {
+    const textFold = defineLiveFold({
       name: 'streamingText',
       initialState: '',
-      includeEphemeral: true,
       reduce(state, event) {
         if (
           event.type === 'delta' &&
@@ -127,6 +153,124 @@ describe('ProjectionCache', () => {
 
     const state2 = cache.fold(textFold, [e1, e2])
     expect(state2).toBe('Hello world!')
+  })
+
+  test('a projection and a live fold with the same reducer differ only by ephemeral events', () => {
+    const durableOnly = defineProjection({ name: 'types', initialState: [], reduce: appendType })
+    const everything = defineLiveFold({ name: 'types', initialState: [], reduce: appendType })
+
+    const events = [
+      makeEvent(1, 'started'),
+      makeEvent(2, 'delta', 'thr_1', true),
+      makeEvent(3, 'finished'),
+    ]
+
+    const cache = new ProjectionCache()
+    expect(cache.project(durableOnly, events)).toEqual(['started', 'finished'])
+    expect(cache.fold(everything, events)).toEqual(['started', 'delta', 'finished'])
+  })
+
+  test('infers live fold state from a shape schema', () => {
+    const PartsSchema = Schema.Struct({
+      parts: Schema.Array(Schema.String),
+    })
+
+    const partsFold = defineLiveFold({
+      name: 'parts',
+      shape: PartsSchema,
+      initialState: { parts: [] },
+      reduce(state, event) {
+        if (
+          event.type === 'delta' &&
+          Predicate.isObject(event.payload) &&
+          'text' in event.payload &&
+          Predicate.isString(event.payload.text)
+        ) {
+          return { parts: state.parts.concat(event.payload.text) }
+        }
+
+        return state
+      },
+    })
+
+    expect(partsFold.shape).toBe(PartsSchema)
+
+    const cache = new ProjectionCache()
+    const event = { ...makeEvent(1, 'delta'), payload: { text: 'Hello' } }
+    expect(cache.fold(partsFold, [event]).parts).toEqual(['Hello'])
+  })
+})
+
+describe('live fold retries', () => {
+  test('drops ephemeral events from every attempt a later retry superseded', () => {
+    const events = [
+      delta(1, 'first ', 'eff_model'),
+      retryScheduled(2, 'eff_model'),
+      delta(3, 'second ', 'eff_model'),
+      retryScheduled(4, 'eff_model'),
+      delta(5, 'third', 'eff_model'),
+    ]
+
+    expect(foldLive(deltaText, events)).toBe('third')
+  })
+
+  test('keeps ephemeral events from other effects and durable events', () => {
+    const durable = { ...makeEvent(2, 'delta'), effectId: 'eff_model', payload: { text: 'kept ' } }
+
+    const events = [
+      delta(1, 'dropped ', 'eff_model'),
+      durable,
+      delta(3, 'tool ', 'eff_tool'),
+      retryScheduled(4, 'eff_model'),
+      delta(5, 'retried', 'eff_model'),
+    ]
+
+    expect(foldLive(deltaText, events)).toBe('kept tool retried')
+  })
+
+  test('the incremental cache matches foldLive at every prefix', () => {
+    const events = [
+      delta(1, 'a', 'eff_model'),
+      delta(2, 'b', 'eff_tool'),
+      retryScheduled(3, 'eff_tool'),
+      delta(4, 'c', 'eff_model'),
+      retryScheduled(5, 'eff_model'),
+      delta(6, 'd', 'eff_model'),
+      delta(7, 'e', 'eff_tool'),
+      retryScheduled(8, 'eff_other'),
+      delta(9, 'f', 'eff_model'),
+    ]
+
+    const cache = new ProjectionCache()
+
+    for (let length = 0; length <= events.length; length++) {
+      const prefix = events.slice(0, length)
+      expect(cache.fold(deltaText, prefix)).toBe(foldLive(deltaText, prefix))
+    }
+  })
+
+  test('folds only new events until a batch contains a retry', () => {
+    let reducerCalls = 0
+
+    const counted = defineLiveFold({
+      initialState: '',
+      reduce(state, event) {
+        reducerCalls += 1
+        return deltaText.reduce(state, event)
+      },
+    })
+
+    const cache = new ProjectionCache()
+    const first = [delta(1, 'a', 'eff_model'), delta(2, 'b', 'eff_model')]
+    cache.fold(counted, first)
+
+    const appended = [...first, delta(3, 'c', 'eff_model')]
+    expect(cache.fold(counted, appended)).toBe('abc')
+    expect(reducerCalls).toBe(3)
+
+    const retried = [...appended, retryScheduled(4, 'eff_model')]
+    expect(cache.fold(counted, retried)).toBe('')
+    expect(reducerCalls).toBe(4)
   })
 })
 

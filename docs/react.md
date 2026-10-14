@@ -47,18 +47,78 @@ Wrap your root in `LoomsProvider`:
 
 ## Hooks (`@swirls/looms/react`)
 
-| Hook                                             | Purpose                                                                                                           | Re-renders                                     |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `useRunStore(runId, options)`                    | Handle to run store (retain/release). Non-subscribing.                                                            | Never on events                                |
-| `useProjection(store, def, selector?, isEqual?)` | Incremental projection state. Folds only new events since last render.                                            | When projected state or selected slice changes |
-| `useRunEvents(store, { threadId? })`             | Readonly frozen array snapshot of the event log (or thread slice).                                                | When matching events arrive                    |
-| `useRunSummary(store)`                           | Top-level metadata (`status`, `kind`, `definitionName`, `rootThreadId`, `startedAt`, `eventCount`, `connection`). | When summary fields change                     |
-| `useThreadTree(store)`                           | Thread hierarchy tree.                                                                                            | When thread lifecycle changes                  |
-| `useEventCounts(store)`                          | Per-thread event counts (`ReadonlyMap<string, number>`).                                                          | When counts increment                          |
-| `useRunSelector(store, selector, isEqual?)`      | Custom selector over the store with equality comparison.                                                          | When selected value changes                    |
-| `useEventBySeq(store, seq)`                      | Single event lookup by sequence number.                                                                           | When seq event is applied                      |
-| `useLatestEvent(store, type)`                    | Latest event of a given type.                                                                                     | When matching event arrives                    |
-| `useEventFold(store, fold)`                      | App-defined incremental fold (can include ephemeral events like text deltas).                                     | When fold state changes                        |
+| Hook                                        | Purpose                                                                                                           | Re-renders                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `useRunStore(runId, options)`               | Handle to run store (retain/release). Non-subscribing.                                                            | Never on events               |
+| `useProjection(store, def)`                 | Incremental projection state. Folds only new events since last render.                                            | When projected state changes  |
+| `useRunEvents(store, { threadId? })`        | Readonly frozen array snapshot of the event log (or thread slice).                                                | When matching events arrive   |
+| `useRunSummary(store)`                      | Top-level metadata (`status`, `kind`, `definitionName`, `rootThreadId`, `startedAt`, `eventCount`, `connection`). | When summary fields change    |
+| `useThreadTree(store)`                      | Thread hierarchy tree.                                                                                            | When thread lifecycle changes |
+| `useEventCounts(store)`                     | Per-thread event counts (`ReadonlyMap<string, number>`).                                                          | When counts increment         |
+| `useRunSelector(store, selector, isEqual?)` | Custom selector over the store with equality comparison.                                                          | When selected value changes   |
+| `useEventBySeq(store, seq)`                 | Single event lookup by sequence number.                                                                           | When seq event is applied     |
+| `useLatestEvent(store, type)`               | Latest event of a given type.                                                                                     | When matching event arrives   |
+| `useLiveFold(store, fold)`                  | Live fold state, including ephemeral events such as text deltas.                                                  | When fold state changes       |
+
+## Client-Only Projections
+
+`useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)) unless you annotate the `event` parameter. This example assumes the agent module is registered:
+
+```ts
+import { defineProjection } from '@swirls/looms/core'
+import { z } from 'zod'
+
+export const toolCalls = defineProjection({
+  name: 'toolCalls',
+  shape: z.object({ names: z.array(z.string()) }),
+  initialState: { names: [] },
+  reduce(state, event) {
+    if (event.type !== 'agent.tool_call.requested') {
+      return state
+    }
+
+    return { names: [...state.names, event.payload.toolCall.name] }
+  },
+})
+```
+
+## Live Folds
+
+Projections skip ephemeral events. A live fold, defined with `defineLiveFold`, sees them; use it for provisional UI such as text an agent is still streaming, and use a projection for everything else.
+
+Ephemeral events are provisional. When the runtime retries an effect, the reducer never sees the ephemeral events from the attempts the retry replaced, so a failed attempt's partial text disappears without extra code. The reducer still resets on domain events, such as the durable message that replaces streamed text. Forking a run elides ephemeral events entirely.
+
+`shape` is optional. It is a Zod, Effect Schema, or other Standard Schema object that infers the state type, so you do not pass a generic when `initialState` is narrower than the state, such as an empty array. Like the projection example, this assumes the agent module is registered.
+
+```tsx
+import { z } from 'zod'
+import { defineLiveFold, useLiveFold, useRunStore } from '@swirls/looms/react'
+
+const streamingText = defineLiveFold({
+  name: 'streamingText',
+  shape: z.object({ parts: z.array(z.string()) }),
+  initialState: { parts: [] },
+  reduce(state, event) {
+    switch (event.type) {
+      case 'agent.turn.text_delta':
+        return { parts: [...state.parts, event.payload.delta] }
+      case 'agent.message':
+        return { parts: [] }
+      default:
+        return state
+    }
+  },
+})
+
+export function StreamingReply({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const streaming = useLiveFold(store, streamingText)
+
+  return <p>{streaming.parts.join('')}</p>
+}
+```
+
+Define live folds at module scope. The store caches incremental state in a `WeakMap` keyed by the definition object. Outside React, `foldLive(fold, events)` returns the same state `useLiveFold` would for that event list.
 
 ## Typed Event Catalogs
 
@@ -81,17 +141,20 @@ declare module '@swirls/looms/react' {
 }
 ```
 
-After that, `useRunEvents(store)` returns `readonly DemoEvents[]`, and narrowing on `event.type` unlocks typed payloads:
+After that, `useRunEvents(store)` returns `readonly DemoEvents[]`, standalone `defineProjection` reducers receive `DemoEvents`, and narrowing on `event.type` unlocks typed payloads:
 
 ```tsx
 const store = useRunStore(runId)
 const events = useRunEvents(store) // readonly DemoEvents[]
 
-const completed = events.find((e) => e.type === 'runtime.thread.completed')
-if (completed) {
-  console.log(completed.payload.output) // typed
+for (const event of events) {
+  if (event.type === 'runtime.thread.completed') {
+    console.log(event.payload.output) // typed
+  }
 }
 ```
+
+`Array.prototype.find` with a plain predicate does not narrow the element type; use a loop or a type-guard predicate.
 
 For multi-runtime apps, skip global registration and pass an explicit event type to the hooks:
 
@@ -110,8 +173,8 @@ const events = useRunEvents(store) // readonly AppEvents[]
 When LLM agents generate dozens of parallel subthreads and stream thousands of tokens or tool calls, unoptimized frontends freeze the main thread. Looms is designed to stream high-velocity logs smoothly:
 
 1. **Subscribe Narrowly**: Containers should call `useRunStore(runId)` for the store handle and pass it down. Do not subscribe parent shells to `useRunEvents` or unselected projections.
-2. **Use Projection Selectors**: Use `useProjection(store, def, (s) => s.specificSlice)` so components skip rendering when other projection fields update.
-3. **Keep Fold Definitions Module-Level**: Define `createFold` objects at module scope so the store's internal `WeakMap` cache can track incremental state across renders.
+2. **Select Projection Slices**: Use `useRunSelector(store, (s) => s.project(def).specificSlice)` so components skip rendering when other projection fields update.
+3. **Keep Definitions Module-Level**: Define projections and live folds at module scope so the store's internal `WeakMap` cache can track incremental state across renders.
 4. **Coalesced Notifications**: By default, `createLoomsStore` uses `coalesce: 'adaptive'`: quiet streams notify on the next macrotask so counters can tick +1, while bursts collapse to at most one notify per animation frame. Other options: `'frame'`, `'immediate'`, or `{ delayMs: number }`.
 5. **Virtualize Lists**: For event feeds or dense logs, virtualize the scroll viewport (e.g. `@tanstack/react-virtual` or `@swirls/looms/debugger`'s `EventStream`).
 

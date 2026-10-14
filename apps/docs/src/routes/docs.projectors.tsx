@@ -216,6 +216,81 @@ export function OrderDashboard({ runId }: { runId: string }) {
         and the components that subscribe to it.
       </p>
 
+      <h3 id="client-only-projections">
+        Client-only projections
+        <a
+          className="heading-anchor"
+          href="#client-only-projections"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
+      <p>
+        <code>useProjection</code> folds the events the browser already has, so a projection does
+        not have to be registered on the host. Register it in a module when the host, the HTTP API,
+        or the debugger needs it too. A standalone <code>defineProjection</code> reducer receives
+        events from the union you registered through <code>LoomsRegister</code> unless you annotate
+        its <code>event</code> parameter; see{' '}
+        <Link to="/docs/concepts/type-safety">Type safety</Link>.
+      </p>
+
+      <h3 id="live-folds">
+        Live folds over ephemeral events
+        <a className="heading-anchor" href="#live-folds" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        Projections skip ephemeral events. A live fold, defined with <code>defineLiveFold</code>{' '}
+        from <code>@swirls/looms/react</code>, sees them. Use it for provisional UI, such as text an
+        agent is still streaming, and use a projection for everything else.
+      </p>
+      <p>
+        Ephemeral events are provisional. When the runtime retries an effect, the reducer never sees
+        the ephemeral events from the attempts the retry replaced, so a failed attempt&apos;s
+        partial text disappears without extra code. The reducer still resets on domain events, such
+        as the durable message that replaces streamed text. Forking a run elides ephemeral events
+        entirely.
+      </p>
+      <p>
+        An optional Zod, Effect Schema, or other Standard Schema <code>shape</code> infers the state
+        type when <code>initialState</code> is narrower than the state, such as an empty array.
+        Subscribe with <code>useLiveFold</code>. The example assumes <code>LoomsRegister</code>{' '}
+        includes the agent module, so <code>event.payload.delta</code> is typed.
+      </p>
+      <CodeBlock lang="tsx">{`import { z } from 'zod'
+import { defineLiveFold, useLiveFold, useRunStore } from '@swirls/looms/react'
+
+const streamingText = defineLiveFold({
+  name: 'streamingText',
+  shape: z.object({ parts: z.array(z.string()) }),
+  initialState: { parts: [] },
+  reduce(state, event) {
+    switch (event.type) {
+      case 'agent.turn.text_delta':
+        return { parts: [...state.parts, event.payload.delta] }
+      case 'agent.message':
+        return { parts: [] }
+      default:
+        return state
+    }
+  },
+})
+
+export function StreamingReply({ runId }: { runId: string }) {
+  const store = useRunStore(runId)
+  const streaming = useLiveFold(store, streamingText)
+
+  return <p>{streaming.parts.join('')}</p>
+}`}</CodeBlock>
+      <p>
+        Define live folds at module scope. The store caches incremental state in a{' '}
+        <code>WeakMap</code> keyed by the definition object, so a fold created during render starts
+        over on every update. Outside React, <code>foldLive(fold, events)</code> returns the same
+        state <code>useLiveFold</code> would for that event list.
+      </p>
+
       <h3 id="step-4-dispatch-user-interactions-via-signals">
         Step 4: Dispatch user interactions via signals
         <a

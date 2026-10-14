@@ -2,6 +2,7 @@ import { Predicate, Schema, Stream, type Effect } from 'effect'
 
 import type { EventEnvelope } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import type { AnyEventEnvelope, RegisteredEvent } from './register'
 import type { InferSchemaOutput, SchemaInput } from './schema'
 import type { RunState, ThreadRecord } from './state'
 import { isTerminalStatus } from './thread'
@@ -14,24 +15,33 @@ export interface ProjectionDefinition<S = unknown> {
   reduce(state: S, event: EventEnvelope): S
 }
 
-export function defineProjection<S = unknown>(def: {
+// TEvent is inferred from an annotated reducer and otherwise defaults to the registered union.
+export function defineProjection<
+  S = unknown,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+  TEvent extends AnyEventEnvelope = RegisteredEvent,
+>(def: {
   readonly name: string
   readonly shape?: undefined
   readonly initialState: S
-  reduce(state: S, event: EventEnvelope): S
+  reduce(state: S, event: TEvent): S
 }): ProjectionDefinition<S>
-export function defineProjection<TShape extends SchemaInput>(def: {
+export function defineProjection<
+  TShape extends SchemaInput,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+  TEvent extends AnyEventEnvelope = RegisteredEvent,
+>(def: {
   readonly name: string
   readonly shape: TShape
   readonly initialState: InferSchemaOutput<TShape>
-  reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: EventEnvelope): InferSchemaOutput<TShape>
+  reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: TEvent): InferSchemaOutput<TShape>
 }): ProjectionDefinition<InferSchemaOutput<TShape>>
 
 export function defineProjection(def: {
   readonly name: string
   readonly shape?: unknown
   readonly initialState: any
-  reduce(state: any, event: EventEnvelope): any
+  reduce(state: any, event: AnyEventEnvelope): any
 }): ProjectionDefinition<any> {
   return def
 }
