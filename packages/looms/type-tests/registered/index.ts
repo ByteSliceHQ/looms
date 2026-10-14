@@ -4,6 +4,7 @@ import { agent, type AgentTurnTextDeltaPayloadSchema } from '@swirls/looms/agent
 import {
   defineEventCatalog,
   defineProjection,
+  type EventEnvelope,
   type EventsOf,
   type RegisteredEvent,
 } from '@swirls/looms/core'
@@ -61,6 +62,16 @@ export const revenue = defineProjection({
     }
 
     return state
+  },
+})
+
+type OtherRuntimeEvent = EventEnvelope<'other.added', { amount: number }>
+
+export const otherRuntime = defineProjection({
+  name: 'otherRuntime',
+  initialState: 0,
+  reduce(state, event: OtherRuntimeEvent) {
+    return state + event.payload.amount
   },
 })
 
