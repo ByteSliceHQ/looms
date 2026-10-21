@@ -1,5 +1,6 @@
 import {
   createEvent,
+  deferredUntil,
   foldRun,
   isRunTerminal,
   isWaitOnTimer,
@@ -231,7 +232,14 @@ export function nextRuntimeDeadline(
       : [],
   )
 
-  const deadlines = [...timers, ...executions]
+  const deferred = terminal
+    ? []
+    : state.outstandingEffects.flatMap((item) => {
+        const at = deferredUntil(item.effect)
+        return at !== undefined && at > after ? [at] : []
+      })
+
+  const deadlines = [...timers, ...executions, ...deferred]
   return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
 

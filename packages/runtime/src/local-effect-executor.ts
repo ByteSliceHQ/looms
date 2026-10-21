@@ -9,6 +9,7 @@ import {
   type EventInput,
   type OutstandingEffect,
   type RegisteredDefinition,
+  type RunLauncher,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -32,6 +33,7 @@ export interface LocalEffectExecutorOptions {
   readonly liveAppends: RuntimeRepository['liveAppends']
   readonly runInContext: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>
   readonly observe: (event: Parameters<RuntimeObserver['observe']>[0]) => void
+  readonly launcher: RunLauncher
 }
 
 export interface ExecuteLocalEffectsInput {
@@ -69,8 +71,16 @@ export function executeLocalEffects(
   options: LocalEffectExecutorOptions,
   input: ExecuteLocalEffectsInput,
 ): Effect.Effect<ReadonlyArray<EventEnvelope>, Error> {
-  const { registry, services, definitions, executionContext, liveAppends, runInContext, observe } =
-    options
+  const {
+    registry,
+    services,
+    definitions,
+    executionContext,
+    liveAppends,
+    runInContext,
+    observe,
+    launcher,
+  } = options
 
   return Effect.forEach(
     groupOutstanding(input.outstanding),
@@ -113,14 +123,21 @@ export function executeLocalEffects(
 
           const retry = registry.effects.get(item.effect.type)?.retry
 
-          const dispatched = dispatchEffect(registry, services, definitions, item.effect, {
-            effectId: item.effectId,
-            runId: input.runId,
-            threadId: item.threadId,
-            causingEventId: item.causingEventId,
-            signal: controller.signal,
-            emit: appendLive,
-          }).pipe(
+          const dispatched = dispatchEffect(
+            registry,
+            services,
+            definitions,
+            launcher,
+            item.effect,
+            {
+              effectId: item.effectId,
+              runId: input.runId,
+              threadId: item.threadId,
+              causingEventId: item.causingEventId,
+              signal: controller.signal,
+              emit: appendLive,
+            },
+          ).pipe(
             Effect.map((outcomes): LocalAttempt => ({ _tag: 'completed', outcomes })),
             Effect.raceFirst(abortion(controller.signal)),
           )

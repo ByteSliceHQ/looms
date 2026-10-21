@@ -591,7 +591,36 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
 
   let next = putThread(state, { ...record, state: nextState })
   next = reconcileEffects(next, threadId, event, enabled)
+
+  if (definition.forgetsCompletedEffects) {
+    next = forgetCompletedEffects(next, threadId, enabled)
+  }
+
   return next
+}
+
+/** Drop completed effect ids this thread no longer returns from `effects()`. */
+function forgetCompletedEffects(
+  state: RunState,
+  threadId: string,
+  enabled: readonly RuntimeEffect[],
+): RunState {
+  const enabledIds = new Set(
+    enabled.flatMap((effect) => {
+      const effectId = stableEffectId(threadId, effect)
+      return effectId === undefined ? [] : [effectId]
+    }),
+  )
+
+  const prefix = `${threadId}:`
+
+  const completedEffectIds = state.completedEffectIds.filter(
+    (effectId) => !effectId.startsWith(prefix) || enabledIds.has(effectId),
+  )
+
+  return completedEffectIds.length === state.completedEffectIds.length
+    ? state
+    : { ...state, completedEffectIds }
 }
 
 function failUnhandledEffect(

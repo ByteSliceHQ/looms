@@ -8,7 +8,9 @@ import {
   type ComposedRegistry,
   type EffectContext,
   type EventInput,
+  RunLauncherTag,
   type RegisteredDefinition,
+  type RunLauncher,
   type RuntimeEffect,
 } from '@looms/core'
 
@@ -18,6 +20,7 @@ export function dispatchEffect(
   registry: ComposedRegistry,
   services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>,
   definitions: ReadonlyMap<string, RegisteredDefinition>,
+  launcher: RunLauncher,
   effect: RuntimeEffect,
   ctx: EffectContext,
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
@@ -119,7 +122,10 @@ export function dispatchEffect(
 
     const execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = Effect.gen(function* () {
       const serviceContext = yield* services.contextEffect
-      return yield* handler.execute(input, effCtx).pipe(Effect.provide(serviceContext))
+
+      return yield* handler
+        .execute(input, effCtx)
+        .pipe(Effect.provideService(RunLauncherTag, launcher), Effect.provide(serviceContext))
     })
 
     return execution.pipe(

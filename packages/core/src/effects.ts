@@ -75,6 +75,8 @@ export type InvokeEffect = {
   type: string
   input: JsonValue
   tag?: string
+  /** Epoch milliseconds. The host waits until this instant before running the effect. */
+  at?: number
 }
 
 export type PrimitiveEffect =
@@ -134,6 +136,7 @@ export const RuntimeEffectSchema = Schema.Union([
     type: Schema.String,
     input: Schema.Json,
     tag: Schema.optional(Schema.String),
+    at: Schema.optional(Schema.Finite),
   }),
 ])
 
@@ -157,6 +160,15 @@ export function isWaitOnTimer(on: WaitCondition): on is WaitOnTimer {
 
 export function isWaitOnEvent(on: WaitCondition): on is WaitOnEvent {
   return 'type' in on
+}
+
+/** When a deferred invoke becomes runnable, or undefined for effects that run immediately. */
+export function deferredUntil(effect: RuntimeEffect): number | undefined {
+  if (isPrimitiveEffect(effect) || effect.at === undefined) {
+    return undefined
+  }
+
+  return effect.at
 }
 
 export const WITHDRAWN_ERROR_PREFIX = 'withdrawn:'
@@ -401,21 +413,48 @@ export function cancel(threadId: string, tag?: string): CancelEffect {
     : { type: 'runtime.cancel', threadId, tag }
 }
 
+export interface InvokeOptions {
+  /** Wait until this epoch millisecond before the host runs the effect. */
+  readonly at?: number
+}
+
 export function invoke<TInput>(
   definition: EffectDefinition<TInput, any, any>,
   input: TInput,
   tag?: string,
+  options?: InvokeOptions,
 ): InvokeEffect
 
-export function invoke(type: string, input: JsonValue, tag?: string): InvokeEffect
+export function invoke(
+  type: string,
+  input: JsonValue,
+  tag?: string,
+  options?: InvokeOptions,
+): InvokeEffect
 
 export function invoke(
   typeOrDef: string | EffectDefinition<any, any, any>,
   input: JsonValue,
   tag?: string,
+  options?: InvokeOptions,
 ): InvokeEffect {
   const type = Predicate.isString(typeOrDef) ? typeOrDef : typeOrDef.type
   const jsonInput = asJson(input)
+  const at = options?.at
 
-  return tag !== undefined ? { type, input: jsonInput, tag } : { type, input: jsonInput }
+  if (at !== undefined && !Number.isFinite(at)) {
+    throw new Error('invoke at must be a finite epoch timestamp')
+  }
+
+  const effect: InvokeEffect = { type, input: jsonInput }
+
+  if (tag !== undefined) {
+    effect.tag = tag
+  }
+
+  if (at !== undefined) {
+    effect.at = at
+  }
+
+  return effect
 }

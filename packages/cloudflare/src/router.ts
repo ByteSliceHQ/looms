@@ -1,4 +1,5 @@
 import { crossRunResponse, resolveRunTarget, RunTargetError } from '@looms/actor'
+import { composeModules, publishDefinition, type AnyRuntimeModule } from '@looms/core'
 
 export interface DurableObjectStubLike {
   fetch(request: Request): Promise<Response>
@@ -18,9 +19,23 @@ export interface DurableObjectNamespaceLike<
 export function routeToDurableObject(
   namespace: DurableObjectNamespaceLike,
   req: Request,
+  options?: { readonly modules?: readonly AnyRuntimeModule[] },
 ): Promise<Response | null> {
-  if (new URL(req.url).pathname === '/health') {
+  const url = new URL(req.url)
+
+  if (url.pathname === '/health') {
     return Promise.resolve(Response.json({ ok: true }))
+  }
+
+  if (req.method === 'GET' && url.pathname === '/definitions' && options?.modules) {
+    const registry = composeModules(options.modules)
+
+    return Promise.resolve(
+      Response.json({
+        definitions: registry.definitions.map(publishDefinition),
+        projections: [...registry.projections.keys()],
+      }),
+    )
   }
 
   const unsupported = crossRunResponse(req, 'the Durable Object backend')

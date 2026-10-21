@@ -107,6 +107,8 @@ Looms publishes as one package. Explicit subpaths keep browser, server, provider
 | `@swirls/looms/workflow/debugger` | Workflow node view and workflow event summaries                |
 | `@swirls/looms/approval`          | Human approval gates and decisions                             |
 | `@swirls/looms/approval/debugger` | Approval decisions and approval event summaries                |
+| `@swirls/looms/schedule`          | Cron, interval, and one-shot schedules that start a run        |
+| `@swirls/looms/schedule/debugger` | Schedule status, upcoming fires, and schedule event summaries  |
 | `@swirls/looms/core`              | Custom modules, events, effects, and projections               |
 | `@swirls/looms/client`            | HTTP client                                                    |
 | `@swirls/looms/react`             | React hooks and live run stores                                |

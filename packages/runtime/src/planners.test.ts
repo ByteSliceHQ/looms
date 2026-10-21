@@ -115,6 +115,23 @@ describe('deadline transition planner', () => {
 
     expect(nextRuntimeDeadline(state, 1_000)).toBe(1_200)
   })
+
+  test('schedules a deferred effect from its at timestamp', () => {
+    const state = runningState({
+      outstandingEffects: [
+        {
+          effectId: 'effect_1',
+          threadId: 'thread_1',
+          causingSeq: 1,
+          causingEventId: 'event_1',
+          effect: { type: 'defer.tick', input: null, tag: 'tick', at: 5_000 },
+        },
+      ],
+    })
+
+    expect(nextRuntimeDeadline(state, 0)).toBe(5_000)
+    expect(nextRuntimeDeadline({ ...state, status: 'completed' }, 0)).toBeUndefined()
+  })
 })
 
 describe('worker effect planner', () => {

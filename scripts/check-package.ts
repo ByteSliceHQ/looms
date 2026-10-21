@@ -160,6 +160,8 @@ try {
     '@swirls/looms/react',
     '@swirls/looms/runtime',
     '@swirls/looms/s2',
+    '@swirls/looms/schedule',
+    '@swirls/looms/schedule/debugger',
     '@swirls/looms/testing',
     '@swirls/looms/workflow',
     '@swirls/looms/workflow/debugger',

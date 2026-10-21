@@ -3,16 +3,23 @@ import { Effect } from 'effect'
 import {
   EventStoreTag,
   type AnyRuntimeModule,
+  type EventInput,
   type EventStore,
   type EventStoreTrimCoverage,
+  type LaunchRunArgs,
+  type RunLauncher,
   type RunState,
+  type RunStatusSnapshot,
   type SnapshotStore,
 } from '@looms/core'
 import {
   createFetchHandler,
   createRuntime,
+  StartRunConflictError,
   type Authorize,
   type LoomsRuntime,
+  type StartResult,
+  type StartRunArgs,
   type WakeScheduler,
 } from '@looms/runtime'
 
@@ -35,6 +42,8 @@ export interface ActorCellOptions<
   }
   /** Authorizes the cell's HTTP API; see `createFetchHandler`. */
   readonly authorize?: Authorize
+  /** Starts runs from effect handlers. Required for schedules; there is no default inside a cell. */
+  readonly launcher?: RunLauncher
 }
 
 export interface ActorCell<
@@ -47,6 +56,15 @@ export interface ActorCell<
   wake(): Promise<RunState>
   recoverWake(): Promise<number>
   dispose(): Promise<void>
+  /** Commit this cell's run and schedule a wake. A conflicting restart is a no-op. */
+  launch(args: LaunchRunArgs): Promise<void>
+  status(): Promise<RunStatusSnapshot | null>
+  startRun(args: StartRunArgs): Promise<StartResult>
+  signal(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
+  getRun(): Promise<RunState>
 }
 
 /**
@@ -62,12 +80,16 @@ export function createActorCell<
     modules: options.modules,
     store,
     scheduler,
+    launcher: options.launcher,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,
     maxPendingRunOperations: options.maxPendingRunOperations,
     snapshotStore: options.snapshotStore,
     trimAfterSnapshot: options.trimAfterSnapshot,
   })
+
+  const provide = <A, E>(effect: Effect.Effect<A, E, EventStoreTag>) =>
+    Effect.runPromise(Effect.provideService(effect, EventStoreTag, store))
 
   const fetchHandler = createFetchHandler({ runtime, store, authorize: options.authorize })
 
@@ -86,11 +108,36 @@ export function createActorCell<
       return fetchHandler(req).then((res) => res ?? new Response('Not Found', { status: 404 }))
     },
 
-    wake: () => Effect.runPromise(Effect.provideService(runtime.wake(runId), EventStoreTag, store)),
+    wake: () => provide(runtime.wake(runId)),
 
-    recoverWake: () =>
-      Effect.runPromise(Effect.provideService(runtime.rescanTimers, EventStoreTag, store)),
+    recoverWake: () => provide(runtime.rescanTimers),
 
     dispose: () => Effect.runPromise(runtime.dispose),
+
+    launch: (args) =>
+      provide(
+        runtime.launchRun({ ...args, runId }).pipe(
+          Effect.catchIf(
+            (error) => error instanceof StartRunConflictError,
+            () => Effect.void,
+          ),
+          Effect.asVoid,
+        ),
+      ),
+
+    status: () =>
+      provide(
+        runtime
+          .getRun(runId)
+          .pipe(
+            Effect.map((state) => (state.rootThreadId === null ? null : { status: state.status })),
+          ),
+      ),
+
+    startRun: (args) => provide(runtime.startRun({ ...args, runId })),
+
+    signal: (events, signalOptions) => provide(runtime.signal(runId, events, signalOptions)),
+
+    getRun: () => provide(runtime.getRun(runId)),
   }
 }

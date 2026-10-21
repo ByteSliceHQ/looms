@@ -150,8 +150,9 @@ export const billingDebugger: DebuggerPlugin = {
         </li>
       </ul>
       <p>
-        The app that <code>debuggerUi()</code> serves is prebuilt with the agent, workflow, and
-        approval plugins only. To see your own plugin, render the debugger in your application.
+        The app that <code>debuggerUi()</code> serves is prebuilt with the agent, workflow,
+        approval, and schedule plugins. To see your own plugin, render the debugger in your
+        application.
       </p>
       <h2 id="render-in-your-application">
         Render it in your application

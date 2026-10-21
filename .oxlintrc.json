@@ -94,6 +94,19 @@
       }
     },
     {
+      "files": ["packages/schedule/src/ensure.ts"],
+      "rules": {
+        "effecttsgo/async-function": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/debugger/**/*.{ts,tsx}"],
+      "rules": {
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-timers": "off"
+      }
+    },
+    {
       "files": ["packages/core/src/effects.ts"],
       "rules": {
         "effecttsgo/unsafe-effect-type-assertion": "off"
@@ -111,12 +124,14 @@
       "files": [
         "packages/agent/src/**/*.ts",
         "packages/workflow/src/**/*.ts",
-        "packages/approval/src/**/*.ts"
+        "packages/approval/src/**/*.ts",
+        "packages/schedule/src/**/*.ts"
       ],
       "excludeFiles": [
         "packages/agent/src/debugger/**",
         "packages/workflow/src/debugger/**",
-        "packages/approval/src/debugger/**"
+        "packages/approval/src/debugger/**",
+        "packages/schedule/src/debugger/**"
       ],
       "rules": {
         "no-restricted-imports": [

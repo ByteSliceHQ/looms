@@ -7,3 +7,4 @@ export {
   type ResolvedRunTarget,
 } from './routing'
 export { createLocalActorHost, type LocalActorHost, type LocalActorHostOptions } from './host'
+export type { RunLauncher } from '@looms/core'

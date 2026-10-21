@@ -2,12 +2,24 @@ import { DurableObject } from 'cloudflare:workers'
 import { Effect } from 'effect'
 
 import { createActorCell, type ActorCell } from '@looms/actor'
-import type { AnyRuntimeModule, EventStoreTrimCoverage } from '@looms/core'
+import {
+  RunLauncherError,
+  runLauncherError,
+  type AnyRuntimeModule,
+  type EventInput,
+  type EventStoreTrimCoverage,
+  type LaunchRunArgs,
+  type RunLauncher,
+  type RunState,
+  type RunStatusSnapshot,
+} from '@looms/core'
 import type { Projector } from '@looms/projectors'
-import type { Authorize } from '@looms/runtime'
+import type { Authorize, StartResult, StartRunArgs } from '@looms/runtime'
+import type { ScheduleHost } from '@looms/schedule'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
+import type { DurableObjectNamespaceLike } from './router'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
@@ -21,6 +33,11 @@ export interface LoomsDurableObjectConfig {
   }
   /** Authorizes the actor's HTTP API; see `createFetchHandler`. */
   readonly authorize?: Authorize
+  /**
+   * Starts runs from effect handlers. A schedule object passes `durableObjectLauncher` so fires
+   * land in the target's object. Without it, a fire fails instead of writing into this object.
+   */
+  readonly launcher?: RunLauncher
 }
 
 /**
@@ -86,6 +103,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         maxPendingRunOperations: config.maxPendingRunOperations,
         trimAfterSnapshot: config.trimAfterSnapshot,
         authorize: config.authorize,
+        launcher: config.launcher,
       })
 
       const delivery = store.projectorDelivery
@@ -102,6 +120,30 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     return this.getCell().then((cell) => cell.fetch(req))
   }
 
+  /** Commit this object's run and set its alarm. Returns before the run wakes. */
+  launch(args: LaunchRunArgs): Promise<void> {
+    return this.getCell().then((cell) => cell.launch(args))
+  }
+
+  status(): Promise<RunStatusSnapshot | null> {
+    return this.getCell().then((cell) => cell.status())
+  }
+
+  startRun(args: StartRunArgs): Promise<StartResult> {
+    return this.getCell().then((cell) => cell.startRun(args))
+  }
+
+  signal(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState> {
+    return this.getCell().then((cell) => cell.signal(events, options))
+  }
+
+  getRun(): Promise<RunState> {
+    return this.getCell().then((cell) => cell.getRun())
+  }
+
   /** A rejected alarm is retried by the platform with backoff, so failures just propagate. */
   override alarm(): Promise<void> {
     return this.getCell()
@@ -116,4 +158,74 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       })
       .then(() => undefined)
   }
+}
+
+export interface DurableObjectRunStub {
+  fetch(request: Request): Promise<Response>
+  launch(args: LaunchRunArgs): Promise<void>
+  status(): Promise<RunStatusSnapshot | null>
+  startRun(args: StartRunArgs): Promise<StartResult>
+  signal(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
+  getRun(): Promise<RunState>
+}
+
+/**
+ * Launches and reads runs in other Durable Objects. One object per `runId`.
+ * The argument is the binding, not the stub, so a class can pass its own namespace
+ * without the type checker expanding that class through this function.
+ */
+export function durableObjectLauncher(namespace: { getByName(name: string): object }): RunLauncher {
+  const runs = loomsNamespace(namespace)
+
+  return {
+    launch: (args) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Effect.fail(new RunLauncherError({ message: 'RunLauncher.launch requires runId' }))
+      }
+
+      return Effect.tryPromise({
+        try: () => runs.getByName(runId).launch({ ...args, runId }),
+        catch: runLauncherError,
+      })
+    },
+    status: (runId) =>
+      Effect.tryPromise({
+        try: () => runs.getByName(runId).status(),
+        catch: runLauncherError,
+      }),
+  }
+}
+
+/** `ScheduleHost` for a Worker that reconciles schedules onto Durable Objects. */
+export function durableObjectScheduleHost(namespace: {
+  getByName(name: string): object
+}): ScheduleHost {
+  const runs = loomsNamespace(namespace)
+
+  return {
+    startRun: (args) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Promise.reject(new Error('ScheduleHost.startRun requires runId'))
+      }
+
+      return runs.getByName(runId).startRun(args)
+    },
+    signal: (runId, events) => runs.getByName(runId).signal(events),
+    getRun: (runId) => runs.getByName(runId).getRun(),
+  }
+}
+
+function loomsNamespace(namespace: {
+  getByName(name: string): object
+}): DurableObjectNamespaceLike<DurableObjectRunStub> {
+  // SAFETY: callers pass a Looms Durable Object namespace, whose stub implements these methods.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return namespace as DurableObjectNamespaceLike<DurableObjectRunStub>
 }

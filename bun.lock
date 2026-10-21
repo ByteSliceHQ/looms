@@ -33,6 +33,7 @@
         "@looms/approval": "workspace:*",
         "@looms/debugger": "workspace:*",
         "@looms/react": "workspace:*",
+        "@looms/schedule": "workspace:*",
         "@looms/workflow": "workspace:*",
         "@tanstack/react-router": "^1.170.32",
         "react": "19",
@@ -245,6 +246,7 @@
         "@looms/core": "workspace:*",
         "@looms/projectors": "workspace:*",
         "@looms/runtime": "workspace:*",
+        "@looms/schedule": "workspace:*",
         "effect": "4.0.0-rc.112",
       },
       "devDependencies": {
@@ -311,7 +313,7 @@
     },
     "packages/looms": {
       "name": "@swirls/looms",
-      "version": "0.0.2",
+      "version": "0.4.0",
       "bin": {
         "looms": "dist/cli/cli.js",
       },
@@ -347,6 +349,7 @@
         "@looms/react": "workspace:*",
         "@looms/runtime": "workspace:*",
         "@looms/s2": "workspace:*",
+        "@looms/schedule": "workspace:*",
         "@looms/testing": "workspace:*",
         "@looms/workflow": "workspace:*",
         "@types/bun": "^1.3.9",
@@ -459,6 +462,33 @@
         "@types/node": "^22.13.9",
         "typescript": "7.0.2",
       },
+    },
+    "packages/schedule": {
+      "name": "@looms/schedule",
+      "version": "0.0.1",
+      "dependencies": {
+        "@looms/core": "workspace:*",
+        "@looms/debugger": "workspace:*",
+        "@looms/react": "workspace:*",
+        "effect": "4.0.0-rc.112",
+      },
+      "devDependencies": {
+        "@looms/runtime": "workspace:*",
+        "@looms/testing": "workspace:*",
+        "@looms/workflow": "workspace:*",
+        "@types/bun": "^1.3.9",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.7",
+        "typescript": "7.0.2",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "optionalPeers": [
+        "react",
+        "react-dom",
+      ],
     },
     "packages/testing": {
       "name": "@looms/testing",
@@ -858,6 +888,8 @@
     "@looms/runtime": ["@looms/runtime@workspace:packages/runtime"],
 
     "@looms/s2": ["@looms/s2@workspace:packages/s2"],
+
+    "@looms/schedule": ["@looms/schedule@workspace:packages/schedule"],
 
     "@looms/testing": ["@looms/testing@workspace:packages/testing"],
 

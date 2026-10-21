@@ -22,6 +22,11 @@ export interface ThreadDefinition<S = any> {
   readonly kind: string
   readonly shape?: unknown
   readonly input?: SchemaInput
+  /**
+   * Drop this thread's completed effect ids once it stops enabling them. Safe only for threads
+   * whose effect tags are never reused, such as a schedule generation counter.
+   */
+  readonly forgetsCompletedEffects?: boolean
   initialState(ctx: StartContext): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
   effects(state: S, ctx: ThreadContext): RuntimeEffect[]
@@ -34,6 +39,7 @@ export function defineThread<
   readonly kind: string
   readonly shape?: undefined
   readonly input?: TInputSchema
+  readonly forgetsCompletedEffects?: boolean
   initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): S
   step(state: S, event: EventEnvelope, ctx: ThreadContext): S
   effects?(state: S, ctx: ThreadContext): RuntimeEffect[]
@@ -45,6 +51,7 @@ export function defineThread<
   readonly kind: string
   readonly shape: TShape
   readonly input?: TInputSchema
+  readonly forgetsCompletedEffects?: boolean
   initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): InferSchemaOutput<TShape>
   step(
     state: NoInfer<InferSchemaOutput<TShape>>,
@@ -58,6 +65,7 @@ export function defineThread(def: {
   readonly kind: string
   readonly shape?: unknown
   readonly input?: SchemaInput
+  readonly forgetsCompletedEffects?: boolean
   initialState(ctx: StartContext): any
   step(state: any, event: EventEnvelope, ctx: ThreadContext): any
   effects?(state: any, ctx: ThreadContext): RuntimeEffect[]
@@ -66,6 +74,7 @@ export function defineThread(def: {
     kind: def.kind,
     shape: def.shape,
     input: def.input,
+    forgetsCompletedEffects: def.forgetsCompletedEffects,
     initialState: (ctx) => def.initialState(ctx),
     step: (state, event, ctx) => def.step(state, event, ctx),
     effects: def.effects ? (state, ctx) => def.effects!(state, ctx) : () => [],

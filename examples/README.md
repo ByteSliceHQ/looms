@@ -11,6 +11,7 @@ Small, self-contained scripts that show how to stand up a Looms runtime. `apps/d
 | [`evaluator-live.ts`](./evaluator-live.ts) | Hosted TypeSafe Jev via `vercelEvaluator` (`AI_GATEWAY_API_KEY`) |
 | [`custom-module.ts`](./custom-module.ts)   | Domain events/effects/projections composed with a workflow       |
 | [`custom-thread.ts`](./custom-thread.ts)   | Custom thread kind via `createKind` + `m.thread`                 |
+| [`schedule.ts`](./schedule.ts)             | A schedule run that starts another run when it fires             |
 
 ## Run
 
@@ -24,6 +25,7 @@ bun run --filter @looms/examples evaluator
 bun run --filter @looms/examples evaluator-live   # requires AI_GATEWAY_API_KEY
 bun run --filter @looms/examples custom-module
 bun run --filter @looms/examples custom-thread
+bun run --filter @looms/examples schedule
 
 # or all of them:
 bun run --filter @looms/examples all

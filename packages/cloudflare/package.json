@@ -33,6 +33,7 @@
     "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
+    "@looms/schedule": "workspace:*",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {

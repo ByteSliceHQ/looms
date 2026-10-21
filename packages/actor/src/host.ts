@@ -4,10 +4,13 @@ import type {
   AnyRuntimeModule,
   EventStore,
   EventStoreTrimCoverage,
+  LaunchRunArgs,
+  RunLauncher,
   RunState,
+  RunStatusSnapshot,
   SnapshotStore,
 } from '@looms/core'
-import { EventStoreTag } from '@looms/core'
+import { EventStoreTag, RunLauncherError, runLauncherError } from '@looms/core'
 import { createTimeoutScheduler, isLoomsApiPath, type Authorize } from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
@@ -66,6 +69,7 @@ export interface LocalActorHost<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   getCell(runId: string): Promise<ActorCell<TModules>>
+  readonly launcher: RunLauncher
   fetch(req: Request): Promise<Response | null>
   dispose(): Promise<void>
 }
@@ -80,7 +84,29 @@ export function createLocalActorHost<
   const cells = new Map<string, Promise<ActorCell<TModules>>>()
   const rescanTimers = options.rescanTimers !== false
 
-  const getCell = (runId: string): Promise<ActorCell<TModules>> => {
+  let getCell: (runId: string) => Promise<ActorCell<TModules>>
+
+  const launcher: RunLauncher = {
+    launch: (args: LaunchRunArgs) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Effect.fail(new RunLauncherError({ message: 'RunLauncher.launch requires runId' }))
+      }
+
+      return Effect.tryPromise({
+        try: () => getCell(runId).then((cell) => cell.launch({ ...args, runId })),
+        catch: runLauncherError,
+      })
+    },
+    status: (runId: string) =>
+      Effect.tryPromise({
+        try: (): Promise<RunStatusSnapshot | null> => getCell(runId).then((cell) => cell.status()),
+        catch: runLauncherError,
+      }),
+  }
+
+  getCell = (runId: string): Promise<ActorCell<TModules>> => {
     const existing = cells.get(runId)
 
     if (existing) {
@@ -116,6 +142,7 @@ export function createLocalActorHost<
           maxWakeIterations: options.maxWakeIterations,
           trimAfterSnapshot: options.trimAfterSnapshot,
           authorize: options.authorize,
+          launcher,
         })
 
         wake = () => cell.wake()
@@ -137,6 +164,7 @@ export function createLocalActorHost<
 
   return {
     getCell,
+    launcher,
 
     fetch: (req: Request): Promise<Response | null> => {
       const url = new URL(req.url)
