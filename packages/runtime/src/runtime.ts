@@ -186,7 +186,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ...input,
               idempotencyKey: input.idempotencyKey ?? signalKey,
             })),
-            { origin: { type: 'external' } },
+            { origin: { type: 'external' }, threadId: current.state.rootThreadId },
           )
 
           if (isRunTerminal(current.state)) {
@@ -262,12 +262,15 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         (
           existing,
         ): Effect.Effect<
-          CommitPlan<string>,
+          CommitPlan<{ readonly threadId: string; readonly state: RunState }>,
           RuntimeExecutionError | StartRunConflictError | InvalidEventError
         > =>
           existing.seq > 0
             ? assertSameDurableStart(runId, existing.state, requestedIdentity).pipe(
-                Effect.map((rootThreadId) => ({ events: [], value: rootThreadId })),
+                Effect.map((rootThreadId) => ({
+                  events: [],
+                  value: { threadId: rootThreadId, state: existing.state },
+                })),
               )
             : validateAndCreateEvents(
                 registry.catalogs,
@@ -292,7 +295,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ).pipe(
                 Effect.map((batch) => ({
                   events: batch,
-                  value: threadId,
+                  value: {
+                    threadId,
+                    state: foldRun(batch, registry, { runId, initial: existing.state }),
+                  },
                   idempotencyKey: args.idempotencyKey ? `start:${args.idempotencyKey}` : undefined,
                 })),
               ),
@@ -303,7 +309,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       }
 
       const durable = yield* loadCursor(store, runId)
-      return yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
+      const rootThreadId = yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
+      return { threadId: rootThreadId, state: durable.state }
     })
 
   let scheduler: WakeScheduler
@@ -500,11 +507,11 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       const runId = args.runId ?? createRunId()
 
       return withRunIngress(runId, commitStart(args, runId)).pipe(
-        Effect.flatMap((threadId) =>
+        Effect.flatMap((started) =>
           runtime.wake(runId).pipe(
             Effect.map((state) => ({
               runId,
-              threadId: state.rootThreadId ?? threadId,
+              threadId: state.rootThreadId ?? started.threadId,
               state,
             })),
           ),
@@ -516,16 +523,17 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       const runId = args.runId ?? createRunId()
 
       return withRunIngress(runId, commitStart(args, runId)).pipe(
-        Effect.flatMap((threadId) =>
+        Effect.flatMap((started) =>
           Effect.gen(function* () {
-            const now = yield* Clock.currentTimeMillis
-            yield* scheduler.schedule(runId, now)
-            const state = yield* runtime.getRun(runId)
+            if (!isRunTerminal(started.state)) {
+              const now = yield* Clock.currentTimeMillis
+              yield* scheduler.schedule(runId, now)
+            }
 
             return {
               runId,
-              threadId: state.rootThreadId ?? threadId,
-              state,
+              threadId: started.state.rootThreadId ?? started.threadId,
+              state: started.state,
             }
           }),
         ),

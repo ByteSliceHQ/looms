@@ -21,6 +21,7 @@ import {
   type ScopedEffectContext,
 } from './effects'
 import type { EventEnvelope, EventInput } from './envelope'
+import type { RunLauncherTag } from './launcher'
 import {
   type AnyRuntimeModule,
   type EffectMiddleware,
@@ -62,9 +63,12 @@ export type ScopeUniverse<
 export type EffectRequirementsOf<TEffects> = TEffects extends {
   readonly [key: string]: EffectDefinition<any, any, any>
 }
-  ? {
-      [K in keyof TEffects]: TEffects[K] extends EffectDefinition<any, infer R, any> ? R : never
-    }[keyof TEffects]
+  ? Exclude<
+      {
+        [K in keyof TEffects]: TEffects[K] extends EffectDefinition<any, infer R, any> ? R : never
+      }[keyof TEffects],
+      RunLauncherTag
+    >
   : never
 
 export type ModuleServicesConfig<TR> = [TR] extends [never]

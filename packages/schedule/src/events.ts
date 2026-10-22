@@ -36,6 +36,8 @@ export const ScheduleUpdatedPayloadSchema = Schema.Struct({
   input: Schema.optional(Schema.NullOr(Schema.Json)),
   endAt: Schema.optional(Schema.NullOr(Schema.Finite)),
   maxFires: Schema.optional(Schema.NullOr(Schema.Finite)),
+  definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.optional(Schema.String),
 })
 
 export const ScheduleEmptyPayloadSchema = Schema.Struct({})

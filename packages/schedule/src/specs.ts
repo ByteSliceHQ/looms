@@ -130,7 +130,7 @@ export function specRejection(spec: ScheduleSpec, minIntervalMs: number): string
         return `invalid cron expression "${spec.expr}"`
       }
 
-      return gapRejection(smallestCronGap(parsed.success), minIntervalMs, spec.expr)
+      return gapRejection(smallestCronGap(parsed.success, minIntervalMs), minIntervalMs, spec.expr)
     }
 
     case 'every': {
@@ -196,8 +196,29 @@ function nextEveryAt(spec: EverySpec, after: number): number | null {
   return anchor + steps * spec.everyMs
 }
 
-function smallestCronGap(parsed: Cron.Cron): number {
+function smallestCronGap(parsed: Cron.Cron, minIntervalMs: number): number {
+  if (parsed.seconds.size === 1 && minIntervalMs <= DEFAULT_MIN_INTERVAL_MS) {
+    return DEFAULT_MIN_INTERVAL_MS
+  }
+
   let smallest = Number.POSITIVE_INFINITY
+
+  if (parsed.seconds.size > 1) {
+    const seconds = [...parsed.seconds].toSorted((a, b) => a - b)
+
+    for (let index = 1; index < seconds.length; index += 1) {
+      const current = seconds[index]
+      const prev = seconds[index - 1]
+
+      if (current !== undefined && prev !== undefined) {
+        smallest = Math.min(smallest, (current - prev) * 1_000)
+      }
+    }
+
+    if (smallest < minIntervalMs) {
+      return smallest
+    }
+  }
 
   for (const start of GAP_SAMPLE_STARTS) {
     let cursor: number = start

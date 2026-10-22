@@ -1,5 +1,10 @@
-import { crossRunResponse, resolveRunTarget, RunTargetError } from '@looms/actor'
-import { composeModules, publishDefinition, type AnyRuntimeModule } from '@looms/core'
+import {
+  crossRunResponse,
+  definitionsResponse,
+  resolveRunTarget,
+  RunTargetError,
+} from '@looms/actor'
+import type { AnyRuntimeModule } from '@looms/core'
 
 export interface DurableObjectStubLike {
   fetch(request: Request): Promise<Response>
@@ -19,7 +24,9 @@ export interface DurableObjectNamespaceLike<
 export function routeToDurableObject(
   namespace: DurableObjectNamespaceLike,
   req: Request,
-  options?: { readonly modules?: readonly AnyRuntimeModule[] },
+  options?: {
+    readonly modules?: readonly AnyRuntimeModule[] | (() => readonly AnyRuntimeModule[])
+  },
 ): Promise<Response | null> {
   const url = new URL(req.url)
 
@@ -27,15 +34,10 @@ export function routeToDurableObject(
     return Promise.resolve(Response.json({ ok: true }))
   }
 
-  if (req.method === 'GET' && url.pathname === '/definitions' && options?.modules) {
-    const registry = composeModules(options.modules)
+  const definitions = definitionsResponse(req, options?.modules)
 
-    return Promise.resolve(
-      Response.json({
-        definitions: registry.definitions.map(publishDefinition),
-        projections: [...registry.projections.keys()],
-      }),
-    )
+  if (definitions) {
+    return Promise.resolve(definitions)
   }
 
   const unsupported = crossRunResponse(req, 'the Durable Object backend')

@@ -20,6 +20,8 @@ const ScheduleSnapshotSchema = Schema.Struct({
   paused: Schema.Boolean,
   retired: Schema.Boolean,
   generation: Schema.Finite,
+  definitionName: Schema.String,
+  definitionVersion: Schema.String,
 })
 
 export type ScheduleSnapshot = Schema.Schema.Type<typeof ScheduleSnapshotSchema>
@@ -51,68 +53,77 @@ export type ScheduleEnsureResult = 'started' | 'updated' | 'resumed' | 'unchange
  * A retired schedule is resumed in place. A cancelled, completed, or failed one throws:
  * those run ids cannot be reused.
  */
-export async function ensureSchedule(
+export function ensureSchedule(
   host: ScheduleHost,
   definition: ScheduleDefinition,
   runId: string,
   config: ScheduleEnsureConfig = {},
 ): Promise<ScheduleEnsureResult> {
-  const state = await host.getRun(runId)
-  const current = readSchedule(state)
+  return host.getRun(runId).then((state) => {
+    const current = readSchedule(state)
 
-  if (!current) {
-    await host.startRun({
-      runId,
-      kind: definition.kind,
+    if (!current) {
+      return host
+        .startRun({
+          runId,
+          kind: definition.kind,
+          definitionName: definition.name,
+          definitionVersion: definition.version,
+          input: startInput(config),
+        })
+        .then((): ScheduleEnsureResult => 'started')
+    }
+
+    if (state.status !== 'running') {
+      throw new Error(
+        `Schedule "${runId}" is ${state.status}; cancelled schedules need a new runId`,
+      )
+    }
+
+    const desired = {
+      spec: config.spec ?? definition.spec,
+      input: config.input ?? null,
+      endAt: config.endAt ?? null,
+      maxFires: config.maxFires ?? null,
       definitionName: definition.name,
       definitionVersion: definition.version,
-      input: startInput(config),
-    })
+    }
 
-    return 'started'
-  }
+    const changed =
+      stringifyJson(current.spec) !== stringifyJson(desired.spec) ||
+      stringifyJson(current.input) !== stringifyJson(desired.input) ||
+      current.endAt !== desired.endAt ||
+      current.maxFires !== desired.maxFires ||
+      current.definitionName !== desired.definitionName ||
+      current.definitionVersion !== desired.definitionVersion
 
-  if (state.status !== 'running') {
-    throw new Error(`Schedule "${runId}" is ${state.status}; cancelled schedules need a new runId`)
-  }
+    const events: EventInput[] = []
 
-  const desired = {
-    spec: config.spec ?? definition.spec,
-    input: config.input ?? null,
-    endAt: config.endAt ?? null,
-    maxFires: config.maxFires ?? null,
-  }
+    if (changed) {
+      events.push(
+        update({
+          spec: desired.spec,
+          input: desired.input,
+          endAt: desired.endAt,
+          maxFires: desired.maxFires,
+          definitionName: desired.definitionName,
+          definitionVersion: desired.definitionVersion,
+        }),
+      )
+    }
 
-  const changed =
-    stringifyJson(current.spec) !== stringifyJson(desired.spec) ||
-    stringifyJson(current.input) !== stringifyJson(desired.input) ||
-    current.endAt !== desired.endAt ||
-    current.maxFires !== desired.maxFires
+    if (current.paused || current.retired) {
+      events.push(resume())
+    }
 
-  const events: EventInput[] = []
+    if (events.length === 0) {
+      return 'unchanged'
+    }
 
-  if (changed) {
-    events.push(
-      update({
-        spec: desired.spec,
-        input: desired.input,
-        endAt: desired.endAt,
-        maxFires: desired.maxFires,
-      }),
-    )
-  }
-
-  if (current.paused || current.retired) {
-    events.push(resume())
-  }
-
-  if (events.length === 0) {
-    return 'unchanged'
-  }
-
-  await host.signal(runId, events)
-
-  return changed ? 'updated' : 'resumed'
+    return host
+      .signal(runId, events)
+      .then((): ScheduleEnsureResult => (changed ? 'updated' : 'resumed'))
+  })
 }
 
 /** The schedule thread's config, or null when the run has not started. */

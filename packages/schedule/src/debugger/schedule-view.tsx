@@ -11,7 +11,7 @@ export function ScheduleView({ runId }: { runId: string }) {
   const { client, openRun } = useDebugger()
   const store = useRunStore(runId)
   const state = useProjection(store, scheduleStatus)
-  const now = useNow()
+  const now = useNow(state.status === 'running' && state.nextAt !== null)
 
   if (!state.spec && state.recent.length === 0) {
     return <p className="text-muted-foreground text-xs">No schedule yet.</p>
@@ -114,13 +114,18 @@ function upcomingFires(spec: ScheduleSpec, nextAt: number | null): number[] {
   return times
 }
 
-function useNow(): number {
+function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
+    if (!active) {
+      return undefined
+    }
+
+    setNow(Date.now())
     const timer = setInterval(() => setNow(Date.now()), 1_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [active])
 
   return now
 }

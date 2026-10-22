@@ -94,12 +94,6 @@
       }
     },
     {
-      "files": ["packages/schedule/src/ensure.ts"],
-      "rules": {
-        "effecttsgo/async-function": "off"
-      }
-    },
-    {
       "files": ["packages/*/src/debugger/**/*.{ts,tsx}"],
       "rules": {
         "effecttsgo/global-date": "off",

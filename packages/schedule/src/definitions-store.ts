@@ -1,10 +1,10 @@
 import { Context, Layer } from 'effect'
 
-import { RunLauncherTag, makeDefinitionStore, unavailableRunLauncher } from '@looms/core'
+import { makeDefinitionStore, type DefinitionStore } from '@looms/core'
 
 import type { ScheduleDefinition } from './definitions'
 
-export type ScheduleDefinitionStore = ReturnType<typeof makeDefinitionStore<ScheduleDefinition>>
+export type ScheduleDefinitionStore = DefinitionStore<ScheduleDefinition>
 
 export class ScheduleDefinitionsTag extends Context.Service<
   ScheduleDefinitionsTag,
@@ -18,7 +18,4 @@ export function makeScheduleDefinitionStore(
 }
 
 export const ScheduleDefinitionsLive = (definitions: ReadonlyArray<ScheduleDefinition>) =>
-  Layer.mergeAll(
-    Layer.succeed(ScheduleDefinitionsTag, makeScheduleDefinitionStore(definitions)),
-    Layer.succeed(RunLauncherTag, unavailableRunLauncher),
-  )
+  Layer.succeed(ScheduleDefinitionsTag, makeScheduleDefinitionStore(definitions))

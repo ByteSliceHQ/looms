@@ -2,19 +2,24 @@ import { Data, Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
+  EventInput,
   EventStore,
   EventStoreTrimCoverage,
-  LaunchRunArgs,
   RunLauncher,
   RunState,
-  RunStatusSnapshot,
   SnapshotStore,
 } from '@looms/core'
-import { EventStoreTag, RunLauncherError, runLauncherError } from '@looms/core'
-import { createTimeoutScheduler, isLoomsApiPath, type Authorize } from '@looms/runtime'
+import { createRemoteRunLauncher, EventStoreTag } from '@looms/core'
+import {
+  createTimeoutScheduler,
+  isLoomsApiPath,
+  type Authorize,
+  type StartResult,
+  type StartRunArgs,
+} from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
-import { crossRunResponse, resolveRunTarget, RunTargetError } from './routing'
+import { crossRunResponse, definitionsResponse, resolveRunTarget, RunTargetError } from './routing'
 
 class ActorWakeError extends Data.TaggedError('ActorWakeError')<{
   readonly cause: unknown
@@ -70,6 +75,13 @@ export interface LocalActorHost<
 > {
   getCell(runId: string): Promise<ActorCell<TModules>>
   readonly launcher: RunLauncher
+  startRun(args: StartRunArgs): Promise<StartResult>
+  signal(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
+  getRun(runId: string): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   dispose(): Promise<void>
 }
@@ -86,25 +98,10 @@ export function createLocalActorHost<
 
   let getCell: (runId: string) => Promise<ActorCell<TModules>>
 
-  const launcher: RunLauncher = {
-    launch: (args: LaunchRunArgs) => {
-      const runId = args.runId
-
-      if (!runId) {
-        return Effect.fail(new RunLauncherError({ message: 'RunLauncher.launch requires runId' }))
-      }
-
-      return Effect.tryPromise({
-        try: () => getCell(runId).then((cell) => cell.launch({ ...args, runId })),
-        catch: runLauncherError,
-      })
-    },
-    status: (runId: string) =>
-      Effect.tryPromise({
-        try: (): Promise<RunStatusSnapshot | null> => getCell(runId).then((cell) => cell.status()),
-        catch: runLauncherError,
-      }),
-  }
+  const launcher = createRemoteRunLauncher({
+    launch: (runId, args) => getCell(runId).then((cell) => cell.launch(args)),
+    status: (runId) => getCell(runId).then((cell) => cell.status()),
+  })
 
   getCell = (runId: string): Promise<ActorCell<TModules>> => {
     const existing = cells.get(runId)
@@ -165,6 +162,18 @@ export function createLocalActorHost<
   return {
     getCell,
     launcher,
+    startRun: (args) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Promise.reject(new Error('LocalActorHost.startRun requires runId'))
+      }
+
+      return getCell(runId).then((cell) => cell.startRun(args))
+    },
+    signal: (runId, events, signalOptions) =>
+      getCell(runId).then((cell) => cell.signal(events, signalOptions)),
+    getRun: (runId) => getCell(runId).then((cell) => cell.getRun()),
 
     fetch: (req: Request): Promise<Response | null> => {
       const url = new URL(req.url)
@@ -175,6 +184,12 @@ export function createLocalActorHost<
 
       if (url.pathname === '/health') {
         return Promise.resolve(Response.json({ ok: true }))
+      }
+
+      const definitions = definitionsResponse(req, options.modules)
+
+      if (definitions) {
+        return Promise.resolve(definitions)
       }
 
       const unsupported = crossRunResponse(req, 'the actor host')

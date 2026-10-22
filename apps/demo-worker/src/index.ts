@@ -38,7 +38,7 @@ export class LoomsRun extends LoomsDurableObject<Env> {
 
 export default {
   fetch: (req: Request, env: Env): Promise<Response> =>
-    routeToDurableObject(env.LOOMS_RUN, req, { modules: modulesFor(env) }).then(
+    routeToDurableObject(env.LOOMS_RUN, req, { modules: () => modulesFor(env) }).then(
       (response) => response ?? new Response('Not Found', { status: 404 }),
     ),
 }

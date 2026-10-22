@@ -10,6 +10,8 @@ export interface ScheduleUpdate {
   readonly endAt?: number | null
   /** `null` clears the bound. Omit the field to leave it unchanged. */
   readonly maxFires?: number | null
+  readonly definitionName?: string
+  readonly definitionVersion?: string
 }
 
 /** Replace the spec, stored input, or bounds. A no-op when nothing changed. */
@@ -19,6 +21,10 @@ export function update(patch: ScheduleUpdate): EventInput {
     ...(patch.input === undefined ? undefined : { input: patch.input }),
     ...(patch.endAt === undefined ? undefined : { endAt: patch.endAt }),
     ...(patch.maxFires === undefined ? undefined : { maxFires: patch.maxFires }),
+    ...(patch.definitionName === undefined ? undefined : { definitionName: patch.definitionName }),
+    ...(patch.definitionVersion === undefined
+      ? undefined
+      : { definitionVersion: patch.definitionVersion }),
   })
 }
 

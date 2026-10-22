@@ -558,7 +558,7 @@ function reconcileEffects(
 }
 
 function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
-  const threadId = event.threadId
+  const threadId = event.threadId ?? (event.origin.type === 'external' ? state.rootThreadId : null)
 
   if (!threadId) {
     return state

@@ -1,4 +1,4 @@
-import { Option, Predicate, Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 import {
   complete,
@@ -7,7 +7,6 @@ import {
   fail,
   invoke,
   stringifyJson,
-  wait,
   type JsonValue,
   type RuntimeEffect,
   type ThreadDefinition,
@@ -22,16 +21,6 @@ import { specRejection, type ScheduleSpec } from './specs'
 
 const PENDING_TRIGGER_CAP = 32
 
-const CONTROL_TYPES = [
-  'schedule.updated',
-  'schedule.paused',
-  'schedule.resumed',
-  'schedule.retired',
-  'schedule.triggered',
-] as const
-
-type ControlType = (typeof CONTROL_TYPES)[number]
-
 export interface ScheduleState {
   readonly spec: ScheduleSpec | null
   readonly input: JsonValue | null
@@ -41,9 +30,7 @@ export interface ScheduleState {
   readonly paused: boolean
   readonly retired: boolean
   readonly generation: number
-  readonly controlEpoch: number
   readonly nextAt: number | null
-  readonly armed: boolean
   readonly fireCount: number
   readonly lastFiredRunId: string | null
   readonly pendingTriggers: readonly string[]
@@ -87,9 +74,7 @@ export function createScheduleThread(
         paused: false,
         retired: false,
         generation: 0,
-        controlEpoch: 0,
         nextAt: null,
-        armed: false,
         fireCount: 0,
         lastFiredRunId: null,
         pendingTriggers: [],
@@ -132,20 +117,25 @@ export function createScheduleThread(
           }
 
           if (event.payload.nextAt === null) {
-            return { ...state, spec: event.payload.spec, nextAt: null, armed: false, done: true }
+            return { ...state, spec: event.payload.spec, nextAt: null, done: true }
           }
 
-          return { ...state, spec: event.payload.spec, nextAt: event.payload.nextAt, armed: true }
+          return { ...state, spec: event.payload.spec, nextAt: event.payload.nextAt }
         }
 
         case 'schedule.fired': {
           const pending = dropTrigger(state.pendingTriggers, event.payload.triggerId)
+          const fireCount = state.fireCount + 1
 
           if (event.payload.manual) {
+            const done = state.maxFires !== null && fireCount >= state.maxFires
+
             return {
               ...state,
-              fireCount: state.fireCount + 1,
+              fireCount,
               lastFiredRunId: event.payload.runId,
+              nextAt: done ? null : state.nextAt,
+              done: state.done || done,
               pendingTriggers: pending,
             }
           }
@@ -158,10 +148,9 @@ export function createScheduleThread(
 
           return {
             ...state,
-            fireCount: state.fireCount + 1,
+            fireCount,
             lastFiredRunId: event.payload.runId,
             nextAt: event.payload.nextAt,
-            armed: !done,
             done,
             pendingTriggers: pending,
           }
@@ -183,24 +172,58 @@ export function createScheduleThread(
           return {
             ...state,
             nextAt: event.payload.nextAt,
-            armed: !done,
             done,
             pendingTriggers: pending,
           }
         }
 
+        case 'schedule.updated':
+          return applyUpdate(state, event.payload, byKey, minIntervalMs)
+
+        case 'schedule.paused':
+          return { ...state, paused: true, nextAt: null }
+
+        case 'schedule.resumed':
+          if (!state.paused && !state.retired) {
+            return state
+          }
+
+          return {
+            ...state,
+            paused: false,
+            retired: false,
+            nextAt: null,
+            generation: state.generation + 1,
+            rejection: null,
+          }
+
+        case 'schedule.retired':
+          return {
+            ...state,
+            retired: true,
+            paused: true,
+            nextAt: null,
+            pendingTriggers: [],
+          }
+
+        case 'schedule.triggered': {
+          const pending =
+            state.pendingTriggers.length < PENDING_TRIGGER_CAP
+              ? [...state.pendingTriggers, event.id]
+              : state.pendingTriggers
+
+          return { ...state, pendingTriggers: pending }
+        }
+
         case 'schedule.rejected':
           return { ...state, rejection: null }
-
-        case 'runtime.wait.satisfied':
-          return applySatisfied(state, event.payload.tag, event.payload.event, minIntervalMs)
 
         default:
           return state
       }
     },
     effects(state, ctx): RuntimeEffect[] {
-      if (state.invalid && state.fireCount === 0 && !state.armed) {
+      if (state.invalid && state.fireCount === 0 && state.nextAt === null) {
         return [fail(state.invalid)]
       }
 
@@ -211,160 +234,91 @@ export function createScheduleThread(
       }
 
       const armed = { ...state, spec }
-
       const effects: RuntimeEffect[] = []
 
       if (state.rejection) {
         effects.push(
-          emit(
-            {
-              type: 'schedule.rejected',
-              payload: { reason: state.rejection },
-              threadId: ctx.threadId,
-            },
-            `reject:${state.controlEpoch}`,
+          emit({
+            type: 'schedule.rejected',
+            payload: { reason: state.rejection },
+            threadId: ctx.threadId,
+          }),
+        )
+      }
+
+      const triggerId = state.pendingTriggers[0]
+
+      if (!state.retired && triggerId !== undefined) {
+        effects.push(
+          invoke(
+            fireEffect,
+            fireInputOf(armed, state.nextAt ?? 0, true, triggerId),
+            `manual:${String(triggerId)}`,
           ),
         )
       }
 
-      if (!state.retired) {
-        for (const triggerId of state.pendingTriggers) {
-          effects.push(
-            invoke(
-              fireEffect,
-              fireInputOf(armed, state.nextAt ?? 0, true, triggerId),
-              `manual:${String(triggerId)}`,
-            ),
-          )
-        }
-      }
-
       if (!state.paused && !state.retired) {
-        if (!state.armed) {
+        if (state.nextAt === null) {
           effects.push(invoke(planEffect, planInputOf(armed), `plan:${state.generation}`))
-        } else if (state.nextAt !== null) {
+        } else {
           const nextAt = state.nextAt
 
           effects.push(
             invoke(
               fireEffect,
               fireInputOf(armed, nextAt, false),
-              `fire:${String(state.generation)}:${String(nextAt)}`,
+              `fire:${String(state.generation)}:${String(state.fireCount)}:${String(nextAt)}`,
               { at: nextAt },
             ),
           )
         }
       }
 
-      effects.push(
-        wait({
-          waitId: `control:${state.controlEpoch}`,
-          on: { type: [...CONTROL_TYPES] },
-          tag: { control: true, epoch: state.controlEpoch },
-        }),
-      )
-
       return effects
     },
   })
 }
 
-function applySatisfied(
-  state: ScheduleState,
-  tag: JsonValue | undefined,
-  cause: { readonly id: string; readonly type: string; readonly payload: JsonValue },
-  minIntervalMs: number,
-): ScheduleState {
-  if (!Predicate.isObject(tag) || tag.control !== true || !isControlType(cause.type)) {
-    return state
-  }
-
-  switch (cause.type) {
-    case 'schedule.updated':
-      return applyUpdate(state, cause.payload, minIntervalMs)
-    case 'schedule.paused':
-      return {
-        ...state,
-        paused: true,
-        armed: false,
-        nextAt: null,
-        controlEpoch: state.controlEpoch + 1,
-      }
-    case 'schedule.resumed':
-      if (!state.paused && !state.retired) {
-        return { ...state, controlEpoch: state.controlEpoch + 1 }
-      }
-
-      return {
-        ...state,
-        paused: false,
-        retired: false,
-        armed: false,
-        nextAt: null,
-        generation: state.generation + 1,
-        controlEpoch: state.controlEpoch + 1,
-        rejection: null,
-      }
-    case 'schedule.retired':
-      return {
-        ...state,
-        retired: true,
-        paused: true,
-        armed: false,
-        nextAt: null,
-        pendingTriggers: [],
-        controlEpoch: state.controlEpoch + 1,
-      }
-
-    case 'schedule.triggered': {
-      const pending =
-        state.pendingTriggers.length < PENDING_TRIGGER_CAP
-          ? [...state.pendingTriggers, cause.id]
-          : state.pendingTriggers
-
-      return { ...state, pendingTriggers: pending, controlEpoch: state.controlEpoch + 1 }
-    }
-
-    default: {
-      const unexpected: never = cause.type
-      return unexpected
-    }
-  }
-}
-
 function applyUpdate(
   state: ScheduleState,
   payload: JsonValue,
+  byKey: ReadonlyMap<string, ScheduleDefinition>,
   minIntervalMs: number,
 ): ScheduleState {
   const decoded = decodeUpdate(payload)
 
   if (Option.isNone(decoded)) {
-    return {
-      ...state,
-      rejection: 'schedule update payload is invalid',
-      controlEpoch: state.controlEpoch + 1,
-    }
+    return { ...state, rejection: 'schedule update payload is invalid' }
   }
 
   const patch = decoded.value
+  const definitionName = patch.definitionName ?? state.definitionName
+  const definitionVersion = patch.definitionVersion ?? state.definitionVersion
+  const definition = byKey.get(definitionKey('schedule', definitionName, definitionVersion))
+
+  if (
+    (patch.definitionName !== undefined || patch.definitionVersion !== undefined) &&
+    !definition
+  ) {
+    return {
+      ...state,
+      rejection: `Unknown schedule definition "${definitionName}@${definitionVersion}"`,
+    }
+  }
 
   if (patch.spec) {
     const rejection = specRejection(patch.spec, minIntervalMs)
 
     if (rejection) {
-      return { ...state, rejection, controlEpoch: state.controlEpoch + 1 }
+      return { ...state, rejection }
     }
-  }
-
-  if (!state.spec && !patch.spec) {
-    return { ...state, rejection: 'schedule has no spec', controlEpoch: state.controlEpoch + 1 }
   }
 
   const spec = patch.spec ?? state.spec
 
   if (!spec) {
-    return { ...state, rejection: 'schedule has no spec', controlEpoch: state.controlEpoch + 1 }
+    return { ...state, rejection: 'schedule has no spec' }
   }
 
   const input = patch.input === undefined ? state.input : patch.input
@@ -373,16 +327,23 @@ function applyUpdate(
   const bounds = boundsError({ endAt, maxFires, startAt: state.startAt })
 
   if (bounds) {
-    return { ...state, rejection: bounds, controlEpoch: state.controlEpoch + 1 }
+    return { ...state, rejection: bounds }
   }
+
+  const misfire = definition ? definition.misfire : state.misfire
+  const overlap = definition ? definition.overlap : state.overlap
 
   if (
     stringifyJson(spec) === stringifyJson(state.spec) &&
     stringifyJson(input) === stringifyJson(state.input) &&
     endAt === state.endAt &&
-    maxFires === state.maxFires
+    maxFires === state.maxFires &&
+    definitionName === state.definitionName &&
+    definitionVersion === state.definitionVersion &&
+    misfire === state.misfire &&
+    overlap === state.overlap
   ) {
-    return { ...state, controlEpoch: state.controlEpoch + 1 }
+    return state
   }
 
   return {
@@ -391,10 +352,12 @@ function applyUpdate(
     input,
     endAt,
     maxFires,
+    definitionName,
+    definitionVersion,
+    misfire,
+    overlap,
     generation: state.generation + 1,
-    armed: false,
     nextAt: null,
-    controlEpoch: state.controlEpoch + 1,
     rejection: null,
   }
 }
@@ -425,17 +388,4 @@ function dropTrigger(pending: readonly string[], triggerId: string | undefined):
   }
 
   return pending.filter((id) => id !== triggerId)
-}
-
-function isControlType(type: string): type is ControlType {
-  switch (type) {
-    case 'schedule.updated':
-    case 'schedule.paused':
-    case 'schedule.resumed':
-    case 'schedule.retired':
-    case 'schedule.triggered':
-      return true
-    default:
-      return false
-  }
 }

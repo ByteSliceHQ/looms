@@ -235,6 +235,10 @@ export function nextRuntimeDeadline(
   const deferred = terminal
     ? []
     : state.outstandingEffects.flatMap((item) => {
+        if (state.effectExecutions[item.effectId]) {
+          return []
+        }
+
         const at = deferredUntil(item.effect)
         return at !== undefined && at > after ? [at] : []
       })

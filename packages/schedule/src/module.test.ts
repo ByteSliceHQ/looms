@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   RunLauncherTag,
@@ -12,7 +12,6 @@ import {
   foldRun,
   invoke,
   stringifyJson,
-  unavailableRunLauncher,
 } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
@@ -215,15 +214,21 @@ describe('schedule module', () => {
 
       await looms.signal('swirls:acme:nightly:job', [retire()])
 
-      expect(
-        await ensureSchedule(looms, binding, 'swirls:acme:nightly:job', { spec: weekday }),
-      ).toBe('resumed')
+      const friday = cron('0 9 * * 5', { tz: 'UTC' })
 
-      expect(readSchedule(await looms.getRun('swirls:acme:nightly:job'))?.retired).toBe(false)
+      expect(
+        await ensureSchedule(looms, binding, 'swirls:acme:nightly:job', { spec: friday }),
+      ).toBe('updated')
+
+      const resumed = readSchedule(await looms.getRun('swirls:acme:nightly:job'))
+      expect(resumed?.retired).toBe(false)
+      expect(resumed?.paused).toBe(false)
+      expect(resumed?.spec).toEqual(friday)
 
       await looms.signal('swirls:acme:nightly:job', [trigger()])
       const view = await looms.project('swirls:acme:nightly:job', scheduleStatus)
       expect(view.recent.at(-1)).toMatchObject({ outcome: 'skipped', reason: 'project_inactive' })
+      expect(view.recent.at(-1)?.at).toBeGreaterThan(0)
       expect(view.fireCount).toBe(0)
     } finally {
       await looms.stop()
@@ -297,7 +302,6 @@ describe('schedule module', () => {
         threads: { probe: probeThread },
         effects: { launch: launchTwice },
         definitions: [{ kind: 'probe', name: 'probe', version: 'v1' }],
-        services: () => Layer.succeed(RunLauncherTag, unavailableRunLauncher),
       }),
     )
 

@@ -39,6 +39,7 @@ const FireInputSchema = Schema.Struct({
   overlap: ScheduleOverlapSchema,
   storedInput: NullableJson,
   fireCount: Schema.Finite,
+  startAt: NullableFinite,
   endAt: NullableFinite,
   maxFires: NullableFinite,
   lastFiredRunId: Schema.NullOr(Schema.String),
@@ -94,7 +95,7 @@ export const fireEffect = scheduleModule.effect({
       }
 
       if (!input.manual && input.misfire === 'skip' && now > input.at + MISFIRE_GRACE_MS) {
-        return skipped(ctx.threadId, input, 'misfire', scheduledNext(input, now, now))
+        return skipped(ctx.threadId, input, input.at, 'misfire', scheduledNext(input, now, now))
       }
 
       const fireCtx: FireContext = {
@@ -110,6 +111,7 @@ export const fireEffect = scheduleModule.effect({
         return skipped(
           ctx.threadId,
           input,
+          fireCtx.at,
           gate.skip,
           input.manual ? input.nextAt : scheduledNext(input, input.at, now),
         )
@@ -127,6 +129,7 @@ export const fireEffect = scheduleModule.effect({
           return skipped(
             ctx.threadId,
             input,
+            fireCtx.at,
             'overlap',
             input.manual ? input.nextAt : scheduledNext(input, input.at, now),
           )
@@ -149,9 +152,13 @@ export const fireEffect = scheduleModule.effect({
         idempotencyKey: targetRunId,
       })
 
+      const nextFireCount = input.fireCount + 1
+
       const nextAt = input.manual
-        ? input.nextAt
-        : scheduledNext(input, input.at, now, input.fireCount + 1)
+        ? input.maxFires !== null && nextFireCount >= input.maxFires
+          ? null
+          : input.nextAt
+        : scheduledNext(input, input.at, now, nextFireCount)
 
       const payload = {
         at: fireCtx.at,
@@ -203,6 +210,7 @@ export function fireInputOf(
     readonly overlap: ScheduleOverlap
     readonly input: JsonValue | null
     readonly fireCount: number
+    readonly startAt: number | null
     readonly endAt: number | null
     readonly maxFires: number | null
     readonly lastFiredRunId: string | null
@@ -222,6 +230,7 @@ export function fireInputOf(
     overlap: state.overlap,
     storedInput: state.input,
     fireCount: state.fireCount,
+    startAt: state.startAt,
     endAt: state.endAt,
     maxFires: state.maxFires,
     lastFiredRunId: state.lastFiredRunId,
@@ -236,22 +245,23 @@ export function fireInputOf(
 }
 
 function planNextAt(input: PlanInput, now: number): number | null {
+  if (input.maxFires !== null && input.fireCount >= input.maxFires) {
+    return null
+  }
+
   const spec = input.spec
   let next: number | null
 
   if (spec.type === 'once') {
     if (input.startAt !== null && spec.at < input.startAt) {
       next = null
-    } else if (spec.at > now) {
+    } else if (spec.at > now || input.misfire === 'fire-once') {
       next = spec.at
-    } else if (input.misfire === 'skip') {
-      next = null
     } else {
-      next = spec.at
+      next = null
     }
   } else {
-    const notBefore =
-      input.fireCount === 0 && input.startAt !== null ? Math.max(now, input.startAt) : now
+    const notBefore = input.startAt !== null ? Math.max(now, input.startAt) : now
 
     next = nextFireAt(spec, notBefore - 1)
 
@@ -260,15 +270,7 @@ function planNextAt(input: PlanInput, now: number): number | null {
     }
   }
 
-  if (next !== null && input.endAt !== null && next > input.endAt) {
-    return null
-  }
-
-  if (input.maxFires !== null && input.fireCount >= input.maxFires) {
-    return null
-  }
-
-  return next
+  return withinEndAt(next, input.endAt)
 }
 
 function scheduledNext(
@@ -281,22 +283,33 @@ function scheduledNext(
     return null
   }
 
+  const floor = input.startAt !== null ? Math.max(now, input.startAt) : now
   let next = nextFireAt(input.spec, after)
 
-  if (next !== null && next <= now) {
-    next = nextFireAt(input.spec, now)
+  if (next !== null && next <= floor) {
+    next = nextFireAt(input.spec, floor)
   }
 
-  if (next !== null && input.endAt !== null && next > input.endAt) {
+  return withinEndAt(next, input.endAt)
+}
+
+function withinEndAt(next: number | null, endAt: number | null): number | null {
+  if (next !== null && endAt !== null && next > endAt) {
     return null
   }
 
   return next
 }
 
-function skipped(threadId: string, input: FireInput, reason: string, nextAt: number | null) {
+function skipped(
+  threadId: string,
+  input: FireInput,
+  at: number,
+  reason: string,
+  nextAt: number | null,
+) {
   const payload = {
-    at: input.at,
+    at,
     reason,
     nextAt,
     generation: input.generation,

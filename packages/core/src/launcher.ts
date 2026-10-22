@@ -61,3 +61,29 @@ export const unavailableRunLauncher: RunLauncher = {
   launch: () => Effect.fail(new RunLauncherUnavailableError()),
   status: () => Effect.fail(new RunLauncherUnavailableError()),
 }
+
+/** Adapts a per-`runId` RPC or cell lookup into a `RunLauncher`. */
+export function createRemoteRunLauncher(target: {
+  readonly launch: (runId: string, args: LaunchRunArgs) => Promise<void>
+  readonly status: (runId: string) => Promise<RunStatusSnapshot | null>
+}): RunLauncher {
+  return {
+    launch: (args) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Effect.fail(new RunLauncherError({ message: 'RunLauncher.launch requires runId' }))
+      }
+
+      return Effect.tryPromise({
+        try: () => target.launch(runId, { ...args, runId }),
+        catch: runLauncherError,
+      })
+    },
+    status: (runId) =>
+      Effect.tryPromise({
+        try: () => target.status(runId),
+        catch: runLauncherError,
+      }),
+  }
+}

@@ -21,6 +21,7 @@ export const ScheduleStatusSchema = Schema.Struct({
     Schema.Literal('retired'),
     Schema.Literal('completed'),
     Schema.Literal('failed'),
+    Schema.Literal('cancelled'),
   ]),
   nextAt: Schema.NullOr(Schema.Finite),
   fireCount: Schema.Finite,
@@ -43,10 +44,13 @@ export const scheduleStatus = scheduleModule.projection({
       case 'schedule.planned':
         return { ...state, spec: event.payload.spec, nextAt: event.payload.nextAt }
 
+      case 'schedule.updated':
+        return event.payload.spec === undefined ? state : { ...state, spec: event.payload.spec }
+
       case 'schedule.fired':
         return {
           ...state,
-          nextAt: event.payload.manual ? state.nextAt : event.payload.nextAt,
+          nextAt: event.payload.nextAt,
           fireCount: state.fireCount + 1,
           recent: remember(state.recent, {
             at: event.payload.at,
@@ -58,7 +62,7 @@ export const scheduleStatus = scheduleModule.projection({
       case 'schedule.skipped':
         return {
           ...state,
-          nextAt: event.payload.manual ? state.nextAt : event.payload.nextAt,
+          nextAt: event.payload.nextAt,
           recent: remember(state.recent, {
             at: event.payload.at,
             runId: null,
@@ -68,7 +72,11 @@ export const scheduleStatus = scheduleModule.projection({
         }
 
       case 'schedule.paused':
-        return { ...state, status: 'paused', nextAt: null }
+        return {
+          ...state,
+          status: state.status === 'retired' ? 'retired' : 'paused',
+          nextAt: null,
+        }
 
       case 'schedule.resumed':
         return { ...state, status: 'running' }
@@ -81,6 +89,10 @@ export const scheduleStatus = scheduleModule.projection({
 
       case 'runtime.thread.failed':
         return { ...state, status: 'failed', nextAt: null }
+
+      case 'runtime.run.cancelled':
+      case 'runtime.thread.cancelled':
+        return { ...state, status: 'cancelled', nextAt: null }
 
       default:
         return state

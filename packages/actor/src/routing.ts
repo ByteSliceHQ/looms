@@ -1,6 +1,14 @@
-import { Data, Effect, Option, Schema } from 'effect'
+import { Data, Effect, Option, Predicate, Schema } from 'effect'
 
-import { createRunId, isJsonObject, stringifyJson, type JsonValue } from '@looms/core'
+import {
+  composeModules,
+  createRunId,
+  isJsonObject,
+  publishDefinition,
+  stringifyJson,
+  type AnyRuntimeModule,
+  type JsonValue,
+} from '@looms/core'
 
 const RunTargetBodySchema = Schema.Struct({
   runId: Schema.optional(Schema.NonEmptyString),
@@ -57,6 +65,23 @@ export function crossRunResponse(req: Request, host: string): Response | null {
   }
 
   return null
+}
+
+/** Answers `GET /definitions` from a module list or lazy factory without touching any run cell. */
+export function definitionsResponse(
+  req: Request,
+  modules: readonly AnyRuntimeModule[] | (() => readonly AnyRuntimeModule[]) | undefined,
+): Response | null {
+  if (!modules || req.method !== 'GET' || new URL(req.url).pathname !== '/definitions') {
+    return null
+  }
+
+  const registry = composeModules(Predicate.isFunction(modules) ? modules() : modules)
+
+  return Response.json({
+    definitions: registry.definitions.map(publishDefinition),
+    projections: [...registry.projections.keys()],
+  })
 }
 
 export interface ResolvedRunTarget {

@@ -3,8 +3,7 @@ import { Effect } from 'effect'
 
 import { createActorCell, type ActorCell } from '@looms/actor'
 import {
-  RunLauncherError,
-  runLauncherError,
+  createRemoteRunLauncher,
   type AnyRuntimeModule,
   type EventInput,
   type EventStoreTrimCoverage,
@@ -15,7 +14,6 @@ import {
 } from '@looms/core'
 import type { Projector } from '@looms/projectors'
 import type { Authorize, StartResult, StartRunArgs } from '@looms/runtime'
-import type { ScheduleHost } from '@looms/schedule'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
@@ -180,31 +178,26 @@ export interface DurableObjectRunStub {
 export function durableObjectLauncher(namespace: { getByName(name: string): object }): RunLauncher {
   const runs = loomsNamespace(namespace)
 
-  return {
-    launch: (args) => {
-      const runId = args.runId
+  return createRemoteRunLauncher({
+    launch: (runId, args) => runs.getByName(runId).launch(args),
+    status: (runId) => runs.getByName(runId).status(),
+  })
+}
 
-      if (!runId) {
-        return Effect.fail(new RunLauncherError({ message: 'RunLauncher.launch requires runId' }))
-      }
-
-      return Effect.tryPromise({
-        try: () => runs.getByName(runId).launch({ ...args, runId }),
-        catch: runLauncherError,
-      })
-    },
-    status: (runId) =>
-      Effect.tryPromise({
-        try: () => runs.getByName(runId).status(),
-        catch: runLauncherError,
-      }),
-  }
+export interface DurableObjectScheduleHost {
+  startRun(args: StartRunArgs): Promise<StartResult>
+  signal(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
+  getRun(runId: string): Promise<RunState>
 }
 
 /** `ScheduleHost` for a Worker that reconciles schedules onto Durable Objects. */
 export function durableObjectScheduleHost(namespace: {
   getByName(name: string): object
-}): ScheduleHost {
+}): DurableObjectScheduleHost {
   const runs = loomsNamespace(namespace)
 
   return {
@@ -217,7 +210,7 @@ export function durableObjectScheduleHost(namespace: {
 
       return runs.getByName(runId).startRun(args)
     },
-    signal: (runId, events) => runs.getByName(runId).signal(events),
+    signal: (runId, events, options) => runs.getByName(runId).signal(events, options),
     getRun: (runId) => runs.getByName(runId).getRun(),
   }
 }

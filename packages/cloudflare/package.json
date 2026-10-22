@@ -33,11 +33,11 @@
     "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
-    "@looms/schedule": "workspace:*",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260914.1",
+    "@looms/schedule": "workspace:*",
     "@looms/workflow": "workspace:*",
     "@types/bun": "^1.3.9",
     "typescript": "7.0.2"

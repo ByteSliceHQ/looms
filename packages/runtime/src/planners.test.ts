@@ -130,6 +130,25 @@ describe('deadline transition planner', () => {
     })
 
     expect(nextRuntimeDeadline(state, 0)).toBe(5_000)
+
+    expect(
+      nextRuntimeDeadline({
+        ...state,
+        effectExecutions: {
+          effect_1: {
+            effectId: 'effect_1',
+            attempt: 1,
+            status: 'retry_wait',
+            nextAttemptAt: 9_000,
+            deadlineAt: 9_000,
+            startedAt: null,
+            lastHeartbeatAt: null,
+            lastError: 'failed',
+          },
+        },
+      }),
+    ).toBe(9_000)
+
     expect(nextRuntimeDeadline({ ...state, status: 'completed' }, 0)).toBeUndefined()
   })
 })
