@@ -503,6 +503,10 @@ describe('schedule durable objects', () => {
     expect(thread.fireCount).toBe(1)
     await scheduleObject.alarm()
     expect(scheduleThreadOf(await scheduleObject.getRun()).fireCount).toBe(1)
+
+    const fired = await namespace.getByName('cf-schedule:fire:1').getRun()
+    expect(fired.startIdentity?.launchedBy?.runId).toBe('cf-schedule')
+    expect(fired.startIdentity?.correlationId).toBe('cf-schedule')
   })
 
   test('a schedule without a launcher fails with the unavailable message', async () => {

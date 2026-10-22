@@ -1,8 +1,8 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, CornerLeftUp } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
-import type { ThreadNode } from '@looms/core'
+import type { RunLaunchSource, ThreadNode } from '@looms/core'
 
 import { cn, shortId } from '../lib/cn'
 import { PanelHeader, PanelTitle } from '../ui/panel'
@@ -116,6 +116,43 @@ function NodeRow({
   )
 }
 
+function LaunchedByRow({
+  source,
+  onOpen,
+}: {
+  source: RunLaunchSource
+  onOpen?: (source: RunLaunchSource) => void
+}) {
+  const label = (
+    <>
+      <CornerLeftUp className="text-muted-foreground size-3.5 shrink-0" />
+      <span className="text-muted-foreground shrink-0">Launched by</span>
+      <span className="min-w-0 truncate font-mono text-[10px]">{source.runId}</span>
+      <span className="text-muted-foreground ml-auto shrink-0 font-mono text-[10px] tabular-nums">
+        #{source.causationSeq}
+      </span>
+    </>
+  )
+
+  const title = `Effect ${source.effectId} on thread ${source.threadId}, requested by event #${source.causationSeq} of ${source.runId}`
+  const className = 'flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs'
+
+  return onOpen ? (
+    <button
+      type="button"
+      title={title}
+      onClick={() => onOpen(source)}
+      className={cn(className, 'hover:bg-accent/50')}
+    >
+      {label}
+    </button>
+  ) : (
+    <div title={title} className={className}>
+      {label}
+    </div>
+  )
+}
+
 export function RunTree({
   runId,
   runStatus,
@@ -124,6 +161,8 @@ export function RunTree({
   totalEventCount,
   selectedThread,
   onSelectThread,
+  launchedBy,
+  onOpenLauncher,
   formatRunLabel = shortId,
   showHeading = true,
 }: {
@@ -134,6 +173,9 @@ export function RunTree({
   totalEventCount?: number
   selectedThread?: string
   onSelectThread: (threadId: string | undefined) => void
+  /** The effect in another run that launched this one. */
+  launchedBy?: RunLaunchSource
+  onOpenLauncher?: (source: RunLaunchSource) => void
   formatRunLabel?: (runId: string) => string
   showHeading?: boolean
 }) {
@@ -174,6 +216,7 @@ export function RunTree({
         </PanelHeader>
       ) : null}
       <div className="px-2 pt-2">
+        {launchedBy ? <LaunchedByRow source={launchedBy} onOpen={onOpenLauncher} /> : null}
         <button
           type="button"
           onClick={() => onSelectThread(undefined)}

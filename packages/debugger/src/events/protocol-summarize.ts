@@ -1,4 +1,4 @@
-import { isJsonNumber, isJsonString, isProtocolType } from '@looms/core'
+import { isJsonNumber, isJsonString, isProtocolType, readRunLaunchSource } from '@looms/core'
 
 import type { DebuggerEvent, EventSummary } from '../contracts'
 import { compactJson } from '../lib/cn'
@@ -12,11 +12,16 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
   const payload = jsonFields(event.payload)
 
   switch (event.type) {
-    case 'runtime.run.started':
+    case 'runtime.run.started': {
+      const definition = `${jsonText(payload.kind) ?? 'run'}:${jsonText(payload.definitionName) ?? 'unknown'}`
+      const launchedBy = readRunLaunchSource(payload.launchedBy)
+
       return {
         title: 'run started',
-        detail: `${jsonText(payload.kind) ?? 'run'}:${jsonText(payload.definitionName) ?? 'unknown'}`,
+        detail: launchedBy ? `${definition} · launched by ${launchedBy.runId}` : definition,
       }
+    }
+
     case 'runtime.run.completed':
       return {
         title: jsonText(payload.error) ? 'run failed' : 'run completed',
@@ -24,6 +29,11 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
       }
     case 'runtime.run.cancelled':
       return { title: 'run cancelled', detail: jsonText(payload.reason) }
+    case 'runtime.run.launched':
+      return {
+        title: 'run launched',
+        detail: `${jsonText(payload.kind) ?? 'run'}:${jsonText(payload.definitionName) ?? 'unknown'} · ${jsonText(payload.runId) ?? 'unknown'}`,
+      }
     case 'runtime.run.forked':
       return {
         title: 'run forked',

@@ -51,6 +51,10 @@ function readOrigin(raw: JsonValue | EventOrigin): EventOrigin {
     return actorId ? { type: 'external', actorId } : { type: 'external' }
   }
 
+  if ('type' in raw && raw.type === 'run' && 'runId' in raw && Predicate.isString(raw.runId)) {
+    return { type: 'run', runId: raw.runId }
+  }
+
   return { type: 'system' }
 }
 

@@ -5,11 +5,16 @@ import { LoomsProvider } from '@looms/react'
 
 import type { DebuggerPlugin } from './plugin'
 
+/** Where to land in a run another view links to. */
+export interface OpenRunTarget {
+  readonly seq?: number
+}
+
 export interface DebuggerContextValue {
   readonly client: LoomsClient
   readonly plugins: readonly DebuggerPlugin[]
-  /** Opens another run, for example the run a schedule fired. */
-  readonly openRun?: (runId: string) => void
+  /** Opens another run, for example the run a schedule fired or the run that launched this one. */
+  readonly openRun?: (runId: string, target?: OpenRunTarget) => void
 }
 
 const DebuggerContext = createContext<DebuggerContextValue | null>(null)
@@ -23,15 +28,15 @@ export function DebuggerProvider({
 }: {
   endpoint?: string
   plugins: readonly DebuggerPlugin[]
-  openRun?: (runId: string) => void
+  openRun?: (runId: string, target?: OpenRunTarget) => void
   children: ReactNode
 }) {
   const openRunRef = useRef(openRun)
   openRunRef.current = openRun
   const hasOpenRun = openRun !== undefined
 
-  const stableOpenRun = useCallback((runId: string) => {
-    openRunRef.current?.(runId)
+  const stableOpenRun = useCallback((runId: string, target?: OpenRunTarget) => {
+    openRunRef.current?.(runId, target)
   }, [])
 
   const value = useMemo<DebuggerContextValue>(() => {

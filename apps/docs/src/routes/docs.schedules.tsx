@@ -108,6 +108,26 @@ await looms.signal('nightly-report', [update({ spec: cron('0 3 * * *', { tz: 'UT
         The fired run id is the schedule id, <code>fire</code>, and the slot time. A manual fire
         uses the trigger id instead of the slot. Repeating the same slot starts nothing again.
       </p>
+      <h2 id="audit">
+        Audit fires
+        <a className="heading-anchor" href="#audit" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Each fire appends <code>schedule.fired</code> with the id of the run it started, or{' '}
+        <code>schedule.skipped</code> with a reason. When the target accepts the start, the
+        schedule&apos;s log also gets <code>runtime.run.launched</code> with the run id, definition,
+        and effect id, so listing what a schedule started reads one log. The started run&apos;s{' '}
+        <code>runtime.run.started</code> payload records <code>launchedBy</code>: the schedule run,
+        its thread, the fire&apos;s effect id, and the id and seq of the event that requested the
+        fire. The event&apos;s origin is <code>{"{ type: 'run' }"}</code>, and its{' '}
+        <code>correlationId</code> is the schedule&apos;s run id, or the schedule&apos;s own
+        correlation id when another run launched the schedule. Join <code>launchedBy.effectId</code>{' '}
+        to the <code>effectId</code> on <code>schedule.fired</code>; no run id needs parsing. Every
+        run an effect starts through <code>RunLauncher</code> carries the same fields, and the
+        runtime sets them, so a handler cannot omit or forge them.
+      </p>
       <h2 id="determinism">
         Determinism
         <a className="heading-anchor" href="#determinism" aria-label="Link to this section">

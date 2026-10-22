@@ -508,14 +508,19 @@ const index = sqlite({ path: './looms.db' })
 // Query cross-run indexes from your admin routes:
 const run = await index.getActor(runId)
 const thread = await index.getActor(runId, threadId)
-const pendingReviews = await index.listReviews(runId)`}</CodeBlock>
+const pendingReviews = await index.listReviews(runId)
+const firedRuns = await index.listLaunched(scheduleRunId)`}</CodeBlock>
       <p>
         Index rows are keyed by run, so two runs that share a thread or approval id stay apart.
         Review rows carry <code>runId</code>, and a run that completes with an error has status{' '}
-        <code>failed</code>. The tables are <code>looms_run_actors</code> and{' '}
-        <code>looms_run_reviews</code>. The built-in index projectors are version 2, so delivery
-        rebuilds them from each run&apos;s log. The version 1 tables, <code>looms_actors</code> and{' '}
-        <code>looms_reviews</code>, are no longer written and can be dropped.
+        <code>failed</code>. A run row also carries <code>launchedByRunId</code>,{' '}
+        <code>launchedByEffectId</code>, and <code>correlationId</code> when another run&apos;s
+        effect launched it; <code>launched_by_run_id</code> and <code>correlation_id</code> are
+        indexed. The tables are <code>looms_run_actors</code> and <code>looms_run_reviews</code>;{' '}
+        <code>init</code> adds the launch columns to an existing <code>looms_run_actors</code>{' '}
+        table. The built-in index projectors are version 3, so delivery rebuilds them from each
+        run&apos;s log and fills the new columns. The version 1 tables, <code>looms_actors</code>{' '}
+        and <code>looms_reviews</code>, are no longer written and can be dropped.
       </p>
 
       <h3 id="custom-webhook-and-fan-out-projectors">

@@ -385,7 +385,13 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 observe,
                 launcher: options.launcher(),
               },
-              { runId, outstanding, attempts, now },
+              {
+                runId,
+                correlationId: cursor.state.startIdentity?.correlationId ?? runId,
+                outstanding,
+                attempts,
+                now,
+              },
             )
 
             if (produced.length === 0) {

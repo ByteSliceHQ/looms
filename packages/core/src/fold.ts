@@ -3,6 +3,7 @@ import { Option, Predicate, Schema, Stream, type Effect } from 'effect'
 import { isWithdrawnError, WaitConditionSchema, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
+import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
@@ -124,6 +125,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               requestedThreadId: readString(payload, 'requestedThreadId') ?? null,
               idempotencyKey: event.idempotencyKey ?? null,
               rootThreadId,
+              launchedBy: readRunLaunchSource(payload.launchedBy),
+              correlationId: event.correlationId ?? null,
             }
           : null
 
@@ -461,6 +464,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       return next
     }
 
+    case 'runtime.run.launched':
     case 'runtime.snapshot.taken':
     case 'runtime.thread.cancel.requested':
     case 'runtime.timer.set':

@@ -9,7 +9,12 @@ export type {
 } from './contracts'
 export { createEventCatalog, defaultEventCatalog } from './events/catalog'
 export { summarizeProtocolEvent } from './events/protocol-summarize'
-export { DebuggerProvider, useDebugger, type DebuggerContextValue } from './context'
+export {
+  DebuggerProvider,
+  useDebugger,
+  type DebuggerContextValue,
+  type OpenRunTarget,
+} from './context'
 export {
   projectionFor,
   workspaceFor,

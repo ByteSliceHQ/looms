@@ -19,6 +19,7 @@ import {
   summarizeRun,
   type AnyRuntimeModule,
   type EventInput,
+  type EventOrigin,
   type RunLauncher,
   type RunState,
   type SignalInterruptRule,
@@ -254,7 +255,26 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         input: startedInput,
         requestedThreadId: args.threadId ?? null,
         idempotencyKey: args.idempotencyKey ?? null,
+        launchedBy: args.launchedBy ?? null,
+        correlationId: args.correlationId ?? null,
       }
+
+      const origin: EventOrigin = args.launchedBy
+        ? { type: 'run', runId: args.launchedBy.runId }
+        : { type: 'system' }
+
+      const startPayload = {
+        rootThreadId: threadId,
+        kind: args.kind,
+        definitionName: args.definitionName,
+        definitionVersion,
+        input: startedInput,
+        requestedThreadId: args.threadId ?? null,
+      }
+
+      const startedPayload = args.launchedBy
+        ? { ...startPayload, launchedBy: args.launchedBy }
+        : startPayload
 
       const committed = yield* commit(
         store,
@@ -278,20 +298,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 [
                   {
                     type: 'runtime.run.started',
-                    payload: {
-                      rootThreadId: threadId,
-                      kind: args.kind,
-                      definitionName: args.definitionName,
-                      definitionVersion,
-                      input: startedInput,
-                      requestedThreadId: args.threadId ?? null,
-                    },
+                    payload: startedPayload,
                     threadId: null,
                     idempotencyKey: args.idempotencyKey,
                   },
                   ...startedEvents,
-                ],
-                { origin: { type: 'system' } },
+                ].map((event) => ({ ...event, correlationId: args.correlationId })),
+                { origin },
               ).pipe(
                 Effect.map((batch) => ({
                   events: batch,

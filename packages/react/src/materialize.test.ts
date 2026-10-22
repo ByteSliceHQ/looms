@@ -52,11 +52,25 @@ describe('materializeEvents', () => {
     expect(tables.threads.get('thr_1')?.status).toBe('completed')
   })
 
-  test('marks a cancelled run', () => {
+  test('marks a cancelled run and keeps the effect that launched it', () => {
+    const launchedBy = {
+      runId: 'run_0',
+      threadId: 'thr_0',
+      effectId: 'eff_0',
+      causationId: 'evt_0',
+      causationSeq: 4,
+    }
+
     const tables = materializeEvents([
       event({
         type: 'runtime.run.started',
-        payload: { rootThreadId: 'thr_1', kind: 'agent', definitionName: 'assistant', input: null },
+        payload: {
+          rootThreadId: 'thr_1',
+          kind: 'agent',
+          definitionName: 'assistant',
+          input: null,
+          launchedBy,
+        },
       }),
       event({ seq: 2, type: 'runtime.run.cancelled', payload: { reason: 'cancelled' } }),
     ])
@@ -67,6 +81,7 @@ describe('materializeEvents', () => {
       rootThreadId: 'thr_1',
       kind: 'agent',
       definitionName: 'assistant',
+      launchedBy,
     })
   })
 

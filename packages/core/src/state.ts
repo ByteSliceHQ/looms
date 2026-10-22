@@ -7,6 +7,7 @@ import {
   type WaitCondition,
 } from './effects'
 import { JsonValueSchema } from './envelope'
+import { RunLaunchSourceSchema, type RunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
@@ -68,6 +69,8 @@ export interface RunStartIdentity {
   requestedThreadId: string | null
   idempotencyKey: string | null
   rootThreadId: string
+  launchedBy: RunLaunchSource | null
+  correlationId: string | null
 }
 
 /** The run and last sequence a fork copied its history from. */
@@ -108,6 +111,12 @@ export const RunStateSchema = Schema.Struct({
       requestedThreadId: Schema.NullOr(Schema.String),
       idempotencyKey: Schema.NullOr(Schema.String),
       rootThreadId: Schema.String,
+      launchedBy: Schema.NullOr(RunLaunchSourceSchema).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
+      correlationId: Schema.NullOr(Schema.String).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   forkedFrom: Schema.NullOr(Schema.Struct({ runId: Schema.String, seq: Schema.Finite })).pipe(

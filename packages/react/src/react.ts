@@ -18,6 +18,7 @@ import {
   type AnyEventEnvelope,
   type ProjectionDefinition,
   type RegisteredEvent,
+  type RunLaunchSource,
   type RunStatus,
   type ThreadTree,
 } from '@looms/core'
@@ -229,6 +230,8 @@ export interface RunSummary {
   readonly definitionName: string | undefined
   readonly rootThreadId: string | undefined
   readonly startedAt: number | undefined
+  /** The effect in another run that launched this one. */
+  readonly launchedBy: RunLaunchSource | undefined
   readonly connection: LoomsConnectionStatus
 }
 
@@ -239,6 +242,7 @@ function shallowEqualSummary(a: RunSummary, b: RunSummary): boolean {
     a.definitionName === b.definitionName &&
     a.rootThreadId === b.rootThreadId &&
     a.startedAt === b.startedAt &&
+    a.launchedBy === b.launchedBy &&
     a.connection === b.connection
   )
 }
@@ -259,6 +263,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
       definitionName: run?.definitionName ?? undefined,
       rootThreadId: run?.rootThreadId ?? undefined,
       startedAt: s.query.startedAt(),
+      launchedBy: run?.launchedBy ?? undefined,
       connection: s.status(),
     }
   }, [])

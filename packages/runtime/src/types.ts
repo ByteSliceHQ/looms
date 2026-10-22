@@ -13,6 +13,7 @@ import type {
   EventStoreTag,
   EventStoreTrimCoverage,
   RunLauncher,
+  RunLaunchSource,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -110,6 +111,10 @@ export interface StartRunArgs {
   runId?: string
   threadId?: string
   idempotencyKey?: string
+  /** The effect that launched this run. The runtime sets it on launches made from effects. */
+  launchedBy?: RunLaunchSource
+  /** Recorded on `runtime.run.started` to group related runs. */
+  correlationId?: string
 }
 
 export interface StartResult {

@@ -22,6 +22,35 @@ describe('summarizeProtocolEvent', () => {
 
     expect(
       summarizeProtocolEvent(
+        event('runtime.run.started', {
+          kind: 'workflow',
+          definitionName: 'report',
+          input: null,
+          launchedBy: {
+            runId: 'nightly',
+            threadId: 'thr_s',
+            effectId: 'eff_1',
+            causationId: 'evt_0',
+            causationSeq: 7,
+          },
+        }),
+      ),
+    ).toEqual({ title: 'run started', detail: 'workflow:report · launched by nightly' })
+
+    expect(
+      summarizeProtocolEvent(
+        event('runtime.run.launched', {
+          runId: 'nightly:fire:1',
+          kind: 'workflow',
+          definitionName: 'report',
+          definitionVersion: 'v1',
+          effectId: 'eff_1',
+        }),
+      ),
+    ).toEqual({ title: 'run launched', detail: 'workflow:report · nightly:fire:1' })
+
+    expect(
+      summarizeProtocolEvent(
         event('runtime.wait.registered', { waitId: 'wait_1', on: { type: 'approval.decided' } }),
       ),
     ).toEqual({ title: 'wait registered', detail: 'approval.decided' })

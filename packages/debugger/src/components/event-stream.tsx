@@ -1,6 +1,7 @@
 import { ArrowDownToLine, Search, SlidersHorizontal, X } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 
+import type { OpenRunTarget } from '../context'
 import type { DebuggerEvent, EventStreamCatalog, ReplayLoader } from '../contracts'
 import { defaultEventCatalog } from '../events/catalog'
 import { cn, shortId } from '../lib/cn'
@@ -32,6 +33,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
   catalog,
   loadReplayStep,
   renderInspector,
+  onOpenRun,
 }: {
   events: readonly TEvent[]
   startedAt?: number
@@ -43,6 +45,8 @@ export function EventStream<TEvent extends DebuggerEvent>({
   catalog?: EventStreamCatalog<TEvent>
   loadReplayStep?: ReplayLoader
   renderInspector?: (selected: TEvent) => ReactNode
+  /** Follows launch links from the inspector to another run. */
+  onOpenRun?: (runId: string, target?: OpenRunTarget) => void
 }) {
   const eventCatalog = catalog ?? defaultEventCatalog
   const [query, setQuery] = useState('')
@@ -208,6 +212,7 @@ export function EventStream<TEvent extends DebuggerEvent>({
               event={selected}
               loadReplayStep={loadReplayStep}
               onClose={() => onSelectSeq(undefined)}
+              onOpenRun={onOpenRun}
             />
           ))
         : null}

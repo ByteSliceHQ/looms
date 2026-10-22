@@ -2,6 +2,8 @@ import { Effect, Option, Predicate, type Context, type ManagedRuntime } from 'ef
 
 import {
   createEvent,
+  createRunId,
+  DEFAULT_DEFINITION_VERSION,
   validateEventInput,
   withdrawnError,
   type ComposedRegistry,
@@ -10,6 +12,7 @@ import {
   type OutstandingEffect,
   type RegisteredDefinition,
   type RunLauncher,
+  type RunLaunchSource,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -38,9 +41,61 @@ export interface LocalEffectExecutorOptions {
 
 export interface ExecuteLocalEffectsInput {
   readonly runId: string
+  /** Inherited by runs the effects launch. */
+  readonly correlationId: string
   readonly outstanding: ReadonlyArray<OutstandingEffect>
   readonly attempts: ReadonlyMap<string, number>
   readonly now: number
+}
+
+/**
+ * Stamps every launch with the effect that made it, replacing anything the handler passed, and
+ * records a `runtime.run.launched` event for each launch the target accepts.
+ */
+function launcherFor(
+  launcher: RunLauncher,
+  runId: string,
+  correlationId: string,
+  item: OutstandingEffect,
+  launched: EventEnvelope[],
+): RunLauncher {
+  const launchedBy: RunLaunchSource = {
+    runId,
+    threadId: item.threadId,
+    effectId: item.effectId,
+    causationId: item.causingEventId,
+    causationSeq: item.causingSeq,
+  }
+
+  return {
+    launch: (args) => {
+      const targetRunId = args.runId ?? createRunId()
+
+      return launcher.launch({ ...args, runId: targetRunId, launchedBy, correlationId }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            launched.push(
+              createEvent(runId, {
+                type: 'runtime.run.launched',
+                payload: {
+                  runId: targetRunId,
+                  kind: args.kind,
+                  definitionName: args.definitionName,
+                  definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
+                  effectId: item.effectId,
+                },
+                threadId: item.threadId,
+                causationId: item.causingEventId,
+                correlationId,
+                origin: { type: 'thread', threadId: item.threadId },
+              }),
+            )
+          }),
+        ),
+      )
+    },
+    status: launcher.status,
+  }
 }
 
 type LocalAttempt =
@@ -122,12 +177,13 @@ export function executeLocalEffects(
           })
 
           const retry = registry.effects.get(item.effect.type)?.retry
+          const launched: EventEnvelope[] = []
 
           const dispatched = dispatchEffect(
             registry,
             services,
             definitions,
-            launcher,
+            launcherFor(launcher, input.runId, input.correlationId, item, launched),
             item.effect,
             {
               effectId: item.effectId,
@@ -156,6 +212,9 @@ export function executeLocalEffects(
               }),
             ),
           )
+
+          // A launch the target accepted happened even if the attempt was later aborted or failed.
+          produced.push(...launched)
 
           if (settled._tag === 'aborted') {
             continue

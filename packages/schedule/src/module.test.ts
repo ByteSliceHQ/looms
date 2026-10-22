@@ -87,6 +87,16 @@ describe('schedule module', () => {
       expect(again.fireCount).toBe(1)
 
       const events = await looms.getEvents('nightly')
+      const fired = events.find((event) => event.type === 'schedule.fired')
+      const target = await looms.getRun('nightly:fire:1')
+
+      expect(target.startIdentity?.launchedBy).toMatchObject({
+        runId: 'nightly',
+        threadId: fired?.threadId ?? '',
+        effectId: fired?.effectId ?? '',
+        causationId: fired?.causationId ?? '',
+      })
+
       const { runtime } = await looms.ready()
       const first = foldRun(events, runtime.registry, { runId: 'nightly' })
       const second = foldRun(events, runtime.registry, { runId: 'nightly' })

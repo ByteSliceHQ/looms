@@ -150,6 +150,12 @@ export const billingDebugger: DebuggerPlugin = {
         </li>
       </ul>
       <p>
+        A run that another run&apos;s effect started, such as a schedule fire, shows{' '}
+        <strong>Launched by</strong> above its thread tree. Clicking it opens the launching run at
+        the event that requested the effect. A plugin view can link to another run with{' '}
+        <code>openRun(runId, {'{ seq }'})</code> from <code>useDebugger()</code>.
+      </p>
+      <p>
         The app that <code>debuggerUi()</code> serves is prebuilt with the agent, workflow,
         approval, and schedule plugins. To see your own plugin, render the debugger in your
         application.

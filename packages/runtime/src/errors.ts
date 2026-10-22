@@ -1,6 +1,10 @@
 import { Data } from 'effect'
 
-import type { JsonValue, RunStartIdentity as DurableRunStartIdentity } from '@looms/core'
+import type {
+  JsonValue,
+  RunLaunchSource,
+  RunStartIdentity as DurableRunStartIdentity,
+} from '@looms/core'
 
 export interface RunStartIdentity {
   readonly kind: string
@@ -9,6 +13,8 @@ export interface RunStartIdentity {
   readonly input: JsonValue
   readonly requestedThreadId: string | null
   readonly idempotencyKey: string | null
+  readonly launchedBy: RunLaunchSource | null
+  readonly correlationId: string | null
 }
 
 export class StartRunConflictError extends Data.TaggedError('StartRunConflictError')<{

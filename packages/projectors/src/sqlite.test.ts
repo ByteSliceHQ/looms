@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 
 import { createEvent } from '@looms/core'
@@ -50,6 +51,73 @@ describe('sqlite projector', () => {
     const row = await projector.getActor('run_1')
     expect(row?.definitionName).toBe('echo')
     await projector.dispose?.()
+  })
+
+  test('indexes which run launched a run and lists the runs it launched', async () => {
+    const projector = sqlite({ path: ':memory:' })
+    await projector.init?.()
+
+    await projector.project([
+      createEvent('nightly:fire:1', {
+        type: 'runtime.run.started',
+        payload: {
+          rootThreadId: 'thr_1',
+          kind: 'workflow',
+          definitionName: 'report',
+          input: null,
+          launchedBy: {
+            runId: 'nightly',
+            threadId: 'thr_s',
+            effectId: 'eff_1',
+            causationId: 'evt_4',
+            causationSeq: 4,
+          },
+        },
+        threadId: null,
+        correlationId: 'nightly',
+        origin: { type: 'run', runId: 'nightly' },
+      }),
+    ])
+
+    expect(await projector.getActor('nightly:fire:1')).toMatchObject({
+      launchedByRunId: 'nightly',
+      launchedByEffectId: 'eff_1',
+      correlationId: 'nightly',
+    })
+
+    expect((await projector.listLaunched('nightly')).map((row) => row.runId)).toEqual([
+      'nightly:fire:1',
+    ])
+
+    await projector.dispose?.()
+  })
+
+  test('adds the launch columns to a database from an earlier release', async () => {
+    const db = new Database(':memory:')
+
+    db.exec(`CREATE TABLE looms_run_actors (
+      run_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      kind TEXT,
+      status TEXT,
+      definition_name TEXT,
+      parent_actor_id TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (run_id, actor_id)
+    )`)
+
+    const projector = sqlite({ db })
+    await projector.init?.()
+    await projector.init?.()
+
+    const columns = db
+      .query<{ name: string }, []>('PRAGMA table_info(looms_run_actors)')
+      .all()
+      .map((column) => column.name)
+
+    expect(columns).toContain('launched_by_run_id')
+    expect(columns).toContain('correlation_id')
+    db.close()
   })
 
   test('keeps a thread id shared by two runs apart', async () => {

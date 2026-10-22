@@ -13,7 +13,11 @@ describe('indexOpsFor', () => {
       origin: { type: 'system' },
     })
 
-    expect(indexOpsFor(event)[0]?.type).toBe('upsertActor')
+    expect(indexOpsFor(event)[0]).toMatchObject({
+      type: 'upsertActor',
+      launchedByRunId: null,
+      correlationId: null,
+    })
   })
 
   test('indexes run cancelled', () => {

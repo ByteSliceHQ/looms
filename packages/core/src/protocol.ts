@@ -3,6 +3,7 @@ import { Effect, Schema } from 'effect'
 import { defineEventCatalog, type EventInputOf, type EventsOfCatalog } from './catalog'
 import { WaitConditionSchema, type WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
+import { RunLaunchSourceSchema } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 
 const DefinitionVersionSchema = Schema.String.pipe(
@@ -17,6 +18,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     definitionVersion: DefinitionVersionSchema,
     input: JsonValueSchema,
     requestedThreadId: Schema.optional(Schema.NullOr(Schema.String)),
+    launchedBy: Schema.optional(RunLaunchSourceSchema),
   }),
   'run.completed': Schema.Struct({
     output: Schema.NullOr(JsonValueSchema),
@@ -24,6 +26,14 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   }),
   'run.cancelled': Schema.Struct({
     reason: Schema.optional(Schema.String),
+  }),
+  'run.launched': Schema.Struct({
+    runId: Schema.String,
+    kind: Schema.String,
+    definitionName: Schema.String,
+    definitionVersion: DefinitionVersionSchema,
+    /** In the payload, not the envelope: an envelope `effectId` would complete the effect. */
+    effectId: Schema.String,
   }),
   'run.forked': Schema.Struct({
     sourceRunId: Schema.String,
@@ -156,6 +166,7 @@ export const PROTOCOL_TYPES = [
   'runtime.run.started',
   'runtime.run.completed',
   'runtime.run.cancelled',
+  'runtime.run.launched',
   'runtime.run.forked',
   'runtime.fork.elided',
   'runtime.thread.started',
@@ -192,6 +203,9 @@ export function isProtocolType(type: string): type is ProtocolEventType {
 }
 
 export type RunStartedPayload = Schema.Schema.Type<(typeof protocolCatalog.entries)['run.started']>
+export type RunLaunchedPayload = Schema.Schema.Type<
+  (typeof protocolCatalog.entries)['run.launched']
+>
 export type RunCompletedPayload = Schema.Schema.Type<
   (typeof protocolCatalog.entries)['run.completed']
 >
