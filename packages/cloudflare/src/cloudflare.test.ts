@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite'
-import { describe, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, setSystemTime, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
@@ -624,7 +624,7 @@ describe('schedule durable objects', () => {
     const pulse = defineSchedule({
       name: 'pulse',
       target: flow,
-      spec: every(20),
+      spec: every(60_000),
     })
 
     class PulseObject extends LoomsDurableObject {
@@ -650,10 +650,15 @@ describe('schedule durable objects', () => {
     })
 
     const startedThread = scheduleThreadOf(await pulseObject.getRun())
-    const waitMs = Math.max(0, (startedThread.nextAt ?? 0) - Date.now()) + 20
-    await Bun.sleep(waitMs)
     pulseStorage.resetWrites()
-    await pulseObject.alarm()
+    setSystemTime((startedThread.nextAt ?? 0) + 1)
+
+    try {
+      await pulseObject.alarm()
+    } finally {
+      setSystemTime()
+    }
+
     expect(pulseStorage.writes()).toBeGreaterThan(0)
     expect(pulseStorage.writes()).toBeLessThanOrEqual(8)
     expect(pulseStorage.alarmAt()).not.toBeNull()
