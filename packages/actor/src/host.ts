@@ -2,16 +2,24 @@ import { Data, Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
+  EventInput,
   EventStore,
   EventStoreTrimCoverage,
+  RunLauncher,
   RunState,
   SnapshotStore,
 } from '@looms/core'
-import { EventStoreTag } from '@looms/core'
-import { createTimeoutScheduler, isLoomsApiPath, type Authorize } from '@looms/runtime'
+import { createRemoteRunLauncher, EventStoreTag } from '@looms/core'
+import {
+  createTimeoutScheduler,
+  isLoomsApiPath,
+  type Authorize,
+  type StartResult,
+  type StartRunArgs,
+} from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
-import { crossRunResponse, resolveRunTarget, RunTargetError } from './routing'
+import { crossRunResponse, definitionsResponse, resolveRunTarget, RunTargetError } from './routing'
 
 class ActorWakeError extends Data.TaggedError('ActorWakeError')<{
   readonly cause: unknown
@@ -66,6 +74,14 @@ export interface LocalActorHost<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   getCell(runId: string): Promise<ActorCell<TModules>>
+  readonly launcher: RunLauncher
+  startRun(args: StartRunArgs): Promise<StartResult>
+  signal(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string },
+  ): Promise<RunState>
+  getRun(runId: string): Promise<RunState>
   fetch(req: Request): Promise<Response | null>
   dispose(): Promise<void>
 }
@@ -80,7 +96,14 @@ export function createLocalActorHost<
   const cells = new Map<string, Promise<ActorCell<TModules>>>()
   const rescanTimers = options.rescanTimers !== false
 
-  const getCell = (runId: string): Promise<ActorCell<TModules>> => {
+  let getCell: (runId: string) => Promise<ActorCell<TModules>>
+
+  const launcher = createRemoteRunLauncher({
+    launch: (runId, args) => getCell(runId).then((cell) => cell.launch(args)),
+    status: (runId) => getCell(runId).then((cell) => cell.status()),
+  })
+
+  getCell = (runId: string): Promise<ActorCell<TModules>> => {
     const existing = cells.get(runId)
 
     if (existing) {
@@ -116,6 +139,7 @@ export function createLocalActorHost<
           maxWakeIterations: options.maxWakeIterations,
           trimAfterSnapshot: options.trimAfterSnapshot,
           authorize: options.authorize,
+          launcher,
         })
 
         wake = () => cell.wake()
@@ -137,6 +161,19 @@ export function createLocalActorHost<
 
   return {
     getCell,
+    launcher,
+    startRun: (args) => {
+      const runId = args.runId
+
+      if (!runId) {
+        return Promise.reject(new Error('LocalActorHost.startRun requires runId'))
+      }
+
+      return getCell(runId).then((cell) => cell.startRun(args))
+    },
+    signal: (runId, events, signalOptions) =>
+      getCell(runId).then((cell) => cell.signal(events, signalOptions)),
+    getRun: (runId) => getCell(runId).then((cell) => cell.getRun()),
 
     fetch: (req: Request): Promise<Response | null> => {
       const url = new URL(req.url)
@@ -147,6 +184,12 @@ export function createLocalActorHost<
 
       if (url.pathname === '/health') {
         return Promise.resolve(Response.json({ ok: true }))
+      }
+
+      const definitions = definitionsResponse(req, options.modules)
+
+      if (definitions) {
+        return Promise.resolve(definitions)
       }
 
       const unsupported = crossRunResponse(req, 'the actor host')

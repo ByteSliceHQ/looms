@@ -18,6 +18,7 @@ import {
   wait,
   type JsonValue,
 } from '@swirls/looms/core'
+import { cron, defineSchedule } from '@swirls/looms/schedule'
 import { defineWorkflow } from '@swirls/looms/workflow'
 
 import { refund, triageRefund } from './refunds'
@@ -451,6 +452,25 @@ export const assistantSession = defineAgentSession({
   idleTimeoutMs: 30 * 60 * 1_000,
 })
 
+export const pulse = defineWorkflow({
+  name: 'pulse',
+  description: 'Records the instant a schedule fired',
+  nodes: [
+    {
+      id: 'record',
+      run: (ctx) => ctx.input ?? null,
+    },
+  ],
+})
+
+export const pulseSchedule = defineSchedule({
+  name: 'pulse-schedule',
+  description: 'Starts pulse every five minutes',
+  target: pulse,
+  spec: cron('*/5 * * * *', { tz: 'UTC' }),
+  input: ({ at }) => ({ at }),
+})
+
 export const definitions = [
   echo,
   greeter,
@@ -464,4 +484,6 @@ export const definitions = [
   assistant,
   sessionResponder,
   assistantSession,
+  pulse,
+  pulseSchedule,
 ] as const

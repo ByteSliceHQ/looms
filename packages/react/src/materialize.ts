@@ -2,6 +2,7 @@ import {
   completedRunStatus,
   isJsonObject,
   isJsonString,
+  readRunLaunchSource,
   type EventEnvelope,
   type JsonValue,
   type RunStatus,
@@ -27,6 +28,7 @@ function setRunStatus(tables: MaterializedTables, runId: string, status: RunStat
     rootThreadId: existing?.rootThreadId ?? null,
     kind: existing?.kind ?? null,
     definitionName: existing?.definitionName ?? null,
+    launchedBy: existing?.launchedBy ?? null,
   })
 }
 
@@ -53,6 +55,7 @@ export function materializeEvents(
           rootThreadId,
           kind: readString(payload, 'kind') ?? existing?.kind ?? null,
           definitionName: readString(payload, 'definitionName') ?? existing?.definitionName ?? null,
+          launchedBy: readRunLaunchSource(payload.launchedBy) ?? existing?.launchedBy ?? null,
         }
 
         tables.runs.set(event.runId, next)

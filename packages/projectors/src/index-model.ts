@@ -1,6 +1,11 @@
 import { Predicate } from 'effect'
 
-import { completedRunStatus, type EventEnvelope, type JsonValue } from '@looms/core'
+import {
+  completedRunStatus,
+  readRunLaunchSource,
+  type EventEnvelope,
+  type JsonValue,
+} from '@looms/core'
 
 import type { Projector } from './projector'
 
@@ -12,6 +17,12 @@ export interface ActorIndexRow {
   status: string | null
   definitionName: string | null
   parentActorId: string | null
+  /** On a run row: the run whose effect launched this one. */
+  launchedByRunId: string | null
+  /** On a run row: the effect, in `launchedByRunId`, that launched this one. */
+  launchedByEffectId: string | null
+  /** On a run row: the root run of its launch chain. */
+  correlationId: string | null
   updatedAt: number
 }
 
@@ -32,6 +43,9 @@ export type IndexOp =
       status: string | null
       definitionName: string | null
       parentActorId: string | null
+      launchedByRunId: string | null
+      launchedByEffectId: string | null
+      correlationId: string | null
       updatedAt: number
     }
   | {
@@ -60,6 +74,7 @@ export type IndexOp =
 export interface IndexBackend {
   applyOps: (ops: ReadonlyArray<IndexOp>) => Promise<void>
   getActor: (runId: string, actorId: string) => Promise<ActorIndexRow | null>
+  listLaunched: (runId: string) => Promise<ActorIndexRow[]>
   listReviews: (runId?: string) => Promise<ReviewIndexRow[]>
   init?: () => Promise<void>
   dispose?: () => Promise<void>
@@ -68,6 +83,8 @@ export interface IndexBackend {
 export interface IndexProjector extends Projector {
   /** The run's row, or one of its threads when `actorId` is given. */
   getActor: (runId: string, actorId?: string) => Promise<ActorIndexRow | null>
+  /** Rows of the runs that effects in `runId` launched. */
+  listLaunched: (runId: string) => Promise<ActorIndexRow[]>
   listReviews: (runId?: string) => Promise<ReviewIndexRow[]>
 }
 
@@ -90,7 +107,9 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
   const actorId = readString(payload, 'threadId') ?? event.threadId ?? runId
 
   switch (event.type) {
-    case 'runtime.run.started':
+    case 'runtime.run.started': {
+      const launchedBy = readRunLaunchSource(payload.launchedBy)
+
       return [
         {
           type: 'upsertActor',
@@ -100,9 +119,14 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
           status: 'running',
           definitionName: readString(payload, 'definitionName') ?? null,
           parentActorId: null,
+          launchedByRunId: launchedBy?.runId ?? null,
+          launchedByEffectId: launchedBy?.effectId ?? null,
+          correlationId: event.correlationId ?? null,
           updatedAt: event.ts,
         },
       ]
+    }
+
     case 'runtime.thread.started':
       return [
         {
@@ -113,6 +137,9 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
           status: 'running',
           definitionName: readString(payload, 'definitionName') ?? null,
           parentActorId: readString(payload, 'parentThreadId') ?? null,
+          launchedByRunId: null,
+          launchedByEffectId: null,
+          correlationId: null,
           updatedAt: event.ts,
         },
       ]
@@ -173,7 +200,7 @@ export function indexOpsFor(event: EventEnvelope): IndexOp[] {
 export function createIndexProjector(
   name: string,
   backend: IndexBackend,
-  version = '2',
+  version = '3',
 ): IndexProjector {
   return {
     name,
@@ -185,6 +212,7 @@ export function createIndexProjector(
       return ops.length === 0 ? Promise.resolve() : backend.applyOps(ops)
     },
     getActor: (runId, actorId) => backend.getActor(runId, actorId ?? runId),
+    listLaunched: (runId) => backend.listLaunched(runId),
     listReviews: (runId) => backend.listReviews(runId),
   }
 }

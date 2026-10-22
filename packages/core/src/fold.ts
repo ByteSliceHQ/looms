@@ -3,6 +3,7 @@ import { Option, Predicate, Schema, Stream, type Effect } from 'effect'
 import { isWithdrawnError, WaitConditionSchema, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
+import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
@@ -124,6 +125,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               requestedThreadId: readString(payload, 'requestedThreadId') ?? null,
               idempotencyKey: event.idempotencyKey ?? null,
               rootThreadId,
+              launchedBy: readRunLaunchSource(payload.launchedBy),
+              correlationId: event.correlationId ?? null,
             }
           : null
 
@@ -461,6 +464,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       return next
     }
 
+    case 'runtime.run.launched':
     case 'runtime.snapshot.taken':
     case 'runtime.thread.cancel.requested':
     case 'runtime.timer.set':
@@ -558,7 +562,7 @@ function reconcileEffects(
 }
 
 function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
-  const threadId = event.threadId
+  const threadId = event.threadId ?? (event.origin.type === 'external' ? state.rootThreadId : null)
 
   if (!threadId) {
     return state
@@ -591,7 +595,36 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
 
   let next = putThread(state, { ...record, state: nextState })
   next = reconcileEffects(next, threadId, event, enabled)
+
+  if (definition.forgetsCompletedEffects) {
+    next = forgetCompletedEffects(next, threadId, enabled)
+  }
+
   return next
+}
+
+/** Drop completed effect ids this thread no longer returns from `effects()`. */
+function forgetCompletedEffects(
+  state: RunState,
+  threadId: string,
+  enabled: readonly RuntimeEffect[],
+): RunState {
+  const enabledIds = new Set(
+    enabled.flatMap((effect) => {
+      const effectId = stableEffectId(threadId, effect)
+      return effectId === undefined ? [] : [effectId]
+    }),
+  )
+
+  const prefix = `${threadId}:`
+
+  const completedEffectIds = state.completedEffectIds.filter(
+    (effectId) => !effectId.startsWith(prefix) || enabledIds.has(effectId),
+  )
+
+  return completedEffectIds.length === state.completedEffectIds.length
+    ? state
+    : { ...state, completedEffectIds }
 }
 
 function failUnhandledEffect(

@@ -197,7 +197,11 @@ export function DebuggerShell({
   endpoint?: string
 }) {
   return (
-    <DebuggerProvider endpoint={endpoint} plugins={plugins}>
+    <DebuggerProvider
+      endpoint={endpoint}
+      plugins={plugins}
+      openRun={(runId, target) => onSelectionChange({ run: runId, seq: target?.seq })}
+    >
       <DebuggerFrame selection={selection} onSelectionChange={onSelectionChange} />
     </DebuggerProvider>
   )

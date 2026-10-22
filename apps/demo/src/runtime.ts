@@ -3,6 +3,7 @@ import { approval } from '@swirls/looms/approval'
 import type { EventsOf } from '@swirls/looms/core'
 import { evaluator, type EvaluatorAdapter } from '@swirls/looms/evaluator'
 import '@swirls/looms/react'
+import { schedule } from '@swirls/looms/schedule'
 import { workflow } from '@swirls/looms/workflow'
 
 import { definitions } from './definitions'
@@ -31,6 +32,7 @@ export function demoModules(
       ],
     }),
     workflow({ definitions: definitions.filter((d) => d.kind === 'workflow') }),
+    schedule({ definitions: definitions.filter((d) => d.kind === 'schedule') }),
     evaluator({
       definitions: definitions.filter((d) => d.kind === 'evaluator'),
       evaluator: options.evaluator,

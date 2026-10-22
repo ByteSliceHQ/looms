@@ -26,6 +26,9 @@ function applyOp(
         status: op.status,
         definitionName: op.definitionName,
         parentActorId: op.parentActorId,
+        launchedByRunId: op.launchedByRunId,
+        launchedByEffectId: op.launchedByEffectId,
+        correlationId: op.correlationId,
         updatedAt: op.updatedAt,
       })
 
@@ -42,6 +45,9 @@ function applyOp(
         status: op.status,
         definitionName: existing?.definitionName ?? null,
         parentActorId: existing?.parentActorId ?? null,
+        launchedByRunId: existing?.launchedByRunId ?? null,
+        launchedByEffectId: existing?.launchedByEffectId ?? null,
+        correlationId: existing?.correlationId ?? null,
         updatedAt: op.updatedAt,
       })
 
@@ -94,6 +100,10 @@ export function memory(): IndexProjector {
       }),
     getActor: (runId, actorId) =>
       runProjectorSync('memory', () => actors.get(rowKey(runId, actorId)) ?? null),
+    listLaunched: (runId) =>
+      runProjectorSync('memory', () =>
+        [...actors.values()].filter((row) => row.launchedByRunId === runId),
+      ),
     listReviews: (runId) =>
       runProjectorSync('memory', () => {
         const rows = [...reviews.values()]

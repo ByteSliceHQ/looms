@@ -21,6 +21,7 @@ const modules = [
   'react',
   'runtime',
   's2',
+  'schedule',
   'testing',
   'workflow',
 ] as const

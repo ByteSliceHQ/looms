@@ -12,6 +12,8 @@ import type {
   EventStoreFencedError,
   EventStoreTag,
   EventStoreTrimCoverage,
+  RunLauncher,
+  RunLaunchSource,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -72,6 +74,13 @@ export interface CreateRuntimeOptions<
    * Defaults to an in-process Effect fiber scheduler.
    */
   readonly scheduler?: WakeScheduler
+  /**
+   * Starts runs from effect handlers. Required for schedules on an actor or Durable Object host.
+   * Single-store `createLooms` installs one that launches into its own store.
+   */
+  readonly launcher?: RunLauncher
+  /** Install a launcher that starts runs in this runtime's store. `createLooms` sets this. */
+  readonly localLauncher?: boolean
   readonly worker?: EffectWorker
   /** Failure-isolated, framework-neutral operational event sink. */
   readonly observer?: RuntimeObserver
@@ -102,6 +111,10 @@ export interface StartRunArgs {
   runId?: string
   threadId?: string
   idempotencyKey?: string
+  /** The effect that launched this run. The runtime sets it on launches made from effects. */
+  launchedBy?: RunLaunchSource
+  /** Recorded on `runtime.run.started` to group related runs. */
+  correlationId?: string
 }
 
 export interface StartResult {
@@ -132,6 +145,13 @@ export interface LoomsRuntime<
   readonly modules: TModules
   readonly registry: ComposedRegistry
   startRun(
+    args: StartRunArgs,
+  ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  /**
+   * Commit a run's start, then schedule a wake instead of waiting for it. A duplicate start with
+   * the same identity is a no-op aside from the scheduled wake.
+   */
+  launchRun(
     args: StartRunArgs,
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   signal(

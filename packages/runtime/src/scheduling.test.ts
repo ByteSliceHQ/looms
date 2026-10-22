@@ -72,7 +72,7 @@ describe('createLooms runtime', () => {
       nodes: [
         {
           id: 'step1',
-          run: (ctx) => ctx.sleep(30),
+          run: (ctx) => ctx.sleep(300),
         },
         {
           id: 'step2',

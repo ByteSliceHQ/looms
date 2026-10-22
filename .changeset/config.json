@@ -21,6 +21,7 @@
     "@looms/projectors",
     "@looms/react",
     "@looms/runtime",
+    "@looms/schedule",
     "@looms/s2",
     "@looms/testing",
     "@looms/workflow",

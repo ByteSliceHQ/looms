@@ -1,9 +1,11 @@
-import { X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { asJson, type JsonValue, type ReplayStep } from '@looms/core'
+import { asJson, readRunLaunchSource, type JsonValue, type ReplayStep } from '@looms/core'
 
+import type { OpenRunTarget } from '../context'
 import type { DebuggerEvent, ReplayLoader } from '../contracts'
+import { jsonFields, jsonText } from '../lib/payload'
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
@@ -33,17 +35,50 @@ function StepJson({
   )
 }
 
+interface LinkedRun {
+  readonly label: string
+  readonly runId: string
+  readonly target?: OpenRunTarget
+}
+
+/** The other run a launch event points at: the run it launched, or the run that launched it. */
+function linkedRun(event: DebuggerEvent): LinkedRun | undefined {
+  const payload = jsonFields(event.payload)
+
+  if (event.type === 'runtime.run.launched') {
+    const runId = jsonText(payload.runId)
+    return runId ? { label: 'Open launched run', runId } : undefined
+  }
+
+  if (event.type === 'runtime.run.started') {
+    const source = readRunLaunchSource(payload.launchedBy)
+
+    return source
+      ? {
+          label: 'Open launching run',
+          runId: source.runId,
+          target: { seq: source.causationSeq },
+        }
+      : undefined
+  }
+
+  return undefined
+}
+
 export function EventInspector({
   event,
   loadReplayStep,
   onClose,
+  onOpenRun,
 }: {
   event: DebuggerEvent
   loadReplayStep?: ReplayLoader
   onClose?: () => void
+  onOpenRun?: (runId: string, target?: OpenRunTarget) => void
 }) {
   const [step, setStep] = useState<ReplayStep | null>(null)
   const canReplay = loadReplayStep !== undefined
+  const link = onOpenRun ? linkedRun(event) : undefined
 
   useEffect(() => {
     if (!loadReplayStep) {
@@ -72,6 +107,17 @@ export function EventInspector({
             #{event.seq}
           </span>
           <span className="min-w-0 flex-1 truncate font-mono text-xs">{event.type}</span>
+          {link && onOpenRun ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              title={link.runId}
+              onClick={() => onOpenRun(link.runId, link.target)}
+            >
+              <ExternalLink />
+              {link.label}
+            </Button>
+          ) : null}
           <TabsList>
             <TabsTrigger value="payload">Payload</TabsTrigger>
             <TabsTrigger value="envelope">Envelope</TabsTrigger>

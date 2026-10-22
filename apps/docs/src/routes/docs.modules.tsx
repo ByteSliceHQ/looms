@@ -75,6 +75,16 @@ function Modules() {
           </tr>
           <tr>
             <td>
+              <code>@swirls/looms/schedule</code>
+            </td>
+            <td>Cron, interval, or one-shot fires</td>
+            <td>
+              <code>defineSchedule</code>, <code>ensureSchedule</code>, <code>pause</code> /{' '}
+              <code>resume</code> / <code>retire</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
               <code>@swirls/looms/evaluator</code>
             </td>
             <td>Typed questions that branch a run</td>

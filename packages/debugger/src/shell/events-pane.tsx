@@ -28,7 +28,7 @@ export function EventsPane({
   onSelectSeq: (seq: number | undefined) => void
   onClearThread: () => void
 }) {
-  const { client, plugins } = useDebugger()
+  const { client, plugins, openRun } = useDebugger()
   const catalog = useMemo(() => createEventCatalog(plugins), [plugins])
   const store = useRunStore(runId)
   const events = useRunEvents(store)
@@ -52,6 +52,7 @@ export function EventsPane({
       onSelectSeq={onSelectSeq}
       loadReplayStep={loadReplayStep}
       catalog={catalog}
+      onOpenRun={openRun}
     />
   )
 }
@@ -65,6 +66,7 @@ export function RunTreePane({
   threadId?: string
   onSelectThread: (threadId: string | undefined) => void
 }) {
+  const { openRun } = useDebugger()
   const store = useRunStore(runId)
   const summary = useRunSummary(store)
   const tree = useThreadTree(store)
@@ -78,6 +80,10 @@ export function RunTreePane({
       eventCounts={counts}
       selectedThread={threadId}
       onSelectThread={onSelectThread}
+      launchedBy={summary.launchedBy}
+      onOpenLauncher={
+        openRun ? (source) => openRun(source.runId, { seq: source.causationSeq }) : undefined
+      }
     />
   )
 }

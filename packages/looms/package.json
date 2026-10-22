@@ -97,6 +97,14 @@
       "types": "./dist/s2/index.d.ts",
       "import": "./dist/s2/index.js"
     },
+    "./schedule": {
+      "types": "./dist/schedule/index.d.ts",
+      "import": "./dist/schedule/index.js"
+    },
+    "./schedule/debugger": {
+      "types": "./dist/schedule/debugger/index.d.ts",
+      "import": "./dist/schedule/debugger/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
@@ -172,6 +180,7 @@
     "@looms/react": "workspace:*",
     "@looms/runtime": "workspace:*",
     "@looms/s2": "workspace:*",
+    "@looms/schedule": "workspace:*",
     "@looms/testing": "workspace:*",
     "@looms/workflow": "workspace:*",
     "@types/bun": "^1.3.9",

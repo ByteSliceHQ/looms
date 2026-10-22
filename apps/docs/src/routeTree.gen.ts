@@ -29,6 +29,7 @@ import { Route as DocsPriorArtRouteImport } from './routes/docs.prior-art'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
 import { Route as DocsReliabilityRouteImport } from './routes/docs.reliability'
+import { Route as DocsSchedulesRouteImport } from './routes/docs.schedules'
 import { Route as DocsSecurityRouteImport } from './routes/docs.security'
 import { Route as DocsTestingRouteImport } from './routes/docs.testing'
 import { Route as DocsTroubleshootingRouteImport } from './routes/docs.troubleshooting'
@@ -140,6 +141,11 @@ const DocsReliabilityRoute = DocsReliabilityRouteImport.update({
   path: '/reliability',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsSchedulesRoute = DocsSchedulesRouteImport.update({
+  id: '/schedules',
+  path: '/schedules',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsSecurityRoute = DocsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -214,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
@@ -244,6 +251,7 @@ export interface FileRoutesByTo {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
@@ -311,6 +320,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
     | '/docs/troubleshooting'
@@ -341,6 +351,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
     | '/docs/troubleshooting'
@@ -373,6 +384,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
     | '/docs/troubleshooting'
@@ -534,6 +546,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsReliabilityRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/schedules': {
+      id: '/docs/schedules'
+      path: '/schedules'
+      fullPath: '/docs/schedules'
+      preLoaderRoute: typeof DocsSchedulesRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/security': {
       id: '/docs/security'
       path: '/security'
@@ -644,6 +663,7 @@ interface DocsRouteChildren {
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
   DocsReliabilityRoute: typeof DocsReliabilityRoute
+  DocsSchedulesRoute: typeof DocsSchedulesRoute
   DocsSecurityRoute: typeof DocsSecurityRoute
   DocsTestingRoute: typeof DocsTestingRoute
   DocsTroubleshootingRoute: typeof DocsTroubleshootingRoute
@@ -669,6 +689,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
   DocsReliabilityRoute: DocsReliabilityRoute,
+  DocsSchedulesRoute: DocsSchedulesRoute,
   DocsSecurityRoute: DocsSecurityRoute,
   DocsTestingRoute: DocsTestingRoute,
   DocsTroubleshootingRoute: DocsTroubleshootingRoute,

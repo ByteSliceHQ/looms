@@ -2,6 +2,7 @@ import { Effect, Predicate } from 'effect'
 
 import {
   createEvent,
+  deferredUntil,
   isPrimitiveEffect,
   type ComposedRegistry,
   type EffectExecutionRecord,
@@ -105,6 +106,12 @@ export function planWorkerEffects(input: {
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
   return input.state.outstandingEffects
     .filter((item) => {
+      const dueAt = deferredUntil(item.effect)
+
+      if (dueAt !== undefined && dueAt > input.now + 5) {
+        return false
+      }
+
       const execution = input.state.effectExecutions[item.effectId]
 
       if (!isWorkerEffect({ ...input, item, execution })) {

@@ -3,6 +3,7 @@ import createPostgresClient, { type Sql } from 'postgres'
 
 import {
   createIndexProjector,
+  type ActorIndexRow,
   type IndexBackend,
   type IndexOp,
   type IndexProjector,
@@ -21,6 +22,9 @@ type PostgresActorRow = {
   status: string | null
   definition_name: string | null
   parent_actor_id: string | null
+  launched_by_run_id: string | null
+  launched_by_effect_id: string | null
+  correlation_id: string | null
   updated_at: Date
 }
 
@@ -36,6 +40,21 @@ function ownsClient(options: PostgresProjectorOptions): options is { url: string
   return 'url' in options
 }
 
+function actorFromRow(row: PostgresActorRow): ActorIndexRow {
+  return {
+    runId: row.run_id,
+    actorId: row.actor_id,
+    kind: row.kind,
+    status: row.status,
+    definitionName: row.definition_name,
+    parentActorId: row.parent_actor_id,
+    launchedByRunId: row.launched_by_run_id,
+    launchedByEffectId: row.launched_by_effect_id,
+    correlationId: row.correlation_id,
+    updatedAt: row.updated_at.getTime(),
+  }
+}
+
 function applyOp(
   sql: (strings: TemplateStringsArray, ...values: any[]) => PromiseLike<void>,
   op: IndexOp,
@@ -45,13 +64,22 @@ function applyOp(
   switch (op.type) {
     case 'upsertActor':
       return sql`
-        INSERT INTO looms_run_actors (run_id, actor_id, kind, status, definition_name, parent_actor_id, updated_at)
-        VALUES (${op.runId}, ${op.actorId}, ${op.kind}, ${op.status}, ${op.definitionName}, ${op.parentActorId}, ${date})
+        INSERT INTO looms_run_actors (
+          run_id, actor_id, kind, status, definition_name, parent_actor_id,
+          launched_by_run_id, launched_by_effect_id, correlation_id, updated_at
+        )
+        VALUES (
+          ${op.runId}, ${op.actorId}, ${op.kind}, ${op.status}, ${op.definitionName}, ${op.parentActorId},
+          ${op.launchedByRunId}, ${op.launchedByEffectId}, ${op.correlationId}, ${date}
+        )
         ON CONFLICT (run_id, actor_id) DO UPDATE SET
           kind = EXCLUDED.kind,
           status = EXCLUDED.status,
           definition_name = EXCLUDED.definition_name,
           parent_actor_id = EXCLUDED.parent_actor_id,
+          launched_by_run_id = EXCLUDED.launched_by_run_id,
+          launched_by_effect_id = EXCLUDED.launched_by_effect_id,
+          correlation_id = EXCLUDED.correlation_id,
           updated_at = EXCLUDED.updated_at
       `
     case 'setActorStatus':
@@ -104,23 +132,20 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
       runProjectorPromise(
         'postgres',
         () => sql<PostgresActorRow[]>`
-          SELECT run_id, actor_id, kind, status, definition_name, parent_actor_id, updated_at
-          FROM looms_run_actors WHERE run_id = ${runId} AND actor_id = ${actorId}
+          SELECT * FROM looms_run_actors WHERE run_id = ${runId} AND actor_id = ${actorId}
         `,
       ).then((rows) => {
         const row = rows[0]
-        return row
-          ? {
-              runId: row.run_id,
-              actorId: row.actor_id,
-              kind: row.kind,
-              status: row.status,
-              definitionName: row.definition_name,
-              parentActorId: row.parent_actor_id,
-              updatedAt: row.updated_at.getTime(),
-            }
-          : null
+        return row ? actorFromRow(row) : null
       }),
+    listLaunched: (runId) =>
+      runProjectorPromise(
+        'postgres',
+        () => sql<PostgresActorRow[]>`
+          SELECT * FROM looms_run_actors
+          WHERE launched_by_run_id = ${runId} AND actor_id = run_id ORDER BY updated_at
+        `,
+      ).then((rows) => rows.map(actorFromRow)),
     listReviews: (runId) =>
       runProjectorPromise('postgres', () =>
         runId

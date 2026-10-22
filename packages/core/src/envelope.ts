@@ -17,6 +17,10 @@ export const EventOriginSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('system'),
   }),
+  Schema.Struct({
+    type: Schema.Literal('run'),
+    runId: Schema.String,
+  }),
 ])
 
 export type EventOrigin = Schema.Schema.Type<typeof EventOriginSchema>

@@ -61,6 +61,14 @@ export function assertSameDurableStart(
     mismatches.push('idempotencyKey')
   }
 
+  if (canonicalJson(existing.launchedBy ?? null) !== canonicalJson(requested.launchedBy ?? null)) {
+    mismatches.push('launchedBy')
+  }
+
+  if (existing.correlationId !== requested.correlationId) {
+    mismatches.push('correlationId')
+  }
+
   return mismatches.length > 0
     ? Effect.fail(new StartRunConflictError(runId, requested, existing, mismatches))
     : Effect.succeed(existing.rootThreadId)

@@ -17,6 +17,7 @@ import {
   type SnapshotStore,
   type ProjectionDefinition,
   type ReplayStep,
+  type RunLauncher,
   type RunState,
 } from '@looms/core'
 
@@ -60,6 +61,8 @@ export interface CreateLoomsOptions {
   readonly rescanTimers?: boolean
   /** Pluggable wake scheduler for timer waits. Defaults to an in-process Effect fiber scheduler. */
   readonly scheduler?: WakeScheduler
+  /** Starts runs from effect handlers. Defaults to launching into this runtime's own store. */
+  readonly launcher?: RunLauncher
   readonly worker?: EffectWorker
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
@@ -96,6 +99,16 @@ export interface Looms {
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
   startRun(args: {
+    kind: string
+    definitionName: string
+    definitionVersion?: string
+    input?: JsonValue
+    runId?: string
+    threadId?: string
+    idempotencyKey?: string
+  }): Promise<StartResult>
+  /** Commit a run's start and schedule a wake without waiting for it. */
+  launchRun(args: {
     kind: string
     definitionName: string
     definitionVersion?: string
@@ -186,6 +199,8 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             trimAfterSnapshot: options.trimAfterSnapshot,
             runCacheSize: options.runCacheSize,
             scheduler: options.scheduler,
+            launcher: options.launcher,
+            localLauncher: options.launcher === undefined,
             worker: options.worker,
             observer: options.observer,
           })
@@ -235,6 +250,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     },
     ready: () => getInit().then(({ store, runtime }) => ({ store, runtime })),
     startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
+    launchRun: (args) => runEffect((i) => i.runtime.launchRun(args)),
     start: (definition, input, startOpts) =>
       runEffect((i) =>
         i.runtime.startRun({

@@ -12,12 +12,15 @@ import {
   EventStoreTag,
   foldRun,
   isRunTerminal,
+  unavailableRunLauncher,
   planFork,
   project,
   replayTo,
   summarizeRun,
   type AnyRuntimeModule,
   type EventInput,
+  type EventOrigin,
+  type RunLauncher,
   type RunState,
   type SignalInterruptRule,
   type InvalidEventError,
@@ -31,7 +34,7 @@ import {
   RunNotFoundError,
   RunTerminalError,
   RuntimeExecutionError,
-  type StartRunConflictError,
+  StartRunConflictError,
 } from './errors'
 import {
   admitExternalEvents,
@@ -77,7 +80,7 @@ export type {
   WakeError,
 } from './types'
 export type { WorkerCallback, WorkerCallbackInput } from '@looms/core'
-import type { CreateRuntimeOptions, LoomsRuntime } from './types'
+import type { CreateRuntimeOptions, LoomsRuntime, StartRunArgs } from './types'
 
 function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
@@ -111,6 +114,10 @@ const DEFAULT_MAX_PENDING_RUN_OPERATIONS = 256
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
 ): LoomsRuntime<TModules> {
+  if (options.localLauncher && !options.store && !options.launcher) {
+    throw new Error('localLauncher requires options.store')
+  }
+
   const registry = composeModules(options.modules)
   const registeredDefinitions = registry.definitions
 
@@ -180,7 +187,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ...input,
               idempotencyKey: input.idempotencyKey ?? signalKey,
             })),
-            { origin: { type: 'external' } },
+            { origin: { type: 'external' }, threadId: current.state.rootThreadId },
           )
 
           if (isRunTerminal(current.state)) {
@@ -212,7 +219,115 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       return committed.value
     })
 
+  const commitStart = (args: StartRunArgs, runId: string) =>
+    Effect.gen(function* () {
+      const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
+
+      if (!definitions.get(definitionKey(args.kind, args.definitionName, definitionVersion))) {
+        return yield* new UnknownDefinitionError(args.kind, args.definitionName, definitionVersion)
+      }
+
+      const store = yield* EventStoreTag
+      observe({ type: 'run.start', runId, at: currentTimeMillis() })
+
+      const threadId = args.threadId ?? createThreadId()
+
+      const startedEvents = yield* threadStartedEvents(definitions, {
+        kind: args.kind,
+        definitionName: args.definitionName,
+        definitionVersion,
+        input: args.input ?? null,
+        threadId,
+        parentThreadId: null,
+      })
+
+      const started = startedEvents[0]
+
+      const startedInput =
+        started && Predicate.isObject(started.payload)
+          ? (started.payload.input ?? null)
+          : (args.input ?? null)
+
+      const requestedIdentity = {
+        kind: args.kind,
+        definitionName: args.definitionName,
+        definitionVersion,
+        input: startedInput,
+        requestedThreadId: args.threadId ?? null,
+        idempotencyKey: args.idempotencyKey ?? null,
+        launchedBy: args.launchedBy ?? null,
+        correlationId: args.correlationId ?? null,
+      }
+
+      const origin: EventOrigin = args.launchedBy
+        ? { type: 'run', runId: args.launchedBy.runId }
+        : { type: 'system' }
+
+      const startPayload = {
+        rootThreadId: threadId,
+        kind: args.kind,
+        definitionName: args.definitionName,
+        definitionVersion,
+        input: startedInput,
+        requestedThreadId: args.threadId ?? null,
+      }
+
+      const startedPayload = args.launchedBy
+        ? { ...startPayload, launchedBy: args.launchedBy }
+        : startPayload
+
+      const committed = yield* commit(
+        store,
+        runId,
+        (
+          existing,
+        ): Effect.Effect<
+          CommitPlan<{ readonly threadId: string; readonly state: RunState }>,
+          RuntimeExecutionError | StartRunConflictError | InvalidEventError
+        > =>
+          existing.seq > 0
+            ? assertSameDurableStart(runId, existing.state, requestedIdentity).pipe(
+                Effect.map((rootThreadId) => ({
+                  events: [],
+                  value: { threadId: rootThreadId, state: existing.state },
+                })),
+              )
+            : validateAndCreateEvents(
+                registry.catalogs,
+                runId,
+                [
+                  {
+                    type: 'runtime.run.started',
+                    payload: startedPayload,
+                    threadId: null,
+                    idempotencyKey: args.idempotencyKey,
+                  },
+                  ...startedEvents,
+                ].map((event) => ({ ...event, correlationId: args.correlationId })),
+                { origin },
+              ).pipe(
+                Effect.map((batch) => ({
+                  events: batch,
+                  value: {
+                    threadId,
+                    state: foldRun(batch, registry, { runId, initial: existing.state }),
+                  },
+                  idempotencyKey: args.idempotencyKey ? `start:${args.idempotencyKey}` : undefined,
+                })),
+              ),
+      )
+
+      if (!committed.append?.deduplicated) {
+        return committed.value
+      }
+
+      const durable = yield* loadCursor(store, runId)
+      const rootThreadId = yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
+      return { threadId: rootThreadId, state: durable.state }
+    })
+
   let scheduler: WakeScheduler
+  let launcher: RunLauncher
   let runtime: LoomsRuntime<TModules>
 
   const wakeEngine = createWakeEngine({
@@ -226,6 +341,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     worker: options.worker,
     observer: options.observer,
     scheduler: () => scheduler,
+    launcher: () => launcher,
   })
 
   const workerCallbacks = createWorkerCallbacks({
@@ -403,109 +519,36 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     startRun: (args) => {
       const runId = args.runId ?? createRunId()
 
-      return withRunIngress(
-        runId,
-        Effect.gen(function* () {
-          const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
-
-          if (!definitions.get(definitionKey(args.kind, args.definitionName, definitionVersion))) {
-            return yield* new UnknownDefinitionError(
-              args.kind,
-              args.definitionName,
-              definitionVersion,
-            )
-          }
-
-          const store = yield* EventStoreTag
-          observe({ type: 'run.start', runId, at: currentTimeMillis() })
-
-          const threadId = args.threadId ?? createThreadId()
-
-          const startedEvents = yield* threadStartedEvents(definitions, {
-            kind: args.kind,
-            definitionName: args.definitionName,
-            definitionVersion,
-            input: args.input ?? null,
-            threadId,
-            parentThreadId: null,
-          })
-
-          const started = startedEvents[0]
-
-          const startedInput =
-            started && Predicate.isObject(started.payload)
-              ? (started.payload.input ?? null)
-              : (args.input ?? null)
-
-          const requestedIdentity = {
-            kind: args.kind,
-            definitionName: args.definitionName,
-            definitionVersion,
-            input: startedInput,
-            requestedThreadId: args.threadId ?? null,
-            idempotencyKey: args.idempotencyKey ?? null,
-          }
-
-          const committed = yield* commit(
-            store,
-            runId,
-            (
-              existing,
-            ): Effect.Effect<
-              CommitPlan<string>,
-              RuntimeExecutionError | StartRunConflictError | InvalidEventError
-            > =>
-              existing.seq > 0
-                ? assertSameDurableStart(runId, existing.state, requestedIdentity).pipe(
-                    Effect.map((rootThreadId) => ({ events: [], value: rootThreadId })),
-                  )
-                : validateAndCreateEvents(
-                    registry.catalogs,
-                    runId,
-                    [
-                      {
-                        type: 'runtime.run.started',
-                        payload: {
-                          rootThreadId: threadId,
-                          kind: args.kind,
-                          definitionName: args.definitionName,
-                          definitionVersion,
-                          input: startedInput,
-                          requestedThreadId: args.threadId ?? null,
-                        },
-                        threadId: null,
-                        idempotencyKey: args.idempotencyKey,
-                      },
-                      ...startedEvents,
-                    ],
-                    { origin: { type: 'system' } },
-                  ).pipe(
-                    Effect.map((batch) => ({
-                      events: batch,
-                      value: threadId,
-                      idempotencyKey: args.idempotencyKey
-                        ? `start:${args.idempotencyKey}`
-                        : undefined,
-                    })),
-                  ),
-          )
-
-          if (!committed.append?.deduplicated) {
-            return committed.value
-          }
-
-          const durable = yield* loadCursor(store, runId)
-          return yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
-        }),
-      ).pipe(
-        Effect.flatMap((threadId) =>
+      return withRunIngress(runId, commitStart(args, runId)).pipe(
+        Effect.flatMap((started) =>
           runtime.wake(runId).pipe(
             Effect.map((state) => ({
               runId,
-              threadId: state.rootThreadId ?? threadId,
+              threadId: state.rootThreadId ?? started.threadId,
               state,
             })),
           ),
+        ),
+      )
+    },
+
+    launchRun: (args) => {
+      const runId = args.runId ?? createRunId()
+
+      return withRunIngress(runId, commitStart(args, runId)).pipe(
+        Effect.flatMap((started) =>
+          Effect.gen(function* () {
+            if (!isRunTerminal(started.state)) {
+              const now = yield* Clock.currentTimeMillis
+              yield* scheduler.schedule(runId, now)
+            }
+
+            return {
+              runId,
+              threadId: started.state.rootThreadId ?? started.threadId,
+              state: started.state,
+            }
+          }),
         ),
       )
     },
@@ -582,6 +625,31 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             )
         : Effect.void,
     )
+
+  const store = options.store
+
+  launcher =
+    options.launcher ??
+    (options.localLauncher && store
+      ? {
+          launch: (args) =>
+            runtime.launchRun(args).pipe(
+              Effect.provideService(EventStoreTag, store),
+              Effect.catchIf(
+                (error) => error instanceof StartRunConflictError,
+                () => Effect.void,
+              ),
+              Effect.asVoid,
+            ),
+          status: (runId) =>
+            runtime.getRun(runId).pipe(
+              Effect.provideService(EventStoreTag, store),
+              Effect.map((state) =>
+                state.rootThreadId === null ? null : { status: state.status },
+              ),
+            ),
+        }
+      : unavailableRunLauncher)
 
   return runtime
 }

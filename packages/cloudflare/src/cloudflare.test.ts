@@ -1,9 +1,11 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import { describe, expect, mock, setSystemTime, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
 import { createLocalActorHost } from '@looms/actor'
-import { emptyRunState, makeMemoryEventStore } from '@looms/core'
+import { DefinitionCatalogSchema, emptyRunState, makeMemoryEventStore } from '@looms/core'
+import { defineSchedule, ensureSchedule, every, once, schedule } from '@looms/schedule'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 // Mock cloudflare:workers for bun test runtime before importing durable-object
@@ -22,7 +24,9 @@ void mock.module('cloudflare:workers', () => ({
   },
 }))
 
-const { LoomsDurableObject } = await import('./durable-object')
+const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost } =
+  await import('./durable-object')
+
 const { durableObjectAlarms } = await import('./alarm-scheduler')
 const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
@@ -314,5 +318,352 @@ describe('@looms/cloudflare', () => {
 
     const fetchRes = await doInstance.fetch(new Request('http://localhost/health'))
     expect(fetchRes.status).toBe(200)
+  })
+})
+
+const decodeCatalog = Schema.decodeUnknownSync(DefinitionCatalogSchema)
+
+const decodeScheduleThread = Schema.decodeUnknownSync(
+  Schema.Struct({
+    fireCount: Schema.Finite,
+    retired: Schema.Boolean,
+    paused: Schema.Boolean,
+    nextAt: Schema.NullOr(Schema.Finite),
+    invalid: Schema.NullOr(Schema.String),
+  }),
+)
+
+function scheduleThreadOf(state: {
+  rootThreadId: string | null
+  threads: Record<string, { state: unknown }>
+}) {
+  const threadId = state.rootThreadId
+
+  if (!threadId) {
+    throw new Error('schedule run has no root thread')
+  }
+
+  return decodeScheduleThread(state.threads[threadId]?.state)
+}
+
+interface ObjectStorage {
+  readonly sql: { exec(query: string, ...bindings: readonly unknown[]): Iterable<unknown> }
+  transactionSync<T>(fn: () => T): T
+  getAlarm(): Promise<number | null>
+  setAlarm(at: number | Date): Promise<void>
+  deleteAlarm(): Promise<void>
+  alarmAt(): number | null
+  writes(): number
+  resetWrites(): void
+}
+
+function sqliteStorage(): ObjectStorage {
+  const db = new Database(':memory:')
+  let alarm: number | null = null
+  let counting = false
+  let writeCount = 0
+
+  const sql = {
+    exec(query: string, ...bindings: readonly unknown[]) {
+      const text = query.trim()
+
+      if (counting && /^(insert|update|delete)\b/i.test(text)) {
+        writeCount += 1
+      }
+
+      if (/^(select|pragma)\b/i.test(text)) {
+        return db.query(query).all(...bindings)
+      }
+
+      db.run(query, [...bindings])
+      return []
+    },
+  }
+
+  return {
+    sql,
+    transactionSync(fn) {
+      db.run('BEGIN')
+
+      try {
+        const result = fn()
+        db.run('COMMIT')
+        return result
+      } catch (error) {
+        db.run('ROLLBACK')
+        throw error
+      }
+    },
+    getAlarm: async () => alarm,
+    setAlarm: async (at) => {
+      if (counting) {
+        writeCount += 1
+      }
+
+      alarm = at instanceof Date ? at.getTime() : at
+    },
+    deleteAlarm: async () => {
+      if (counting) {
+        writeCount += 1
+      }
+
+      alarm = null
+    },
+    alarmAt: () => alarm,
+    writes: () => writeCount,
+    resetWrites: () => {
+      writeCount = 0
+      counting = true
+    },
+  }
+}
+
+function objectContext(name: string, storage: ObjectStorage) {
+  return {
+    id: { name, toString: () => name },
+    storage,
+  }
+}
+
+describe('schedule durable objects', () => {
+  test('launch returns before the target runs, and a duplicate alarm fires once', async () => {
+    const storages = new Map<string, ObjectStorage>()
+
+    const namespace = {
+      getByName(name: string) {
+        const existing = objects.get(name)
+
+        if (existing) {
+          return existing
+        }
+
+        const storage = sqliteStorage()
+        storages.set(name, storage)
+
+        const created = new ScheduleObject(objectContext(name, storage), {})
+        objects.set(name, created)
+        return created
+      },
+    }
+
+    const objects = new Map<string, ScheduleObject>()
+    let ran = false
+
+    const flow = defineWorkflow({
+      name: 'cf-job',
+      nodes: [
+        {
+          id: 'work',
+          run: () => {
+            ran = true
+            return { ok: true }
+          },
+        },
+      ],
+    })
+
+    const binding = defineSchedule({
+      name: 'cf-binding',
+      target: flow,
+      spec: once(1),
+    })
+
+    class ScheduleObject extends LoomsDurableObject {
+      override configure() {
+        return {
+          modules: [workflow({ definitions: [flow] }), schedule({ definitions: [binding] })],
+          launcher: durableObjectLauncher(namespace),
+        }
+      }
+    }
+
+    const target = namespace.getByName('cf-job-run')
+
+    await target.launch({
+      runId: 'cf-job-run',
+      kind: 'workflow',
+      definitionName: 'cf-job',
+    })
+
+    expect(ran).toBe(false)
+    await target.alarm()
+    expect(ran).toBe(true)
+
+    const scheduleObject = namespace.getByName('cf-schedule')
+
+    await scheduleObject.startRun({
+      runId: 'cf-schedule',
+      kind: 'schedule',
+      definitionName: 'cf-binding',
+      input: null,
+    })
+
+    const thread = scheduleThreadOf(await scheduleObject.getRun())
+
+    expect(thread.fireCount).toBe(1)
+    await scheduleObject.alarm()
+    expect(scheduleThreadOf(await scheduleObject.getRun()).fireCount).toBe(1)
+
+    const fired = await namespace.getByName('cf-schedule:fire:1').getRun()
+    expect(fired.startIdentity?.launchedBy?.runId).toBe('cf-schedule')
+    expect(fired.startIdentity?.correlationId).toBe('cf-schedule')
+  })
+
+  test('a schedule without a launcher fails with the unavailable message', async () => {
+    const binding = defineSchedule({
+      name: 'needs-launcher',
+      target: defineWorkflow({ name: 'unused-job', nodes: [{ id: 'work', run: () => null }] }),
+      spec: once(1),
+    })
+
+    class BareObject extends LoomsDurableObject {
+      override configure() {
+        return {
+          modules: [
+            workflow({
+              definitions: [
+                defineWorkflow({ name: 'unused-job', nodes: [{ id: 'work', run: () => null }] }),
+              ],
+            }),
+            schedule({ definitions: [binding] }),
+          ],
+        }
+      }
+    }
+
+    const storage = sqliteStorage()
+
+    const object = new BareObject(objectContext('bare', storage), {})
+
+    await object.startRun({
+      runId: 'bare',
+      kind: 'schedule',
+      definitionName: 'needs-launcher',
+      input: null,
+    })
+
+    const events = await object.fetch(new Request('http://localhost/runs/bare/events'))
+    expect(events.status).toBe(200)
+    expect(await events.text()).toContain('No RunLauncher')
+  })
+
+  test('ensureSchedule, retirement, definitions, and the row budget', async () => {
+    const objects = new Map<string, BudgetObject>()
+    const storages = new Map<string, ObjectStorage>()
+
+    const namespace = {
+      getByName(name: string) {
+        const existing = objects.get(name)
+
+        if (existing) {
+          return existing
+        }
+
+        const storage = sqliteStorage()
+        storages.set(name, storage)
+        const created = new BudgetObject(objectContext(name, storage), {})
+        objects.set(name, created)
+        return created
+      },
+    }
+
+    const flow = defineWorkflow({
+      name: 'budget-job',
+      nodes: [{ id: 'work', run: () => ({ ok: true }) }],
+    })
+
+    const binding = defineSchedule({
+      name: 'budget',
+      target: flow,
+      spec: every(60_000),
+    })
+
+    class BudgetObject extends LoomsDurableObject {
+      override configure() {
+        return {
+          modules: [
+            workflow({ definitions: [flow] }),
+            schedule({ definitions: [binding], minIntervalMs: 1 }),
+          ],
+          launcher: durableObjectLauncher(namespace),
+        }
+      }
+    }
+
+    const host = durableObjectScheduleHost(namespace)
+
+    expect(await ensureSchedule(host, binding, 'budget-schedule')).toBe('started')
+    expect(await ensureSchedule(host, binding, 'budget-schedule')).toBe('unchanged')
+
+    const scheduleObject = namespace.getByName('budget-schedule')
+    const storage = storages.get('budget-schedule')
+
+    if (!storage) {
+      throw new Error('missing schedule storage')
+    }
+
+    expect(storage.alarmAt()).not.toBeNull()
+
+    await scheduleObject.signal([{ type: 'schedule.retired', payload: {} }])
+    expect(storage.alarmAt()).toBeNull()
+
+    const definitions = await routeToDurableObject(
+      namespace,
+      new Request('http://localhost/definitions'),
+      {
+        modules: [
+          workflow({ definitions: [flow] }),
+          schedule({ definitions: [binding], minIntervalMs: 1 }),
+        ],
+      },
+    )
+
+    const catalog = decodeCatalog(await definitions?.json())
+    expect(catalog.definitions.some((definition) => definition.kind === 'schedule')).toBe(true)
+
+    const pulse = defineSchedule({
+      name: 'pulse',
+      target: flow,
+      spec: every(60_000),
+    })
+
+    class PulseObject extends LoomsDurableObject {
+      override configure() {
+        return {
+          modules: [
+            workflow({ definitions: [flow] }),
+            schedule({ definitions: [pulse], minIntervalMs: 1 }),
+          ],
+          launcher: durableObjectLauncher(namespace),
+        }
+      }
+    }
+
+    const pulseStorage = sqliteStorage()
+    const pulseObject = new PulseObject(objectContext('pulse', pulseStorage), {})
+
+    await pulseObject.startRun({
+      runId: 'pulse',
+      kind: 'schedule',
+      definitionName: 'pulse',
+      input: null,
+    })
+
+    const startedThread = scheduleThreadOf(await pulseObject.getRun())
+    pulseStorage.resetWrites()
+    setSystemTime((startedThread.nextAt ?? 0) + 1)
+
+    try {
+      await pulseObject.alarm()
+    } finally {
+      setSystemTime()
+    }
+
+    expect(pulseStorage.writes()).toBeGreaterThan(0)
+    expect(pulseStorage.writes()).toBeLessThanOrEqual(8)
+    expect(pulseStorage.alarmAt()).not.toBeNull()
+
+    await pulseObject.signal([{ type: 'schedule.paused', payload: {} }])
+    expect(pulseStorage.alarmAt()).toBeNull()
   })
 })

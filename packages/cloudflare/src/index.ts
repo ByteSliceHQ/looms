@@ -4,7 +4,13 @@ export {
   type DurableObjectEventStore,
   type DurableObjectStoreOptions,
 } from './event-store'
-export { LoomsDurableObject, type LoomsDurableObjectConfig } from './durable-object'
+export {
+  durableObjectLauncher,
+  durableObjectScheduleHost,
+  LoomsDurableObject,
+  type DurableObjectRunStub,
+  type LoomsDurableObjectConfig,
+} from './durable-object'
 export {
   routeToDurableObject,
   type DurableObjectNamespaceLike,

@@ -15,6 +15,7 @@
     "@looms/approval": "workspace:*",
     "@looms/debugger": "workspace:*",
     "@looms/react": "workspace:*",
+    "@looms/schedule": "workspace:*",
     "@looms/workflow": "workspace:*",
     "@tanstack/react-router": "^1.170.32",
     "react": "19",

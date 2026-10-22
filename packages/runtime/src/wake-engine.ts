@@ -2,12 +2,14 @@ import { Clock, Effect, Exit, Option, type Context, type ManagedRuntime } from '
 
 import {
   createEvent,
+  deferredUntil,
   EventStoreTag,
   foldRun,
   isRunTerminal,
   type ComposedRegistry,
   type EventEnvelope,
   type RegisteredDefinition,
+  type RunLauncher,
   type RunState,
 } from '@looms/core'
 
@@ -50,6 +52,7 @@ export interface WakeEngineOptions {
   readonly worker?: EffectWorker
   readonly observer?: RuntimeObserver
   readonly scheduler: () => WakeScheduler
+  readonly launcher: () => RunLauncher
 }
 
 export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake'] {
@@ -294,7 +297,10 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
             const outstanding = state.outstandingEffects.filter((item) => {
               const execution = state.effectExecutions[item.effectId]
+              const dueAt = deferredUntil(item.effect)
+
               return !(
+                (dueAt !== undefined && dueAt > now + 5) ||
                 (cancellationTargets.has(item.threadId) && item.effect.type !== 'runtime.cancel') ||
                 isWorkerEffect({ runId, item, execution, registry, worker: options.worker }) ||
                 (execution?.status === 'retry_wait' &&
@@ -377,8 +383,15 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 liveAppends,
                 runInContext,
                 observe,
+                launcher: options.launcher(),
               },
-              { runId, outstanding, attempts, now },
+              {
+                runId,
+                correlationId: cursor.state.startIdentity?.correlationId ?? runId,
+                outstanding,
+                attempts,
+                now,
+              },
             )
 
             if (produced.length === 0) {

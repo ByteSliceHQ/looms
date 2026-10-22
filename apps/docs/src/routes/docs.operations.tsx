@@ -134,6 +134,15 @@ function Page() {
         observability stack. Do not log secrets or use estimated token usage as an invoice.
       </p>
       <p>
+        A run that another run&apos;s effect started records <code>launchedBy</code> on{' '}
+        <code>runtime.run.started</code>, plus a <code>correlationId</code> naming the root run of
+        the chain. The launching run&apos;s log records <code>runtime.run.launched</code> with the
+        started run&apos;s id and the effect id, so either side answers the question without
+        replaying the other. The built-in index projectors store <code>launchedByRunId</code>,{' '}
+        <code>launchedByEffectId</code>, and <code>correlationId</code> on each run row; call{' '}
+        <code>listLaunched(runId)</code> to list launched runs across hosts.
+      </p>
+      <p>
         After restoring storage or changing alarm infrastructure, call{' '}
         <code>POST /operations/deadlines/rescan</code> to rebuild timer, effect retry, and timeout
         scheduling from the log.
