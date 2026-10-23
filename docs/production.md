@@ -106,3 +106,14 @@ and startup deadline recovery. Attach a `RuntimeObserver` and
 core. Alert on append conflicts/errors, append and snapshot latency, timer
 lateness, ambiguous effects, timeout/retry volume, cancellation ambiguity,
 projector lag, and dead letters.
+
+### W3C trace propagation
+
+When a trigger passes `traceparent` (and optional `tracestate`) as HTTP headers or in `startRun`, Looms stores it in `RunStartIdentity` and propagates child trace contexts across:
+
+- In-process effect handlers via `EffectContext.traceparent`
+- External worker dispatches via `EffectWorkerTask.traceparent`
+- Cloudflare Queue effect messages via `QueueEffectMessage.traceparent`
+- Child runs spawned from effects with child span IDs linked to the parent trace ID
+
+Use `@looms/otel` (`createTraceparent`, `childTraceparent`, `injectTraceCarrier`, `extractTraceCarrier`) for W3C carrier manipulation.

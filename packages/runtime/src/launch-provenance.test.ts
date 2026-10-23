@@ -175,4 +175,62 @@ describe('launch provenance', () => {
       await looms.stop()
     }
   })
+
+  test('propagates traceparent from start across effects, worker tasks, and child runs', async () => {
+    let capturedEffectContext: { traceparent?: string; tracestate?: string } | undefined
+
+    const tracingEffect = defineEffect({
+      type: 'relay.trace-check',
+      execute: (_input, ctx) => {
+        capturedEffectContext = {
+          traceparent: ctx.traceparent,
+          tracestate: ctx.tracestate,
+        }
+
+        return []
+      },
+    })
+
+    const tracingThread = defineThread({
+      kind: 'relay',
+      initialState: () => ({}),
+      step: (state) => state,
+      effects: () => [invoke(tracingEffect, {}, 'trace-step'), complete({ ok: true })],
+    })
+
+    const tracingModule = defineRuntimeModule({
+      namespace: 'tracing',
+      protocolVersion: '1.0.0',
+      effects: { tracingEffect },
+      threads: { relay: tracingThread },
+      definitions: [{ kind: 'relay', name: 'tracing-relay', version: 'v1' }],
+    })
+
+    const looms = createLooms({ modules: [tracingModule] })
+
+    try {
+      const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+      const tracestate = 'congo=t61rcWkgMzE'
+
+      const started = await looms.start(
+        { kind: 'relay', name: 'tracing-relay', version: 'v1' },
+        {},
+        { traceparent, tracestate },
+      )
+
+      const run = await looms.getRun(started.runId)
+      expect(run.startIdentity?.traceparent).toBe(traceparent)
+      expect(run.startIdentity?.tracestate).toBe(tracestate)
+
+      expect(capturedEffectContext?.traceparent).toBeDefined()
+
+      expect(
+        capturedEffectContext?.traceparent?.startsWith('00-4bf92f3577b34da6a3ce929d0e0e4736-'),
+      ).toBe(true)
+
+      expect(capturedEffectContext?.tracestate).toBe(tracestate)
+    } finally {
+      await looms.stop()
+    }
+  })
 })

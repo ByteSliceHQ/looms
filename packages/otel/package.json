@@ -20,6 +20,7 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*"
   },

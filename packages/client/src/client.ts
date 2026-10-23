@@ -179,6 +179,8 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     definitionVersion?: string
     input?: JsonValue
     runId?: string
+    traceparent?: string
+    tracestate?: string
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
   const workerCallback = (runId: string, input: WorkerCallbackInput) => {

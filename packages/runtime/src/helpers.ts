@@ -35,14 +35,26 @@ export function workerTask(
   runId: string,
   item: OutstandingEffect,
   attempt: number,
+  traceparent?: string | null,
+  tracestate?: string | null,
 ): EffectWorkerTask {
-  return {
+  const base: EffectWorkerTask = {
     runId,
     effectId: item.effectId,
     attempt,
     type: item.effect.type,
     input: 'input' in item.effect ? item.effect.input : null,
   }
+
+  if (traceparent) {
+    return {
+      ...base,
+      traceparent,
+      tracestate: tracestate ?? undefined,
+    }
+  }
+
+  return base
 }
 
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{

@@ -95,7 +95,13 @@ export interface Looms {
   start<TDef extends DefinitionRef>(
     definition: TDef,
     input?: DefinitionInput<TDef>,
-    options?: { runId?: string; threadId?: string; idempotencyKey?: string },
+    options?: {
+      runId?: string
+      threadId?: string
+      idempotencyKey?: string
+      traceparent?: string
+      tracestate?: string
+    },
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
   startRun(args: {
@@ -106,6 +112,8 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
+    traceparent?: string
+    tracestate?: string
   }): Promise<StartResult>
   /** Commit a run's start and schedule a wake without waiting for it. */
   launchRun(args: {
@@ -116,6 +124,8 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
+    traceparent?: string
+    tracestate?: string
   }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
@@ -262,6 +272,8 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           runId: startOpts?.runId,
           threadId: startOpts?.threadId,
           idempotencyKey: startOpts?.idempotencyKey,
+          traceparent: startOpts?.traceparent,
+          tracestate: startOpts?.tracestate,
         }),
       ),
     getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),

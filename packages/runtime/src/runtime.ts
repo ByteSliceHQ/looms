@@ -257,13 +257,15 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         idempotencyKey: args.idempotencyKey ?? null,
         launchedBy: args.launchedBy ?? null,
         correlationId: args.correlationId ?? null,
+        ...(args.traceparent ? { traceparent: args.traceparent } : {}),
+        ...(args.tracestate ? { tracestate: args.tracestate } : {}),
       }
 
       const origin: EventOrigin = args.launchedBy
         ? { type: 'run', runId: args.launchedBy.runId }
         : { type: 'system' }
 
-      const startPayload = {
+      const basePayload = {
         rootThreadId: threadId,
         kind: args.kind,
         definitionName: args.definitionName,
@@ -272,9 +274,17 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         requestedThreadId: args.threadId ?? null,
       }
 
-      const startedPayload = args.launchedBy
-        ? { ...startPayload, launchedBy: args.launchedBy }
-        : startPayload
+      const withLauncher = args.launchedBy
+        ? { ...basePayload, launchedBy: args.launchedBy }
+        : basePayload
+
+      const withTrace = args.traceparent
+        ? { ...withLauncher, traceparent: args.traceparent }
+        : withLauncher
+
+      const startedPayload = args.tracestate
+        ? { ...withTrace, tracestate: args.tracestate }
+        : withTrace
 
       const committed = yield* commit(
         store,

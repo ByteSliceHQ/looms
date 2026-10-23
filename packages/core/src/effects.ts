@@ -187,6 +187,8 @@ export interface EffectContext {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  readonly traceparent?: string
+  readonly tracestate?: string
   emit(event: EventInput): Promise<void>
 }
 
@@ -196,6 +198,8 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  readonly traceparent?: string
+  readonly tracestate?: string
   emit(event: E): Promise<void>
 }
 

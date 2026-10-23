@@ -19,6 +19,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     input: JsonValueSchema,
     requestedThreadId: Schema.optional(Schema.NullOr(Schema.String)),
     launchedBy: Schema.optional(RunLaunchSourceSchema),
+    traceparent: Schema.optional(Schema.String),
+    tracestate: Schema.optional(Schema.String),
   }),
   'run.completed': Schema.Struct({
     output: Schema.NullOr(JsonValueSchema),
@@ -34,6 +36,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     definitionVersion: DefinitionVersionSchema,
     /** In the payload, not the envelope: an envelope `effectId` would complete the effect. */
     effectId: Schema.String,
+    traceparent: Schema.optional(Schema.String),
+    tracestate: Schema.optional(Schema.String),
   }),
   'run.forked': Schema.Struct({
     sourceRunId: Schema.String,

@@ -115,7 +115,10 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       const definitionVersion =
         readString(payload, 'definitionVersion') ?? DEFAULT_DEFINITION_VERSION
 
-      const startIdentity =
+      const traceparent = readString(payload, 'traceparent')
+      const tracestate = readString(payload, 'tracestate')
+
+      const startIdentity: RunStartIdentity | null =
         rootThreadId && kind && definitionName && definitionVersion
           ? {
               kind,
@@ -127,6 +130,8 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               rootThreadId,
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
+              ...(traceparent ? { traceparent } : {}),
+              ...(tracestate ? { tracestate } : {}),
             }
           : null
 

@@ -27,6 +27,8 @@ function workerClaims(
   worker: EffectWorker,
   runId: string,
   item: OutstandingEffect,
+  traceparent?: string | null,
+  tracestate?: string | null,
 ): boolean | undefined {
   if (!worker.handles && !worker.canDispatch) {
     return undefined
@@ -38,7 +40,9 @@ function workerClaims(
     ? handles(item.effect.type)
     : (handles?.includes(item.effect.type) ?? false)
 
-  return handled || (worker.canDispatch?.(workerTask(runId, item, 0)) ?? false)
+  return (
+    handled || (worker.canDispatch?.(workerTask(runId, item, 0, traceparent, tracestate)) ?? false)
+  )
 }
 
 const WORKER_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
@@ -63,6 +67,7 @@ export function isWorkerEffect(input: {
   readonly execution: EffectExecutionRecord | undefined
   readonly registry: ComposedRegistry
   readonly worker?: EffectWorker
+  readonly state?: RunState
 }): boolean {
   const { item, execution, worker } = input
 
@@ -84,7 +89,12 @@ export function isWorkerEffect(input: {
     return definition.execution === 'worker'
   }
 
-  const claim = worker ? workerClaims(worker, input.runId, item) : undefined
+  const traceparent = input.state?.startIdentity?.traceparent
+  const tracestate = input.state?.startIdentity?.tracestate
+
+  const claim = worker
+    ? workerClaims(worker, input.runId, item, traceparent, tracestate)
+    : undefined
 
   if (claim) {
     return true
@@ -147,7 +157,13 @@ export function planWorkerEffects(input: {
                 causationId: item.causingEventId,
                 origin: { type: 'system' },
               }),
-        task: workerTask(input.runId, item, attempt),
+        task: workerTask(
+          input.runId,
+          item,
+          attempt,
+          input.state.startIdentity?.traceparent,
+          input.state.startIdentity?.tracestate,
+        ),
         scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
           ? input.now + retry.scheduleToStartTimeoutMs
           : null,

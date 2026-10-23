@@ -92,6 +92,8 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  readonly traceparent?: string
+  readonly tracestate?: string
 }
 
 export interface EffectWorker {
@@ -115,6 +117,10 @@ export interface StartRunArgs {
   launchedBy?: RunLaunchSource
   /** Recorded on `runtime.run.started` to group related runs. */
   correlationId?: string
+  /** W3C traceparent propagated from the caller. */
+  traceparent?: string
+  /** W3C tracestate accompanying traceparent. */
+  tracestate?: string
 }
 
 export interface StartResult {

@@ -1,6 +1,7 @@
 import { Effect, Option, Predicate, type Context, type ManagedRuntime } from 'effect'
 
 import {
+  childTraceparent,
   createEvent,
   createRunId,
   DEFAULT_DEFINITION_VERSION,
@@ -43,6 +44,8 @@ export interface ExecuteLocalEffectsInput {
   readonly runId: string
   /** Inherited by runs the effects launch. */
   readonly correlationId: string
+  readonly traceparent?: string | null
+  readonly tracestate?: string | null
   readonly outstanding: ReadonlyArray<OutstandingEffect>
   readonly attempts: ReadonlyMap<string, number>
   readonly now: number
@@ -58,6 +61,8 @@ function launcherFor(
   correlationId: string,
   item: OutstandingEffect,
   launched: EventEnvelope[],
+  traceparent?: string | null,
+  tracestate?: string | null,
 ): RunLauncher {
   const launchedBy: RunLaunchSource = {
     runId,
@@ -71,28 +76,47 @@ function launcherFor(
     launch: (args) => {
       const targetRunId = args.runId ?? createRunId()
 
-      return launcher.launch({ ...args, runId: targetRunId, launchedBy, correlationId }).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            launched.push(
-              createEvent(runId, {
-                type: 'runtime.run.launched',
-                payload: {
-                  runId: targetRunId,
-                  kind: args.kind,
-                  definitionName: args.definitionName,
-                  definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
-                  effectId: item.effectId,
-                },
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                correlationId,
-                origin: { type: 'thread', threadId: item.threadId },
-              }),
-            )
-          }),
-        ),
-      )
+      const childTrace =
+        args.traceparent ?? (traceparent ? childTraceparent(traceparent) : undefined)
+
+      const childState = args.tracestate ?? tracestate ?? undefined
+
+      return launcher
+        .launch({
+          ...args,
+          runId: targetRunId,
+          launchedBy,
+          correlationId,
+          traceparent: childTrace,
+          tracestate: childState,
+        })
+        .pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              const base = {
+                runId: targetRunId,
+                kind: args.kind,
+                definitionName: args.definitionName,
+                definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
+                effectId: item.effectId,
+              }
+
+              const withTrace = childTrace ? { ...base, traceparent: childTrace } : base
+              const payload = childState ? { ...withTrace, tracestate: childState } : withTrace
+
+              launched.push(
+                createEvent(runId, {
+                  type: 'runtime.run.launched',
+                  payload,
+                  threadId: item.threadId,
+                  causationId: item.causingEventId,
+                  correlationId,
+                  origin: { type: 'thread', threadId: item.threadId },
+                }),
+              )
+            }),
+          ),
+        )
     },
     status: launcher.status,
   }
@@ -179,11 +203,23 @@ export function executeLocalEffects(
           const retry = registry.effects.get(item.effect.type)?.retry
           const launched: EventEnvelope[] = []
 
+          const effectTraceparent = input.traceparent
+            ? childTraceparent(input.traceparent)
+            : undefined
+
           const dispatched = dispatchEffect(
             registry,
             services,
             definitions,
-            launcherFor(launcher, input.runId, input.correlationId, item, launched),
+            launcherFor(
+              launcher,
+              input.runId,
+              input.correlationId,
+              item,
+              launched,
+              input.traceparent,
+              input.tracestate,
+            ),
             item.effect,
             {
               effectId: item.effectId,
@@ -191,6 +227,8 @@ export function executeLocalEffects(
               threadId: item.threadId,
               causingEventId: item.causingEventId,
               signal: controller.signal,
+              traceparent: effectTraceparent,
+              tracestate: input.tracestate ?? undefined,
               emit: appendLive,
             },
           ).pipe(

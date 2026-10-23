@@ -71,6 +71,8 @@ export interface RunStartIdentity {
   rootThreadId: string
   launchedBy: RunLaunchSource | null
   correlationId: string | null
+  traceparent?: string
+  tracestate?: string
 }
 
 /** The run and last sequence a fork copied its history from. */
@@ -117,6 +119,8 @@ export const RunStateSchema = Schema.Struct({
       correlationId: Schema.NullOr(Schema.String).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
+      traceparent: Schema.optional(Schema.String),
+      tracestate: Schema.optional(Schema.String),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   forkedFrom: Schema.NullOr(Schema.Struct({ runId: Schema.String, seq: Schema.Finite })).pipe(

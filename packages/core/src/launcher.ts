@@ -36,6 +36,10 @@ export interface LaunchRunArgs {
    * correlation id, or to the launching run's id when that run has none.
    */
   readonly correlationId?: string
+  /** W3C traceparent propagated from the launching effect or parent run. */
+  readonly traceparent?: string
+  /** W3C tracestate accompanying traceparent. */
+  readonly tracestate?: string
 }
 
 /** Enough of a run to decide whether a previous fire is still in progress. */

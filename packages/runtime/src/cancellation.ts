@@ -189,7 +189,17 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
           ({ item, execution }) =>
             Effect.tryPromise({
               try: () =>
-                Promise.resolve(worker.cancel?.(workerTask(runId, item, execution.attempt))),
+                Promise.resolve(
+                  worker.cancel?.(
+                    workerTask(
+                      runId,
+                      item,
+                      execution.attempt,
+                      committed.cursor.state.startIdentity?.traceparent,
+                      committed.cursor.state.startIdentity?.tracestate,
+                    ),
+                  ),
+                ),
               catch: (cause) =>
                 new RuntimeExecutionError(cause instanceof Error ? cause.message : String(cause)),
             }).pipe(Effect.ignore),
