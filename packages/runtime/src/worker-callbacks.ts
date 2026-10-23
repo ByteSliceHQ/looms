@@ -9,7 +9,9 @@ import {
   type OutstandingEffect,
   type RetryPolicy,
   type RunState,
+  type WorkerCallback,
   type WorkerCallbackInput,
+  type WorkerSecretsResult,
   type WorkerCallbackResult,
 } from '@looms/core'
 
@@ -302,5 +304,27 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
       }),
     ).pipe(Effect.tap((result) => (result.status === 'stale' ? Effect.void : options.wake(runId))))
 
-  return { workerCallback: applyWorkerCallback }
+  const workerSecrets = (runId: string, callback: WorkerCallback) =>
+    Effect.gen(function* () {
+      const store = yield* EventStoreTag
+      const { state } = yield* repository.loadCursor(store, runId)
+      const execution = state.effectExecutions[callback.effectId]
+
+      if (execution?.attempt !== callback.attempt || isRunTerminal(state)) {
+        return { status: 'stale' } satisfies WorkerSecretsResult
+      }
+
+      if (execution.status === 'cancel_requested') {
+        return { status: 'cancelled' } satisfies WorkerSecretsResult
+      }
+
+      if (execution.status !== 'started' && execution.status !== 'heartbeat') {
+        return { status: 'stale' } satisfies WorkerSecretsResult
+      }
+
+      const secrets = store.runSecrets ? yield* store.runSecrets.get(runId) : {}
+      return { status: 'accepted', secrets } satisfies WorkerSecretsResult
+    })
+
+  return { workerCallback: applyWorkerCallback, workerSecrets }
 }

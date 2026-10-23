@@ -7,6 +7,7 @@ import {
   ReplayStepSchema,
   RunStateSchema,
   RunSummariesSchema,
+  SecretContextSchema,
   stringifyJson,
   type DefinitionInput,
   type DefinitionRef,
@@ -16,8 +17,10 @@ import {
   type RunAttributes,
   type RunState,
   type SecretContext,
+  type WorkerCallback,
   type WorkerCallbackInput,
   type WorkerCallbackResult,
+  type WorkerSecretsResult,
 } from '@looms/core'
 
 import { consumeSseStreamEffect, eventsFromSseData, sseFrames } from './sse'
@@ -48,6 +51,10 @@ interface WorkerFailRequestBody {
   error: string
   nonRetryable?: boolean
   retryAfterMs?: number
+}
+
+function attemptPath(runId: string, attempt: WorkerCallback): string {
+  return `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(attempt.effectId)}/${attempt.attempt}`
 }
 
 function workerCallbackBody(input: WorkerCallbackInput) {
@@ -90,6 +97,11 @@ const WorkerCallbackResultSchema = Schema.Struct({
   ]),
   cancelRequested: Schema.Boolean,
 })
+
+const WorkerSecretsResultSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal('accepted'), secrets: SecretContextSchema }),
+  Schema.Struct({ status: Schema.Union([Schema.Literal('stale'), Schema.Literal('cancelled')]) }),
+])
 
 /** `appended` counts the events the run gained while the wake ran. */
 const WakeResultSchema = Schema.Struct({
@@ -233,24 +245,30 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     secrets?: SecretContext
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
+  const workerHeaders = options.workerCallbackToken
+    ? { authorization: `Bearer ${options.workerCallbackToken}` }
+    : undefined
+
   const workerCallback = (
     runId: string,
     input: WorkerCallbackInput,
   ): Promise<WorkerCallbackResult> => {
     const body = workerCallbackBody(input)
 
-    return request(
-      `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(input.effectId)}/${input.attempt}/${input.kind}`,
-      WorkerCallbackResultSchema,
-      {
-        method: 'POST',
-        headers: options.workerCallbackToken
-          ? { authorization: `Bearer ${options.workerCallbackToken}` }
-          : undefined,
-        body: stringifyJson(body),
-      },
-    )
+    return request(`${attemptPath(runId, input)}/${input.kind}`, WorkerCallbackResultSchema, {
+      method: 'POST',
+      headers: workerHeaders,
+      body: stringifyJson(body),
+    })
   }
+
+  /** Read the run's secret context. Only the attempt that is currently running gets it. */
+  const workerSecrets = (runId: string, attempt: WorkerCallback): Promise<WorkerSecretsResult> =>
+    request(`${attemptPath(runId, attempt)}/secrets`, WorkerSecretsResultSchema, {
+      method: 'POST',
+      headers: workerHeaders,
+      body: '{}',
+    })
 
   const streamRun = (args: {
     kind: string
@@ -350,6 +368,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         body: stringifyJson(forkOptions?.runId === undefined ? {} : { runId: forkOptions.runId }),
       }),
     workerCallback,
+    workerSecrets,
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
     replayTo: (runId: string, seq: number) =>

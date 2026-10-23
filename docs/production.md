@@ -28,8 +28,14 @@ any. They must be safe for every reader of the run.
 them in a side table, `looms_run_secrets`, which is not part of the event log
 or a snapshot. Effect handlers read them on `ctx.secrets`. An in-process worker
 receives them on the dispatch task. A transport that persists that task must
-omit `secrets` and have the worker fetch them through an authenticated callback
-for the current attempt. A handler must not copy secrets into an emitted event.
+omit `secrets`. Its worker reads them with
+`POST /runs/:runId/effects/:effectId/:attempt/secrets` (`client.workerSecrets`)
+after its `started` callback is accepted. The route uses `worker` access, so it
+returns 503 until the host configures worker auth. It answers
+`{ status: 'accepted', secrets }` only while that attempt is started and
+unsettled, and `{ status: 'stale' }` or `{ status: 'cancelled' }` otherwise.
+Responses are sent with `cache-control: no-store`. A handler must not copy
+secrets into an emitted event.
 
 A retry of the same start may omit `secrets` and keeps the stored context. Sending
 a different context conflicts, and the error does not include the secret values.

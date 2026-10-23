@@ -5,8 +5,10 @@ import type {
   ComposedRegistry,
   EventEnvelope,
   EventInput,
+  WorkerCallback,
   WorkerCallbackInput,
   WorkerCallbackResult,
+  WorkerSecretsResult,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -230,6 +232,18 @@ export interface LoomsRuntime<
   ): Effect.Effect<
     WorkerCallbackResult,
     Error | EventStoreAppendError | EventStoreError,
+    EventStoreTag
+  >
+  /**
+   * The run's secret context for a worker attempt that has started and not settled. Any other
+   * attempt is `stale`, so a redelivered or superseded message never sees the secrets.
+   */
+  workerSecrets(
+    runId: string,
+    callback: WorkerCallback,
+  ): Effect.Effect<
+    WorkerSecretsResult,
+    Error | EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
     EventStoreTag
   >
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>

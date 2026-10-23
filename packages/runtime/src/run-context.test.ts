@@ -16,7 +16,7 @@ import {
 
 import { SecretContextConflictError, StartRunConflictError } from './errors'
 import { createLooms } from './looms'
-import { authDenied, authAllowed } from './server'
+import { authDenied, authAllowed, bearerAuth } from './server'
 
 const SECRET = 'super-secret-token'
 
@@ -132,6 +132,55 @@ describe('run attributes and secret context', () => {
     }
 
     expect(dispatched[0]?.secrets).toEqual({ token: SECRET })
+    await looms.stop()
+  })
+
+  test('a worker reads the secret context only while its attempt is running', async () => {
+    const looms = createLooms({
+      modules: [contextModule],
+      worker: { handles: ['context.seen'], dispatch: () => undefined },
+      authorize: bearerAuth({ worker: 'worker-token' }),
+    })
+
+    await looms.start(context, null, { runId: 'run_worker', secrets: { token: SECRET } })
+    const effectId = (await looms.getRun('run_worker')).outstandingEffects[0]?.effectId ?? ''
+
+    const call = async (path: string, init: { token?: string; body?: string } = {}) => {
+      const response = await looms.fetch(
+        new Request(
+          `http://looms.test/runs/run_worker/effects/${encodeURIComponent(effectId)}/${path}`,
+          {
+            method: 'POST',
+            headers: { authorization: `Bearer ${init.token ?? 'worker-token'}` },
+            body: init.body ?? '{}',
+          },
+        ),
+      )
+
+      return { status: response?.status, headers: response?.headers, body: await response?.json() }
+    }
+
+    expect((await call('1/secrets')).body).toEqual({ status: 'stale' })
+    expect((await call('1/started')).body).toEqual({ status: 'accepted', cancelRequested: false })
+
+    const accepted = await call('1/secrets')
+    expect(accepted.body).toEqual({ status: 'accepted', secrets: { token: SECRET } })
+    expect(accepted.headers?.get('cache-control')).toBe('no-store')
+
+    expect((await call('1/secrets', { token: 'wrong' })).status).toBe(401)
+    expect((await call('2/secrets')).body).toEqual({ status: 'stale' })
+
+    const observed = {
+      type: 'context.observed',
+      payload: { tenant: '', hasSecret: true },
+      threadId: (await looms.getRun('run_worker')).outstandingEffects[0]?.threadId,
+    }
+
+    await call('1/complete', { body: JSON.stringify({ events: [observed] }) })
+
+    expect((await looms.getRun('run_worker')).status).toBe('completed')
+    expect((await call('1/secrets')).body).toEqual({ status: 'stale' })
+    expect(containsSecret(JSON.stringify(await looms.getEvents('run_worker')))).toBe(false)
     await looms.stop()
   })
 
