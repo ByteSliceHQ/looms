@@ -1,4 +1,4 @@
-import type { Context, ManagedRuntime } from 'effect'
+import type { Context, ManagedRuntime, Types } from 'effect'
 import { Effect, Predicate } from 'effect'
 
 import {
@@ -8,6 +8,7 @@ import {
   readEffectFailure,
   type ComposedRegistry,
   type EffectContext,
+  type EffectFailedPayload,
   type EventInput,
   RunLauncherTag,
   type RegisteredDefinition,
@@ -32,33 +33,17 @@ function causeMessage(cause: unknown): string {
 function failedAttempt(effectId: string, threadId: string, cause: unknown): EventInput {
   const failure = readEffectFailure(cause)
   const error = failure?.error ?? causeMessage(cause)
-  const retryAfterMs = failure?.retryAfterMs
-
-  if (failure?.nonRetryable && retryAfterMs !== undefined) {
-    return {
-      type: 'runtime.effect.failed',
-      payload: { effectId, error, nonRetryable: true, retryAfterMs },
-      threadId,
-    }
-  }
+  const payload: Types.Mutable<EffectFailedPayload> = { effectId, error }
 
   if (failure?.nonRetryable) {
-    return {
-      type: 'runtime.effect.failed',
-      payload: { effectId, error, nonRetryable: true },
-      threadId,
-    }
+    payload.nonRetryable = true
   }
 
-  if (retryAfterMs !== undefined) {
-    return {
-      type: 'runtime.effect.failed',
-      payload: { effectId, error, retryAfterMs },
-      threadId,
-    }
+  if (failure?.retryAfterMs !== undefined) {
+    payload.retryAfterMs = failure.retryAfterMs
   }
 
-  return { type: 'runtime.effect.failed', payload: { effectId, error }, threadId }
+  return { type: 'runtime.effect.failed', payload, threadId }
 }
 
 export function dispatchEffect(
