@@ -50,6 +50,8 @@ export interface CreateRuntimeOptions<
    */
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  /** Maximum concurrent in-flight worker effects dispatched per run (fairness guard). */
+  readonly maxInFlightWorkerEffects?: number
   /** Maximum active and queued mutation operations per run. Default 256. */
   readonly maxPendingRunOperations?: number
   /** Defaults to the EventStore's attached store or an in-memory SnapshotStore. */
@@ -101,6 +103,12 @@ export interface EffectWorker {
   readonly canDispatch?: (task: EffectWorkerTask) => boolean
   dispatch(task: EffectWorkerTask): void | Promise<void>
   cancel?(task: EffectWorkerTask): void | Promise<void>
+  /**
+   * Dispatch semantics:
+   * - 'unacknowledged' (default): failed dispatch is treated as ambiguous (wait for schedule-to-start or operator).
+   * - 'acknowledged': resolved send means enqueued, thrown error means not enqueued (retryable dispatch with backoff).
+   */
+  readonly dispatchSemantics?: 'unacknowledged' | 'acknowledged'
 }
 
 export interface StartRunArgs {

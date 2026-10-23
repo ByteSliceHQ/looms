@@ -338,6 +338,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     repository,
     snapshotEvery,
     maxWakeIterations,
+    maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
     worker: options.worker,
     observer: options.observer,
     scheduler: () => scheduler,

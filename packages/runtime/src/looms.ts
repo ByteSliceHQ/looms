@@ -64,6 +64,8 @@ export interface CreateLoomsOptions {
   /** Starts runs from effect handlers. Defaults to launching into this runtime's own store. */
   readonly launcher?: RunLauncher
   readonly worker?: EffectWorker
+  /** Maximum concurrent in-flight worker effects dispatched per run (fairness guard). */
+  readonly maxInFlightWorkerEffects?: number
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
   /**
@@ -202,6 +204,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             launcher: options.launcher,
             localLauncher: options.launcher === undefined,
             worker: options.worker,
+            maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
             observer: options.observer,
           })
 

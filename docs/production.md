@@ -32,6 +32,23 @@ verify the destination's idempotency record, then use `retryEffect` or
 `POST /runs/:runId/effects/:effectId/retry`. Never blindly retry a non-idempotent
 effect.
 
+### Cloudflare Queues transport
+
+`cloudflareQueueWorker` connects Durable Objects to external workers or background fleets over Cloudflare Queues:
+
+```ts
+import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
+
+const worker = cloudflareQueueWorker({
+  routes: [{ handles: ['sandbox.exec', 'batch.convert'], queue: env.WORKER_QUEUE }],
+})
+```
+
+- **Acknowledged dispatch**: `dispatchSemantics: 'acknowledged'` treats a thrown send (including 429 rate limits) as an un-enqueued failure retried with backoff, eliminating ambiguous dispatch operator interventions.
+- **One retry authority**: Consumers acknowledge the queue message immediately once the `started` callback succeeds. From that point on, Looms heartbeats and start-to-close deadlines govern execution liveness.
+- **Fairness guard**: `maxInFlightWorkerEffects` caps concurrent in-flight dispatches per run, preventing a single fanout from saturating a shared queue.
+- **In-flight cancellation**: Because enqueued messages cannot be recalled from Cloudflare Queues, in-flight attempts learn of cancellation from heartbeat responses and abort the task signal.
+
 ## Inspection and repair
 
 - `inspectRun(runId)` and `GET /runs/:runId/status` expose stream bounds, state,

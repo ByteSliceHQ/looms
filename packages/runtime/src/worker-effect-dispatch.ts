@@ -103,56 +103,69 @@ export function planWorkerEffects(input: {
   readonly registry: ComposedRegistry
   readonly worker?: EffectWorker
   readonly now: number
+  readonly maxInFlightWorkerEffects?: number
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
-  return input.state.outstandingEffects
-    .filter((item) => {
-      const dueAt = deferredUntil(item.effect)
+  const inFlightStatuses = new Set(['dispatched', 'started', 'heartbeat', 'cancel_requested'])
 
-      if (dueAt !== undefined && dueAt > input.now + 5) {
-        return false
-      }
+  const currentInFlight = Object.values(input.state.effectExecutions).filter((execution) =>
+    inFlightStatuses.has(execution.status),
+  ).length
 
-      const execution = input.state.effectExecutions[item.effectId]
+  const limit =
+    input.maxInFlightWorkerEffects !== undefined && input.maxInFlightWorkerEffects > 0
+      ? Math.max(0, input.maxInFlightWorkerEffects - currentInFlight)
+      : undefined
 
-      if (!isWorkerEffect({ ...input, item, execution })) {
-        return false
-      }
+  const candidates = input.state.outstandingEffects.filter((item) => {
+    const dueAt = deferredUntil(item.effect)
 
-      return (
-        !execution ||
-        execution.status === 'queued' ||
-        (execution.status === 'retry_wait' &&
-          execution.nextAttemptAt !== null &&
-          execution.nextAttemptAt <= input.now + 5)
-      )
-    })
-    .map((item) => {
-      const existing = input.state.effectExecutions[item.effectId]
+    if (dueAt !== undefined && dueAt > input.now + 5) {
+      return false
+    }
 
-      const attempt =
-        existing?.status === 'queued' ? existing.attempt : (existing?.attempt ?? 0) + 1
+    const execution = input.state.effectExecutions[item.effectId]
 
-      const retry = input.registry.effects.get(item.effect.type)?.retry
+    if (!isWorkerEffect({ ...input, item, execution })) {
+      return false
+    }
 
-      return {
-        item,
-        attempt,
-        queuedEvent:
-          existing?.status === 'queued'
-            ? undefined
-            : createEvent(input.runId, {
-                type: 'runtime.effect.queued',
-                payload: { effectId: item.effectId, attempt, deadlineAt: null },
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                origin: { type: 'system' },
-              }),
-        task: workerTask(input.runId, item, attempt),
-        scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
-          ? input.now + retry.scheduleToStartTimeoutMs
-          : null,
-      }
-    })
+    return (
+      !execution ||
+      execution.status === 'queued' ||
+      (execution.status === 'retry_wait' &&
+        execution.nextAttemptAt !== null &&
+        execution.nextAttemptAt <= input.now + 5)
+    )
+  })
+
+  const selected = limit === undefined ? candidates : candidates.slice(0, limit)
+
+  return selected.map((item) => {
+    const existing = input.state.effectExecutions[item.effectId]
+
+    const attempt = existing?.status === 'queued' ? existing.attempt : (existing?.attempt ?? 0) + 1
+
+    const retry = input.registry.effects.get(item.effect.type)?.retry
+
+    return {
+      item,
+      attempt,
+      queuedEvent:
+        existing?.status === 'queued'
+          ? undefined
+          : createEvent(input.runId, {
+              type: 'runtime.effect.queued',
+              payload: { effectId: item.effectId, attempt, deadlineAt: null },
+              threadId: item.threadId,
+              causationId: item.causingEventId,
+              origin: { type: 'system' },
+            }),
+      task: workerTask(input.runId, item, attempt),
+      scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
+        ? input.now + retry.scheduleToStartTimeoutMs
+        : null,
+    }
+  })
 }
 
 /**
@@ -198,10 +211,24 @@ export function dispatchWorkerEffect(
       new RuntimeExecutionError(cause instanceof Error ? cause.message : String(cause)),
   }).pipe(
     Effect.match({
-      onFailure: (error) =>
-        plan.scheduleToStartDeadlineAt === null
+      onFailure: (error) => {
+        if (worker.dispatchSemantics === 'acknowledged') {
+          return createEvent(runId, {
+            type: 'runtime.effect.failed',
+            payload: {
+              effectId: plan.item.effectId,
+              error: `Worker dispatch failed: ${error.message}`,
+            },
+            threadId: plan.item.threadId,
+            causationId: plan.item.causingEventId,
+            origin: { type: 'system' },
+          })
+        }
+
+        return plan.scheduleToStartDeadlineAt === null
           ? ambiguous(`worker dispatch outcome is ambiguous: ${error.message}`)
-          : dispatched,
+          : dispatched
+      },
       onSuccess: () => dispatched,
     }),
   )

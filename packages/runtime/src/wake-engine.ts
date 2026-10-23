@@ -49,6 +49,7 @@ export interface WakeEngineOptions {
   readonly repository: RuntimeRepository
   readonly snapshotEvery: number
   readonly maxWakeIterations: number
+  readonly maxInFlightWorkerEffects?: number
   readonly worker?: EffectWorker
   readonly observer?: RuntimeObserver
   readonly scheduler: () => WakeScheduler
@@ -247,6 +248,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               registry,
               worker: options.worker,
               now,
+              maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
             })
 
             if (workerPlans.length > 0) {

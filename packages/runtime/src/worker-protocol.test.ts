@@ -703,4 +703,69 @@ describe('durable external effect workers', () => {
     expect((await looms.getRun(started.runId)).status).toBe('cancelled')
     await looms.stop()
   })
+
+  test('acknowledged dispatch semantics fails and retries without marking ambiguous', async () => {
+    let attempts = 0
+
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 3, backoffMs: 1 })],
+      worker: {
+        dispatchSemantics: 'acknowledged',
+        dispatch: () => {
+          attempts += 1
+          throw new Error('429 Queue Rate Exceeded')
+        },
+      },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const events = await looms.getEvents(started.runId)
+
+    expect(attempts).toBe(1)
+    expect(events.some((event) => event.type === 'runtime.effect.failed')).toBe(true)
+    expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(false)
+
+    await looms.stop()
+  })
+
+  test('maxInFlightWorkerEffects caps planned dispatches per run', async () => {
+    const dispatched: EffectWorkerTask[] = []
+
+    const multiEffect = defineEffect({ type: 'worker.multi' })
+
+    const fanoutModule = defineRuntimeModule({
+      namespace: 'fanout',
+      protocolVersion: '1.0.0',
+      effects: { multiEffect },
+      threads: {
+        fanout: defineThread({
+          kind: 'fanout',
+          initialState: () => ({}),
+          step: (state) => state,
+          effects: () => [
+            invoke(multiEffect, {}, 'm1'),
+            invoke(multiEffect, {}, 'm2'),
+            invoke(multiEffect, {}, 'm3'),
+            invoke(multiEffect, {}, 'm4'),
+          ],
+        }),
+      },
+      definitions: [{ kind: 'fanout', name: 'fanout', version: 'v1' }],
+    })
+
+    const looms = createLooms({
+      modules: [fanoutModule],
+      maxInFlightWorkerEffects: 2,
+      worker: {
+        dispatch: (task) => {
+          dispatched.push(task)
+        },
+      },
+    })
+
+    await looms.start({ kind: 'fanout', name: 'fanout', version: 'v1' }, {})
+    expect(dispatched).toHaveLength(2)
+
+    await looms.stop()
+  })
 })
