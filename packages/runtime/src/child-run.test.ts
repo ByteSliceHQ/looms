@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Predicate } from 'effect'
+import { Effect, Predicate } from 'effect'
 
 import type { RunState } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
@@ -79,6 +79,40 @@ describe('child runs', () => {
     expect(childState.status).toBe('completed')
     expect(childState.startIdentity?.launchedBy?.runId).toBe(started.runId)
     expect(events.some((event) => event.type === 'runtime.child.settled')).toBe(true)
+
+    await looms.stop()
+  })
+
+  test('a child run inherits the parent run attributes and secrets', async () => {
+    const looms = createLooms({ modules: [workflow({ definitions: [child, parent] })] })
+
+    const started = await looms.start(
+      parent,
+      {},
+      {
+        attributes: { tenant: 'acme' },
+        secrets: { token: 'parent-secret' },
+      },
+    )
+
+    await waitForStatus(looms, started.runId, 'completed')
+
+    const launched = (await looms.getEvents(started.runId)).find(
+      (event) => event.type === 'runtime.run.launched',
+    )
+
+    const childRunId =
+      launched && Predicate.isObject(launched.payload) && Predicate.isString(launched.payload.runId)
+        ? launched.payload.runId
+        : ''
+
+    const store = await looms.store
+
+    expect((await looms.getRun(childRunId)).attributes).toEqual({ tenant: 'acme' })
+
+    expect(
+      await Effect.runPromise(store.runSecrets?.get(childRunId) ?? Effect.succeed({})),
+    ).toEqual({ token: 'parent-secret' })
 
     await looms.stop()
   })
