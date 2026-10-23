@@ -21,10 +21,13 @@ import {
   type EventOrigin,
   type EventStore,
   InvalidEventError,
+  type DefinitionResolveError,
+  type DefinitionResolver,
   type JsonValue,
   type OutstandingEffect,
-  type RegisteredDefinition,
   type RunCursor,
+  type SchemaInput,
+  type VersionedDefinition,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
@@ -178,7 +181,7 @@ export function groupOutstanding(
  * event with raw input.
  */
 export function threadStartedEvents(
-  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  definitions: DefinitionResolver,
   args: {
     kind: string
     definitionName: string
@@ -187,11 +190,9 @@ export function threadStartedEvents(
     threadId: string
     parentThreadId: string | null
   },
-): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError> {
+): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError | DefinitionResolveError> {
   return Effect.gen(function* () {
-    const def = definitions.get(
-      definitionKey(args.kind, args.definitionName, args.definitionVersion),
-    )
+    const def = yield* definitions.resolve(args.kind, args.definitionName, args.definitionVersion)
 
     if (!def) {
       return yield* new UnknownDefinitionError(
@@ -204,9 +205,10 @@ export function threadStartedEvents(
     const raw = args.input ?? null
     let startedInput = raw
     let validationError: string | undefined
+    const input = schemaInputOf(def)
 
-    if (def?.input) {
-      const validated = yield* validateInputEffect(def.input, raw).pipe(
+    if (input) {
+      const validated = yield* validateInputEffect(input, raw).pipe(
         Effect.match({
           onFailure: (error) => ({ ok: false as const, error: error.message }),
           onSuccess: (value) => ({ ok: true as const, value }),
@@ -247,6 +249,22 @@ export function threadStartedEvents(
       },
     ]
   })
+}
+
+function schemaInputOf(definition: VersionedDefinition): SchemaInput | undefined {
+  if (!('input' in definition)) {
+    return undefined
+  }
+
+  return isSchemaInput(definition.input) ? definition.input : undefined
+}
+
+function isSchemaInput(value: unknown): value is SchemaInput {
+  if (value === null || (!Predicate.isObject(value) && !Predicate.isFunction(value))) {
+    return false
+  }
+
+  return '~standard' in value || 'ast' in value
 }
 
 export function synthesizedThreadFailed(

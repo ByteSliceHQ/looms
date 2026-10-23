@@ -97,11 +97,16 @@ export const scheduleEffect = workflowModule.effect({
       const workflows = yield* WorkflowDefinitionsTag
 
       const definition = input.definitionName
-        ? workflows.get(input.definitionName, input.definitionVersion)
+        ? yield* workflows.resolve(input.definitionName, input.definitionVersion)
         : undefined
 
       if (!definition) {
-        return []
+        return input.definitionName
+          ? threadFailed(
+              ctx.threadId,
+              `Unknown workflow definition ${input.definitionName}@${input.definitionVersion}`,
+            )
+          : []
       }
 
       const nodes = { ...input.nodes } satisfies Record<string, NodeState>
@@ -236,7 +241,7 @@ export const runNodeEffect = workflowModule.effect({
       const workflows = yield* WorkflowDefinitionsTag
 
       const definition = input.definitionName
-        ? workflows.get(input.definitionName, input.definitionVersion)
+        ? yield* workflows.resolve(input.definitionName, input.definitionVersion)
         : undefined
 
       const run: NodeRun = {

@@ -24,6 +24,7 @@ import type { EventEnvelope, EventInput } from './envelope'
 import type { RunLauncherTag } from './launcher'
 import {
   type AnyRuntimeModule,
+  type DefinitionHost,
   type EffectMiddleware,
   type RuntimeModule,
   type DefinitionRef,
@@ -255,6 +256,7 @@ export function defineModule<
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
     readonly interruptsOnSignal?: SignalInterruptRule
+    readonly bindHost?: (host: DefinitionHost) => void
   } & ModuleServicesConfig<EffectRequirementsOf<FX>>,
 ): RuntimeModule<N, Extract<ModuleCatalog<N, E>, EventCatalog>, FX, TH, PR> & {
   readonly effects: FX
@@ -306,6 +308,10 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
 
   if (members.interruptsOnSignal) {
     module.interruptsOnSignal = members.interruptsOnSignal
+  }
+
+  if (members.bindHost) {
+    module.bindHost = members.bindHost
   }
 
   return module

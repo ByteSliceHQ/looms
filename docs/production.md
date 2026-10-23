@@ -97,6 +97,21 @@ and schemas needed by active old-version runs. If a new projector is bad, stop
 delivery, deploy a corrected new version, and rebuild from archive; do not move a
 checkpoint backward after source events were trimmed.
 
+## Resolving definitions
+
+Pass `definitionResolver` to `createLooms`, `createRuntime`, an actor host, or
+`LoomsDurableObjectConfig` when a definition is not in the module's static list.
+`resolve(kind, name, version)` returns the full definition object, or `undefined`
+when that version does not exist. Registered module definitions are checked
+first. Results, including misses, stay in an LRU cache.
+
+Start, spawn, and launch resolve before they write `runtime.thread.started`.
+A miss fails the start with `UnknownDefinitionError` and writes no events. The
+accepted version is pinned on `runtime.run.started` and `runtime.thread.started`.
+Before a wake replays a log, those pinned identities are resolved again so fold
+can read them synchronously. An unknown workflow version fails that thread.
+Evaluator definitions include `version`, which defaults to `v1`.
+
 ## Production configuration
 
 Configure durable storage, actor routing, worker and operations tokens, bounded

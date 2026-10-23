@@ -9,8 +9,8 @@ import {
   type ComposedRegistry,
   type EventEnvelope,
   type EventInput,
+  type DefinitionResolver,
   type OutstandingEffect,
-  type RegisteredDefinition,
   type RunLauncher,
   type RunLaunchSource,
 } from '@looms/core'
@@ -31,7 +31,7 @@ import type { RunExecutionContext } from './run-execution-context'
 export interface LocalEffectExecutorOptions {
   readonly registry: ComposedRegistry
   readonly services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>
-  readonly definitions: ReadonlyMap<string, RegisteredDefinition>
+  readonly definitionResolver: DefinitionResolver
   readonly executionContext: RunExecutionContext
   readonly liveAppends: RuntimeRepository['liveAppends']
   readonly runInContext: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>
@@ -129,7 +129,7 @@ export function executeLocalEffects(
   const {
     registry,
     services,
-    definitions,
+    definitionResolver,
     executionContext,
     liveAppends,
     runInContext,
@@ -182,7 +182,7 @@ export function executeLocalEffects(
           const dispatched = dispatchEffect(
             registry,
             services,
-            definitions,
+            definitionResolver,
             launcherFor(launcher, input.runId, input.correlationId, item, launched),
             item.effect,
             {

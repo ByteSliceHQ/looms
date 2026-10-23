@@ -9,7 +9,7 @@ import {
   type EffectContext,
   type EventInput,
   RunLauncherTag,
-  type RegisteredDefinition,
+  type DefinitionResolver,
   type RunLauncher,
   type RuntimeEffect,
 } from '@looms/core'
@@ -19,7 +19,7 @@ import { threadStartedEvents } from './helpers'
 export function dispatchEffect(
   registry: ComposedRegistry,
   services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>,
-  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  definitions: DefinitionResolver,
   launcher: RunLauncher,
   effect: RuntimeEffect,
   ctx: EffectContext,

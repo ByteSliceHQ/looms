@@ -5,6 +5,7 @@ import { createActorCell, type ActorCell } from '@looms/actor'
 import {
   createRemoteRunLauncher,
   type AnyRuntimeModule,
+  type DefinitionResolver,
   type EventInput,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
@@ -21,6 +22,8 @@ import type { DurableObjectNamespaceLike } from './router'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly projectors?: readonly Projector[]
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -96,6 +99,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         store,
         scheduler: alarms.scheduler,
         modules: config.modules,
+        definitionResolver: config.definitionResolver,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,

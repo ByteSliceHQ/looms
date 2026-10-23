@@ -9,6 +9,7 @@ import {
   type DebuggerHost,
   type DefinitionInput,
   type DefinitionRef,
+  type DefinitionResolver,
   type EventEnvelope,
   type EventInput,
   type EventStore,
@@ -42,6 +43,11 @@ import {
 export interface CreateLoomsOptions {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
   readonly modules?: readonly AnyRuntimeModule[]
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. A run pins the resolved version on its start event.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
   readonly maxWakeIterations?: number
@@ -203,6 +209,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             localLauncher: options.launcher === undefined,
             worker: options.worker,
             observer: options.observer,
+            definitionResolver: options.definitionResolver,
           })
 
           if (options.rescanTimers !== false) {

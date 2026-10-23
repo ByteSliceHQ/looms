@@ -3,9 +3,11 @@ import type { Effect } from 'effect'
 import type {
   AnyRuntimeModule,
   ComposedRegistry,
+  DefinitionResolver,
   EventEnvelope,
   EventInput,
   WorkerCallbackInput,
+  DefinitionResolveError,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -42,6 +44,12 @@ export interface CreateRuntimeOptions<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   readonly modules: TModules
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. Lookups are cached, including misses. Start fails with `UnknownDefinitionError`
+   * and writes no events when the definition is missing.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore
   /**
    * Durable events between mid-wake snapshots. Default 200; `0` disables.
@@ -164,7 +172,10 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunState,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    | EventStoreTruncationError
+    | EventStoreTrimmedError
+    | EventStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   getEvents(
@@ -183,7 +194,10 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunOperationalStatus,
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError,
+    | EventStoreError
+    | EventStoreTrimmedError
+    | EventStoreTruncationError
+    | DefinitionResolveError,
     EventStoreTag
   >
   retryEffect(
@@ -212,18 +226,28 @@ export interface LoomsRuntime<
   /** Indexed run rows. Folds a run only when its header has not been written yet. */
   readonly listRunSummaries: Effect.Effect<
     readonly RunSummary[],
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | SnapshotStoreError,
+    | EventStoreError
+    | EventStoreTrimmedError
+    | EventStoreTruncationError
+    | SnapshotStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   readonly rescanTimers: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    | EventStoreTruncationError
+    | EventStoreTrimmedError
+    | EventStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   /** Reschedule every durable timer and effect deadline after restart or repair. */
   readonly recoverDeadlines: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    | EventStoreTruncationError
+    | EventStoreTrimmedError
+    | EventStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   readonly dispose: Effect.Effect<void>

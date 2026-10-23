@@ -21,8 +21,9 @@ export interface AgentModuleOptions {
 export function agent(options: AgentModuleOptions = {}) {
   const definitions = options.definitions ?? []
 
-  const agentDefinitions = definitions.filter(
-    (definition): definition is AgentDefinition => definition.kind === 'agent',
+  const agentDefinitions = makeDefinitionStore(
+    'agent',
+    definitions.filter((definition): definition is AgentDefinition => definition.kind === 'agent'),
   )
 
   const sessionDefinitions = makeDefinitionStore(
@@ -53,6 +54,10 @@ export function agent(options: AgentModuleOptions = {}) {
     },
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
     interruptsOnSignal,
+    bindHost(host) {
+      agentDefinitions.useResolver(host.definitionResolver)
+      sessionDefinitions.useResolver(host.definitionResolver)
+    },
   }))
 }
 

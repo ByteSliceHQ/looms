@@ -7,8 +7,8 @@ import {
   foldRun,
   isRunTerminal,
   type ComposedRegistry,
+  type DefinitionResolver,
   type EventEnvelope,
-  type RegisteredDefinition,
   type RunLauncher,
   type RunState,
 } from '@looms/core'
@@ -44,7 +44,7 @@ function currentTimeMillis(): number {
 export interface WakeEngineOptions {
   readonly registry: ComposedRegistry
   readonly services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>
-  readonly definitions: ReadonlyMap<string, RegisteredDefinition>
+  readonly definitionResolver: DefinitionResolver
   readonly executionContexts: RunExecutionContexts
   readonly repository: RuntimeRepository
   readonly snapshotEvery: number
@@ -59,7 +59,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
   const {
     registry,
     services,
-    definitions,
+    definitionResolver,
     executionContexts,
     repository,
     snapshotEvery,
@@ -378,7 +378,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               {
                 registry,
                 services,
-                definitions,
+                definitionResolver,
                 executionContext,
                 liveAppends,
                 runInContext,

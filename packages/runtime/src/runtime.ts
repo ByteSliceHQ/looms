@@ -1,13 +1,15 @@
 import { Clock, Effect, ManagedRuntime, Predicate } from 'effect'
 
 import {
+  cachedDefinitionResolver,
+  chainDefinitionResolvers,
   composeModules,
   createEvent,
   createThreadId,
   createRunId,
   DEFAULT_DEFINITION_VERSION,
   DEFAULT_SNAPSHOT_EVERY,
-  definitionKey,
+  staticDefinitionResolver,
   descendantThreadIds,
   EventStoreTag,
   foldRun,
@@ -119,13 +121,25 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   }
 
   const registry = composeModules(options.modules)
-  const registeredDefinitions = registry.definitions
 
-  const definitions = new Map(
-    registeredDefinitions.map(
-      (def) => [definitionKey(def.kind, def.name, def.version), def] as const,
-    ),
+  const staticResolver = staticDefinitionResolver(
+    registry.definitions.map((definition) => ({
+      ...definition.value,
+      kind: definition.kind,
+      name: definition.name,
+      version: definition.version,
+    })),
   )
+
+  const definitionResolver = cachedDefinitionResolver(
+    options.definitionResolver
+      ? chainDefinitionResolvers([staticResolver, options.definitionResolver])
+      : staticResolver,
+  )
+
+  for (const module of options.modules) {
+    module.bindHost?.({ definitionResolver })
+  }
 
   // Module composition erases the heterogeneous service identifier union at this host boundary.
   // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context
@@ -155,6 +169,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     runCache,
     executionContexts,
     observer: options.observer,
+    definitionResolver,
   })
 
   const { commit, loadCursor } = repository
@@ -223,7 +238,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     Effect.gen(function* () {
       const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
 
-      if (!definitions.get(definitionKey(args.kind, args.definitionName, definitionVersion))) {
+      const resolved = yield* definitionResolver.resolve(
+        args.kind,
+        args.definitionName,
+        definitionVersion,
+      )
+
+      if (!resolved) {
         return yield* new UnknownDefinitionError(args.kind, args.definitionName, definitionVersion)
       }
 
@@ -232,7 +253,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
       const threadId = args.threadId ?? createThreadId()
 
-      const startedEvents = yield* threadStartedEvents(definitions, {
+      const startedEvents = yield* threadStartedEvents(definitionResolver, {
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
@@ -333,13 +354,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const wakeEngine = createWakeEngine({
     registry,
     services,
-    definitions,
     executionContexts,
     repository,
     snapshotEvery,
     maxWakeIterations,
     worker: options.worker,
     observer: options.observer,
+    definitionResolver,
     scheduler: () => scheduler,
     launcher: () => launcher,
   })
