@@ -2,6 +2,7 @@ import { Data } from 'effect'
 
 import type {
   JsonValue,
+  RunAttributes,
   RunLaunchSource,
   RunStartIdentity as DurableRunStartIdentity,
 } from '@looms/core'
@@ -15,6 +16,22 @@ export interface RunStartIdentity {
   readonly idempotencyKey: string | null
   readonly launchedBy: RunLaunchSource | null
   readonly correlationId: string | null
+  readonly attributes: RunAttributes
+}
+
+/** The stored secret context differs. The message never includes the secret values. */
+export class SecretContextConflictError extends Data.TaggedError('SecretContextConflictError')<{
+  readonly runId: string
+  readonly message: string
+}> {
+  constructor(runId: string) {
+    super({
+      runId,
+      message: `Run "${runId}" already has a different secret context`,
+    })
+
+    this.name = 'SecretContextConflictError'
+  }
 }
 
 export class StartRunConflictError extends Data.TaggedError('StartRunConflictError')<{

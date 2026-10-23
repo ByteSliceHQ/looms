@@ -85,7 +85,8 @@
       "files": [
         "apps/demo/src/server.ts",
         "packages/debugger/src/server/**/*.ts",
-        "packages/s2/src/lite.ts"
+        "packages/s2/src/lite.ts",
+        "packages/runtime/src/filesystem-blob-store.ts"
       ],
       "rules": {
         "effecttsgo/global-fetch": "off",

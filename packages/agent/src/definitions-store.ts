@@ -17,5 +17,5 @@ export function makeAgentDefinitionStore(
   return makeDefinitionStore('agent', definitions)
 }
 
-export const AgentDefinitionsLive = (definitions: ReadonlyArray<AgentDefinition>) =>
-  Layer.succeed(AgentDefinitionsTag, makeAgentDefinitionStore(definitions))
+export const AgentDefinitionsLive = (definitions: AgentDefinitionStore) =>
+  Layer.succeed(AgentDefinitionsTag, definitions)

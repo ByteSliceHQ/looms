@@ -5,7 +5,9 @@ import { createActorCell, type ActorCell } from '@looms/actor'
 import {
   createRemoteRunLauncher,
   type AnyRuntimeModule,
+  type DefinitionResolver,
   type EventInput,
+  type BlobStore,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
   type RunLauncher,
@@ -27,7 +29,11 @@ import { attachSocketFanout, isRunSocketUpgrade, openRunSocket } from './websock
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly projectors?: readonly Projector[]
+  /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
+  readonly blobs?: BlobStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   readonly maxPendingRunOperations?: number
@@ -94,6 +100,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       const store = durableObjectEventStore(this.ctx, {
         projectors: config.projectors,
         scheduleProjectorRetry: alarms.scheduleAtEarliest,
+        blobs: config.blobs,
       })
 
       this.store = store
@@ -104,6 +111,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         store: attachSocketFanout(this.ctx, store, runId),
         scheduler: alarms.scheduler,
         modules: config.modules,
+        definitionResolver: config.definitionResolver,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,
@@ -177,9 +185,20 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState> {
     return this.getCell().then((cell) => cell.signal(events, options))
+  }
+
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState> {
+    return this.getCell().then((cell) => cell.accept(events, options))
+  }
+
+  cancel(): Promise<void> {
+    return this.getCell().then((cell) => cell.cancel())
   }
 
   getRun(): Promise<RunState> {
@@ -209,8 +228,13 @@ export interface DurableObjectRunStub {
   startRun(args: StartRunArgs): Promise<StartResult>
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState>
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState>
+  cancel(): Promise<void>
   getRun(): Promise<RunState>
 }
 
@@ -225,6 +249,12 @@ export function durableObjectLauncher(namespace: { getByName(name: string): obje
   return createRemoteRunLauncher({
     launch: (runId, args) => runs.getByName(runId).launch(args),
     status: (runId) => runs.getByName(runId).status(),
+    accept: (runId, events, options) =>
+      runs
+        .getByName(runId)
+        .accept(events, options)
+        .then(() => undefined),
+    cancel: (runId) => runs.getByName(runId).cancel(),
   })
 }
 

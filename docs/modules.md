@@ -44,6 +44,8 @@ Each module owns its definitions. `workflow({ definitions: [checkout] })` instal
 
 At initialization, Looms rejects duplicate `(kind, name)` registrations and definitions whose kind is not implemented by their owning module. Starting or spawning an unregistered definition fails before any run events are written. An unsupported thread kind is rejected the same way; if such an event somehow appears in a log, fold marks the thread failed instead of inventing empty state. Pass all child definitions to their owning modules too.
 
+`defineWorkflow({ childExecution: 'run' })` launches each spawned, mapped, or looped child as its own run instead of a thread in the parent. The child run id is derived from the parent run and the child thread id, so a retry finds the same run. The child appends `runtime.child.settled` to the parent when it finishes, and that event completes the parent's wait. `childClose: 'terminate'` (the default) cancels those runs when the parent is cancelled. `childClose: 'wait'` cancels the children first and cancels the parent only after they have finished. A missing `RunLauncher` fails the launch. The default `childExecution` is `'thread'`, which keeps the child inside the parent run.
+
 `defineModule(options, setup)` returns a complete runtime module. The callback receives typed `effect`, `projection`, `thread`, `input`, and `emit` builders. Only returned members are installed; access them through `payments.effects.charge` and `payments.projections.ledger`. Event schemas can be inline or supplied as a reusable `defineEventCatalog`.
 
 Modules that implement a custom thread kind can return `definitions` alongside `threads`. The runtime gathers these for `start`, HTTP starts, and cross-module child spawning.

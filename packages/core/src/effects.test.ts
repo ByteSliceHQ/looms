@@ -10,6 +10,8 @@ const ctx: EffectContext = {
   runId: 'run_1',
   threadId: 'thr_1',
   causingEventId: 'evt_1',
+  attributes: {},
+  secrets: {},
   signal: new AbortController().signal,
   emit: async () => undefined,
 }

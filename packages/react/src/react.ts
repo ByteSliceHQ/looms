@@ -13,11 +13,13 @@ import {
 
 import {
   isTerminalStatus,
+  sameStringRecord,
   threadTree,
   toThreadTree,
   type AnyEventEnvelope,
   type ProjectionDefinition,
   type RegisteredEvent,
+  type RunAttributes,
   type RunLaunchSource,
   type RunStatus,
   type SubscriptionTransport,
@@ -264,6 +266,7 @@ export interface RunSummary {
   readonly startedAt: number | undefined
   /** The effect in another run that launched this one. */
   readonly launchedBy: RunLaunchSource | undefined
+  readonly attributes: RunAttributes
   readonly connection: LoomsConnectionStatus
 }
 
@@ -275,6 +278,7 @@ function shallowEqualSummary(a: RunSummary, b: RunSummary): boolean {
     a.rootThreadId === b.rootThreadId &&
     a.startedAt === b.startedAt &&
     a.launchedBy === b.launchedBy &&
+    sameStringRecord(a.attributes, b.attributes) &&
     a.connection === b.connection
   )
 }
@@ -296,6 +300,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
       rootThreadId: run?.rootThreadId ?? undefined,
       startedAt: s.query.startedAt(),
       launchedBy: run?.launchedBy ?? undefined,
+      attributes: run?.attributes ?? {},
       connection: s.status(),
     }
   }, [])
