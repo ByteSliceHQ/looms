@@ -1,5 +1,6 @@
 import { Context, Data, Effect, Option, Schema } from 'effect'
 
+import type { RunAttributes, SecretContext } from './run-context'
 import type { JsonValue, RunStatus } from './types'
 
 /** The effect that launched a run, recorded on the launched run's `runtime.run.started`. */
@@ -36,6 +37,8 @@ export interface LaunchRunArgs {
    * correlation id, or to the launching run's id when that run has none.
    */
   readonly correlationId?: string
+  readonly attributes?: RunAttributes
+  readonly secrets?: SecretContext
 }
 
 /** Enough of a run to decide whether a previous fire is still in progress. */

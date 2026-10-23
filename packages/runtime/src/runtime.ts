@@ -13,12 +13,16 @@ import {
   descendantThreadIds,
   EventStoreTag,
   foldRun,
+  hasEntries,
   isRunTerminal,
   unavailableRunLauncher,
   planFork,
   project,
   replayTo,
+  sameStringRecord,
   summarizeRun,
+  type EventStore,
+  type SecretContext,
   type AnyRuntimeModule,
   type EventInput,
   type EventOrigin,
@@ -36,6 +40,7 @@ import {
   RunNotFoundError,
   RunTerminalError,
   RuntimeExecutionError,
+  SecretContextConflictError,
   StartRunConflictError,
 } from './errors'
 import {
@@ -81,7 +86,7 @@ export type {
   StartRunArgs,
   WakeError,
 } from './types'
-export type { WorkerCallback, WorkerCallbackInput } from '@looms/core'
+export type { WorkerCallback, WorkerCallbackInput, WorkerCallbackResult } from '@looms/core'
 import type { CreateRuntimeOptions, LoomsRuntime, StartRunArgs } from './types'
 
 function currentTimeMillis(): number {
@@ -112,6 +117,65 @@ const DEFAULT_RUN_CACHE_SIZE = 0
 const RESCAN_CONCURRENCY = 16
 const DEFAULT_KEEP_SNAPSHOTS = 1
 const DEFAULT_MAX_PENDING_RUN_OPERATIONS = 256
+
+interface StartedPayloadInput {
+  readonly threadId: string
+  readonly kind: string
+  readonly definitionName: string
+  readonly definitionVersion: string
+  readonly input: StartRunArgs['input']
+  readonly requestedThreadId: string | null
+  readonly launchedBy: StartRunArgs['launchedBy']
+  readonly attributes: StartRunArgs['attributes']
+}
+
+function startedPayload(input: StartedPayloadInput) {
+  const payload = {
+    rootThreadId: input.threadId,
+    kind: input.kind,
+    definitionName: input.definitionName,
+    definitionVersion: input.definitionVersion,
+    input: input.input ?? null,
+    requestedThreadId: input.requestedThreadId,
+  }
+
+  const launched = input.launchedBy ? { ...payload, launchedBy: input.launchedBy } : payload
+  const attributes = input.attributes ?? {}
+
+  return hasEntries(attributes) ? { ...launched, attributes } : launched
+}
+
+function reconcileRunSecrets(
+  store: EventStore,
+  runId: string,
+  requested: SecretContext | undefined,
+) {
+  const next = requested ?? {}
+
+  return Effect.gen(function* () {
+    const stored = store.runSecrets
+
+    if (!stored) {
+      if (hasEntries(next)) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
+
+      return yield* Effect.void
+    }
+
+    const current = yield* stored.get(runId)
+
+    if (sameStringRecord(current, next) || requested === undefined) {
+      return yield* Effect.void
+    }
+
+    if (!hasEntries(current)) {
+      return yield* stored.put(runId, next)
+    }
+
+    return yield* new SecretContextConflictError(runId)
+  })
+}
 
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
@@ -278,24 +342,27 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         idempotencyKey: args.idempotencyKey ?? null,
         launchedBy: args.launchedBy ?? null,
         correlationId: args.correlationId ?? null,
+        attributes: args.attributes ?? {},
       }
 
       const origin: EventOrigin = args.launchedBy
         ? { type: 'run', runId: args.launchedBy.runId }
         : { type: 'system' }
 
-      const startPayload = {
-        rootThreadId: threadId,
+      const startPayload = startedPayload({
+        threadId,
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
         input: startedInput,
         requestedThreadId: args.threadId ?? null,
-      }
+        launchedBy: args.launchedBy,
+        attributes: args.attributes,
+      })
 
-      const startedPayload = args.launchedBy
-        ? { ...startPayload, launchedBy: args.launchedBy }
-        : startPayload
+      if (hasEntries(args.secrets ?? {}) && !store.runSecrets) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
 
       const committed = yield* commit(
         store,
@@ -319,7 +386,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 [
                   {
                     type: 'runtime.run.started',
-                    payload: startedPayload,
+                    payload: startPayload,
                     threadId: null,
                     idempotencyKey: args.idempotencyKey,
                   },
@@ -337,6 +404,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 })),
               ),
       )
+
+      yield* reconcileRunSecrets(store, runId, args.secrets)
 
       if (!committed.append?.deduplicated) {
         return committed.value
@@ -618,6 +687,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ? Effect.succeed({ events: [], value: undefined })
               : Effect.fail(new ForkConflictError(runId, sourceRunId))
           })
+
+          const parentSecrets = store.runSecrets ? yield* store.runSecrets.get(sourceRunId) : {}
+
+          yield* reconcileRunSecrets(
+            store,
+            runId,
+            hasEntries(parentSecrets) ? parentSecrets : undefined,
+          )
 
           return plan.rootThreadId
         }),

@@ -17,14 +17,70 @@ All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.
 
+Pass `blobStore` to `createLooms`, or `blobs` to `LoomsDurableObject` /
+`durableObjectEventStore`, to keep larger JSON. Strings over 64 KiB are replaced
+with `{ "$looms": "blob", "sha256", "bytes", "mediaType": "application/json" }`
+before those limits run. That object is reserved in stored JSON. If an event is
+still over 1 MiB, its payload is stored as one blob. The body is SHA-256
+content, so identical JSON is stored once. `read`, live subscribers, folds,
+projections, and snapshot loads resolve references, including references nested
+inside another blob. Objects and arrays stay inline so snapshot state still
+decodes; a snapshot that is over 8 MiB after large strings are removed is still
+rejected. Trim deletes a body when no retained event and no latest snapshot in
+any run still needs it. Without a blob store, oversized events and snapshots
+are still rejected.
+
+`memoryBlobStore` is the in-memory implementation. `filesystemBlobStore(directory)`
+is the Bun and Node implementation. `r2BlobStore(bucket)` writes an R2 bucket
+under `looms/blobs/`. Every run's Durable Object can share one bucket. Each run
+writes a marker per body it references, so trimming one run checks only that
+body's markers, never other runs' logs. If a body is deleted while another run
+is referencing it, that run's append fails and its retry uploads the body again.
+
+## Run attributes and secret context
+
+`attributes` on `start` are immutable labels (tenant, project, org). They are
+written on `runtime.run.started`, folded into run state, and copied onto the
+run summary. Authorization receives them on `route.attributes` when a run has
+any. They must be safe for every reader of the run.
+
+`secrets` are bearer material for the run. The memory and SQLite stores keep
+them in a side table, `looms_run_secrets`, which is not part of the event log
+or a snapshot. Effect handlers read them on `ctx.secrets`. An in-process worker
+receives them on the dispatch task. A transport that persists that task must
+omit `secrets`. Its worker reads them with
+`POST /runs/:runId/effects/:effectId/:attempt/secrets` (`client.workerSecrets`)
+after its `started` callback is accepted. The route uses `worker` access, so it
+returns 503 until the host configures worker auth. It answers
+`{ status: 'accepted', secrets }` only while that attempt is started and
+unsettled, and `{ status: 'stale' }` or `{ status: 'cancelled' }` otherwise.
+Responses are sent with `cache-control: no-store`. A handler must not copy
+secrets into an emitted event.
+
+A retry of the same start may omit `secrets` and keeps the stored context. Sending
+a different context conflicts, and the error does not include the secret values.
+Forks and effect-launched runs inherit the parent's attributes and secrets.
+A store without `runSecrets` rejects a start that supplies secrets.
+
 ## Worker effect protocol
 
-1. The runtime dispatches `{ runId, effectId, attempt, type, input }`.
+1. The runtime dispatches `{ runId, effectId, attempt, type, input, details? }`.
+   `details` is the progress carried by the previous attempt's last heartbeat.
 2. The worker calls `started` before the schedule-to-start deadline.
-3. Long work calls `heartbeat`; each accepted heartbeat extends the heartbeat
-   deadline without exceeding start-to-close.
-4. The worker calls exactly one of `complete` or `fail`.
+3. Long work calls `heartbeat`. Each accepted heartbeat extends the heartbeat
+   deadline without exceeding start-to-close. A heartbeat may include `details`;
+   the latest details are kept across retries and sent on the next dispatch.
+4. The worker calls exactly one of `complete` or `fail`. `fail` may set
+   `nonRetryable` to stop the retry policy, or `retryAfterMs` to wait at least
+   that long before the next attempt (the policy backoff is never shortened).
+   A local handler does the same by failing with `failEffect`.
 5. On cancellation, stop side effects and call `cancelled`.
+
+Each callback response is `{ status: 'accepted' | 'stale' | 'cancelled', cancelRequested }`.
+The host no longer returns the run state. `cancelRequested` is how a worker learns
+that an attempt already in progress should stop: a queued dispatch cannot be recalled.
+`stale` means the report was for another attempt, or the attempt had already settled,
+and the host recorded nothing.
 
 Callbacks include the same `effectId` and `attempt`. Stale callbacks are ignored.
 A dispatch transport failure is recorded as `ambiguous`: an operator must first

@@ -11,8 +11,10 @@ import {
   type EventInput,
   type DefinitionResolver,
   type OutstandingEffect,
+  type RunAttributes,
   type RunLauncher,
   type RunLaunchSource,
+  type SecretContext,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -43,6 +45,8 @@ export interface ExecuteLocalEffectsInput {
   readonly runId: string
   /** Inherited by runs the effects launch. */
   readonly correlationId: string
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
   readonly outstanding: ReadonlyArray<OutstandingEffect>
   readonly attempts: ReadonlyMap<string, number>
   readonly now: number
@@ -56,6 +60,8 @@ function launcherFor(
   launcher: RunLauncher,
   runId: string,
   correlationId: string,
+  attributes: RunAttributes,
+  secrets: SecretContext,
   item: OutstandingEffect,
   launched: EventEnvelope[],
 ): RunLauncher {
@@ -71,28 +77,37 @@ function launcherFor(
     launch: (args) => {
       const targetRunId = args.runId ?? createRunId()
 
-      return launcher.launch({ ...args, runId: targetRunId, launchedBy, correlationId }).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            launched.push(
-              createEvent(runId, {
-                type: 'runtime.run.launched',
-                payload: {
-                  runId: targetRunId,
-                  kind: args.kind,
-                  definitionName: args.definitionName,
-                  definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
-                  effectId: item.effectId,
-                },
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                correlationId,
-                origin: { type: 'thread', threadId: item.threadId },
-              }),
-            )
-          }),
-        ),
-      )
+      return launcher
+        .launch({
+          ...args,
+          runId: targetRunId,
+          launchedBy,
+          correlationId,
+          attributes: args.attributes ?? attributes,
+          secrets: args.secrets ?? secrets,
+        })
+        .pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              launched.push(
+                createEvent(runId, {
+                  type: 'runtime.run.launched',
+                  payload: {
+                    runId: targetRunId,
+                    kind: args.kind,
+                    definitionName: args.definitionName,
+                    definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
+                    effectId: item.effectId,
+                  },
+                  threadId: item.threadId,
+                  causationId: item.causingEventId,
+                  correlationId,
+                  origin: { type: 'thread', threadId: item.threadId },
+                }),
+              )
+            }),
+          ),
+        )
     },
     status: launcher.status,
   }
@@ -183,13 +198,23 @@ export function executeLocalEffects(
             registry,
             services,
             definitionResolver,
-            launcherFor(launcher, input.runId, input.correlationId, item, launched),
+            launcherFor(
+              launcher,
+              input.runId,
+              input.correlationId,
+              input.attributes,
+              input.secrets,
+              item,
+              launched,
+            ),
             item.effect,
             {
               effectId: item.effectId,
               runId: input.runId,
               threadId: item.threadId,
               causingEventId: item.causingEventId,
+              attributes: input.attributes,
+              secrets: input.secrets,
               signal: controller.signal,
               emit: appendLive,
             },
@@ -273,6 +298,7 @@ export function executeLocalEffects(
               const attempt = input.attempts.get(item.effectId) ?? 1
               const payload = Predicate.isObject(outcome.payload) ? outcome.payload : {}
               const error = Predicate.isString(payload.error) ? payload.error : 'effect failed'
+              const retryAfterMs = payload.retryAfterMs
 
               const failure = planAttemptFailure({
                 runId: input.runId,
@@ -282,6 +308,8 @@ export function executeLocalEffects(
                 now: input.now,
                 retry,
                 origin: { type: 'system' },
+                nonRetryable: payload.nonRetryable === true,
+                retryAfterMs: Predicate.isNumber(retryAfterMs) ? retryAfterMs : undefined,
               })
 
               if (failure.retrying) {

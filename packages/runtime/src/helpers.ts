@@ -1,4 +1,4 @@
-import { Data, Effect, Layer, Predicate, type Context } from 'effect'
+import { Data, Effect, Layer, Predicate, type Context, type Types } from 'effect'
 
 import {
   asJson,
@@ -13,6 +13,7 @@ import {
   validateEventsEffect,
   validateInputEffect,
   withSnapshotStore,
+  hasEntries,
   type AnyRuntimeModule,
   type AppendableEvent,
   type EventCatalog,
@@ -25,6 +26,7 @@ import {
   type DefinitionResolver,
   type JsonValue,
   type OutstandingEffect,
+  type SecretContext,
   type RunCursor,
   type SchemaInput,
   type VersionedDefinition,
@@ -34,18 +36,36 @@ import {
 
 import type { EffectWorkerTask } from './types'
 
+/** What a dispatch carries beyond the effect itself. */
+export interface WorkerTaskExtras {
+  /** Progress from the previous attempt's last heartbeat. */
+  readonly details?: JsonValue | null
+  readonly secrets?: SecretContext
+}
+
 export function workerTask(
   runId: string,
   item: OutstandingEffect,
   attempt: number,
+  extras: WorkerTaskExtras = {},
 ): EffectWorkerTask {
-  return {
+  const task: Types.Mutable<EffectWorkerTask> = {
     runId,
     effectId: item.effectId,
     attempt,
     type: item.effect.type,
     input: 'input' in item.effect ? item.effect.input : null,
   }
+
+  if (extras.details != null) {
+    task.details = extras.details
+  }
+
+  if (extras.secrets && hasEntries(extras.secrets)) {
+    task.secrets = extras.secrets
+  }
+
+  return task
 }
 
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{

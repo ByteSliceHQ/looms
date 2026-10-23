@@ -6,8 +6,11 @@ import type {
   DefinitionResolver,
   EventEnvelope,
   EventInput,
+  WorkerCallback,
   WorkerCallbackInput,
   DefinitionResolveError,
+  WorkerCallbackResult,
+  WorkerSecretsResult,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -16,6 +19,8 @@ import type {
   EventStoreTrimCoverage,
   RunLauncher,
   RunLaunchSource,
+  RunAttributes,
+  SecretContext,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -100,6 +105,13 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  /** Progress from the previous attempt's last heartbeat, when it reported any. */
+  readonly details?: JsonValue
+  /**
+   * Present only on the in-memory dispatch. A transport that persists the task must leave this out
+   * and let the worker read the secret context through an authenticated callback.
+   */
+  readonly secrets?: SecretContext
 }
 
 export interface EffectWorker {
@@ -123,6 +135,13 @@ export interface StartRunArgs {
   launchedBy?: RunLaunchSource
   /** Recorded on `runtime.run.started` to group related runs. */
   correlationId?: string
+  /** Immutable labels stored on the start event and the run summary. */
+  attributes?: RunAttributes
+  /**
+   * Bearer material stored beside the log. A retry that sends a different context conflicts.
+   * Omitting it on a retry keeps the context already stored.
+   */
+  secrets?: SecretContext
 }
 
 export interface StartResult {
@@ -211,11 +230,30 @@ export interface LoomsRuntime<
     sourceRunId: string,
     options?: { runId?: string },
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
+  /**
+   * Applies a worker's report about one effect attempt. A report for another attempt, or one that
+   * arrives after the attempt settled, is `stale` and changes nothing.
+   */
   workerCallback(
     runId: string,
     input: WorkerCallbackInput,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  ): Effect.Effect<
+    WorkerCallbackResult,
+    Error | EventStoreAppendError | EventStoreError,
+    EventStoreTag
+  >
+  /**
+   * The run's secret context for a worker attempt that has started and not settled. Any other
+   * attempt is `stale`, so a redelivered or superseded message never sees the secrets.
+   */
+  workerSecrets(
+    runId: string,
+    callback: WorkerCallback,
+  ): Effect.Effect<
+    WorkerSecretsResult,
+    Error | EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTag
+  >
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
   /** Indexed run rows. Folds a run only when its header has not been written yet. */
   readonly listRunSummaries: Effect.Effect<

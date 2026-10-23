@@ -4,6 +4,8 @@ import {
   createRunId,
   EventStoreTag,
   JsonValueSchema,
+  RunAttributesSchema,
+  SecretContextSchema,
   stringifyJson,
   type EventStore,
   type JsonValue,
@@ -32,6 +34,8 @@ const StartRunBodySchema = Schema.Struct({
   input: Schema.optional(JsonValueSchema),
   runId: Schema.optional(Schema.String),
   idempotencyKey: Schema.optional(Schema.String),
+  attributes: Schema.optional(RunAttributesSchema),
+  secrets: Schema.optional(SecretContextSchema),
 })
 
 const SignalBodySchema = Schema.Struct({
@@ -185,6 +189,8 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
             input: body.input ?? null,
             runId,
             idempotencyKey,
+            attributes: body.attributes,
+            secrets: body.secrets,
           }
 
           if (wantsRunStream(req, url)) {
