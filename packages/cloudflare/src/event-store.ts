@@ -1,4 +1,4 @@
-import type { Effect } from 'effect'
+import { Effect } from 'effect'
 
 import type { EventStore } from '@looms/core'
 import { sqliteEventStore, sqlStorageExec } from '@looms/core/sqlite-store'
@@ -21,7 +21,9 @@ export interface DurableObjectEventStore extends EventStore {
 
 /**
  * Creates an EventStore backed by a Durable Object's embedded SQLite database (`ctx.storage.sql`).
- * Optionally attaches asynchronous projectors (such as S2).
+ * Optionally attaches projectors. Their delivery is scheduled with `waitUntil`, so an append
+ * returns when the log commits. A crashed delivery is retried from the durable cursor on the next
+ * alarm or request.
  */
 export function durableObjectEventStore(
   ctx: DurableObjectState,
@@ -42,7 +44,13 @@ export function durableObjectEventStore(
       { scheduleRetry: options.scheduleProjectorRetry },
     )
 
-    const wrapped = withProjectors(store, options.projectors, { delivery })
+    const wrapped = withProjectors(store, options.projectors, {
+      delivery,
+      scheduleDelivery: (_runId, work) => {
+        ctx.waitUntil(Effect.runPromise(work))
+      },
+    })
+
     return Object.assign(wrapped, { projectorDelivery: delivery })
   }
 

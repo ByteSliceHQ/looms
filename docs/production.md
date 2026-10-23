@@ -13,6 +13,28 @@ coalesced. A deployment, eviction, or alarm retry may repeat a wake; event
 preconditions make that safe. Cross-object queries and transactions are not
 provided. Build global run lists with a projector.
 
+On a Durable Object, projector delivery is scheduled with `waitUntil` after the
+append commits, so projector latency is not part of the run step. The cursor is
+durable. A delivery that fails, or an isolate that stops before `waitUntil`
+finishes, is retried on the next alarm or request.
+
+`postgresEventLog` is the generic sink: one row per non-ephemeral envelope,
+keyed by `(run_id, seq)`, and a `looms_run_index` row with status, timestamps,
+the parent run, the launching effect, and the run's attributes. `tenant`,
+`project`, and `org` are copied out of string attributes so row-level security
+can index them:
+
+```sql
+ALTER TABLE looms_run_index ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON looms_run_index
+  USING (tenant = current_setting('looms.tenant', true));
+```
+
+Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Writes are
+idempotent. `rebuild(source)` replays a run from seq 1; run that while live
+delivery is paused, then let the cursor catch up. Ephemeral events are left out
+of the log.
+
 All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.

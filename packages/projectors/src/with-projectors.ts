@@ -15,6 +15,12 @@ export interface WithProjectorsOptions {
   onError?: ProjectorErrorHandler
   /** Durable cursor runner. When present, appends trigger catch-up from its persisted cursor. */
   delivery?: ProjectorDelivery
+  /**
+   * Runs projection after the append commits, without making the append wait.
+   * The callback has to keep the effect alive, for example with a Durable Object's `waitUntil`.
+   * Without it, projection still finishes before `append` returns.
+   */
+  scheduleDelivery?: (runId: string, delivery: Effect.Effect<void>) => void
 }
 
 function defaultOnError(error: Error, projector: Projector): void {
@@ -40,6 +46,7 @@ export function withProjectors(
 ): EventStore {
   const onError = options?.onError ?? defaultOnError
   const delivery = options?.delivery
+  const scheduleDelivery = options?.scheduleDelivery
 
   const project = (runId: string, sequences: readonly number[]): Effect.Effect<void> => {
     if (delivery) {
@@ -73,13 +80,23 @@ export function withProjectors(
 
   const wrapped: EventStore = {
     append: (runId, events, appendOptions) =>
-      store
-        .append(runId, events, appendOptions)
-        .pipe(
-          Effect.tap((result) =>
-            projectors.length === 0 ? Effect.void : project(runId, result.sequences),
-          ),
-        ),
+      store.append(runId, events, appendOptions).pipe(
+        Effect.tap((result) => {
+          if (projectors.length === 0) {
+            return Effect.void
+          }
+
+          const work = project(runId, result.sequences)
+
+          if (!scheduleDelivery) {
+            return work
+          }
+
+          return Effect.sync(() => {
+            scheduleDelivery(runId, work)
+          })
+        }),
+      ),
     read: (runId, readOptions) => store.read(runId, readOptions),
     tail: (runId) => store.tail(runId),
     bounds: store.bounds ? (runId) => store.bounds!(runId) : undefined,
