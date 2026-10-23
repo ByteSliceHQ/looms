@@ -71,7 +71,8 @@ export interface CreateLoomsOptions {
    * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
    *
    * A mounted debugger is authorized as `{ access: 'read', name: 'debugger' }`. Bearer tokens on
-   * reads block browser navigation, so hosts that need auth should use a cookie or session policy.
+   * reads block browser navigation. `grantAuth` covers a browser EventSource or WebSocket that can
+   * only send a query parameter or a subprotocol.
    */
   readonly authorize?: Authorize
   /**

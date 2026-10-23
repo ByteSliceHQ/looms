@@ -166,6 +166,30 @@ describe('createLoomsClient', () => {
     stop()
   })
 
+  test('subscribeEvents puts the read grant on the event stream', async () => {
+    const calls: string[] = []
+
+    const client = createLoomsClient({
+      grant: 'v1.abc.def',
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+
+        return new Response(null, { status: 401 })
+      },
+    })
+
+    const stop = client.subscribeEvents('run_1', () => undefined)
+    const start = Date.now()
+
+    while (calls.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    stop()
+    expect(calls[0]).toContain('/runs/run_1/events')
+    expect(calls[0]).toContain('grant=v1.abc.def')
+  })
+
   test('stream yields live deltas then the completed run events', async () => {
     const client = createLoomsClient({
       fetch: async (input, init) => {

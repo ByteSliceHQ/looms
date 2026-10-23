@@ -13,6 +13,16 @@ export {
   type RouteAccess,
   type RouteInfo,
 } from './server/auth'
+export {
+  grantAuth,
+  issueRunGrant,
+  runGrantToken,
+  verifyRunGrant,
+  GrantError,
+  type GrantAuthOptions,
+  type GrantFailure,
+  type RunGrant,
+} from './server/grant'
 
 export interface RunningServer {
   port: number

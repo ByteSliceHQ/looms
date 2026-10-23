@@ -17,7 +17,7 @@ export interface FetchHandlerOptions {
   readonly store: EventStore
   /**
    * Decides whether a request may use a route. Defaults to open reads and writes with worker and
-   * operations routes unavailable; use `bearerAuth` or your own policy to change that.
+   * operations routes unavailable; use `bearerAuth`, `grantAuth`, or your own policy to change that.
    */
   readonly authorize?: Authorize
   /** Debugger UI served beside the API and authorized as `{ access: 'read', name: 'debugger' }`. */

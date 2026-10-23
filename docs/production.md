@@ -60,6 +60,37 @@ Each configured level requires `Authorization: Bearer <token>`; levels without a
 token keep the default behavior. The client's `workerCallbackToken` option sends
 the worker token on `workerCallback` requests.
 
+Browsers cannot set headers on `EventSource` or `WebSocket`. `grantAuth` verifies
+a short-lived HMAC grant from the `grant` query parameter, or from a `v1.` value
+in `Sec-WebSocket-Protocol` when the query parameter is absent. The grant names
+one run, one principal, and `read` access. It does not authorize writes, worker
+callbacks, operations, the debugger, or a different run. `exp` is an exclusive
+Unix millisecond timestamp. A host that accepts the grant as a WebSocket
+subprotocol must echo that protocol on the upgrade response; the query parameter
+needs no echo.
+
+```ts
+import { Effect } from 'effect'
+import { grantAuth, issueRunGrant } from '@swirls/looms/runtime'
+
+const secret = env.GRANT_SECRET
+const grant = await Effect.runPromise(
+  issueRunGrant(secret, {
+    runId,
+    principal: userId,
+    access: 'read',
+    exp: Date.now() + 5 * 60_000,
+  }),
+)
+
+createLooms({
+  modules,
+  authorize: grantAuth({ secret }),
+})
+
+const events = new EventSource(`/runs/${runId}/events?live=true&grant=${grant}`)
+```
+
 ## Retention and compaction
 
 Snapshots accelerate runtime recovery but do not rebuild arbitrary projections.

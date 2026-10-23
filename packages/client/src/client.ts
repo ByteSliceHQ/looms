@@ -68,6 +68,11 @@ export interface LoomsClientOptions {
   baseUrl?: string
   fetch?: typeof fetch
   workerCallbackToken?: string
+  /**
+   * Appended to the event-stream URL as `grant`. A read grant cannot authorize other requests, so
+   * it is not sent on them.
+   */
+  grant?: string
 }
 
 export interface StartResult {
@@ -83,6 +88,7 @@ export interface StreamHandle extends AsyncIterable<EventEnvelope> {
 export function createLoomsClient(options: LoomsClientOptions = {}) {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
   const fetchImpl = options.fetch ?? fetch
+  const grantQuery = options.grant ? `&grant=${encodeURIComponent(options.grant)}` : ''
 
   function request<T>(
     path: string,
@@ -135,10 +141,13 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 
           const res = yield* Effect.tryPromise({
             try: (signal) =>
-              fetchImpl(`${baseUrl}/runs/${encodeURIComponent(runId)}/events?fromSeq=${fromSeq}`, {
-                headers,
-                signal,
-              }),
+              fetchImpl(
+                `${baseUrl}/runs/${encodeURIComponent(runId)}/events?fromSeq=${fromSeq}${grantQuery}`,
+                {
+                  headers,
+                  signal,
+                },
+              ),
             catch: (cause) => new LoomsClientError('Event subscription failed', cause),
           })
 
