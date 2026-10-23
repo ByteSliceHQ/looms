@@ -437,14 +437,7 @@ function postgresStore(sql: Sql, ownsClient: boolean) {
       }
 
       return runProjectorPromise('postgres-event-log', () =>
-        sql.begin((tx) =>
-          Effect.runPromise(
-            Effect.forEach(ops, (op) => Effect.promise(() => Promise.resolve(applySqlOp(tx, op))), {
-              concurrency: 1,
-              discard: true,
-            }),
-          ),
-        ),
+        sql.begin((tx) => applySqlOps(tx, ops)),
       ).then(() => undefined)
     },
     dispose: () =>
@@ -456,76 +449,158 @@ function postgresStore(sql: Sql, ownsClient: boolean) {
   }
 }
 
-function applySqlOp(sql: TransactionSql, op: EventLogOp): Promise<void> {
-  switch (op.type) {
-    case 'insert':
-      return sql`
-        INSERT INTO looms_run_events (
-          run_id, seq, event_id, ts, type, payload, thread_id, parent_thread_id,
-          causation_id, correlation_id, effect_id, origin, idempotency_key
-        )
-        VALUES (
-          ${op.entry.runId}, ${op.entry.seq}, ${op.entry.eventId}, ${utcDate(op.entry.ts)},
-          ${op.entry.type}, ${sql.json(op.entry.payload)}, ${op.entry.threadId},
-          ${op.entry.parentThreadId}, ${op.entry.causationId}, ${op.entry.correlationId},
-          ${op.entry.effectId}, ${sql.json(op.entry.origin)}, ${op.entry.idempotencyKey}
-        )
-        ON CONFLICT (run_id, seq) DO NOTHING
-      `.then(() => undefined)
-    case 'start':
-      return sql`
-        INSERT INTO looms_run_index (
-          run_id, status, kind, definition_name, definition_version, root_thread_id,
-          parent_run_id, launched_by_effect_id, correlation_id, attributes,
-          tenant, project, org, started_at, updated_at, completed_at
-        )
-        VALUES (
-          ${op.runId}, 'running', ${op.kind}, ${op.definitionName}, ${op.definitionVersion},
-          ${op.rootThreadId}, ${op.parentRunId}, ${op.launchedByEffectId}, ${op.correlationId},
-          ${sql.json(op.attributes)}, ${op.tenant}, ${op.project}, ${op.org},
-          ${utcDate(op.at)}, ${utcDate(op.at)}, NULL
-        )
-        ON CONFLICT (run_id) DO UPDATE SET
-          status = CASE
-            WHEN looms_run_index.status IN ('completed', 'failed', 'cancelled') THEN looms_run_index.status
-            ELSE EXCLUDED.status
-          END,
-          kind = COALESCE(looms_run_index.kind, EXCLUDED.kind),
-          definition_name = COALESCE(looms_run_index.definition_name, EXCLUDED.definition_name),
-          definition_version = COALESCE(looms_run_index.definition_version, EXCLUDED.definition_version),
-          root_thread_id = COALESCE(looms_run_index.root_thread_id, EXCLUDED.root_thread_id),
-          parent_run_id = COALESCE(looms_run_index.parent_run_id, EXCLUDED.parent_run_id),
-          launched_by_effect_id = COALESCE(looms_run_index.launched_by_effect_id, EXCLUDED.launched_by_effect_id),
-          correlation_id = COALESCE(looms_run_index.correlation_id, EXCLUDED.correlation_id),
-          attributes = CASE
-            WHEN looms_run_index.attributes = '{}'::jsonb THEN EXCLUDED.attributes
-            ELSE looms_run_index.attributes
-          END,
-          tenant = COALESCE(looms_run_index.tenant, EXCLUDED.tenant),
-          project = COALESCE(looms_run_index.project, EXCLUDED.project),
-          org = COALESCE(looms_run_index.org, EXCLUDED.org),
-          started_at = COALESCE(looms_run_index.started_at, EXCLUDED.started_at),
-          updated_at = GREATEST(looms_run_index.updated_at, EXCLUDED.updated_at)
-      `.then(() => undefined)
-    case 'finish':
-      return sql`
-        INSERT INTO looms_run_index (run_id, status, attributes, updated_at, completed_at)
-        VALUES (${op.runId}, ${op.status}, '{}'::jsonb, ${utcDate(op.at)}, ${utcDate(op.at)})
-        ON CONFLICT (run_id) DO UPDATE SET
-          status = EXCLUDED.status,
-          updated_at = GREATEST(looms_run_index.updated_at, EXCLUDED.updated_at),
-          completed_at = COALESCE(looms_run_index.completed_at, EXCLUDED.completed_at)
-      `.then(() => undefined)
-    case 'touch':
-      return sql`
-        UPDATE looms_run_index
-        SET updated_at = GREATEST(updated_at, ${utcDate(op.at)})
-        WHERE run_id = ${op.runId}
-      `.then(() => undefined)
+/** Keeps each statement under Postgres's 65,535 bind parameters (13 per event row). */
+const INSERT_CHUNK_ROWS = 1_000
 
-    default: {
-      const unexpected: never = op
-      throw unexpected
+type StartOp = Extract<EventLogOp, { type: 'start' }>
+type FinishOp = Extract<EventLogOp, { type: 'finish' }>
+
+/** Every index change a batch makes to one run, folded the way `applyMemoryOp` folds them. */
+interface RunIndexPatch {
+  readonly runId: string
+  start: StartOp | null
+  finish: FinishOp | null
+  completedAt: number | null
+  updatedAt: number
+}
+
+function runIndexPatches(ops: readonly EventLogOp[]): RunIndexPatch[] {
+  const patches = new Map<string, RunIndexPatch>()
+
+  for (const op of ops) {
+    if (op.type === 'insert') {
+      continue
     }
+
+    const patch = patches.get(op.runId) ?? {
+      runId: op.runId,
+      start: null,
+      finish: null,
+      completedAt: null,
+      updatedAt: op.at,
+    }
+
+    patch.updatedAt = Math.max(patch.updatedAt, op.at)
+
+    if (op.type === 'start') {
+      patch.start ??= op
+    }
+
+    if (op.type === 'finish') {
+      patch.finish = op
+      patch.completedAt ??= op.at
+    }
+
+    patches.set(op.runId, patch)
   }
+
+  return [...patches.values()]
+}
+
+function applySqlOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
+  const entries = ops.flatMap((op) => (op.type === 'insert' ? [op.entry] : []))
+  const patches = runIndexPatches(ops)
+  const upserts = patches.filter((patch) => patch.start !== null || patch.finish !== null)
+  const touches = patches.filter((patch) => patch.start === null && patch.finish === null)
+  const statements: Promise<void>[] = []
+
+  for (let index = 0; index < entries.length; index += INSERT_CHUNK_ROWS) {
+    statements.push(insertEvents(sql, entries.slice(index, index + INSERT_CHUNK_ROWS)))
+  }
+
+  if (upserts.length > 0) {
+    statements.push(upsertRuns(sql, upserts))
+  }
+
+  if (touches.length > 0) {
+    statements.push(touchRuns(sql, touches))
+  }
+
+  return Promise.all(statements).then(() => undefined)
+}
+
+function insertEvents(sql: TransactionSql, entries: readonly EventLogEntry[]): Promise<void> {
+  const rows = entries.map((entry) => ({
+    run_id: entry.runId,
+    seq: entry.seq,
+    event_id: entry.eventId,
+    ts: utcDate(entry.ts),
+    type: entry.type,
+    payload: sql.json(entry.payload),
+    thread_id: entry.threadId,
+    parent_thread_id: entry.parentThreadId,
+    causation_id: entry.causationId,
+    correlation_id: entry.correlationId,
+    effect_id: entry.effectId,
+    origin: sql.json(entry.origin),
+    idempotency_key: entry.idempotencyKey,
+  }))
+
+  return sql`
+    INSERT INTO looms_run_events ${sql(rows)}
+    ON CONFLICT (run_id, seq) DO NOTHING
+  `.then(() => undefined)
+}
+
+// A finish in the batch sets the status; otherwise a finished run keeps its status and a
+// started run becomes running. Start fields fill only columns that are still empty.
+function upsertRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Promise<void> {
+  const rows = patches.map(({ runId, start, finish, completedAt, updatedAt }) => ({
+    run_id: runId,
+    status: finish?.status ?? 'running',
+    kind: start?.kind ?? null,
+    definition_name: start?.definitionName ?? null,
+    definition_version: start?.definitionVersion ?? null,
+    root_thread_id: start?.rootThreadId ?? null,
+    parent_run_id: start?.parentRunId ?? null,
+    launched_by_effect_id: start?.launchedByEffectId ?? null,
+    correlation_id: start?.correlationId ?? null,
+    attributes: sql.json(start?.attributes ?? {}),
+    tenant: start?.tenant ?? null,
+    project: start?.project ?? null,
+    org: start?.org ?? null,
+    started_at: start ? utcDate(start.at) : null,
+    updated_at: utcDate(updatedAt),
+    completed_at: completedAt === null ? null : utcDate(completedAt),
+  }))
+
+  return sql`
+    INSERT INTO looms_run_index ${sql(rows)}
+    ON CONFLICT (run_id) DO UPDATE SET
+      status = CASE
+        WHEN EXCLUDED.completed_at IS NOT NULL THEN EXCLUDED.status
+        WHEN looms_run_index.status IN ('completed', 'failed', 'cancelled') THEN looms_run_index.status
+        ELSE EXCLUDED.status
+      END,
+      kind = COALESCE(looms_run_index.kind, EXCLUDED.kind),
+      definition_name = COALESCE(looms_run_index.definition_name, EXCLUDED.definition_name),
+      definition_version = COALESCE(looms_run_index.definition_version, EXCLUDED.definition_version),
+      root_thread_id = COALESCE(looms_run_index.root_thread_id, EXCLUDED.root_thread_id),
+      parent_run_id = COALESCE(looms_run_index.parent_run_id, EXCLUDED.parent_run_id),
+      launched_by_effect_id = COALESCE(looms_run_index.launched_by_effect_id, EXCLUDED.launched_by_effect_id),
+      correlation_id = COALESCE(looms_run_index.correlation_id, EXCLUDED.correlation_id),
+      attributes = CASE
+        WHEN looms_run_index.attributes = '{}'::jsonb THEN EXCLUDED.attributes
+        ELSE looms_run_index.attributes
+      END,
+      tenant = COALESCE(looms_run_index.tenant, EXCLUDED.tenant),
+      project = COALESCE(looms_run_index.project, EXCLUDED.project),
+      org = COALESCE(looms_run_index.org, EXCLUDED.org),
+      started_at = COALESCE(looms_run_index.started_at, EXCLUDED.started_at),
+      updated_at = GREATEST(looms_run_index.updated_at, EXCLUDED.updated_at),
+      completed_at = COALESCE(looms_run_index.completed_at, EXCLUDED.completed_at)
+  `.then(() => undefined)
+}
+
+function touchRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Promise<void> {
+  const runIds = patches.map((patch) => patch.runId)
+  const touchedAt = patches.map((patch) => DateTime.formatIso(DateTime.makeUnsafe(patch.updatedAt)))
+
+  return sql`
+    UPDATE looms_run_index AS run
+    SET updated_at = GREATEST(run.updated_at, touched.at)
+    FROM unnest(${sql.array(runIds)}::text[], ${sql.array(touchedAt)}::timestamptz[])
+      AS touched (run_id, at)
+    WHERE run.run_id = touched.run_id
+  `.then(() => undefined)
 }

@@ -30,7 +30,10 @@ CREATE POLICY tenant_isolation ON looms_run_index
   USING (tenant = current_setting('looms.tenant', true));
 ```
 
-Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Writes are
+Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Each
+delivered batch is one transaction of about three statements, however many
+events and runs it holds: one multi-row event insert per 1,000 events, one
+run-index upsert, and one update for runs that only gained events. Writes are
 idempotent. `rebuild(source)` replays a run from seq 1; run that while live
 delivery is paused, then let the cursor catch up. Ephemeral events are left out
 of the log.
