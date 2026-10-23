@@ -40,5 +40,6 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
+export { filesystemBlobStore } from './filesystem-blob-store'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'
 export { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'

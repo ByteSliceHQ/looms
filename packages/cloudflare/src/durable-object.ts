@@ -6,6 +6,7 @@ import {
   createRemoteRunLauncher,
   type AnyRuntimeModule,
   type EventInput,
+  type BlobStore,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
   type RunLauncher,
@@ -22,6 +23,8 @@ import type { DurableObjectNamespaceLike } from './router'
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
   readonly projectors?: readonly Projector[]
+  /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
+  readonly blobs?: BlobStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   readonly maxPendingRunOperations?: number
@@ -87,6 +90,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       const store = durableObjectEventStore(this.ctx, {
         projectors: config.projectors,
         scheduleProjectorRetry: alarms.scheduleAtEarliest,
+        blobs: config.blobs,
       })
 
       this.store = store

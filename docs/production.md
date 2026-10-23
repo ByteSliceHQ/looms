@@ -17,6 +17,24 @@ All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.
 
+Pass `blobStore` to `createLooms`, or `blobs` to `LoomsDurableObject` /
+`durableObjectEventStore`, to keep larger JSON. Strings over 64 KiB are replaced
+with `{ "$looms": "blob", "sha256", "bytes", "mediaType": "application/json" }`
+before those limits run. That object is reserved in stored JSON. If an event is
+still over 1 MiB, its payload is stored as one blob. The body is SHA-256
+content, so identical JSON is stored once. `read`, live subscribers, folds,
+projections, and snapshot loads resolve references, including references nested
+inside another blob. Objects and arrays stay inline so snapshot state still
+decodes; a snapshot that is over 8 MiB after large strings are removed is still
+rejected. Trim deletes a body when no retained event and no latest snapshot in
+any run still needs it. Without a blob store, oversized events and snapshots
+are still rejected.
+
+`memoryBlobStore` is the in-memory implementation. `filesystemBlobStore(directory)`
+is the Bun and Node implementation. `r2BlobStore(bucket)` writes an R2 bucket
+under `looms/blobs/`. One blob store should have one writer. Two Durable Objects
+sharing a bucket can delete a hash the other still references.
+
 ## Worker effect protocol
 
 1. The runtime dispatches `{ runId, effectId, attempt, type, input }`.
