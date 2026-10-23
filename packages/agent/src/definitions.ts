@@ -31,36 +31,47 @@ export type AgentCompactor = (
   ctx: AgentCompactionContext,
 ) => Promise<AgentCompactedResult> | AgentCompactedResult
 
+const COMPACTION_RECENT_MESSAGES = 4
+
+/**
+ * Keeps the first message (the task) and the most recent messages, replacing the rest with a
+ * note. The recent window never starts on a tool result, so every kept result still follows
+ * the assistant message that requested it.
+ */
 export function defaultAgentCompactor(ctx: AgentCompactionContext): AgentCompactedResult {
-  if (ctx.messages.length <= 6) {
+  let start = ctx.messages.length - COMPACTION_RECENT_MESSAGES
+
+  while (start > 1 && ctx.messages[start]?.role === 'tool') {
+    start -= 1
+  }
+
+  if (start <= 1) {
     return { messages: [...ctx.messages] }
   }
 
-  const systemOrFirst = ctx.messages.slice(0, 2)
-  const recent = ctx.messages.slice(-4)
-  const elidedCount = ctx.messages.length - 6
-  const summary = `[${elidedCount} earlier messages compacted for context window]`
+  const summary = `[${start - 1} earlier messages compacted for context window]`
   const summaryMessage: Message = { role: 'system', content: summary }
 
   return {
-    messages: [...systemOrFirst, summaryMessage, ...recent],
+    messages: [...ctx.messages.slice(0, 1), summaryMessage, ...ctx.messages.slice(start)],
     summary,
   }
 }
 
-export function isContextOverflowError(cause: unknown): boolean {
-  const message = cause instanceof Error ? cause.message : String(cause)
-  const lower = message.toLowerCase()
+const CONTEXT_OVERFLOW_MARKERS = [
+  'context window',
+  'context length',
+  'context_length_exceeded',
+  'maximum context',
+  'prompt is too long',
+  'prompt too long',
+  'too many tokens',
+]
 
-  return (
-    lower.includes('context window') ||
-    lower.includes('context length') ||
-    lower.includes('prompt too long') ||
-    lower.includes('too many tokens') ||
-    lower.includes('maximum context') ||
-    lower.includes('context_length_exceeded') ||
-    lower.includes('overflow')
-  )
+/** Whether a model error reports that the prompt exceeded the model's context window. */
+export function isContextOverflowError(error: Error): boolean {
+  const message = error.message.toLowerCase()
+  return CONTEXT_OVERFLOW_MARKERS.some((marker) => message.includes(marker))
 }
 
 export function buildStructuredOutputInstructions(toolName = STRUCTURED_OUTPUT_TOOL_NAME): string {
@@ -133,6 +144,19 @@ export interface AgentTurnContext<TInput = JsonValue> {
   readonly signal?: AbortSignal
 }
 
+/** What `resolveTools` sees. It runs before each model turn and again when a tool executes. */
+export interface AgentToolResolutionContext<TInput = JsonValue> {
+  readonly threadId: string
+  readonly turn: number
+  readonly input: TInput
+}
+
+export interface AgentUsage {
+  readonly input: number
+  readonly output: number
+  readonly turn: number
+}
+
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {
   message: Message
   toolCalls?: ToolCall[]
@@ -155,15 +179,22 @@ export interface AgentDefinition<
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
   readonly output?: StandardSchemaV1<any, TOutput> | Schema.ConstraintDecoder<TOutput> | SchemaInput
   readonly tools?: ToolLike[]
-  readonly resolveTools?: (
-    ctx: AgentTurnContext<TInput>,
-  ) => Promise<AgentToolEntry[]> | AgentToolEntry[]
+  /**
+   * Tools added for one turn, such as per-tenant integrations. Must return the same tools for the
+   * same input and turn, because tool execution resolves them again to find the handler.
+   */
+  resolveTools?(
+    ctx: AgentToolResolutionContext<TInput>,
+  ): Promise<readonly AgentToolEntry[]> | readonly AgentToolEntry[]
+  /** Shrinks the conversation after the model reports a context overflow. */
   readonly compact?: AgentCompactor
-  readonly assertCredits?: (ctx: AgentTurnContext<TInput>) => Promise<void> | void
-  readonly trackUsage?: (
-    usage: { input: number; output: number; turn: number },
-    ctx: AgentTurnContext<TInput>,
-  ) => Promise<void> | void
+  /** Runs before each model call. Throwing fails the agent thread with the thrown message. */
+  assertCredits?(ctx: AgentTurnContext<TInput>): Promise<void> | void
+  /**
+   * Reports token usage after each model call. Usage is also recorded as `agent.turn.usage`;
+   * a retried turn calls this again, so deduplicate on `threadId` and `turn`.
+   */
+  trackUsage?(usage: AgentUsage, ctx: AgentTurnContext<TInput>): Promise<void> | void
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen

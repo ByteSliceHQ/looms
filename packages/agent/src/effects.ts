@@ -16,6 +16,8 @@ import {
   normalizeTools,
   STRUCTURED_OUTPUT_TOOL_NAME,
   TEAM_MEMBER_MAX_DEPTH,
+  type AgentDefinition,
+  type AgentToolResolutionContext,
   type AgentTurnResult,
   type ToolLike,
 } from './definitions'
@@ -33,7 +35,6 @@ const CallLlmInput = Schema.Struct({
   ),
   messages: Schema.optional(Schema.Array(MessageSchema)),
   input: Schema.optional(Schema.Json),
-  depth: Schema.optional(Schema.Finite),
   structuredOutput: Schema.optional(Schema.NullOr(Schema.Json)),
   alreadyCompacted: Schema.optional(Schema.Boolean),
   consumedSteerMessageIds: Schema.optional(Schema.Array(Schema.String)),
@@ -46,6 +47,7 @@ const ExecuteToolInput = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
   ),
   toolCall: ToolCallSchema,
+  input: Schema.optional(Schema.Json),
   depth: Schema.optional(Schema.Finite),
 })
 
@@ -69,6 +71,57 @@ function findTool(tools: ToolLike[], name: string): ToolLike | undefined {
   return tools.find((tool) => tool.name === name)
 }
 
+/** Static tools, then `resolveTools`, then `submit_output` when the agent declares an output. */
+function agentTools(
+  definition: AgentDefinition,
+  ctx: AgentToolResolutionContext,
+): Effect.Effect<ToolLike[], AgentExecutionError> {
+  return Effect.gen(function* () {
+    const tools = normalizeTools(definition.tools)
+
+    if (definition.resolveTools) {
+      const resolved = yield* Effect.tryPromise({
+        try: () => Promise.resolve(definition.resolveTools!(ctx)),
+        catch: (cause) => new AgentExecutionError('resolve tools', cause),
+      })
+
+      tools.push(...normalizeTools(resolved))
+    }
+
+    if (definition.output) {
+      tools.push(
+        defineTool({
+          name: STRUCTURED_OUTPUT_TOOL_NAME,
+          description:
+            'Submit the final structured output for this task. Call it once all work is done, with values that match the output schema.',
+          input: definition.output,
+          handler: (output) => ({ accepted: true, output }),
+        }),
+      )
+    }
+
+    return tools
+  })
+}
+
+function toolError(
+  input: { readonly turn: number; readonly toolCall: ToolCall },
+  threadId: string,
+  error: string,
+): EventInputOf<AgentEvent> {
+  return {
+    type: 'agent.tool.result',
+    payload: {
+      turn: input.turn,
+      toolCallId: input.toolCall.id,
+      name: input.toolCall.name,
+      result: null,
+      error,
+    },
+    threadId,
+  }
+}
+
 export const callLlmEffect = agentModule.effect({
   type: 'agent.callLLM',
   input: CallLlmInput,
@@ -79,7 +132,6 @@ export const callLlmEffect = agentModule.effect({
       definitionVersion: input.definitionVersion,
       messages: [...(input.messages ?? [])],
       input: input.input ?? null,
-      depth: input.depth ?? 0,
       structuredOutput: input.structuredOutput ?? null,
       alreadyCompacted: input.alreadyCompacted ?? false,
       consumedSteerMessageIds: [...(input.consumedSteerMessageIds ?? [])],
@@ -96,7 +148,6 @@ function runCallLlm(args: {
   definitionVersion: string
   messages: Message[]
   input: JsonValue
-  depth: number
   structuredOutput: JsonValue | null
   alreadyCompacted: boolean
   consumedSteerMessageIds: string[]
@@ -147,42 +198,7 @@ function runCallLlm(args: {
       ]
     }
 
-    const staticTools = normalizeTools(definition.tools)
-    let dynamicTools: ToolLike[] = []
-
-    if (definition.resolveTools) {
-      const dynamicEntries = yield* Effect.tryPromise({
-        try: () =>
-          Promise.resolve(
-            definition.resolveTools!({
-              threadId,
-              turn,
-              messages,
-              input,
-              tools: staticTools,
-              instructions: definition.instructions,
-              signal,
-            }),
-          ),
-        catch: (cause) => new AgentExecutionError('resolve dynamic tools', cause),
-      })
-
-      dynamicTools = normalizeTools(dynamicEntries)
-    }
-
-    const tools = [...staticTools, ...dynamicTools]
-
-    if (definition.output) {
-      tools.push(
-        defineTool({
-          name: STRUCTURED_OUTPUT_TOOL_NAME,
-          description:
-            'Submit the final structured output for this task. Call this tool when you have completed all work and matched the required schema.',
-          input: definition.output,
-          handler: (out) => ({ accepted: true, output: out }),
-        }),
-      )
-    }
+    const tools = yield* agentTools(definition, { threadId, turn, input })
 
     const instructions = definition.output
       ? `${definition.instructions}\n\n${buildStructuredOutputInstructions(STRUCTURED_OUTPUT_TOOL_NAME)}`
@@ -351,10 +367,7 @@ function runCallLlm(args: {
             ),
           catch: (cause) => new AgentExecutionError('track usage', cause),
         }).pipe(
-          Effect.match({
-            onFailure: () => undefined,
-            onSuccess: () => undefined,
-          }),
+          Effect.catch((error) => Effect.logWarning('[@looms/agent] trackUsage failed', error)),
         )
       }
     }
@@ -431,62 +444,25 @@ export const executeToolEffect = agentModule.effect({
         ]
       }
 
-      const staticTools = normalizeTools(definition.tools)
-      let dynamicTools: ToolLike[] = []
+      const resolved = yield* agentTools(definition, {
+        threadId,
+        turn: input.turn,
+        input: input.input ?? null,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false as const, error: error.message }),
+          onSuccess: (tools) => ({ ok: true as const, tools }),
+        }),
+      )
 
-      if (definition.resolveTools) {
-        const dynamicEntries = yield* Effect.tryPromise({
-          try: () =>
-            Promise.resolve(
-              definition.resolveTools!({
-                threadId,
-                turn: input.turn,
-                messages: [],
-                input: null,
-                tools: staticTools,
-                instructions: definition.instructions,
-              }),
-            ),
-          catch: () => [],
-        }).pipe(
-          Effect.match({
-            onFailure: () => [],
-            onSuccess: (entries) => entries,
-          }),
-        )
-
-        dynamicTools = normalizeTools(dynamicEntries)
+      if (!resolved.ok) {
+        return [toolError(input, threadId, `Could not resolve tools: ${resolved.error}`)]
       }
 
-      const allTools = [...staticTools, ...dynamicTools]
-
-      if (definition.output) {
-        allTools.push(
-          defineTool({
-            name: STRUCTURED_OUTPUT_TOOL_NAME,
-            description: 'Submit the final structured output for this task.',
-            input: definition.output,
-            handler: (out) => ({ accepted: true, output: out }),
-          }),
-        )
-      }
-
-      const tool = findTool(allTools, input.toolCall.name)
+      const tool = findTool(resolved.tools, input.toolCall.name)
 
       if (!tool) {
-        return [
-          {
-            type: 'agent.tool.result',
-            payload: {
-              turn: input.turn,
-              toolCallId: input.toolCall.id,
-              name: input.toolCall.name,
-              result: null,
-              error: `Unknown tool: ${input.toolCall.name}`,
-            },
-            threadId,
-          },
-        ]
+        return [toolError(input, threadId, `Unknown tool: ${input.toolCall.name}`)]
       }
 
       switch (tool.kind) {
@@ -554,17 +530,11 @@ export const executeToolEffect = agentModule.effect({
 
           if (depth >= TEAM_MEMBER_MAX_DEPTH) {
             return [
-              {
-                type: 'agent.tool.result',
-                payload: {
-                  turn: input.turn,
-                  toolCallId: input.toolCall.id,
-                  name: input.toolCall.name,
-                  result: null,
-                  error: `Subagent depth limit reached (max depth: ${TEAM_MEMBER_MAX_DEPTH})`,
-                },
+              toolError(
+                input,
                 threadId,
-              },
+                `Subagent depth limit reached (max depth: ${TEAM_MEMBER_MAX_DEPTH})`,
+              ),
             ]
           }
 

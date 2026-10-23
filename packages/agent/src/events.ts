@@ -92,6 +92,11 @@ export const AgentSpawnRequestedPayloadSchema = Schema.Struct({
   depth: Schema.optional(Schema.Finite),
 })
 
+/** Sent by a parent agent to a team member it spawned, so the depth limit survives nesting. */
+export const AgentLineagePayloadSchema = Schema.Struct({
+  depth: Schema.Finite,
+})
+
 export const AgentContextCompactedPayloadSchema = Schema.Struct({
   turn: Schema.Finite,
   originalCount: Schema.Finite,
@@ -140,6 +145,7 @@ export const agentCatalog = defineEventCatalog('agent', {
   'session.cancel.requested': AgentSessionCancelRequestedPayloadSchema,
   'spawn.requested': AgentSpawnRequestedPayloadSchema,
   'effects.requested': AgentEffectsRequestedPayloadSchema,
+  lineage: AgentLineagePayloadSchema,
   'context.compacted': AgentContextCompactedPayloadSchema,
   'turn.usage': AgentTurnUsagePayloadSchema,
 })

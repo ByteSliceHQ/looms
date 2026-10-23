@@ -1,38 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Schema } from 'effect'
-
 import { createEvent } from '@looms/core'
 
 import {
-  asAgentTool,
-  defineAgent,
-  defineTool,
+  defaultAgentCompactor,
   isContextOverflowError,
   STRUCTURED_OUTPUT_TOOL_NAME,
-  TEAM_MEMBER_MAX_DEPTH,
 } from './definitions'
-import { agentCatalog } from './events'
 import { agentThread } from './threads'
+import type { Message } from './types'
 
 describe('agent parity', () => {
   describe('structured output', () => {
-    test('defines submit_output tool matching output schema', () => {
-      const OutputSchema = Schema.Struct({
-        answer: Schema.String,
-        confidence: Schema.Finite,
-      })
-
-      const agent = defineAgent({
-        name: 'structured-agent',
-        instructions: 'Answer with structured data',
-        output: OutputSchema,
-      })
-
-      expect(agent.output).toBeDefined()
-      expect(STRUCTURED_OUTPUT_TOOL_NAME).toBe('submit_output')
-    })
-
     test('agent thread records structured output when submit_output succeeds', () => {
       let state = agentThread.initialState({
         definitionName: 'structured-agent',
@@ -62,7 +41,7 @@ describe('agent parity', () => {
           payload: {
             turn: 1,
             toolCallId: 'call_1',
-            name: 'submit_output',
+            name: STRUCTURED_OUTPUT_TOOL_NAME,
             result: { accepted: true, output: { answer: '42', confidence: 0.99 } },
             error: null,
           },
@@ -82,6 +61,10 @@ describe('agent parity', () => {
       expect(isContextOverflowError(new Error('maximum context length is 4096 tokens'))).toBe(true)
       expect(isContextOverflowError(new Error('Prompt too long for this model'))).toBe(true)
       expect(isContextOverflowError(new Error('rate limit reached'))).toBe(false)
+
+      expect(isContextOverflowError(new Error('Maximum call stack size: stack overflow'))).toBe(
+        false,
+      )
     })
 
     test('step updates lines when agent.context.compacted event is applied', () => {
@@ -147,137 +130,86 @@ describe('agent parity', () => {
     })
   })
 
-  describe('dynamic tool sets', () => {
-    test('accepts resolveTools on agent definition', () => {
-      const dynamicTool = defineTool({
-        name: 'dynamic_calculator',
-        description: 'Dynamic math tool',
-        handler: () => 'result',
-      })
-
-      const agent = defineAgent({
-        name: 'dynamic-tools-agent',
-        instructions: 'Use tools dynamically',
-        resolveTools: (_ctx) => [dynamicTool],
-      })
-
-      expect(agent.resolveTools).toBeDefined()
-    })
-  })
-
-  describe('usage hooks and credit gate', () => {
-    test('catalog validates turn.usage payload', () => {
-      const payload = { turn: 1, input: 100, output: 50 }
-      const schema = agentCatalog.entries['turn.usage']
-      const decoded = Schema.decodeSync(schema)(payload)
-
-      expect(decoded.input).toBe(100)
-      expect(decoded.output).toBe(50)
-    })
-
-    test('accepts assertCredits and trackUsage on agent definition', async () => {
-      let creditsChecked = false
-      let trackedTokens = 0
-
-      const agent = defineAgent({
-        name: 'metered-agent',
-        instructions: 'Metered usage',
-        assertCredits: () => {
-          creditsChecked = true
-        },
-        trackUsage: (usage) => {
-          trackedTokens += usage.input + usage.output
-        },
-      })
-
-      expect(agent.assertCredits).toBeDefined()
-      expect(agent.trackUsage).toBeDefined()
-
-      await agent.assertCredits?.({
-        threadId: 't1',
-        turn: 1,
-        messages: [],
-        input: null,
-        tools: [],
-        instructions: '',
-      })
-
-      await agent.trackUsage?.(
-        { input: 10, output: 20, turn: 1 },
+  describe('default compactor', () => {
+    test('keeps the task and never strands a tool result without its request', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'task' },
+        { role: 'assistant', content: 'thinking' },
+        { role: 'user', content: 'more' },
         {
-          threadId: 't1',
-          turn: 1,
-          messages: [],
-          input: null,
-          tools: [],
-          instructions: '',
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            { id: 'a', name: 'lookup', arguments: {} },
+            { id: 'b', name: 'lookup', arguments: {} },
+          ],
         },
-      )
+        { role: 'tool', content: '1', toolCallId: 'a' },
+        { role: 'tool', content: '2', toolCallId: 'b' },
+        { role: 'assistant', content: 'answer' },
+        { role: 'user', content: 'follow up' },
+      ]
 
-      expect(creditsChecked).toBe(true)
-      expect(trackedTokens).toBe(30)
+      const compacted = defaultAgentCompactor({
+        threadId: 'thr_1',
+        turn: 5,
+        messages,
+        reason: 'overflow',
+      })
+
+      expect(compacted.messages[0]).toEqual({ role: 'user', content: 'task' })
+      expect(compacted.messages[1]).toEqual({ role: 'system', content: compacted.summary })
+      expect(compacted.messages.slice(2)).toEqual(messages.slice(3))
+    })
+
+    test('leaves a short conversation unchanged', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'task' },
+        { role: 'assistant', content: 'answer' },
+      ]
+
+      expect(
+        defaultAgentCompactor({ threadId: 'thr_1', turn: 1, messages, reason: 'overflow' }),
+      ).toEqual({ messages })
     })
   })
 
-  describe('subagent depth limit', () => {
-    test('TEAM_MEMBER_MAX_DEPTH is 3', () => {
-      expect(TEAM_MEMBER_MAX_DEPTH).toBe(3)
-    })
+  describe('team member depth', () => {
+    test('depth comes from agent.lineage and the input is left untouched', () => {
+      const input = { task: 'subtask' }
+      const ctx = { threadId: 'thr_child', runId: 'run_1', parentThreadId: 'thr_lead' }
 
-    test('asAgentTool inherits or defaults correctly', () => {
-      const childAgent = defineAgent({
-        name: 'researcher',
-        instructions: 'Do research',
-      })
-
-      const tool = asAgentTool({ agent: childAgent })
-      expect(tool.childName).toBe('researcher')
-      expect(tool.childKind).toBe('agent')
-    })
-
-    test('step extracts depth from input and increments for spawn', () => {
       let state = agentThread.initialState({
-        definitionName: 'parent-agent',
+        definitionName: 'subagent',
         definitionVersion: 'v1',
-        input: { task: 'lead team', agentDepth: 2 },
+        input,
       })
 
       state = agentThread.step(
         state,
         createEvent('run_1', {
           type: 'runtime.thread.started',
-          payload: {
-            definitionName: 'parent-agent',
-            definitionVersion: 'v1',
-            input: { task: 'lead team', agentDepth: 2 },
-          },
-          threadId: 'thr_lead',
+          payload: { definitionName: 'subagent', definitionVersion: 'v1', input },
+          threadId: 'thr_child',
           origin: { type: 'system' },
         }),
-        { threadId: 'thr_lead', runId: 'run_1' },
+        ctx,
       )
-
-      expect(state.depth).toBe(2)
 
       state = agentThread.step(
         state,
         createEvent('run_1', {
-          type: 'agent.spawn.requested',
-          payload: {
-            childThreadId: 'thr_child',
-            kind: 'agent',
-            definitionName: 'subagent',
-            definitionVersion: 'v1',
-            toolCallId: 'call_sub',
-            input: { task: 'subtask' },
-          },
-          threadId: 'thr_lead',
+          type: 'agent.lineage',
+          payload: { depth: 2 },
+          threadId: 'thr_child',
           origin: { type: 'system' },
         }),
-        { threadId: 'thr_lead', runId: 'run_1' },
+        ctx,
       )
 
-      expect(state.pendingSpawns[0]?.depth).toBe(3)
+      expect(state.depth).toBe(2)
+      expect(state.input).toEqual(input)
+      expect(state.lines).toEqual([{ role: 'user', content: 'subtask' }])
     })
   })
 })

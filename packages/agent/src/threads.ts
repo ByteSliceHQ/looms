@@ -17,6 +17,7 @@ import {
   type RuntimeEffect,
 } from '@looms/core'
 
+import { STRUCTURED_OUTPUT_TOOL_NAME } from './definitions'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
 import { closeOpenToolCalls } from './transcript'
@@ -117,12 +118,6 @@ export const agentThread = agentModule.thread<AgentState>({
 
         // SAFETY: event payload input is JSON
         const input = payload.input !== undefined ? payload.input : state.input
-
-        const depth =
-          Predicate.isObject(input) && Predicate.isNumber(input.agentDepth)
-            ? input.agentDepth
-            : state.depth
-
         const line = inputToLine(input)
         const lines = line ? [line] : state.lines
 
@@ -131,11 +126,13 @@ export const agentThread = agentModule.thread<AgentState>({
           definitionName: defName,
           definitionVersion: defVersion,
           input,
-          depth,
           lines,
           needsLlmCall: true,
         }
       }
+
+      case 'agent.lineage':
+        return { ...state, depth: event.payload.depth }
 
       case 'agent.turn.started': {
         return {
@@ -186,7 +183,7 @@ export const agentThread = agentModule.thread<AgentState>({
 
         let structuredOutput = state.structuredOutput
 
-        if (name === 'submit_output' && !error && result !== null) {
+        if (name === STRUCTURED_OUTPUT_TOOL_NAME && !error && result !== null) {
           structuredOutput =
             isJsonObject(result) && 'output' in result ? (result.output ?? null) : result
         }
@@ -459,7 +456,6 @@ export const agentThread = agentModule.thread<AgentState>({
             definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             messages: state.lines,
             input: state.input,
-            depth: state.depth,
             structuredOutput: state.structuredOutput,
             alreadyCompacted: (state.alreadyCompactedTurns ?? []).includes(state.turn + 1),
             consumedSteerMessageIds: state.consumedSteerMessageIds,
@@ -478,6 +474,7 @@ export const agentThread = agentModule.thread<AgentState>({
             definitionName: state.definitionName,
             definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             toolCall,
+            input: state.input,
             depth: state.depth,
           },
           `tool_${toolCall.id}`,
@@ -487,12 +484,6 @@ export const agentThread = agentModule.thread<AgentState>({
 
     for (const spawnReq of state.pendingSpawns) {
       const waitId = createWaitId(ctx.threadId, `spawn_${spawnReq.childThreadId}`)
-      const childDepth = spawnReq.depth ?? state.depth + 1
-
-      const childInput =
-        spawnReq.input !== null && Predicate.isObject(spawnReq.input)
-          ? { ...spawnReq.input, agentDepth: childDepth }
-          : spawnReq.input
 
       effects.push(
         spawn({
@@ -500,8 +491,24 @@ export const agentThread = agentModule.thread<AgentState>({
           kind: spawnReq.kind,
           definitionName: spawnReq.definitionName,
           definitionVersion: spawnReq.definitionVersion,
-          input: childInput,
+          input: spawnReq.input,
         }),
+      )
+
+      if (spawnReq.kind === 'agent') {
+        effects.push(
+          emit(
+            {
+              type: 'agent.lineage',
+              payload: { depth: spawnReq.depth ?? state.depth + 1 },
+              threadId: spawnReq.childThreadId,
+            },
+            `lineage_${spawnReq.childThreadId}`,
+          ),
+        )
+      }
+
+      effects.push(
         wait({
           waitId,
           on: {

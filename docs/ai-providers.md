@@ -57,24 +57,24 @@ defineAgent({
 
 ### Structured output
 
-Define `output` on `defineAgent({ output: Schema })`. When set, Looms equips the model with the schema-validated `submit_output` tool. When the model invokes it, invalid fields return schema error feedback for self-repair, and a valid submission finishes the run with the typed result.
+Set `output` to a schema and the model gets a `submit_output` tool that takes that schema. An invalid submission returns the validation error to the model so it can correct the fields and call the tool again. Once a submission passes, it becomes the thread output when the agent finishes, in place of `{ text }`.
 
 ### Context compaction
 
-When a model throws a context overflow error, Looms compacts the message history via `compact: (ctx) => ...` (or a built-in default compactor), records an `agent.context.compacted` event, and retries the turn once.
+When the model call fails because the prompt exceeded the context window, Looms runs `compact` (or `defaultAgentCompactor`), records `agent.context.compacted` with the shorter conversation, and retries the turn once. The default keeps the first message and the most recent ones, and never keeps a tool result without the assistant message that requested it.
 
-### Dynamic tools per turn
+### Tools resolved per turn
 
-Use `resolveTools: (ctx) => ToolLike[]` to dynamically provide tools per turn (e.g. MCP tools or skills discovered based on current context).
+`resolveTools({ threadId, turn, input })` adds tools beside the static `tools`, such as integrations configured for one tenant. Looms calls it before each model turn and again when a tool runs, so it must return the same tools for the same input and turn.
 
-### Credit gates and usage tracking
+### Credit gates and usage
 
-- `assertCredits: (ctx) => Promise<void>` runs before each LLM turn. Rejections fail the thread cleanly before calling the model.
-- `trackUsage: (usage, ctx) => Promise<void>` runs after model completion. Looms records an `agent.turn.usage` event on the run log.
+- `assertCredits(ctx)` runs before each model call. If it throws, the thread fails with that message and the model is not called.
+- Every model call that reports usage records `agent.turn.usage`. `trackUsage(usage, ctx)` is called after it. A retried turn calls it again, so deduplicate on `threadId` and `turn`. A `trackUsage` failure is logged and does not fail the turn.
 
-### Subagent depth limit
+### Team member depth
 
-Nested team subagents spawned via thread tools enforce `TEAM_MEMBER_MAX_DEPTH = 3`. Attempting to spawn beyond depth 3 returns an explicit tool error to the calling agent.
+An agent that spawns another agent through a thread tool (`asAgentTool`) sends it an `agent.lineage` event with its depth, so the limit survives input schemas that strip unknown keys. A spawn beyond `TEAM_MEMBER_MAX_DEPTH` (3) returns a tool error to the calling agent. A workflow or other thread between two agents starts the count again.
 
 ## Evaluation models
 
