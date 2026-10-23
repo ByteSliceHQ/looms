@@ -5,15 +5,18 @@ import {
   deferredUntil,
   isPrimitiveEffect,
   type ComposedRegistry,
+  type EffectDefinition,
   type EffectExecutionRecord,
   type EventEnvelope,
   type OutstandingEffect,
+  type RetryPolicy,
   type RunState,
   type SecretContext,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
 import { workerTask } from './helpers'
+import { planAttemptFailure } from './retry-policy'
 import type { EffectWorker, EffectWorkerTask } from './types'
 
 export interface WorkerEffectDispatchPlan {
@@ -21,6 +24,7 @@ export interface WorkerEffectDispatchPlan {
   readonly attempt: number
   readonly queuedEvent?: EventEnvelope
   readonly task: EffectWorkerTask
+  readonly retry: RetryPolicy | undefined
   readonly scheduleToStartDeadlineAt: number | null
 }
 
@@ -136,9 +140,14 @@ export function planWorkerEffects(input: {
 
     const retry = input.registry.effects.get(item.effect.type)?.retry
 
+    const scheduleToStartDeadlineAt = retry?.scheduleToStartTimeoutMs
+      ? input.now + retry.scheduleToStartTimeoutMs
+      : null
+
     return {
       item,
       attempt,
+      retry,
       queuedEvent:
         existing?.status === 'queued'
           ? undefined
@@ -153,10 +162,10 @@ export function planWorkerEffects(input: {
         details: existing?.heartbeatDetails,
         secrets: input.secrets,
         trace: input.state.startIdentity?.trace,
+        retry,
+        scheduleToStartAt: scheduleToStartDeadlineAt,
       }),
-      scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
-        ? input.now + retry.scheduleToStartTimeoutMs
-        : null,
+      scheduleToStartDeadlineAt,
     }
   })
 }
@@ -189,14 +198,16 @@ function withinInFlightLimit(
 }
 
 /**
- * Hand a planned attempt to the worker. A rejected dispatch may still have reached the worker, so
- * with a schedule-to-start deadline it is recorded as dispatched and recovered by that timeout;
- * without one it is parked as ambiguous for an operator.
+ * Hand a planned attempt to the worker. When an unacknowledged dispatch rejects, the task may still
+ * have reached the worker, so with a schedule-to-start deadline it is recorded as dispatched and
+ * recovered by that timeout; without one it is parked as ambiguous for an operator. An acknowledged
+ * rejection means nothing was sent, so the attempt fails under the retry policy.
  */
 export function dispatchWorkerEffect(
   runId: string,
   plan: WorkerEffectDispatchPlan,
   worker: EffectWorker | undefined,
+  now: number,
 ): Effect.Effect<EventEnvelope> {
   const dispatched = createEvent(runId, {
     type: 'runtime.effect.dispatched',
@@ -233,16 +244,15 @@ export function dispatchWorkerEffect(
     Effect.match({
       onFailure: (error) => {
         if (worker.dispatchSemantics === 'acknowledged') {
-          return createEvent(runId, {
-            type: 'runtime.effect.failed',
-            payload: {
-              effectId: plan.item.effectId,
-              error: `Worker dispatch failed: ${error.message}`,
-            },
-            threadId: plan.item.threadId,
-            causationId: plan.item.causingEventId,
+          return planAttemptFailure({
+            runId,
+            item: plan.item,
+            attempt: plan.attempt,
+            error: `worker dispatch failed: ${error.message}`,
+            now,
+            retry: plan.retry,
             origin: { type: 'system' },
-          })
+          }).event
         }
 
         return plan.scheduleToStartDeadlineAt === null
@@ -252,4 +262,43 @@ export function dispatchWorkerEffect(
       onSuccess: () => dispatched,
     }),
   )
+}
+
+/**
+ * An acknowledged transport can lose a message it accepted, for example to a dead-letter queue.
+ * Only a schedule-to-start timeout notices, so every effect such a worker claims needs one.
+ */
+export function assertWorkerDeadlines(
+  registry: ComposedRegistry,
+  worker: EffectWorker | undefined,
+): void {
+  if (worker?.dispatchSemantics !== 'acknowledged') {
+    return
+  }
+
+  const missing = [...registry.effects.values()]
+    .filter(
+      (definition) => claimsType(worker, definition) && !definition.retry?.scheduleToStartTimeoutMs,
+    )
+    .map((definition) => definition.type)
+
+  if (missing.length > 0) {
+    throw new Error(
+      `An acknowledged worker claims effects without retry.scheduleToStartTimeoutMs: ${missing.join(', ')}`,
+    )
+  }
+}
+
+function claimsType(worker: EffectWorker, definition: EffectDefinition): boolean {
+  if (definition.execution) {
+    return definition.execution === 'worker'
+  }
+
+  const { handles } = worker
+
+  const handled = Predicate.isFunction(handles)
+    ? handles(definition.type)
+    : (handles?.includes(definition.type) ?? false)
+
+  return handled || !definition.hasHandler
 }

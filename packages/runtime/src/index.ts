@@ -11,6 +11,7 @@ export {
   StartRunConflictError,
   type CreateRuntimeOptions,
   type EffectWorker,
+  type EffectWorkerDeadlines,
   type EffectWorkerTask,
   type LoomsRuntime,
   type RunOperationalStatus,

@@ -317,7 +317,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                   )
                 }
 
-                const dispatchEvent = yield* dispatchWorkerEffect(runId, workerPlan, options.worker)
+                const dispatchEvent = yield* dispatchWorkerEffect(
+                  runId,
+                  workerPlan,
+                  options.worker,
+                  now,
+                )
 
                 const dispatchAppend = yield* appendObserved(
                   store,

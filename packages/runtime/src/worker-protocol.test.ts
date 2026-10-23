@@ -15,7 +15,7 @@ import {
   type RetryPolicy,
 } from '@looms/core'
 
-import { bearerAuth, createLooms, type EffectWorkerTask } from './index'
+import { bearerAuth, createLooms, createRuntime, type EffectWorkerTask } from './index'
 
 const workerDefinition = {
   kind: 'worker-test',
@@ -63,6 +63,18 @@ function effectIdentity(events: readonly EventEnvelope[]) {
   }
 
   return { effectId: payload.effectId, attempt: payload.attempt }
+}
+
+async function waitFor(condition: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error('condition not met in time')
+    }
+
+    await Bun.sleep(5)
+  }
 }
 
 function local(): ReadonlyArray<EventInput> {
@@ -710,27 +722,68 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 
-  test('acknowledged dispatch semantics fails and retries without marking ambiguous', async () => {
-    let attempts = 0
+  test('an acknowledged dispatch rejection retries under the policy', async () => {
+    const dispatched: EffectWorkerTask[] = []
 
     const looms = createLooms({
-      modules: [workerModule({ maxAttempts: 3, backoffMs: 1 })],
+      modules: [workerModule({ maxAttempts: 3, backoffMs: 5, scheduleToStartTimeoutMs: 60_000 })],
       worker: {
         dispatchSemantics: 'acknowledged',
-        dispatch: () => {
-          attempts += 1
-          throw new Error('429 Queue Rate Exceeded')
+        dispatch: (task) => {
+          dispatched.push(task)
+
+          if (dispatched.length === 1) {
+            throw new Error('429 Too Many Requests')
+          }
         },
       },
     })
 
     const started = await looms.start(workerDefinition, {})
-    const events = await looms.getEvents(started.runId)
 
-    expect(attempts).toBe(1)
-    expect(events.some((event) => event.type === 'runtime.effect.failed')).toBe(true)
-    expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(false)
+    await waitFor(() => dispatched.length === 2)
 
+    const types = (await looms.getEvents(started.runId)).map((event) => event.type)
+
+    expect(types).toContain('runtime.effect.retry.scheduled')
+    expect(types).not.toContain('runtime.effect.ambiguous')
+    expect(dispatched.map((task) => task.attempt)).toEqual([1, 2])
+    await looms.stop()
+  })
+
+  test('an acknowledged worker needs a schedule-to-start timeout on every effect it claims', () => {
+    expect(() =>
+      createRuntime({
+        modules: [workerModule({ maxAttempts: 3 })],
+        worker: { dispatchSemantics: 'acknowledged', dispatch: () => undefined },
+      }),
+    ).toThrow('worker.do')
+  })
+
+  test('a worker task carries the deadlines from the retry policy', async () => {
+    const dispatched: EffectWorkerTask[] = []
+
+    const looms = createLooms({
+      modules: [
+        workerModule({
+          maxAttempts: 1,
+          scheduleToStartTimeoutMs: 1_000,
+          startToCloseTimeoutMs: 2_000,
+          heartbeatTimeoutMs: 500,
+        }),
+      ],
+      worker: { dispatch: (task) => dispatched.push(task) },
+    })
+
+    const before = Date.now()
+
+    await looms.start(workerDefinition, {})
+
+    const deadlines = dispatched[0]?.deadlines
+
+    expect(deadlines?.startToCloseTimeoutMs).toBe(2_000)
+    expect(deadlines?.heartbeatTimeoutMs).toBe(500)
+    expect(deadlines?.scheduleToStartAt).toBeGreaterThanOrEqual(before + 1_000)
     await looms.stop()
   })
 
@@ -813,8 +866,16 @@ describe('durable external effect workers', () => {
       },
     })
 
-    await looms.start({ kind: 'fanout', name: 'fanout', version: 'v1' }, {})
+    const started = await looms.start({ kind: 'fanout', name: 'fanout', version: 'v1' }, {})
+
     expect(dispatched).toHaveLength(2)
+
+    const first = { effectId: dispatched[0]?.effectId ?? '', attempt: 1 }
+
+    await looms.workerCallback(started.runId, { ...first, kind: 'started' })
+    await looms.workerCallback(started.runId, { ...first, kind: 'complete', events: [] })
+
+    expect(dispatched).toHaveLength(3)
 
     await looms.stop()
   })

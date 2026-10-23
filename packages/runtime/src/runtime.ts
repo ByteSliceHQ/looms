@@ -64,6 +64,7 @@ import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
 import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
 import { createWorkerCallbacks } from './worker-callbacks'
+import { assertWorkerDeadlines } from './worker-effect-dispatch'
 
 export type { RegisteredDefinition } from '@looms/core'
 export type { WakeScheduler } from './wake-scheduler'
@@ -82,6 +83,7 @@ export { RunOverloadedError } from './ingress'
 export type {
   CreateRuntimeOptions,
   EffectWorker,
+  EffectWorkerDeadlines,
   EffectWorkerTask,
   LoomsRuntime,
   RunOperationalStatus,
@@ -198,6 +200,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   }
 
   const registry = composeModules(options.modules)
+
+  assertWorkerDeadlines(registry, options.worker)
 
   const staticResolver = staticDefinitionResolver(
     registry.definitions.map((definition) => ({

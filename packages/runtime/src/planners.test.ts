@@ -210,6 +210,7 @@ describe('worker effect planner', () => {
       attempt: 2,
       type: 'worker.send',
       input: { message: 'hello' },
+      deadlines: { scheduleToStartAt: 1_500 },
     })
 
     expect(plan?.queuedEvent?.type).toBe('runtime.effect.queued')

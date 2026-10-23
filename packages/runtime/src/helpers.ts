@@ -26,6 +26,7 @@ import {
   type DefinitionResolver,
   type JsonValue,
   type OutstandingEffect,
+  type RetryPolicy,
   type SecretContext,
   type TraceContext,
   type RunCursor,
@@ -35,7 +36,7 @@ import {
   type SnapshotStore,
 } from '@looms/core'
 
-import type { EffectWorkerTask } from './types'
+import type { EffectWorkerDeadlines, EffectWorkerTask } from './types'
 
 /** What a dispatch carries beyond the effect itself. */
 export interface WorkerTaskExtras {
@@ -43,6 +44,8 @@ export interface WorkerTaskExtras {
   readonly details?: JsonValue | null
   readonly secrets?: SecretContext
   readonly trace?: TraceContext | null
+  readonly retry?: RetryPolicy
+  readonly scheduleToStartAt?: number | null
 }
 
 export function workerTask(
@@ -71,7 +74,31 @@ export function workerTask(
     task.trace = extras.trace
   }
 
+  const deadlines = workerDeadlines(extras)
+
+  if (deadlines) {
+    task.deadlines = deadlines
+  }
+
   return task
+}
+
+function workerDeadlines(extras: WorkerTaskExtras): EffectWorkerDeadlines | undefined {
+  const deadlines: Types.Mutable<EffectWorkerDeadlines> = {}
+
+  if (extras.scheduleToStartAt != null) {
+    deadlines.scheduleToStartAt = extras.scheduleToStartAt
+  }
+
+  if (extras.retry?.startToCloseTimeoutMs) {
+    deadlines.startToCloseTimeoutMs = extras.retry.startToCloseTimeoutMs
+  }
+
+  if (extras.retry?.heartbeatTimeoutMs) {
+    deadlines.heartbeatTimeoutMs = extras.retry.heartbeatTimeoutMs
+  }
+
+  return Object.keys(deadlines).length > 0 ? deadlines : undefined
 }
 
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{

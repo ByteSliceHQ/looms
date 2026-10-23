@@ -87,8 +87,10 @@ context for a handler's span.
 
 ## Worker effect protocol
 
-1. The runtime dispatches `{ runId, effectId, attempt, type, input, details? }`.
+1. The runtime dispatches `{ runId, effectId, attempt, type, input, details?, trace?, deadlines? }`.
    `details` is the progress carried by the previous attempt's last heartbeat.
+   `deadlines` holds the schedule-to-start time and the start-to-close and
+   heartbeat timeouts from the effect's retry policy.
 2. The worker calls `started` before the schedule-to-start deadline.
 3. Long work calls `heartbeat`. Each accepted heartbeat extends the heartbeat
    deadline without exceeding start-to-close. A heartbeat may include `details`;
@@ -106,27 +108,75 @@ that an attempt already in progress should stop: a queued dispatch cannot be rec
 and the host recorded nothing.
 
 Callbacks include the same `effectId` and `attempt`. Stale callbacks are ignored.
-A dispatch transport failure is recorded as `ambiguous`: an operator must first
+A worker with `dispatchSemantics: 'acknowledged'` promises that a rejected
+`dispatch` sent nothing, so the attempt fails under the retry policy. Because its
+transport can still lose a message it accepted, creating a runtime fails unless
+every effect that worker claims sets `retry.scheduleToStartTimeoutMs`. For other
+workers, a dispatch transport failure is recorded as `ambiguous`: an operator must first
 verify the destination's idempotency record, then use `retryEffect` or
 `POST /runs/:runId/effects/:effectId/retry`. Never blindly retry a non-idempotent
 effect.
 
 ### Cloudflare Queues transport
 
-`cloudflareQueueWorker` connects Durable Objects to external workers or background fleets over Cloudflare Queues:
+`cloudflareQueueWorker` sends each attempt to a Cloudflare Queue as JSON. Every
+routed effect needs `retry.scheduleToStartTimeoutMs`. An input that would push the
+message past 100 KB is stored in `blobs` and sent as `inputRef`; without a blob
+store that dispatch fails. Secrets never go on the queue.
 
 ```ts
 import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
 
 const worker = cloudflareQueueWorker({
-  routes: [{ handles: ['sandbox.exec', 'batch.convert'], queue: env.WORKER_QUEUE }],
+  routes: [{ handles: ['sandbox.exec'], queue: env.SANDBOX_QUEUE }],
+  blobs: r2BlobStore(env.BLOBS),
 })
+
+createLooms({ modules, worker, maxInFlightWorkerEffects: 16 })
 ```
 
-- **Acknowledged dispatch**: `dispatchSemantics: 'acknowledged'` treats a thrown send (including 429 rate limits) as an un-enqueued failure retried with backoff, eliminating ambiguous dispatch operator interventions.
-- **One retry authority**: Consumers acknowledge the queue message immediately once the `started` callback succeeds. From that point on, Looms heartbeats and start-to-close deadlines govern execution liveness.
-- **Fairness guard**: `maxInFlightWorkerEffects` caps concurrent in-flight dispatches per run, preventing a single fanout from saturating a shared queue.
-- **In-flight cancellation**: Because enqueued messages cannot be recalled from Cloudflare Queues, in-flight attempts learn of cancellation from heartbeat responses and abort the task signal.
+A consumer runs handlers of the form `(task, ctx) => events`. `ctx.heartbeat(details)`
+reports progress, `ctx.secrets()` reads the run's secret context through the
+authenticated callback, and `ctx.signal` aborts when the run is cancelled. Throw a
+`QueueTaskError` with `nonRetryable` or `retryAfterMs` to control the retry.
+
+```ts
+import { createLoomsClient } from '@swirls/looms/client'
+import {
+  cloudflareQueuePullSource,
+  createQueuePullConsumer,
+  queueConsumer,
+} from '@swirls/looms/cloudflare'
+
+const callbacks = createLoomsClient({ baseUrl, workerCallbackToken })
+const handlers = { 'sandbox.exec': runSandbox }
+
+// In a Worker: export default { queue: queueConsumer({ callbacks, handlers, blobs }) }
+
+const consumer = createQueuePullConsumer({
+  source: cloudflareQueuePullSource({ accountId, queueId, token }),
+  callbacks,
+  handlers,
+  blobs,
+  concurrency: 8,
+})
+
+process.once('SIGTERM', () => consumer.stop())
+```
+
+- The consumer acks a message once Looms accepts `started`. After that Looms owns
+  retries through heartbeat and start-to-close timeouts, so a long effect does not
+  depend on the queue's lease. A duplicate or stale delivery is acked without running.
+- A message that cannot start yet is retried by the queue with backoff. One that
+  never starts lands in the dead-letter queue, and the schedule-to-start timeout
+  schedules a new attempt.
+- A queue send that fails, such as a 429, fails the attempt under the retry policy.
+- The pull consumer batches acks, backs off while the queue is empty or the API
+  errors, and reports `backlog()` from Cloudflare's `message_backlog_count`.
+  `stop()` stops pulling, waits for running attempts, and sends the last acks.
+- `maxInFlightWorkerEffects` caps how many worker attempts one run has in flight,
+  so a wide fan-out cannot fill a shared queue.
+- `createMemoryQueue()` has Cloudflare's lease, retry, and dead-letter behavior for tests.
 
 ## Inspection and repair
 

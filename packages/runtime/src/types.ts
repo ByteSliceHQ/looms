@@ -112,11 +112,21 @@ export interface EffectWorkerTask {
   readonly details?: JsonValue
   /** The run's W3C trace context, for parenting the worker's spans. */
   readonly trace?: TraceContext
+  /** The attempt's deadlines from the effect's retry policy, when it sets any. */
+  readonly deadlines?: EffectWorkerDeadlines
   /**
    * Present only on the in-memory dispatch. A transport that persists the task must leave this out
    * and let the worker read the secret context through an authenticated callback.
    */
   readonly secrets?: SecretContext
+}
+
+/** Looms enforces these; a worker can use them to pace heartbeats or give up early. */
+export interface EffectWorkerDeadlines {
+  /** Epoch ms. A `started` callback after this is stale. */
+  readonly scheduleToStartAt?: number
+  readonly startToCloseTimeoutMs?: number
+  readonly heartbeatTimeoutMs?: number
 }
 
 export interface EffectWorker {
@@ -127,9 +137,11 @@ export interface EffectWorker {
   dispatch(task: EffectWorkerTask): void | Promise<void>
   cancel?(task: EffectWorkerTask): void | Promise<void>
   /**
-   * Dispatch semantics:
-   * - 'unacknowledged' (default): failed dispatch is treated as ambiguous (wait for schedule-to-start or operator).
-   * - 'acknowledged': resolved send means enqueued, thrown error means not enqueued (retryable dispatch with backoff).
+   * What a rejected `dispatch` means. With `'unacknowledged'` (the default) the task may still have
+   * arrived, so the attempt waits for its schedule-to-start timeout or an operator. With
+   * `'acknowledged'` a rejection means the transport refused it, so the attempt fails under the
+   * retry policy. A transport can still lose an accepted message, so every effect such a worker
+   * claims must set `retry.scheduleToStartTimeoutMs`.
    */
   readonly dispatchSemantics?: 'unacknowledged' | 'acknowledged'
 }
