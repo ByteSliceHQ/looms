@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Schema } from 'effect'
 
-import { defineKind, type JsonValue } from '@looms/core'
+import { DEFAULT_DEFINITION_VERSION, defineKind, type JsonValue } from '@looms/core'
 
 import type {
   EvaluatorQuestions,
@@ -13,6 +13,7 @@ import type {
 export interface EvaluatorDefinition<TName extends string = string, TInput = JsonValue> {
   readonly kind: 'evaluator'
   readonly name: TName
+  readonly version: string
   readonly description?: string
   /** Provider model id. Omit it to use the adapter default. */
   readonly model?: string
@@ -26,7 +27,12 @@ export interface EvaluatorDefinition<TName extends string = string, TInput = Jso
 export type AnyEvaluatorDefinition = EvaluatorDefinition
 
 export function defineEvaluator<TName extends string, TInput = JsonValue>(
-  def: Omit<EvaluatorDefinition<TName, TInput>, 'kind'>,
+  def: Omit<EvaluatorDefinition<TName, TInput>, 'kind' | 'version'> & {
+    readonly version?: string
+  },
 ): EvaluatorDefinition<TName, TInput> {
-  return defineKind('evaluator', def)
+  return defineKind('evaluator', {
+    ...def,
+    version: def.version ?? DEFAULT_DEFINITION_VERSION,
+  })
 }

@@ -296,12 +296,16 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
     rootThreadId: state.rootThreadId,
     startIdentity: null,
     forkedFrom: null,
+    attributes: {},
     threads: state.records,
     waits: {},
     outstandingEffects: [],
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
   })
 }
 

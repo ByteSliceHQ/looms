@@ -2,11 +2,11 @@ import { Option, Schema } from 'effect'
 
 import {
   complete,
-  definitionKey,
   emit,
   fail,
   invoke,
   stringifyJson,
+  type DefinitionStore,
   type JsonValue,
   type RuntimeEffect,
   type ThreadDefinition,
@@ -47,24 +47,15 @@ const decodeStart = Schema.decodeUnknownOption(ScheduleStartSchema)
 const decodeUpdate = Schema.decodeUnknownOption(ScheduleUpdatedPayloadSchema)
 
 export function createScheduleThread(
-  definitions: readonly ScheduleDefinition[],
+  definitions: DefinitionStore<ScheduleDefinition>,
   minIntervalMs: number,
 ): ThreadDefinition<ScheduleState> {
-  const byKey = new Map(
-    definitions.map(
-      (definition) =>
-        [definitionKey(definition.kind, definition.name, definition.version), definition] as const,
-    ),
-  )
-
   return scheduleModule.thread({
     kind: 'schedule',
     input: ScheduleStartSchema,
     forgetsCompletedEffects: true,
     initialState: (ctx) => {
-      const definition = byKey.get(
-        definitionKey('schedule', ctx.definitionName, ctx.definitionVersion),
-      )
+      const definition = definitions.get(ctx.definitionName, ctx.definitionVersion)
 
       const base = {
         input: null,
@@ -178,7 +169,7 @@ export function createScheduleThread(
         }
 
         case 'schedule.updated':
-          return applyUpdate(state, event.payload, byKey, minIntervalMs)
+          return applyUpdate(state, event.payload, definitions, minIntervalMs)
 
         case 'schedule.paused':
           return { ...state, paused: true, nextAt: null }
@@ -283,7 +274,7 @@ export function createScheduleThread(
 function applyUpdate(
   state: ScheduleState,
   payload: JsonValue,
-  byKey: ReadonlyMap<string, ScheduleDefinition>,
+  definitions: DefinitionStore<ScheduleDefinition>,
   minIntervalMs: number,
 ): ScheduleState {
   const decoded = decodeUpdate(payload)
@@ -295,7 +286,7 @@ function applyUpdate(
   const patch = decoded.value
   const definitionName = patch.definitionName ?? state.definitionName
   const definitionVersion = patch.definitionVersion ?? state.definitionVersion
-  const definition = byKey.get(definitionKey('schedule', definitionName, definitionVersion))
+  const definition = definitions.get(definitionName, definitionVersion)
 
   if (
     (patch.definitionName !== undefined || patch.definitionVersion !== undefined) &&

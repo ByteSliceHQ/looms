@@ -9,6 +9,7 @@ import {
   type EventEnvelope,
   type OutstandingEffect,
   type RunState,
+  type SecretContext,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
@@ -104,19 +105,13 @@ export function planWorkerEffects(input: {
   readonly worker?: EffectWorker
   readonly now: number
   readonly maxInFlightWorkerEffects?: number
+  readonly secrets?: SecretContext
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
-  const inFlightStatuses = new Set(['dispatched', 'started', 'heartbeat', 'cancel_requested'])
+  const workerItems = input.state.outstandingEffects.filter((item) =>
+    isWorkerEffect({ ...input, item, execution: input.state.effectExecutions[item.effectId] }),
+  )
 
-  const currentInFlight = Object.values(input.state.effectExecutions).filter((execution) =>
-    inFlightStatuses.has(execution.status),
-  ).length
-
-  const limit =
-    input.maxInFlightWorkerEffects !== undefined && input.maxInFlightWorkerEffects > 0
-      ? Math.max(0, input.maxInFlightWorkerEffects - currentInFlight)
-      : undefined
-
-  const candidates = input.state.outstandingEffects.filter((item) => {
+  const due = workerItems.filter((item) => {
     const dueAt = deferredUntil(item.effect)
 
     if (dueAt !== undefined && dueAt > input.now + 5) {
@@ -124,10 +119,6 @@ export function planWorkerEffects(input: {
     }
 
     const execution = input.state.effectExecutions[item.effectId]
-
-    if (!isWorkerEffect({ ...input, item, execution })) {
-      return false
-    }
 
     return (
       !execution ||
@@ -138,9 +129,7 @@ export function planWorkerEffects(input: {
     )
   })
 
-  const selected = limit === undefined ? candidates : candidates.slice(0, limit)
-
-  return selected.map((item) => {
+  return withinInFlightLimit(input, workerItems, due).map((item) => {
     const existing = input.state.effectExecutions[item.effectId]
 
     const attempt = existing?.status === 'queued' ? existing.attempt : (existing?.attempt ?? 0) + 1
@@ -160,12 +149,43 @@ export function planWorkerEffects(input: {
               causationId: item.causingEventId,
               origin: { type: 'system' },
             }),
-      task: workerTask(input.runId, item, attempt),
+      task: workerTask(input.runId, item, attempt, {
+        details: existing?.heartbeatDetails,
+        secrets: input.secrets,
+        trace: input.state.startIdentity?.trace,
+      }),
       scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
         ? input.now + retry.scheduleToStartTimeoutMs
         : null,
     }
   })
+}
+
+const IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set([
+  'dispatched',
+  'started',
+  'heartbeat',
+  'cancel_requested',
+])
+
+function withinInFlightLimit(
+  input: { readonly state: RunState; readonly maxInFlightWorkerEffects?: number },
+  workerItems: ReadonlyArray<OutstandingEffect>,
+  due: ReadonlyArray<OutstandingEffect>,
+): ReadonlyArray<OutstandingEffect> {
+  const max = input.maxInFlightWorkerEffects
+
+  if (max === undefined || max <= 0) {
+    return due
+  }
+
+  const inFlight = workerItems.filter((item) => {
+    const status = input.state.effectExecutions[item.effectId]?.status
+
+    return status !== undefined && IN_FLIGHT_STATUSES.has(status)
+  }).length
+
+  return due.slice(0, Math.max(0, max - inFlight))
 }
 
 /**

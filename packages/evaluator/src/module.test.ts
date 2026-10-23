@@ -76,6 +76,7 @@ describe('@looms/evaluator module', () => {
   test('defineEvaluator sets kind', () => {
     expect(scoreRefund.kind).toBe('evaluator')
     expect(scoreRefund.name).toBe('score-refund')
+    expect(scoreRefund.version).toBe('v1')
   })
 
   test('composes and exposes evaluate handler', () => {

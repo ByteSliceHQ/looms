@@ -66,6 +66,60 @@ describe('createLoomsClient', () => {
     ])
   })
 
+  test('startRun sends the trace context as W3C headers, not in the body', async () => {
+    const calls: { traceparent: string | null; tracestate: string | null; body: unknown }[] = []
+
+    const client = createLoomsClient({
+      fetch: async (_input, init) => {
+        const headers = new Headers(init?.headers)
+
+        calls.push({
+          traceparent: headers.get('traceparent'),
+          tracestate: headers.get('tracestate'),
+          body: Predicate.isString(init?.body) ? JSON.parse(init.body) : null,
+        })
+
+        return Response.json({ runId: 'run_1', threadId: 'thr_1', state: emptyRunState('run_1') })
+      },
+    })
+
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+
+    await client.startRun({
+      kind: 'agent',
+      definitionName: 'echo',
+      trace: { traceparent, tracestate: 'k=v' },
+    })
+
+    expect(calls).toEqual([
+      { traceparent, tracestate: 'k=v', body: { kind: 'agent', definitionName: 'echo' } },
+    ])
+  })
+
+  test('workerSecrets posts to the attempt with the worker token', async () => {
+    const calls: { href: string; authorization?: string | null }[] = []
+
+    const client = createLoomsClient({
+      workerCallbackToken: 'worker-token',
+      fetch: async (input, init) => {
+        calls.push({
+          href: hrefOf(input),
+          authorization: new Headers(init?.headers).get('authorization'),
+        })
+
+        return Response.json({ status: 'accepted', secrets: { token: 'abc' } })
+      },
+    })
+
+    const result = await client.workerSecrets('run 1', { effectId: 'eff/1', attempt: 2 })
+
+    expect(result).toEqual({ status: 'accepted', secrets: { token: 'abc' } })
+
+    expect(calls).toEqual([
+      { href: '/runs/run%201/effects/eff%2F1/2/secrets', authorization: 'Bearer worker-token' },
+    ])
+  })
+
   test('listDefinitions reads the definitions route', async () => {
     const calls: string[] = []
 
@@ -163,6 +217,175 @@ describe('createLoomsClient', () => {
     }
 
     expect(received).toEqual(['runtime.run.started'])
+    stop()
+  })
+
+  test('subscribeEvents puts the read grant on the event stream', async () => {
+    const calls: string[] = []
+
+    const client = createLoomsClient({
+      grant: 'v1.abc.def',
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+
+        return new Response(null, { status: 401 })
+      },
+    })
+
+    const stop = client.subscribeEvents('run_1', () => undefined)
+    const start = Date.now()
+
+    while (calls.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    stop()
+    expect(calls[0]).toContain('/runs/run_1/events')
+    expect(calls[0]).toContain('grant=v1.abc.def')
+  })
+
+  test('subscribeEvents resumes from a resync head', async () => {
+    const calls: string[] = []
+    let attempt = 0
+
+    const started = {
+      id: 'evt_4',
+      runId: 'run_1',
+      seq: 4,
+      ts: 1,
+      type: 'runtime.run.started',
+      payload: {},
+      threadId: 'thr_1',
+      parentThreadId: null,
+      causationId: null,
+      correlationId: null,
+      effectId: null,
+      ephemeral: false,
+      origin: { type: 'system' },
+    }
+
+    const client = createLoomsClient({
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+        attempt += 1
+        const encoder = new TextEncoder()
+
+        const frame =
+          attempt === 1
+            ? `data: ${JSON.stringify({ type: 'resync', head: 4, reason: 'trimmed' })}\n\n`
+            : `id: 4\ndata: ${JSON.stringify({ batch: [started] })}\n\n`
+
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(frame))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      },
+    })
+
+    const received: number[] = []
+
+    const stop = client.subscribeEvents(
+      'run_1',
+      (event) => {
+        received.push(event.seq)
+      },
+      { reconnectDelayMs: 20 },
+    )
+
+    const start = Date.now()
+
+    while (received.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    expect(received).toEqual([4])
+    expect(calls[0]).toContain('fromSeq=1')
+    expect(calls.some((href) => href.includes('fromSeq=4'))).toBe(true)
+    stop()
+  })
+
+  test('subscribeEvents can follow a websocket with the read grant', async () => {
+    const received: number[] = []
+
+    class FakeSocket {
+      static latest: FakeSocket | undefined
+      readonly url: string
+      private readonly listeners = new Map<
+        string,
+        Array<(event: { readonly data?: unknown }) => void>
+      >()
+
+      constructor(url: string) {
+        this.url = url
+        FakeSocket.latest = this
+      }
+
+      addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void {
+        const current = this.listeners.get(type) ?? []
+        current.push(listener)
+        this.listeners.set(type, current)
+      }
+
+      emit(type: string, data?: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data })
+        }
+      }
+
+      close(): void {
+        this.emit('close')
+      }
+    }
+
+    const client = createLoomsClient({ baseUrl: 'http://looms.test', grant: 'v1.abc.def' })
+
+    const stop = client.subscribeEvents(
+      'run_1',
+      (event) => {
+        received.push(event.seq)
+      },
+      { transport: 'websocket', webSocket: FakeSocket, reconnectDelayMs: 60_000 },
+    )
+
+    const socket = FakeSocket.latest
+    expect(socket?.url).toBe('ws://looms.test/runs/run_1/events?fromSeq=1&grant=v1.abc.def')
+    socket?.emit('message', JSON.stringify({ type: 'hello', head: 1, tail: 1 }))
+
+    socket?.emit(
+      'message',
+      JSON.stringify({
+        batch: [
+          {
+            id: 'evt_1',
+            runId: 'run_1',
+            seq: 1,
+            ts: 1,
+            type: 'runtime.run.started',
+            payload: {},
+            threadId: 'thr_1',
+            parentThreadId: null,
+            causationId: null,
+            correlationId: null,
+            effectId: null,
+            ephemeral: false,
+            origin: { type: 'system' },
+          },
+        ],
+      }),
+    )
+
+    const start = Date.now()
+
+    while (received.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    expect(received).toEqual([1])
     stop()
   })
 
