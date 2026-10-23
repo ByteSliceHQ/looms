@@ -4,6 +4,8 @@ import {
   createRunId,
   EventStoreTag,
   JsonValueSchema,
+  RunAttributesSchema,
+  SecretContextSchema,
   stringifyJson,
   type EventStore,
   type JsonValue,
@@ -32,8 +34,8 @@ const StartRunBodySchema = Schema.Struct({
   input: Schema.optional(JsonValueSchema),
   runId: Schema.optional(Schema.String),
   idempotencyKey: Schema.optional(Schema.String),
-  traceparent: Schema.optional(Schema.String),
-  tracestate: Schema.optional(Schema.String),
+  attributes: Schema.optional(RunAttributesSchema),
+  secrets: Schema.optional(SecretContextSchema),
 })
 
 const SignalBodySchema = Schema.Struct({
@@ -179,8 +181,6 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
 
           const runId = body.runId ?? createRunId()
           const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
-          const traceparent = req.headers.get('traceparent') ?? body.traceparent ?? undefined
-          const tracestate = req.headers.get('tracestate') ?? body.tracestate ?? undefined
 
           const args = {
             kind,
@@ -189,8 +189,8 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
             input: body.input ?? null,
             runId,
             idempotencyKey,
-            traceparent,
-            tracestate,
+            attributes: body.attributes,
+            secrets: body.secrets,
           }
 
           if (wantsRunStream(req, url)) {

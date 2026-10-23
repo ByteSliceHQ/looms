@@ -3,9 +3,14 @@ import type { Effect } from 'effect'
 import type {
   AnyRuntimeModule,
   ComposedRegistry,
+  DefinitionResolver,
   EventEnvelope,
   EventInput,
+  WorkerCallback,
   WorkerCallbackInput,
+  DefinitionResolveError,
+  WorkerCallbackResult,
+  WorkerSecretsResult,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -14,6 +19,8 @@ import type {
   EventStoreTrimCoverage,
   RunLauncher,
   RunLaunchSource,
+  RunAttributes,
+  SecretContext,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -42,6 +49,12 @@ export interface CreateRuntimeOptions<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   readonly modules: TModules
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. Lookups are cached, including misses. Start fails with `UnknownDefinitionError`
+   * and writes no events when the definition is missing.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore
   /**
    * Durable events between mid-wake snapshots. Default 200; `0` disables.
@@ -92,8 +105,13 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
-  readonly traceparent?: string
-  readonly tracestate?: string
+  /** Progress from the previous attempt's last heartbeat, when it reported any. */
+  readonly details?: JsonValue
+  /**
+   * Present only on the in-memory dispatch. A transport that persists the task must leave this out
+   * and let the worker read the secret context through an authenticated callback.
+   */
+  readonly secrets?: SecretContext
 }
 
 export interface EffectWorker {
@@ -117,10 +135,13 @@ export interface StartRunArgs {
   launchedBy?: RunLaunchSource
   /** Recorded on `runtime.run.started` to group related runs. */
   correlationId?: string
-  /** W3C traceparent propagated from the caller. */
-  traceparent?: string
-  /** W3C tracestate accompanying traceparent. */
-  tracestate?: string
+  /** Immutable labels stored on the start event and the run summary. */
+  attributes?: RunAttributes
+  /**
+   * Bearer material stored beside the log. A retry that sends a different context conflicts.
+   * Omitting it on a retry keeps the context already stored.
+   */
+  secrets?: SecretContext
 }
 
 export interface StartResult {
@@ -163,14 +184,23 @@ export interface LoomsRuntime<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  /**
+   * Append events the runtime itself produced for another run. Unlike `signal`, this does not
+   * reject reserved runtime event types or rewrite their origin.
+   */
+  accept(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   wake(runId: string): Effect.Effect<RunState, WakeError, EventStoreTag>
   getRun(
     runId: string,
   ): Effect.Effect<
     RunState,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   getEvents(
@@ -189,7 +219,7 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunOperationalStatus,
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError,
+    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | DefinitionResolveError,
     EventStoreTag
   >
   retryEffect(
@@ -209,27 +239,50 @@ export interface LoomsRuntime<
     sourceRunId: string,
     options?: { runId?: string },
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
+  /**
+   * Applies a worker's report about one effect attempt. A report for another attempt, or one that
+   * arrives after the attempt settled, is `stale` and changes nothing.
+   */
   workerCallback(
     runId: string,
     input: WorkerCallbackInput,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  ): Effect.Effect<
+    WorkerCallbackResult,
+    Error | EventStoreAppendError | EventStoreError,
+    EventStoreTag
+  >
+  /**
+   * The run's secret context for a worker attempt that has started and not settled. Any other
+   * attempt is `stale`, so a redelivered or superseded message never sees the secrets.
+   */
+  workerSecrets(
+    runId: string,
+    callback: WorkerCallback,
+  ): Effect.Effect<
+    WorkerSecretsResult,
+    Error | EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTag
+  >
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
   /** Indexed run rows. Folds a run only when its header has not been written yet. */
   readonly listRunSummaries: Effect.Effect<
     readonly RunSummary[],
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | SnapshotStoreError,
+    | EventStoreError
+    | EventStoreTrimmedError
+    | EventStoreTruncationError
+    | SnapshotStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   readonly rescanTimers: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   /** Reschedule every durable timer and effect deadline after restart or repair. */
   readonly recoverDeadlines: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   readonly dispose: Effect.Effect<void>

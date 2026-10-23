@@ -5,13 +5,8 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
-import type {
-  ThreadRecord,
-  OutstandingEffect,
-  RunStartIdentity,
-  RunState,
-  WaitRecord,
-} from './state'
+import { readAttributes } from './run-context'
+import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
@@ -41,6 +36,28 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
+/** Heartbeat progress already recorded for this effect, if any. */
+function priorHeartbeatDetails(state: RunState, effectId: string): JsonValue | null {
+  return state.effectExecutions[effectId]?.heartbeatDetails ?? null
+}
+
+/**
+ * A heartbeat that carries `details` replaces the saved progress. Every other execution event
+ * keeps it, including the retry that starts the next attempt.
+ */
+function nextHeartbeatDetails(
+  state: RunState,
+  effectId: string,
+  event: EventEnvelope,
+  payload: { [key: string]: JsonValue },
+): JsonValue | null {
+  if (event.type === 'runtime.effect.heartbeat' && Object.hasOwn(payload, 'details')) {
+    return payload.details ?? null
+  }
+
+  return priorHeartbeatDetails(state, effectId)
+}
+
 function cloneState(state: RunState): RunState {
   return {
     runId: state.runId,
@@ -56,6 +73,10 @@ function cloneState(state: RunState): RunState {
     processedIdempotencyKeys: state.processedIdempotencyKeys
       ? [...state.processedIdempotencyKeys]
       : [],
+    launchedRuns: state.launchedRuns ? [...state.launchedRuns] : [],
+    closeWaiting: state.closeWaiting ?? false,
+    childCloseSent: state.childCloseSent ?? false,
+    attributes: state.attributes ?? {},
   }
 }
 
@@ -121,10 +142,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       const definitionVersion =
         readString(payload, 'definitionVersion') ?? DEFAULT_DEFINITION_VERSION
 
-      const traceparent = readString(payload, 'traceparent')
-      const tracestate = readString(payload, 'tracestate')
-
-      const startIdentity: RunStartIdentity | null =
+      const startIdentity =
         rootThreadId && kind && definitionName && definitionVersion
           ? {
               kind,
@@ -136,22 +154,16 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               rootThreadId,
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
+              attributes: readAttributes(payload.attributes),
             }
           : null
-
-      if (startIdentity && traceparent) {
-        startIdentity.traceparent = traceparent
-      }
-
-      if (startIdentity && tracestate) {
-        startIdentity.tracestate = tracestate
-      }
 
       return {
         ...state,
         runId: event.runId,
         rootThreadId: rootThreadId ?? null,
         startIdentity,
+        attributes: startIdentity?.attributes ?? {},
         status: 'running',
       }
     }
@@ -307,6 +319,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: null,
             startedAt: event.ts,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: null,
           },
         },
@@ -369,6 +382,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               : sameAttempt
                 ? previous.lastHeartbeatAt
                 : null,
+            heartbeatDetails: nextHeartbeatDetails(state, effectId, event, payload),
             lastError: readString(payload, 'error') ?? null,
           },
         },
@@ -401,6 +415,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: nextAttemptAt,
             startedAt: null,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: readString(payload, 'error') ?? 'effect failed',
           },
         },
@@ -481,7 +496,45 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
       return next
     }
 
-    case 'runtime.run.launched':
+    case 'runtime.run.launched': {
+      const childRunId = readString(payload, 'runId')
+
+      if (!childRunId || state.launchedRuns.some((run) => run.runId === childRunId)) {
+        return state
+      }
+
+      const close = readString(payload, 'close')
+
+      if (close !== 'terminate' && close !== 'wait') {
+        return state
+      }
+
+      return {
+        ...state,
+        launchedRuns: [...state.launchedRuns, { runId: childRunId, close }],
+      }
+    }
+
+    case 'runtime.child.settled': {
+      const childRunId = readString(payload, 'runId')
+
+      if (!childRunId) {
+        return state
+      }
+
+      return {
+        ...state,
+        launchedRuns: state.launchedRuns.filter((run) => run.runId !== childRunId),
+      }
+    }
+
+    case 'runtime.child.close.requested':
+      return {
+        ...state,
+        childCloseSent: true,
+        closeWaiting: readString(payload, 'policy') === 'wait' ? true : state.closeWaiting,
+      }
+
     case 'runtime.snapshot.taken':
     case 'runtime.thread.cancel.requested':
     case 'runtime.timer.set':
@@ -515,6 +568,18 @@ export function stableEffectId(threadId: string, effect: RuntimeEffect): string 
     Predicate.isString(effect.threadId)
   ) {
     return createEffectId(threadId, `cancel_${effect.threadId}`)
+  }
+
+  if (effect.type === 'runtime.launch' && 'runId' in effect && Predicate.isString(effect.runId)) {
+    return createEffectId(threadId, `launch_${effect.runId}`)
+  }
+
+  if (
+    effect.type === 'runtime.cancelRun' &&
+    'runId' in effect &&
+    Predicate.isString(effect.runId)
+  ) {
+    return createEffectId(threadId, `cancel_${effect.runId}`)
   }
 
   return undefined

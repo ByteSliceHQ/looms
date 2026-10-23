@@ -1,6 +1,12 @@
 import { Context, Data, Effect, Option, Schema } from 'effect'
 
+import type { EventInput } from './envelope'
+import type { RunAttributes, SecretContext } from './run-context'
 import type { JsonValue, RunStatus } from './types'
+
+export const ChildCloseSchema = Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')])
+
+export type ChildClose = Schema.Schema.Type<typeof ChildCloseSchema>
 
 /** The effect that launched a run, recorded on the launched run's `runtime.run.started`. */
 export const RunLaunchSourceSchema = Schema.Struct({
@@ -36,10 +42,13 @@ export interface LaunchRunArgs {
    * correlation id, or to the launching run's id when that run has none.
    */
   readonly correlationId?: string
-  /** W3C traceparent propagated from the launching effect or parent run. */
-  readonly traceparent?: string
-  /** W3C tracestate accompanying traceparent. */
-  readonly tracestate?: string
+  /**
+   * What the launching run does with this child when the launching run closes.
+   * `terminate` cancels the child. `wait` lets the child finish cancelling first.
+   */
+  readonly close?: ChildClose
+  readonly attributes?: RunAttributes
+  readonly secrets?: SecretContext
 }
 
 /** Enough of a run to decide whether a previous fire is still in progress. */
@@ -54,6 +63,16 @@ export interface RunStatusSnapshot {
 export interface RunLauncher {
   readonly launch: (args: LaunchRunArgs) => Effect.Effect<void, Error>
   readonly status: (runId: string) => Effect.Effect<RunStatusSnapshot | null, Error>
+  /**
+   * Append events to a run and wake it. When that run is already waking, the wake coalesces
+   * instead of waiting, so a child can notify its parent from inside the parent's wake.
+   */
+  readonly signal: (
+    runId: string,
+    events: readonly EventInput[],
+    options?: { readonly idempotencyKey?: string },
+  ) => Effect.Effect<void, Error>
+  readonly cancel: (runId: string) => Effect.Effect<void, Error>
 }
 
 export class RunLauncherTag extends Context.Service<RunLauncherTag, RunLauncher>()(
@@ -89,12 +108,20 @@ export class RunLauncherUnavailableError extends Data.TaggedError('RunLauncherUn
 export const unavailableRunLauncher: RunLauncher = {
   launch: () => Effect.fail(new RunLauncherUnavailableError()),
   status: () => Effect.fail(new RunLauncherUnavailableError()),
+  signal: () => Effect.fail(new RunLauncherUnavailableError()),
+  cancel: () => Effect.fail(new RunLauncherUnavailableError()),
 }
 
 /** Adapts a per-`runId` RPC or cell lookup into a `RunLauncher`. */
 export function createRemoteRunLauncher(target: {
   readonly launch: (runId: string, args: LaunchRunArgs) => Promise<void>
   readonly status: (runId: string) => Promise<RunStatusSnapshot | null>
+  readonly accept: (
+    runId: string,
+    events: readonly EventInput[],
+    options?: { readonly idempotencyKey?: string; readonly coalesce?: boolean },
+  ) => Promise<void>
+  readonly cancel: (runId: string) => Promise<void>
 }): RunLauncher {
   return {
     launch: (args) => {
@@ -112,6 +139,16 @@ export function createRemoteRunLauncher(target: {
     status: (runId) =>
       Effect.tryPromise({
         try: () => target.status(runId),
+        catch: runLauncherError,
+      }),
+    signal: (runId, events, options) =>
+      Effect.tryPromise({
+        try: () => target.accept(runId, events, { ...options, coalesce: true }),
+        catch: runLauncherError,
+      }),
+    cancel: (runId) =>
+      Effect.tryPromise({
+        try: () => target.cancel(runId),
         catch: runLauncherError,
       }),
   }

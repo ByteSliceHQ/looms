@@ -3,14 +3,18 @@ import { Data, Effect, Predicate } from 'effect'
 import {
   EventStoreTag,
   makeMemoryEventStore,
+  makeMemorySnapshotStore,
   snapshotStoreOf,
+  withBlobOffload,
   SnapshotStoreTag,
   type AnyRuntimeModule,
   type DebuggerHost,
   type DefinitionInput,
   type DefinitionRef,
+  type DefinitionResolver,
   type EventEnvelope,
   type EventInput,
+  type BlobStore,
   type EventStore,
   type EventStoreTrimCoverage,
   type JsonValue,
@@ -27,8 +31,10 @@ import {
   type EffectWorker,
   type LoomsRuntime,
   type RunOperationalStatus,
+  type StartRunArgs,
   type WakeScheduler,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from './runtime'
 import {
   createFetchHandler,
@@ -42,6 +48,11 @@ import {
 export interface CreateLoomsOptions {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
   readonly modules?: readonly AnyRuntimeModule[]
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. A run pins the resolved version on its start event.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
   readonly maxWakeIterations?: number
@@ -51,6 +62,11 @@ export interface CreateLoomsOptions {
   readonly snapshotEvery?: number
   /** Defaults to the EventStore's attached store (S2) or an in-memory SnapshotStore. */
   readonly snapshotStore?: SnapshotStore
+  /**
+   * Content-addressed store for JSON values that would exceed the 1 MiB event limit or the
+   * 8 MiB snapshot limit. Reads resolve references before folds, projections, and callers see them.
+   */
+  readonly blobStore?: BlobStore
   readonly trimAfterSnapshot?: {
     keepSnapshots: number
     coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
@@ -99,8 +115,8 @@ export interface Looms {
       runId?: string
       threadId?: string
       idempotencyKey?: string
-      traceparent?: string
-      tracestate?: string
+      attributes?: StartRunArgs['attributes']
+      secrets?: StartRunArgs['secrets']
     },
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
@@ -112,8 +128,8 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
-    traceparent?: string
-    tracestate?: string
+    attributes?: StartRunArgs['attributes']
+    secrets?: StartRunArgs['secrets']
   }): Promise<StartResult>
   /** Commit a run's start and schedule a wake without waiting for it. */
   launchRun(args: {
@@ -124,8 +140,8 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
-    traceparent?: string
-    tracestate?: string
+    attributes?: StartRunArgs['attributes']
+    secrets?: StartRunArgs['secrets']
   }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
@@ -145,7 +161,7 @@ export interface Looms {
   cancel(runId: string, threadId?: string): Promise<RunState>
   /** Start a new run that continues where a finished run ended. */
   fork(sourceRunId: string, options?: { runId?: string }): Promise<StartResult>
-  workerCallback(runId: string, input: WorkerCallbackInput): Promise<RunState>
+  workerCallback(runId: string, input: WorkerCallbackInput): Promise<WorkerCallbackResult>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
@@ -185,7 +201,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         Effect.gen(function* () {
           const configuredStore = options.store
 
-          const store = !configuredStore
+          let store = !configuredStore
             ? yield* makeMemoryEventStore
             : Predicate.isFunction(configuredStore)
               ? yield* Effect.tryPromise({
@@ -199,13 +215,22 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
                   })
                 : configuredStore
 
+          if (options.blobStore) {
+            const snapshots =
+              options.snapshotStore ?? snapshotStoreOf(store) ?? (yield* makeMemorySnapshotStore)
+
+            store = withBlobOffload(store, options.blobStore, { snapshots })
+          }
+
           const runtime = createRuntime({
             modules,
             store,
             maxWakeIterations: options.maxWakeIterations,
             maxPendingRunOperations: options.maxPendingRunOperations,
             snapshotEvery: options.snapshotEvery,
-            snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
+            snapshotStore: options.blobStore
+              ? snapshotStoreOf(store)
+              : (options.snapshotStore ?? snapshotStoreOf(store)),
             trimAfterSnapshot: options.trimAfterSnapshot,
             runCacheSize: options.runCacheSize,
             scheduler: options.scheduler,
@@ -213,6 +238,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             localLauncher: options.launcher === undefined,
             worker: options.worker,
             observer: options.observer,
+            definitionResolver: options.definitionResolver,
           })
 
           if (options.rescanTimers !== false) {
@@ -272,8 +298,8 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           runId: startOpts?.runId,
           threadId: startOpts?.threadId,
           idempotencyKey: startOpts?.idempotencyKey,
-          traceparent: startOpts?.traceparent,
-          tracestate: startOpts?.tracestate,
+          attributes: startOpts?.attributes,
+          secrets: startOpts?.secrets,
         }),
       ),
     getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),

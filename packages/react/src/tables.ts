@@ -1,4 +1,4 @@
-import type { RunLaunchSource, RunStatus, ThreadStatus } from '@looms/core'
+import type { RunAttributes, RunLaunchSource, RunStatus, ThreadStatus } from '@looms/core'
 
 export interface RunRow {
   runId: string
@@ -8,6 +8,7 @@ export interface RunRow {
   definitionName: string | null
   /** The effect in another run that launched this one. */
   launchedBy: RunLaunchSource | null
+  attributes: RunAttributes
 }
 
 export interface ThreadRow {

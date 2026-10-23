@@ -9,6 +9,7 @@ import {
   type EffectExecutionRecord,
   type EventEnvelope,
   type OutstandingEffect,
+  type RunLauncher,
   type RunState,
 } from '@looms/core'
 
@@ -29,6 +30,7 @@ export interface CancellationOptions {
   readonly observer?: RuntimeObserver
   readonly wake: LoomsRuntime['wake']
   readonly withRunIngress: RunIngress
+  readonly launcher: () => RunLauncher
 }
 
 interface WorkerCancellation {
@@ -146,6 +148,37 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
           const now = yield* Clock.currentTimeMillis
 
           return yield* repository.commit(store, runId, (current) => {
+            const rootCancel = threadId === undefined || threadId === current.state.rootThreadId
+
+            const deferClose =
+              rootCancel &&
+              !current.state.childCloseSent &&
+              current.state.launchedRuns.some((child) => child.close === 'wait')
+
+            if (deferClose) {
+              const requested = createEvent(runId, {
+                type: 'runtime.child.close.requested',
+                payload: { policy: 'wait' },
+                threadId: current.state.rootThreadId,
+                origin: { type: 'system' },
+                idempotencyKey: `child-close:${current.state.rootThreadId ?? runId}`,
+              })
+
+              return Effect.succeed({
+                events: [requested],
+                value: {
+                  plan: {
+                    events: [],
+                    threadIds: new Set<string>(),
+                    workerCancellations: [],
+                  } satisfies CancellationPlan,
+                  now,
+                  childRunIds: current.state.launchedRuns.map((child) => child.runId),
+                },
+                idempotencyKey: `signal:child-close:${current.state.rootThreadId ?? runId}`,
+              })
+            }
+
             const plan = planCancellation({
               runId,
               seq: current.seq,
@@ -156,16 +189,25 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
               now,
             })
 
+            const childRunIds: readonly string[] = []
+
             return Effect.succeed({
               events: plan.events,
-              value: { plan, now },
+              value: { plan, now, childRunIds },
               idempotencyKey: `signal:cancel:${threadId ?? current.state.rootThreadId ?? ''}`,
             })
           })
         }),
       )
 
-      const { plan, now } = committed.value
+      const { plan, now, childRunIds } = committed.value
+
+      if (childRunIds.length > 0) {
+        yield* Effect.forEach(childRunIds, (childRunId) => options.launcher().cancel(childRunId), {
+          concurrency: 1,
+          discard: true,
+        })
+      }
 
       if (committed.append) {
         executionContexts.abort(runId, plan.threadIds, 'Effect cancelled')
@@ -189,17 +231,7 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
           ({ item, execution }) =>
             Effect.tryPromise({
               try: () =>
-                Promise.resolve(
-                  worker.cancel?.(
-                    workerTask(
-                      runId,
-                      item,
-                      execution.attempt,
-                      committed.cursor.state.startIdentity?.traceparent,
-                      committed.cursor.state.startIdentity?.tracestate,
-                    ),
-                  ),
-                ),
+                Promise.resolve(worker.cancel?.(workerTask(runId, item, execution.attempt))),
               catch: (cause) =>
                 new RuntimeExecutionError(cause instanceof Error ? cause.message : String(cause)),
             }).pipe(Effect.ignore),

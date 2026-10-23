@@ -1,6 +1,6 @@
 import { Layer } from 'effect'
 
-import { defineModule } from '@looms/core'
+import { defineModule, makeDefinitionStore } from '@looms/core'
 
 import type { EvaluatorDefinition } from './definitions'
 import { EvaluatorDefinitionsLive } from './definitions-store'
@@ -24,14 +24,15 @@ export interface EvaluatorModuleOptions {
 }
 
 export function evaluator(options: EvaluatorModuleOptions = {}) {
-  const definitions = options.definitions ?? []
+  const listed = options.definitions ?? []
+  const definitions = makeDefinitionStore('evaluator', listed)
 
   const evaluatorLayer = options.evaluator
     ? Layer.succeed(EvaluatorTag, evaluatorFromAdapter(options.evaluator))
     : StubEvaluatorLive(options.evaluatorPolicy)
 
   return defineModule(evaluatorModule, () => ({
-    definitions,
+    definitions: listed,
     threads: { evaluator: evaluatorThread },
     effects: {
       evaluate: evaluateEffect,
@@ -40,5 +41,8 @@ export function evaluator(options: EvaluatorModuleOptions = {}) {
       evaluations,
     },
     services: () => Layer.merge(evaluatorLayer, EvaluatorDefinitionsLive(definitions)),
+    bindHost(host) {
+      definitions.useResolver(host.definitionResolver)
+    },
   }))
 }

@@ -97,6 +97,7 @@ describe('foldRun', () => {
       definitionVersion: 'v1',
       input: null,
       requestedThreadId: null,
+      attributes: {},
       idempotencyKey: null,
       rootThreadId: threadId,
       launchedBy: null,

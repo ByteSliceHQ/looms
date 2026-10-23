@@ -1,5 +1,4 @@
 import type { Attributes, Meter, MeterProvider } from '@opentelemetry/api'
-import { Predicate } from 'effect'
 
 import type { ProjectorObservation, ProjectorObserver } from '@looms/projectors'
 import type { RuntimeObservation, RuntimeObserver } from '@looms/runtime'
@@ -70,91 +69,4 @@ export function createOpenTelemetryObservers(
   }
 
   return { runtimeObserver, projectorObserver }
-}
-
-export {
-  childTraceparent,
-  createTraceparent,
-  generateSpanId,
-  generateTraceId,
-  isValidTraceparent,
-  parseTraceparent,
-  type CreateTraceparentOptions,
-  type ParsedTraceparent,
-  type TraceContext,
-} from '@looms/core'
-
-export interface TraceCarrier {
-  traceparent?: string
-  tracestate?: string
-}
-
-/** Injects active or provided W3C trace context into a plain carrier object. */
-export function injectTraceCarrier(traceparent?: string, tracestate?: string): TraceCarrier {
-  const carrier: TraceCarrier = {}
-
-  if (traceparent) {
-    carrier.traceparent = traceparent
-  }
-
-  if (tracestate) {
-    carrier.tracestate = tracestate
-  }
-
-  return carrier
-}
-
-export type TraceCarrierInput =
-  | Headers
-  | Request
-  | TraceCarrier
-  | { readonly [key: string]: string | undefined }
-  | null
-  | undefined
-
-/** Extracts traceparent and tracestate from a carrier, headers object, or request. */
-export function extractTraceCarrier(carrier: TraceCarrierInput): TraceCarrier | null {
-  if (!carrier) {
-    return null
-  }
-
-  if (carrier instanceof Headers) {
-    const traceparent = carrier.get('traceparent')
-    const tracestate = carrier.get('tracestate')
-
-    if (!traceparent) {
-      return null
-    }
-
-    return {
-      traceparent,
-      tracestate: tracestate ?? undefined,
-    }
-  }
-
-  if (carrier instanceof Request) {
-    const traceparent = carrier.headers.get('traceparent')
-    const tracestate = carrier.headers.get('tracestate')
-
-    if (!traceparent) {
-      return null
-    }
-
-    return {
-      traceparent,
-      tracestate: tracestate ?? undefined,
-    }
-  }
-
-  const traceparent = 'traceparent' in carrier ? carrier.traceparent : undefined
-  const tracestate = 'tracestate' in carrier ? carrier.tracestate : undefined
-
-  if (Predicate.isString(traceparent) && traceparent.length > 0) {
-    return {
-      traceparent,
-      tracestate: Predicate.isString(tracestate) ? tracestate : undefined,
-    }
-  }
-
-  return null
 }

@@ -1,7 +1,6 @@
 import { Effect, Option, Predicate, type Context, type ManagedRuntime } from 'effect'
 
 import {
-  childTraceparent,
   createEvent,
   createRunId,
   DEFAULT_DEFINITION_VERSION,
@@ -10,10 +9,13 @@ import {
   type ComposedRegistry,
   type EventEnvelope,
   type EventInput,
+  type DefinitionResolver,
   type OutstandingEffect,
-  type RegisteredDefinition,
+  type LaunchRunArgs,
+  type RunAttributes,
   type RunLauncher,
   type RunLaunchSource,
+  type SecretContext,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -32,7 +34,7 @@ import type { RunExecutionContext } from './run-execution-context'
 export interface LocalEffectExecutorOptions {
   readonly registry: ComposedRegistry
   readonly services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>
-  readonly definitions: ReadonlyMap<string, RegisteredDefinition>
+  readonly definitionResolver: DefinitionResolver
   readonly executionContext: RunExecutionContext
   readonly liveAppends: RuntimeRepository['liveAppends']
   readonly runInContext: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>
@@ -44,11 +46,29 @@ export interface ExecuteLocalEffectsInput {
   readonly runId: string
   /** Inherited by runs the effects launch. */
   readonly correlationId: string
-  readonly traceparent?: string | null
-  readonly tracestate?: string | null
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
   readonly outstanding: ReadonlyArray<OutstandingEffect>
   readonly attempts: ReadonlyMap<string, number>
   readonly now: number
+}
+
+function runLaunchedPayload(args: LaunchRunArgs, targetRunId: string, effectId: string) {
+  const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
+
+  const base = {
+    runId: targetRunId,
+    kind: args.kind,
+    definitionName: args.definitionName,
+    definitionVersion,
+    effectId,
+  }
+
+  if (args.close === undefined) {
+    return base
+  }
+
+  return { ...base, close: args.close }
 }
 
 /**
@@ -59,10 +79,10 @@ function launcherFor(
   launcher: RunLauncher,
   runId: string,
   correlationId: string,
+  attributes: RunAttributes,
+  secrets: SecretContext,
   item: OutstandingEffect,
   launched: EventEnvelope[],
-  traceparent?: string | null,
-  tracestate?: string | null,
 ): RunLauncher {
   const launchedBy: RunLaunchSource = {
     runId,
@@ -76,38 +96,22 @@ function launcherFor(
     launch: (args) => {
       const targetRunId = args.runId ?? createRunId()
 
-      const childTrace =
-        args.traceparent ?? (traceparent ? childTraceparent(traceparent) : undefined)
-
-      const childState = args.tracestate ?? tracestate ?? undefined
-
       return launcher
         .launch({
           ...args,
           runId: targetRunId,
           launchedBy,
           correlationId,
-          traceparent: childTrace,
-          tracestate: childState,
+          attributes: args.attributes ?? attributes,
+          secrets: args.secrets ?? secrets,
         })
         .pipe(
           Effect.tap(() =>
             Effect.sync(() => {
-              const base = {
-                runId: targetRunId,
-                kind: args.kind,
-                definitionName: args.definitionName,
-                definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
-                effectId: item.effectId,
-              }
-
-              const withTrace = childTrace ? { ...base, traceparent: childTrace } : base
-              const payload = childState ? { ...withTrace, tracestate: childState } : withTrace
-
               launched.push(
                 createEvent(runId, {
                   type: 'runtime.run.launched',
-                  payload,
+                  payload: runLaunchedPayload(args, targetRunId, item.effectId),
                   threadId: item.threadId,
                   causationId: item.causingEventId,
                   correlationId,
@@ -119,6 +123,8 @@ function launcherFor(
         )
     },
     status: launcher.status,
+    signal: (targetRunId, events, options) => launcher.signal(targetRunId, events, options),
+    cancel: (targetRunId) => launcher.cancel(targetRunId),
   }
 }
 
@@ -153,7 +159,7 @@ export function executeLocalEffects(
   const {
     registry,
     services,
-    definitions,
+    definitionResolver,
     executionContext,
     liveAppends,
     runInContext,
@@ -203,22 +209,18 @@ export function executeLocalEffects(
           const retry = registry.effects.get(item.effect.type)?.retry
           const launched: EventEnvelope[] = []
 
-          const effectTraceparent = input.traceparent
-            ? childTraceparent(input.traceparent)
-            : undefined
-
           const dispatched = dispatchEffect(
             registry,
             services,
-            definitions,
+            definitionResolver,
             launcherFor(
               launcher,
               input.runId,
               input.correlationId,
+              input.attributes,
+              input.secrets,
               item,
               launched,
-              input.traceparent,
-              input.tracestate,
             ),
             item.effect,
             {
@@ -226,9 +228,9 @@ export function executeLocalEffects(
               runId: input.runId,
               threadId: item.threadId,
               causingEventId: item.causingEventId,
+              attributes: input.attributes,
+              secrets: input.secrets,
               signal: controller.signal,
-              traceparent: effectTraceparent,
-              tracestate: input.tracestate ?? undefined,
               emit: appendLive,
             },
           ).pipe(
@@ -302,7 +304,23 @@ export function executeLocalEffects(
 
           const { outcomes } = settled
 
-          if (outcomes.length === 0) {
+          const sideEffect =
+            item.effect.type === 'runtime.launch' || item.effect.type === 'runtime.cancelRun'
+
+          if (outcomes.length === 0 && sideEffect) {
+            const attempt = input.attempts.get(item.effectId) ?? 1
+
+            produced.push(
+              createEvent(input.runId, {
+                type: 'runtime.effect.completed',
+                payload: { effectId: item.effectId, attempt },
+                threadId: item.threadId,
+                effectId: item.effectId,
+                causationId: item.causingEventId,
+                origin: { type: 'system' },
+              }),
+            )
+          } else if (outcomes.length === 0) {
             produced.push(createEffectFailedEvent(input.runId, item, 'empty-outcome'))
           }
 
@@ -311,6 +329,7 @@ export function executeLocalEffects(
               const attempt = input.attempts.get(item.effectId) ?? 1
               const payload = Predicate.isObject(outcome.payload) ? outcome.payload : {}
               const error = Predicate.isString(payload.error) ? payload.error : 'effect failed'
+              const retryAfterMs = payload.retryAfterMs
 
               const failure = planAttemptFailure({
                 runId: input.runId,
@@ -320,6 +339,8 @@ export function executeLocalEffects(
                 now: input.now,
                 retry,
                 origin: { type: 'system' },
+                nonRetryable: payload.nonRetryable === true,
+                retryAfterMs: Predicate.isNumber(retryAfterMs) ? retryAfterMs : undefined,
               })
 
               if (failure.retrying) {

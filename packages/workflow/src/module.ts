@@ -1,4 +1,4 @@
-import { defineModule } from '@looms/core'
+import { defineModule, makeDefinitionStore } from '@looms/core'
 
 import type { WorkflowDefinition } from './definitions'
 import { WorkflowDefinitionsLive } from './definitions-store'
@@ -12,9 +12,11 @@ export interface WorkflowModuleOptions {
 }
 
 export function workflow(options: WorkflowModuleOptions = {}) {
-  const definitions = options.definitions ?? []
+  const listed = options.definitions ?? []
+  const definitions = makeDefinitionStore('workflow', listed)
+
   return defineModule(workflowModule, () => ({
-    definitions,
+    definitions: listed,
     threads: { workflow: workflowThread },
     effects: {
       schedule: scheduleEffect,
@@ -22,5 +24,8 @@ export function workflow(options: WorkflowModuleOptions = {}) {
     },
     projections: { nodes },
     services: () => WorkflowDefinitionsLive(definitions),
+    bindHost(host) {
+      definitions.useResolver(host.definitionResolver)
+    },
   }))
 }

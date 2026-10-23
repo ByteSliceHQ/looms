@@ -67,7 +67,13 @@ function Page() {
         a restart preserves the retry budget and backoff. Configure start, heartbeat, and execution
         timeouts for work delivered to external workers. Worker callbacks include the effect ID and
         attempt number; stale callbacks cannot complete a newer attempt. Exhaustion records{' '}
-        <code>runtime.effect.failed</code>.
+        <code>runtime.effect.failed</code>. A handler can stop that budget early with{' '}
+        <code>failEffect</code> and <code>nonRetryable: true</code>, or ask the next attempt to wait
+        at least <code>retryAfterMs</code> without shortening the policy backoff. A worker heartbeat
+        can carry <code>details</code>; the next dispatch of that effect includes the latest details
+        so the attempt can resume. The callback response is{' '}
+        <code>{'{ status, cancelRequested }'}</code>, not the run state.{' '}
+        <code>cancelRequested</code> tells an attempt that is already running to stop.
       </p>
       <h2 id="signals-and-webhook-delivery">
         Signals and webhook delivery

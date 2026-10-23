@@ -2,6 +2,7 @@ import { Data, Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
+  DefinitionResolver,
   EventInput,
   EventStore,
   EventStoreTrimCoverage,
@@ -54,6 +55,8 @@ export interface LocalActorHostOptions<
 > {
   readonly createStore: (runId: string) => EventStore | Promise<EventStore>
   readonly modules: TModules
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -101,6 +104,9 @@ export function createLocalActorHost<
   const launcher = createRemoteRunLauncher({
     launch: (runId, args) => getCell(runId).then((cell) => cell.launch(args)),
     status: (runId) => getCell(runId).then((cell) => cell.status()),
+    accept: (runId, events, signalOptions) =>
+      getCell(runId).then((cell) => cell.accept(events, signalOptions).then(() => undefined)),
+    cancel: (runId) => getCell(runId).then((cell) => cell.cancel()),
   })
 
   getCell = (runId: string): Promise<ActorCell<TModules>> => {
@@ -134,6 +140,7 @@ export function createLocalActorHost<
           store,
           scheduler,
           modules: options.modules,
+          definitionResolver: options.definitionResolver,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,

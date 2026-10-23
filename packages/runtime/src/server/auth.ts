@@ -1,5 +1,7 @@
 import { Effect } from 'effect'
 
+import type { RunAttributes } from '@looms/core'
+
 /**
  * What a route can do. `public` routes (health) are never passed to `authorize`; `read` and
  * `write` cover run state, `worker` covers external worker callbacks, and `operations` covers
@@ -14,6 +16,8 @@ export interface RouteInfo {
   /** Stable route name, such as `runs.signal` or `effects.retry`. */
   readonly name: string
   readonly runId?: string
+  /** Present when the run has labels. Safe for the authorizer to branch on. */
+  readonly attributes?: RunAttributes
 }
 
 export type AuthDecision =
