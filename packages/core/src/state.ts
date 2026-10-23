@@ -7,7 +7,7 @@ import {
   type WaitCondition,
 } from './effects'
 import { JsonValueSchema } from './envelope'
-import { RunLaunchSourceSchema, type RunLaunchSource } from './launcher'
+import { RunLaunchSourceSchema, type ChildClose, type RunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
@@ -79,6 +79,11 @@ export interface RunForkSource {
   seq: number
 }
 
+export interface LaunchedRun {
+  runId: string
+  close: ChildClose
+}
+
 export interface RunState {
   runId: string
   status: RunStatus
@@ -91,6 +96,12 @@ export interface RunState {
   effectExecutions: { [effectId: string]: EffectExecutionRecord }
   completedEffectIds: readonly string[]
   processedIdempotencyKeys: readonly string[]
+  /** Child runs this run launched and has not yet seen settle. */
+  launchedRuns: readonly LaunchedRun[]
+  /** The run is cancelling and will not finish until `wait` children settle. */
+  closeWaiting: boolean
+  /** Child runs were already asked to stop because this run closed. */
+  childCloseSent: boolean
 }
 
 export const RunStateSchema = Schema.Struct({
@@ -198,6 +209,14 @@ export const RunStateSchema = Schema.Struct({
   processedIdempotencyKeys: Schema.Array(Schema.String).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([])),
   ),
+  launchedRuns: Schema.Array(
+    Schema.Struct({
+      runId: Schema.String,
+      close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]),
+    }),
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  closeWaiting: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  childCloseSent: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 
 export function emptyRunState(runId: string): RunState {
@@ -213,6 +232,9 @@ export function emptyRunState(runId: string): RunState {
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
   }
 }
 

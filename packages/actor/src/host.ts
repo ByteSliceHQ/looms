@@ -101,6 +101,9 @@ export function createLocalActorHost<
   const launcher = createRemoteRunLauncher({
     launch: (runId, args) => getCell(runId).then((cell) => cell.launch(args)),
     status: (runId) => getCell(runId).then((cell) => cell.status()),
+    accept: (runId, events, signalOptions) =>
+      getCell(runId).then((cell) => cell.accept(events, signalOptions).then(() => undefined)),
+    cancel: (runId) => getCell(runId).then((cell) => cell.cancel()),
   })
 
   getCell = (runId: string): Promise<ActorCell<TModules>> => {

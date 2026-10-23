@@ -11,6 +11,7 @@ import {
   type EventInput,
   type OutstandingEffect,
   type RegisteredDefinition,
+  type LaunchRunArgs,
   type RunLauncher,
   type RunLaunchSource,
 } from '@looms/core'
@@ -48,6 +49,24 @@ export interface ExecuteLocalEffectsInput {
   readonly now: number
 }
 
+function runLaunchedPayload(args: LaunchRunArgs, targetRunId: string, effectId: string) {
+  const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
+
+  const base = {
+    runId: targetRunId,
+    kind: args.kind,
+    definitionName: args.definitionName,
+    definitionVersion,
+    effectId,
+  }
+
+  if (args.close === undefined) {
+    return base
+  }
+
+  return { ...base, close: args.close }
+}
+
 /**
  * Stamps every launch with the effect that made it, replacing anything the handler passed, and
  * records a `runtime.run.launched` event for each launch the target accepts.
@@ -77,13 +96,7 @@ function launcherFor(
             launched.push(
               createEvent(runId, {
                 type: 'runtime.run.launched',
-                payload: {
-                  runId: targetRunId,
-                  kind: args.kind,
-                  definitionName: args.definitionName,
-                  definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
-                  effectId: item.effectId,
-                },
+                payload: runLaunchedPayload(args, targetRunId, item.effectId),
                 threadId: item.threadId,
                 causationId: item.causingEventId,
                 correlationId,
@@ -95,6 +108,8 @@ function launcherFor(
       )
     },
     status: launcher.status,
+    signal: (targetRunId, events, options) => launcher.signal(targetRunId, events, options),
+    cancel: (targetRunId) => launcher.cancel(targetRunId),
   }
 }
 
@@ -264,7 +279,23 @@ export function executeLocalEffects(
 
           const { outcomes } = settled
 
-          if (outcomes.length === 0) {
+          const sideEffect =
+            item.effect.type === 'runtime.launch' || item.effect.type === 'runtime.cancelRun'
+
+          if (outcomes.length === 0 && sideEffect) {
+            const attempt = input.attempts.get(item.effectId) ?? 1
+
+            produced.push(
+              createEvent(input.runId, {
+                type: 'runtime.effect.completed',
+                payload: { effectId: item.effectId, attempt },
+                threadId: item.threadId,
+                effectId: item.effectId,
+                causationId: item.causingEventId,
+                origin: { type: 'system' },
+              }),
+            )
+          } else if (outcomes.length === 0) {
             produced.push(createEffectFailedEvent(input.runId, item, 'empty-outcome'))
           }
 

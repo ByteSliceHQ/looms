@@ -34,6 +34,22 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     definitionVersion: DefinitionVersionSchema,
     /** In the payload, not the envelope: an envelope `effectId` would complete the effect. */
     effectId: Schema.String,
+    close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+    ),
+  }),
+  'child.settled': Schema.Struct({
+    runId: Schema.String,
+    status: Schema.Union([
+      Schema.Literal('completed'),
+      Schema.Literal('failed'),
+      Schema.Literal('cancelled'),
+    ]),
+    output: Schema.NullOr(JsonValueSchema),
+    error: Schema.NullOr(Schema.String),
+  }),
+  'child.close.requested': Schema.Struct({
+    policy: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]),
   }),
   'run.forked': Schema.Struct({
     sourceRunId: Schema.String,
@@ -167,6 +183,8 @@ export const PROTOCOL_TYPES = [
   'runtime.run.completed',
   'runtime.run.cancelled',
   'runtime.run.launched',
+  'runtime.child.settled',
+  'runtime.child.close.requested',
   'runtime.run.forked',
   'runtime.fork.elided',
   'runtime.thread.started',

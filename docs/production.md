@@ -13,6 +13,8 @@ coalesced. A deployment, eviction, or alarm retry may repeat a wake; event
 preconditions make that safe. Cross-object queries and transactions are not
 provided. Build global run lists with a projector.
 
+A workflow can launch children with `childExecution: 'run'`. Each child is its own run, addressed by a deterministic id, and reports `runtime.child.settled` back to the parent. Cancelling the parent cancels those children. `childClose: 'wait'` records `runtime.child.close.requested` and cancels the parent only after the children reach a terminal status. `childClose: 'terminate'` cancels them as the parent closes. Children stay threads in the parent run unless `childExecution` is set.
+
 All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.

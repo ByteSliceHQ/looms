@@ -302,6 +302,9 @@ export function toThreadTree(state: TreeBuildState): ThreadTree {
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
   })
 }
 

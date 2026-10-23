@@ -99,6 +99,22 @@ export function dispatchEffect(
           ])
         }
 
+        case 'runtime.launch':
+          return launcher
+            .launch({
+              runId: eff.runId,
+              kind: eff.kind,
+              definitionName: eff.definitionName,
+              definitionVersion: eff.definitionVersion,
+              input: eff.input,
+              idempotencyKey: eff.runId,
+              close: eff.close,
+            })
+            .pipe(Effect.map(() => []))
+
+        case 'runtime.cancelRun':
+          return launcher.cancel(eff.runId).pipe(Effect.map(() => []))
+
         default: {
           const exhaustiveCheck: never = eff
           return exhaustiveCheck

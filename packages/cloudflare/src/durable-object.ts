@@ -133,9 +133,20 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState> {
     return this.getCell().then((cell) => cell.signal(events, options))
+  }
+
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState> {
+    return this.getCell().then((cell) => cell.accept(events, options))
+  }
+
+  cancel(): Promise<void> {
+    return this.getCell().then((cell) => cell.cancel())
   }
 
   getRun(): Promise<RunState> {
@@ -165,8 +176,13 @@ export interface DurableObjectRunStub {
   startRun(args: StartRunArgs): Promise<StartResult>
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState>
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState>
+  cancel(): Promise<void>
   getRun(): Promise<RunState>
 }
 
@@ -181,6 +197,12 @@ export function durableObjectLauncher(namespace: { getByName(name: string): obje
   return createRemoteRunLauncher({
     launch: (runId, args) => runs.getByName(runId).launch(args),
     status: (runId) => runs.getByName(runId).status(),
+    accept: (runId, events, options) =>
+      runs
+        .getByName(runId)
+        .accept(events, options)
+        .then(() => undefined),
+    cancel: (runId) => runs.getByName(runId).cancel(),
   })
 }
 

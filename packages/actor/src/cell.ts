@@ -62,8 +62,14 @@ export interface ActorCell<
   startRun(args: StartRunArgs): Promise<StartResult>
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState>
+  /** Append runtime-originated events. Not the client signal path. */
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState>
+  cancel(): Promise<void>
   getRun(): Promise<RunState>
 }
 
@@ -137,6 +143,10 @@ export function createActorCell<
     startRun: (args) => provide(runtime.startRun({ ...args, runId })),
 
     signal: (events, signalOptions) => provide(runtime.signal(runId, events, signalOptions)),
+
+    accept: (events, signalOptions) => provide(runtime.accept(runId, events, signalOptions)),
+
+    cancel: () => provide(runtime.cancel(runId).pipe(Effect.asVoid)),
 
     getRun: () => provide(runtime.getRun(runId)),
   }

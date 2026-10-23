@@ -30,6 +30,9 @@ function runningState(overrides: Partial<RunState> = {}): RunState {
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
     ...overrides,
   }
 }

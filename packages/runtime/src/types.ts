@@ -157,7 +157,16 @@ export interface LoomsRuntime<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  /**
+   * Append events the runtime itself produced for another run. Unlike `signal`, this does not
+   * reject reserved runtime event types or rewrite their origin.
+   */
+  accept(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   wake(runId: string): Effect.Effect<RunState, WakeError, EventStoreTag>
   getRun(

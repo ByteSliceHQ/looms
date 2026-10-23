@@ -60,6 +60,23 @@ export type CancelEffect = {
   tag?: string
 }
 
+export type LaunchEffect = {
+  type: 'runtime.launch'
+  runId: string
+  kind: string
+  definitionName: string
+  definitionVersion: string
+  input: JsonValue
+  close: 'terminate' | 'wait'
+  tag?: string
+}
+
+export type CancelRunEffect = {
+  type: 'runtime.cancelRun'
+  runId: string
+  tag?: string
+}
+
 export interface RetryPolicy {
   readonly maxAttempts: number
   readonly backoffMs?: number
@@ -86,6 +103,8 @@ export type PrimitiveEffect =
   | CompleteEffect
   | FailEffect
   | CancelEffect
+  | LaunchEffect
+  | CancelRunEffect
 
 export type RuntimeEffect = PrimitiveEffect | InvokeEffect
 
@@ -133,6 +152,25 @@ export const RuntimeEffectSchema = Schema.Union([
     tag: Schema.optional(Schema.String),
   }),
   Schema.Struct({
+    type: Schema.Literal('runtime.launch'),
+    runId: Schema.String,
+    kind: Schema.String,
+    definitionName: Schema.String,
+    definitionVersion: Schema.String.pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+    ),
+    input: Schema.Json,
+    close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+    ),
+    tag: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.cancelRun'),
+    runId: Schema.String,
+    tag: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
     type: Schema.String,
     input: Schema.Json,
     tag: Schema.optional(Schema.String),
@@ -148,6 +186,8 @@ export function isPrimitiveEffect(effect: RuntimeEffect): effect is PrimitiveEff
     case 'runtime.complete':
     case 'runtime.fail':
     case 'runtime.cancel':
+    case 'runtime.launch':
+    case 'runtime.cancelRun':
       return true
     default:
       return false
@@ -411,6 +451,38 @@ export function cancel(threadId: string, tag?: string): CancelEffect {
   return tag === undefined
     ? { type: 'runtime.cancel', threadId }
     : { type: 'runtime.cancel', threadId, tag }
+}
+
+export function launch(args: {
+  runId: string
+  kind: string
+  definitionName: string
+  definitionVersion?: string
+  input: JsonValue
+  close?: 'terminate' | 'wait'
+  tag?: string
+}): LaunchEffect {
+  const effect: LaunchEffect = {
+    type: 'runtime.launch',
+    runId: args.runId,
+    kind: args.kind,
+    definitionName: args.definitionName,
+    definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
+    input: args.input,
+    close: args.close ?? 'terminate',
+  }
+
+  if (args.tag !== undefined) {
+    effect.tag = args.tag
+  }
+
+  return effect
+}
+
+export function cancelRun(runId: string, tag?: string): CancelRunEffect {
+  return tag === undefined
+    ? { type: 'runtime.cancelRun', runId }
+    : { type: 'runtime.cancelRun', runId, tag }
 }
 
 export interface InvokeOptions {

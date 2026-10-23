@@ -190,13 +190,24 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             { origin: { type: 'external' }, threadId: current.state.rootThreadId },
           )
 
-          if (isRunTerminal(current.state)) {
+          const terminal = isRunTerminal(current.state)
+
+          const settlementOnly = filteredEvents.every(
+            (event) => event.type === 'runtime.child.settled',
+          )
+
+          if (terminal && !settlementOnly) {
             return yield* new RunTerminalError(runId, current.state.status)
           }
 
           const folded = foldRun(batch, registry, { runId, initial: current.state })
 
-          const satisfiedEvents = waitSatisfiedEvents(folded, batch).map((input) =>
+          const forWaits =
+            terminal || current.state.closeWaiting
+              ? batch.filter((event) => event.type !== 'runtime.child.settled')
+              : batch
+
+          const satisfiedEvents = waitSatisfiedEvents(folded, forWaits).map((input) =>
             createEvent(runId, input),
           )
 
@@ -360,7 +371,20 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     observer: options.observer,
     wake: wakeEngine,
     withRunIngress,
+    launcher: () => launcher,
   })
+
+  const appendAndWake: LoomsRuntime<TModules>['accept'] = (runId, events, signalOpts) =>
+    withRunIngress(runId, signalAdmitted(runId, events, signalOpts)).pipe(
+      Effect.flatMap((state) => {
+        if (signalOpts?.coalesce && executionContexts.get(runId).waking) {
+          executionContexts.get(runId).wakeAgain = true
+          return Effect.succeed(state)
+        }
+
+        return runtime.wake(runId)
+      }),
+    )
 
   runtime = {
     modules: options.modules,
@@ -555,11 +579,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
     signal: (runId, events, signalOpts) =>
       admitExternalEvents(events).pipe(
-        Effect.flatMap((admitted) =>
-          withRunIngress(runId, signalAdmitted(runId, admitted, signalOpts)),
-        ),
-        Effect.andThen(runtime.wake(runId)),
+        Effect.flatMap((admitted) => appendAndWake(runId, admitted, signalOpts)),
       ),
+
+    accept: (runId, events, signalOpts) => appendAndWake(runId, events, signalOpts),
 
     cancel: cancellation,
 
@@ -648,6 +671,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 state.rootThreadId === null ? null : { status: state.status },
               ),
             ),
+          signal: (runId, events, signalOptions) =>
+            runtime
+              .accept(runId, events, { ...signalOptions, coalesce: true })
+              .pipe(Effect.provideService(EventStoreTag, store), Effect.asVoid),
+          cancel: (runId) =>
+            runtime.cancel(runId).pipe(Effect.provideService(EventStoreTag, store), Effect.asVoid),
         }
       : unavailableRunLauncher)
 

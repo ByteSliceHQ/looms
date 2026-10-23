@@ -8,11 +8,14 @@ import {
   isRunTerminal,
   type ComposedRegistry,
   type EventEnvelope,
+  type EventStore,
   type RegisteredDefinition,
+  type RunCursor,
   type RunLauncher,
   type RunState,
 } from '@looms/core'
 
+import { childCloseCancellations, notifyLaunchingParent } from './child-run'
 import {
   nextRuntimeDeadline,
   planDeadlineTransitions,
@@ -75,6 +78,40 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
   const observe = (event: Parameters<RuntimeObserver['observe']>[0]) =>
     notifyObserver(options.observer, event)
+
+  const closeLaunchedRuns = (store: EventStore, runId: string, cursor: RunCursor) =>
+    Effect.gen(function* () {
+      let next = cursor
+      const state = next.state
+
+      if (isRunTerminal(state) && !state.childCloseSent && state.launchedRuns.length > 0) {
+        const requested = createEvent(runId, {
+          type: 'runtime.child.close.requested',
+          payload: { policy: 'terminate' },
+          threadId: state.rootThreadId,
+          origin: { type: 'system' },
+          idempotencyKey: `child-close:${runId}`,
+        })
+
+        const appended = yield* appendObserved(store, runId, stripSeq([requested]))
+        next = yield* applyAppend(store, runId, next, stripSeq([requested]), appended)
+
+        yield* Effect.forEach(
+          state.launchedRuns,
+          (child) => options.launcher().cancel(child.runId),
+          {
+            concurrency: 1,
+            discard: true,
+          },
+        )
+      }
+
+      if (isRunTerminal(next.state)) {
+        yield* notifyLaunchingParent(options.launcher(), runId, next.state)
+      }
+
+      return next
+    })
 
   return (runId) =>
     Effect.gen(function* () {
@@ -146,6 +183,13 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
         do {
           let cursor = yield* loadCursor(store, runId)
+          const closeEvents = childCloseCancellations(cursor.state)
+
+          if (closeEvents.length > 0) {
+            const created = closeEvents.map((input) => createEvent(runId, input))
+            const appended = yield* appendObserved(store, runId, stripSeq(created))
+            cursor = yield* applyAppend(store, runId, cursor, stripSeq(created), appended)
+          }
 
           if (isRunTerminal(cursor.state)) {
             const now = yield* Clock.currentTimeMillis
@@ -160,6 +204,8 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               const appended = yield* appendObserved(store, runId, stripSeq(events))
               cursor = yield* applyAppend(store, runId, cursor, stripSeq(events), appended)
             }
+
+            cursor = yield* closeLaunchedRuns(store, runId, cursor)
 
             const nextDeadline = nextRuntimeDeadline(cursor.state, now)
 
@@ -459,6 +505,10 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
             const appendResult = yield* appendObserved(store, runId, stripSeq([completed]))
             cursor = yield* applyAppend(store, runId, cursor, stripSeq([completed]), appendResult)
+          }
+
+          if (isRunTerminal(cursor.state)) {
+            cursor = yield* closeLaunchedRuns(store, runId, cursor)
           }
 
           // Snapshot on park: the next wake (on any instance) starts from here.
