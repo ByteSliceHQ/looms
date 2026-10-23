@@ -18,6 +18,7 @@ import type { Projector } from '@looms/projectors'
 import {
   defaultAuthorize,
   type Authorize,
+  type LoomsRuntime,
   type StartResult,
   type StartRunArgs,
 } from '@looms/runtime'
@@ -132,7 +133,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
   override fetch(req: Request): Promise<Response> {
     if (isRunSocketUpgrade(req)) {
-      return this.getCell().then(() => this.acceptRunSocket(req))
+      return this.getCell().then((cell) => this.acceptRunSocket(req, cell.runtime))
     }
 
     return this.getCell().then((cell) => cell.fetch(req))
@@ -151,7 +152,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     // The platform drops the socket. Nothing is retained for it.
   }
 
-  private acceptRunSocket(req: Request): Promise<Response> {
+  private acceptRunSocket(req: Request, runtime: LoomsRuntime): Promise<Response> {
     const store = this.store
     const runId = this.ctx.id.name
 
@@ -162,6 +163,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     return Effect.runPromise(
       openRunSocket({
         ctx: this.ctx,
+        runtime,
         store,
         request: req,
         runId,

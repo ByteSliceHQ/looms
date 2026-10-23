@@ -34,6 +34,7 @@ export {
   authResponse,
   bearerAuth,
   defaultAuthorize,
+  runRouteInfo,
   type AuthDecision,
   type AuthorizedAccess,
   type Authorize,

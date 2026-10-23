@@ -1,14 +1,6 @@
 import { Data, Effect, Option, Predicate, Schema } from 'effect'
 
-import {
-  EventStoreTag,
-  hasEntries,
-  isJsonObject,
-  readAttributes,
-  RunAttributesSchema,
-  type EventStore,
-  type RunAttributes,
-} from '@looms/core'
+import { hasEntries, RunAttributesSchema, type EventStore, type RunAttributes } from '@looms/core'
 
 import type { LoomsRuntime } from '../runtime'
 import { authResponse, defaultAuthorize, type Authorize } from './auth'
@@ -19,6 +11,7 @@ import { definitionRoutes } from './routes/definitions'
 import { effectRoutes } from './routes/effects'
 import { operationRoutes } from './routes/operations'
 import { runRoutes } from './routes/runs'
+import { readStoredAttributes } from './run-route'
 
 export interface FetchHandlerOptions {
   readonly runtime: LoomsRuntime
@@ -63,36 +56,6 @@ function readRequestAttributes(req: Request): Effect.Effect<RunAttributes> {
       }),
     ),
     Effect.catchTag('UnreadableStartBody', () => Effect.succeed(noAttributes)),
-  )
-}
-
-/**
- * Attributes are immutable and recorded on `runtime.run.started`, which is seq 1 of every
- * untrimmed log, forks included. Only a trimmed log needs the snapshot-backed fold.
- */
-function readStoredAttributes(
-  runtime: LoomsRuntime,
-  store: EventStore,
-  runId: string,
-): Effect.Effect<RunAttributes, Error> {
-  const folded = runtime.getRun(runId).pipe(
-    Effect.provideService(EventStoreTag, store),
-    Effect.map((state) => state.attributes),
-  )
-
-  return store.read(runId, { fromSeq: 1, limit: 1 }).pipe(
-    Effect.flatMap(([first]) => {
-      if (first === undefined) {
-        return Effect.succeed(noAttributes)
-      }
-
-      if (first.type === 'runtime.run.started' && isJsonObject(first.payload)) {
-        return Effect.succeed(readAttributes(first.payload.attributes))
-      }
-
-      return folded
-    }),
-    Effect.catch(() => folded),
   )
 }
 
