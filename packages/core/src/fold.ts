@@ -5,6 +5,7 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { readAttributes } from './run-context'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
@@ -50,6 +51,7 @@ function cloneState(state: RunState): RunState {
     processedIdempotencyKeys: state.processedIdempotencyKeys
       ? [...state.processedIdempotencyKeys]
       : [],
+    attributes: state.attributes ?? {},
   }
 }
 
@@ -127,6 +129,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               rootThreadId,
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
+              attributes: readAttributes(payload.attributes),
             }
           : null
 
@@ -135,6 +138,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         runId: event.runId,
         rootThreadId: rootThreadId ?? null,
         startIdentity,
+        attributes: startIdentity?.attributes ?? {},
         status: 'running',
       }
     }

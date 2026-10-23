@@ -1,6 +1,12 @@
-import { Effect, Predicate } from 'effect'
+import { Data, Effect, Option, Predicate, Schema } from 'effect'
 
-import type { EventStore } from '@looms/core'
+import {
+  EventStoreTag,
+  hasEntries,
+  RunAttributesSchema,
+  type EventStore,
+  type RunAttributes,
+} from '@looms/core'
 
 import type { LoomsRuntime } from '../runtime'
 import { authResponse, defaultAuthorize, type Authorize } from './auth'
@@ -33,10 +39,33 @@ function createRoutes(options: RouteOptions): readonly Route[] {
   ]
 }
 
+const StartAttributesSchema = Schema.Struct({
+  attributes: Schema.optional(RunAttributesSchema),
+})
+
+class UnreadableStartBody extends Data.TaggedError('UnreadableStartBody')<{
+  readonly cause: unknown
+}> {}
+
+function readRequestAttributes(req: Request): Effect.Effect<RunAttributes> {
+  return Effect.tryPromise({
+    try: () => req.clone().json(),
+    catch: (cause) => new UnreadableStartBody({ cause }),
+  }).pipe(
+    Effect.map((body) => {
+      const decoded = Schema.decodeUnknownOption(StartAttributesSchema)(body)
+      return Option.getOrElse(decoded, () => ({})).attributes ?? {}
+    }),
+    Effect.catchTag('UnreadableStartBody', () => Effect.succeed({})),
+  )
+}
+
 function authorizeRoute(
   req: Request,
   matched: MatchedRoute,
   authorize: Authorize,
+  runtime: LoomsRuntime,
+  store: EventStore,
 ): Effect.Effect<Response | null> {
   const { access, name } = matched.route
 
@@ -46,10 +75,27 @@ function authorizeRoute(
 
   const runId = matched.params.runId
 
-  return authorize(
-    req,
-    Predicate.isString(runId) ? { access, name, runId } : { access, name },
-  ).pipe(Effect.map(authResponse))
+  return Effect.gen(function* () {
+    const stored = Predicate.isString(runId)
+      ? yield* runtime.getRun(runId).pipe(
+          Effect.provideService(EventStoreTag, store),
+          Effect.orElseSucceed(() => undefined),
+        )
+      : undefined
+
+    const requested = matched.route.name === 'runs.start' ? yield* readRequestAttributes(req) : {}
+    const attributes = stored && hasEntries(stored.attributes) ? stored.attributes : requested
+
+    const route = Predicate.isString(runId)
+      ? hasEntries(attributes)
+        ? { access, name, runId, attributes }
+        : { access, name, runId }
+      : hasEntries(attributes)
+        ? { access, name, attributes }
+        : { access, name }
+
+    return yield* authorize(req, route).pipe(Effect.map(authResponse))
+  })
 }
 
 /** Whether the fetch handler answers `pathname`: the HTTP API or the debugger mount. */
@@ -90,7 +136,13 @@ export function createFetchHandler(
           return new Response('Not Found', { status: 404 })
         }
 
-        const denied = yield* authorizeRoute(req, matched, authorize)
+        const denied = yield* authorizeRoute(
+          req,
+          matched,
+          authorize,
+          options.runtime,
+          options.store,
+        )
 
         if (denied) {
           return denied

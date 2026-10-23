@@ -8,6 +8,7 @@ import {
   SnapshotPayloadTooLargeError,
 } from './limits'
 import type { RunSummary } from './published'
+import { RunAttributesSchema, type RunSecretStore } from './run-context'
 import {
   SnapshotStoreError,
   withSnapshotStore,
@@ -59,7 +60,13 @@ CREATE TABLE IF NOT EXISTS looms_run_headers (
   run_id TEXT PRIMARY KEY,
   status TEXT NOT NULL,
   kind TEXT,
-  definition_name TEXT
+  definition_name TEXT,
+  attributes TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS looms_run_secrets (
+  run_id TEXT PRIMARY KEY,
+  body TEXT NOT NULL
 );
 `.trim()
 
@@ -178,6 +185,13 @@ function initSchema(exec: SqliteExec): void {
       exec.run(sql)
     }
   }
+
+  // Databases created before attributes were indexed already have the headers table.
+  try {
+    exec.run(`ALTER TABLE looms_run_headers ADD COLUMN attributes TEXT NOT NULL DEFAULT '{}'`)
+  } catch {
+    // The column is already present.
+  }
 }
 
 function parseEvent(body: string): EventEnvelope {
@@ -201,9 +215,23 @@ const HeaderRowSchema = Schema.Struct({
   status: RunStateSchema.fields.status,
   kind: Schema.NullOr(Schema.String),
   definition_name: Schema.NullOr(Schema.String),
+  attributes: Schema.String,
 })
 
 const decodeHeaderRow = Schema.decodeUnknownSync(HeaderRowSchema)
+const encodeAttributes = Schema.encodeSync(Schema.fromJsonString(RunAttributesSchema))
+
+const encodeSecrets = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+)
+
+const decodeAttributesColumn = Schema.decodeUnknownOption(
+  Schema.fromJsonString(RunAttributesSchema),
+)
+
+const decodeSecretsColumn = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+)
 
 function headerFromRow(row: Schema.Schema.Type<typeof HeaderRowSchema>): RunSummary {
   return {
@@ -211,6 +239,7 @@ function headerFromRow(row: Schema.Schema.Type<typeof HeaderRowSchema>): RunSumm
     status: row.status,
     kind: row.kind,
     definitionName: row.definition_name,
+    attributes: Option.getOrElse(decodeAttributesColumn(row.attributes), () => ({})),
   }
 }
 
@@ -289,13 +318,20 @@ function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
       Effect.try({
         try: () => {
           exec.run(
-            `INSERT INTO looms_run_headers (run_id, status, kind, definition_name)
-             VALUES (?, ?, ?, ?)
+            `INSERT INTO looms_run_headers (run_id, status, kind, definition_name, attributes)
+             VALUES (?, ?, ?, ?, ?)
              ON CONFLICT (run_id) DO UPDATE SET
                status = excluded.status,
                kind = excluded.kind,
-               definition_name = excluded.definition_name`,
-            [header.runId, header.status, header.kind, header.definitionName],
+               definition_name = excluded.definition_name,
+               attributes = excluded.attributes`,
+            [
+              header.runId,
+              header.status,
+              header.kind,
+              header.definitionName,
+              encodeAttributes(header.attributes),
+            ],
           )
         },
         catch: (cause) =>
@@ -305,10 +341,43 @@ function createSqliteSnapshotStore(exec: SqliteExec): SnapshotStore {
     listHeaders: Effect.try({
       try: () =>
         exec
-          .rows('SELECT run_id, status, kind, definition_name FROM looms_run_headers')
+          .rows('SELECT run_id, status, kind, definition_name, attributes FROM looms_run_headers')
           .map((row) => headerFromRow(decodeHeaderRow(row))),
       catch: (cause) => new SnapshotStoreError('Failed to list run headers', cause),
     }),
+  }
+}
+
+const SecretRowSchema = Schema.Struct({ body: Schema.String })
+const decodeSecretRow = Schema.decodeUnknownSync(SecretRowSchema)
+
+function createSqliteSecrets(exec: SqliteExec): RunSecretStore {
+  return {
+    get: (runId) =>
+      Effect.try({
+        try: () => {
+          const [row] = exec.rows('SELECT body FROM looms_run_secrets WHERE run_id = ?', [runId])
+
+          if (row === undefined) {
+            return {}
+          }
+
+          return Option.getOrElse(decodeSecretsColumn(decodeSecretRow(row).body), () => ({}))
+        },
+        catch: (cause) => new EventStoreError(`Failed to read secret context for ${runId}`, cause),
+      }),
+    put: (runId, secrets) =>
+      Effect.try({
+        try: () => {
+          exec.run(
+            `INSERT INTO looms_run_secrets (run_id, body)
+             VALUES (?, ?)
+             ON CONFLICT (run_id) DO UPDATE SET body = excluded.body`,
+            [runId, encodeSecrets(secrets)],
+          )
+        },
+        catch: (cause) => new EventStoreError(`Failed to store secret context for ${runId}`, cause),
+      }),
   }
 }
 
@@ -580,6 +649,7 @@ function createSqliteEventStore(exec: SqliteExec): EventStore {
           .map((row) => decodeRunIdRow(row).run_id),
       catch: (cause) => new EventStoreError('listRuns failed', cause),
     }),
+    runSecrets: createSqliteSecrets(exec),
   }
 
   return service

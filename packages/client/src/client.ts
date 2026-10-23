@@ -13,7 +13,9 @@ import {
   type EventEnvelope,
   type EventInput,
   type JsonValue,
+  type RunAttributes,
   type RunState,
+  type SecretContext,
   type WorkerCallbackInput,
 } from '@looms/core'
 
@@ -179,6 +181,8 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     definitionVersion?: string
     input?: JsonValue
     runId?: string
+    attributes?: RunAttributes
+    secrets?: SecretContext
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
   const workerCallback = (runId: string, input: WorkerCallbackInput) => {

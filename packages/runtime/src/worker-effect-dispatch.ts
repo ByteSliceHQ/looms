@@ -9,6 +9,7 @@ import {
   type EventEnvelope,
   type OutstandingEffect,
   type RunState,
+  type SecretContext,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
@@ -103,6 +104,7 @@ export function planWorkerEffects(input: {
   readonly registry: ComposedRegistry
   readonly worker?: EffectWorker
   readonly now: number
+  readonly secrets?: SecretContext
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
   return input.state.outstandingEffects
     .filter((item) => {
@@ -147,7 +149,7 @@ export function planWorkerEffects(input: {
                 causationId: item.causingEventId,
                 origin: { type: 'system' },
               }),
-        task: workerTask(input.runId, item, attempt),
+        task: workerTask(input.runId, item, attempt, input.secrets),
         scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
           ? input.now + retry.scheduleToStartTimeoutMs
           : null,

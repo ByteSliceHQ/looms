@@ -14,6 +14,8 @@ import type {
   EventStoreTrimCoverage,
   RunLauncher,
   RunLaunchSource,
+  RunAttributes,
+  SecretContext,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -92,6 +94,11 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  /**
+   * Present only on the in-memory dispatch. A transport that persists the task must leave this out
+   * and let the worker read the secret context through an authenticated callback.
+   */
+  readonly secrets?: SecretContext
 }
 
 export interface EffectWorker {
@@ -115,6 +122,13 @@ export interface StartRunArgs {
   launchedBy?: RunLaunchSource
   /** Recorded on `runtime.run.started` to group related runs. */
   correlationId?: string
+  /** Immutable labels stored on the start event and the run summary. */
+  attributes?: RunAttributes
+  /**
+   * Bearer material stored beside the log. A retry that sends a different context conflicts.
+   * Omitting it on a retry keeps the context already stored.
+   */
+  secrets?: SecretContext
 }
 
 export interface StartResult {

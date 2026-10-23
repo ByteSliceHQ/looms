@@ -2,6 +2,7 @@ import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
 import { EventInputSchema, type EventInput } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import type { RunAttributes, SecretContext } from './run-context'
 import {
   validateInputEffect,
   type InferDefinedSchema,
@@ -187,6 +188,10 @@ export interface EffectContext {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  /** Labels safe for every reader of the run. */
+  readonly attributes: RunAttributes
+  /** Bearer material for this run. Never copy it into an emitted event. */
+  readonly secrets: SecretContext
   emit(event: EventInput): Promise<void>
 }
 
@@ -196,6 +201,8 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
   emit(event: E): Promise<void>
 }
 

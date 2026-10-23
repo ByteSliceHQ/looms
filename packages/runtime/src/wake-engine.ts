@@ -139,6 +139,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
       return yield* Effect.gen(function* () {
         const store = yield* EventStoreTag
+        const secrets = store.runSecrets ? yield* store.runSecrets.get(runId) : {}
         const runInContext = Effect.runPromiseWith(yield* Effect.context())
         executionContext.liveStore = store
 
@@ -247,6 +248,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               registry,
               worker: options.worker,
               now,
+              secrets,
             })
 
             if (workerPlans.length > 0) {
@@ -388,6 +390,8 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               {
                 runId,
                 correlationId: cursor.state.startIdentity?.correlationId ?? runId,
+                attributes: cursor.state.attributes ?? {},
+                secrets,
                 outstanding,
                 attempts,
                 now,

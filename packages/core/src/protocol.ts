@@ -5,6 +5,7 @@ import { WaitConditionSchema, type WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
 import { RunLaunchSourceSchema } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { RunAttributesSchema } from './run-context'
 
 const DefinitionVersionSchema = Schema.String.pipe(
   Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
@@ -19,6 +20,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     input: JsonValueSchema,
     requestedThreadId: Schema.optional(Schema.NullOr(Schema.String)),
     launchedBy: Schema.optional(RunLaunchSourceSchema),
+    attributes: Schema.optional(RunAttributesSchema),
   }),
   'run.completed': Schema.Struct({
     output: Schema.NullOr(JsonValueSchema),

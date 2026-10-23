@@ -13,6 +13,7 @@ import {
   validateEventsEffect,
   validateInputEffect,
   withSnapshotStore,
+  hasEntries,
   type AnyRuntimeModule,
   type AppendableEvent,
   type EventCatalog,
@@ -23,6 +24,7 @@ import {
   InvalidEventError,
   type JsonValue,
   type OutstandingEffect,
+  type SecretContext,
   type RegisteredDefinition,
   type RunCursor,
   type RunState,
@@ -35,14 +37,21 @@ export function workerTask(
   runId: string,
   item: OutstandingEffect,
   attempt: number,
+  secrets?: SecretContext,
 ): EffectWorkerTask {
-  return {
+  const task = {
     runId,
     effectId: item.effectId,
     attempt,
     type: item.effect.type,
     input: 'input' in item.effect ? item.effect.input : null,
   }
+
+  if (secrets && hasEntries(secrets)) {
+    return { ...task, secrets }
+  }
+
+  return task
 }
 
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{

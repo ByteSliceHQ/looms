@@ -17,6 +17,25 @@ All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.
 
+## Run attributes and secret context
+
+`attributes` on `start` are immutable labels (tenant, project, org). They are
+written on `runtime.run.started`, folded into run state, and copied onto the
+run summary. Authorization receives them on `route.attributes` when a run has
+any. They must be safe for every reader of the run.
+
+`secrets` are bearer material for the run. The memory and SQLite stores keep
+them in a side table, `looms_run_secrets`, which is not part of the event log
+or a snapshot. Effect handlers read them on `ctx.secrets`. An in-process worker
+receives them on the dispatch task. A transport that persists that task must
+omit `secrets` and have the worker fetch them through an authenticated callback
+for the current attempt. A handler must not copy secrets into an emitted event.
+
+A retry of the same start may omit `secrets` and keeps the stored context. Sending
+a different context conflicts, and the error does not include the secret values.
+Forks and effect-launched runs inherit the parent's attributes and secrets.
+A store without `runSecrets` rejects a start that supplies secrets.
+
 ## Worker effect protocol
 
 1. The runtime dispatches `{ runId, effectId, attempt, type, input }`.
