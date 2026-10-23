@@ -36,6 +36,28 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
+/** Heartbeat progress already recorded for this effect, if any. */
+function priorHeartbeatDetails(state: RunState, effectId: string): JsonValue | null {
+  return state.effectExecutions[effectId]?.heartbeatDetails ?? null
+}
+
+/**
+ * A heartbeat that carries `details` replaces the saved progress. Every other execution event
+ * keeps it, including the retry that starts the next attempt.
+ */
+function nextHeartbeatDetails(
+  state: RunState,
+  effectId: string,
+  event: EventEnvelope,
+  payload: { [key: string]: JsonValue },
+): JsonValue | null {
+  if (event.type === 'runtime.effect.heartbeat' && Object.hasOwn(payload, 'details')) {
+    return payload.details ?? null
+  }
+
+  return priorHeartbeatDetails(state, effectId)
+}
+
 function cloneState(state: RunState): RunState {
   return {
     runId: state.runId,
@@ -294,6 +316,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: null,
             startedAt: event.ts,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: null,
           },
         },
@@ -356,6 +379,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               : sameAttempt
                 ? previous.lastHeartbeatAt
                 : null,
+            heartbeatDetails: nextHeartbeatDetails(state, effectId, event, payload),
             lastError: readString(payload, 'error') ?? null,
           },
         },
@@ -388,6 +412,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: nextAttemptAt,
             startedAt: null,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: readString(payload, 'error') ?? 'effect failed',
           },
         },

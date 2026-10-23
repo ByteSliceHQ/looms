@@ -1,4 +1,4 @@
-import { Data, Effect, Layer, Predicate, type Context } from 'effect'
+import { Data, Effect, Layer, Predicate, type Context, type Types } from 'effect'
 
 import {
   asJson,
@@ -33,13 +33,20 @@ import {
 
 import type { EffectWorkerTask } from './types'
 
+/** What a dispatch carries beyond the effect itself. */
+export interface WorkerTaskExtras {
+  /** Progress from the previous attempt's last heartbeat. */
+  readonly details?: JsonValue | null
+  readonly secrets?: SecretContext
+}
+
 export function workerTask(
   runId: string,
   item: OutstandingEffect,
   attempt: number,
-  secrets?: SecretContext,
+  extras: WorkerTaskExtras = {},
 ): EffectWorkerTask {
-  const task = {
+  const task: Types.Mutable<EffectWorkerTask> = {
     runId,
     effectId: item.effectId,
     attempt,
@@ -47,8 +54,12 @@ export function workerTask(
     input: 'input' in item.effect ? item.effect.input : null,
   }
 
-  if (secrets && hasEntries(secrets)) {
-    return { ...task, secrets }
+  if (extras.details != null) {
+    task.details = extras.details
+  }
+
+  if (extras.secrets && hasEntries(extras.secrets)) {
+    task.secrets = extras.secrets
   }
 
   return task

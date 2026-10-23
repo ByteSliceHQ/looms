@@ -149,7 +149,10 @@ export function planWorkerEffects(input: {
                 causationId: item.causingEventId,
                 origin: { type: 'system' },
               }),
-        task: workerTask(input.runId, item, attempt, input.secrets),
+        task: workerTask(input.runId, item, attempt, {
+          details: existing?.heartbeatDetails,
+          secrets: input.secrets,
+        }),
         scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
           ? input.now + retry.scheduleToStartTimeoutMs
           : null,

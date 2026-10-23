@@ -59,6 +59,8 @@ export interface EffectExecutionRecord {
   /** When the current attempt started executing, locally or on a worker. */
   startedAt: number | null
   lastHeartbeatAt: number | null
+  /** Progress reported by the latest heartbeat. Survives retries so the next attempt can resume. */
+  heartbeatDetails: JsonValue | null
   lastError: string | null
 }
 
@@ -193,6 +195,9 @@ export const RunStateSchema = Schema.Struct({
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       lastHeartbeatAt: Schema.NullOr(Schema.Finite).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
+      heartbeatDetails: Schema.NullOr(JsonValueSchema).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       lastError: Schema.NullOr(Schema.String),

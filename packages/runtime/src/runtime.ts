@@ -84,7 +84,7 @@ export type {
   StartRunArgs,
   WakeError,
 } from './types'
-export type { WorkerCallback, WorkerCallbackInput } from '@looms/core'
+export type { WorkerCallback, WorkerCallbackInput, WorkerCallbackResult } from '@looms/core'
 import type { CreateRuntimeOptions, LoomsRuntime, StartRunArgs } from './types'
 
 function currentTimeMillis(): number {

@@ -298,6 +298,7 @@ export function executeLocalEffects(
               const attempt = input.attempts.get(item.effectId) ?? 1
               const payload = Predicate.isObject(outcome.payload) ? outcome.payload : {}
               const error = Predicate.isString(payload.error) ? payload.error : 'effect failed'
+              const retryAfterMs = payload.retryAfterMs
 
               const failure = planAttemptFailure({
                 runId: input.runId,
@@ -307,6 +308,8 @@ export function executeLocalEffects(
                 now: input.now,
                 retry,
                 origin: { type: 'system' },
+                nonRetryable: payload.nonRetryable === true,
+                retryAfterMs: Predicate.isNumber(retryAfterMs) ? retryAfterMs : undefined,
               })
 
               if (failure.retrying) {

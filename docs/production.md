@@ -38,12 +38,23 @@ A store without `runSecrets` rejects a start that supplies secrets.
 
 ## Worker effect protocol
 
-1. The runtime dispatches `{ runId, effectId, attempt, type, input }`.
+1. The runtime dispatches `{ runId, effectId, attempt, type, input, details? }`.
+   `details` is the progress carried by the previous attempt's last heartbeat.
 2. The worker calls `started` before the schedule-to-start deadline.
-3. Long work calls `heartbeat`; each accepted heartbeat extends the heartbeat
-   deadline without exceeding start-to-close.
-4. The worker calls exactly one of `complete` or `fail`.
+3. Long work calls `heartbeat`. Each accepted heartbeat extends the heartbeat
+   deadline without exceeding start-to-close. A heartbeat may include `details`;
+   the latest details are kept across retries and sent on the next dispatch.
+4. The worker calls exactly one of `complete` or `fail`. `fail` may set
+   `nonRetryable` to stop the retry policy, or `retryAfterMs` to wait at least
+   that long before the next attempt (the policy backoff is never shortened).
+   A local handler does the same by failing with `failEffect`.
 5. On cancellation, stop side effects and call `cancelled`.
+
+Each callback response is `{ status: 'accepted' | 'stale' | 'cancelled', cancelRequested }`.
+The host no longer returns the run state. `cancelRequested` is how a worker learns
+that an attempt already in progress should stop: a queued dispatch cannot be recalled.
+`stale` means the report was for another attempt, or the attempt had already settled,
+and the host recorded nothing.
 
 Callbacks include the same `effectId` and `attempt`. Stale callbacks are ignored.
 A dispatch transport failure is recorded as `ambiguous`: an operator must first
