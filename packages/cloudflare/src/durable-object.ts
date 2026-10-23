@@ -13,11 +13,12 @@ import {
   type RunStatusSnapshot,
 } from '@looms/core'
 import type { Projector } from '@looms/projectors'
-import type { Authorize, StartResult, StartRunArgs } from '@looms/runtime'
+import { defaultAuthorize, type Authorize, type StartResult, type StartRunArgs } from '@looms/runtime'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
 import type { DurableObjectNamespaceLike } from './router'
+import { attachSocketFanout, isRunSocketUpgrade, openRunSocket } from './websocket'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
@@ -46,6 +47,7 @@ export interface LoomsDurableObjectConfig {
 export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<Env> {
   private cellPromise?: Promise<ActorCell>
   private store?: DurableObjectEventStore
+  private authorize: Authorize = defaultAuthorize
 
   abstract configure(env: Env): LoomsDurableObjectConfig | Promise<LoomsDurableObjectConfig>
 
@@ -90,10 +92,11 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       })
 
       this.store = store
+      this.authorize = config.authorize ?? defaultAuthorize
 
       const cell = createActorCell({
         runId,
-        store,
+        store: attachSocketFanout(this.ctx, store, runId),
         scheduler: alarms.scheduler,
         modules: config.modules,
         snapshotEvery: config.snapshotEvery,
@@ -115,7 +118,43 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
   }
 
   override fetch(req: Request): Promise<Response> {
+    if (isRunSocketUpgrade(req)) {
+      return this.getCell().then(() => this.acceptRunSocket(req))
+    }
+
     return this.getCell().then((cell) => cell.fetch(req))
+  }
+
+  /** Client messages are ignored. Signals and other writes stay on HTTP. */
+  override webSocketMessage(): void {
+    // A hibernated socket stays quiet. The platform delivers this only if a client writes.
+  }
+
+  override webSocketClose(): void {
+    // The platform drops the socket. Nothing is retained for it.
+  }
+
+  override webSocketError(): void {
+    // The platform drops the socket. Nothing is retained for it.
+  }
+
+  private acceptRunSocket(req: Request): Promise<Response> {
+    const store = this.store
+    const runId = this.ctx.id.name
+
+    if (!store || !runId) {
+      return Promise.resolve(Response.json({ error: 'Run is not ready' }, { status: 500 }))
+    }
+
+    return Effect.runPromise(
+      openRunSocket({
+        ctx: this.ctx,
+        store,
+        request: req,
+        runId,
+        authorize: this.authorize,
+      }),
+    )
   }
 
   /** Commit this object's run and set its alarm. Returns before the run wakes. */

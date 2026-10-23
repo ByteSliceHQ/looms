@@ -1,6 +1,13 @@
 import { Effect, Fiber, Schedule, Stream } from 'effect'
 
-import { encodeLoomsEvent, stringifyJson, type EventEnvelope, type EventStore } from '@looms/core'
+import {
+  encodeLoomsEvent,
+  encodeSubscriptionFrame,
+  type EventEnvelope,
+  type EventStore,
+} from '@looms/core'
+
+import { readSubscriptionBounds } from './subscription'
 
 export interface EventStreamOptions {
   signal: AbortSignal
@@ -102,22 +109,51 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
         }
       }
 
-      subscriptionFiber = Effect.runFork(
-        store.subscribe(runId, { fromSeq }).pipe(
-          Stream.tap((event: EventEnvelope) =>
-            Effect.sync(() => {
-              write(
-                `id: ${event.seq}\ndata: ${stringifyJson({ batch: [encodeLoomsEvent(event)] })}\n\n`,
-              )
-            }),
-          ),
-          Stream.runDrain,
-        ),
-      )
-
       // Send an immediate keepalive so bytes and headers flush over the wire immediately,
       // preventing dev server proxies and Bun.serve from aborting quiet connections.
+      // It has to be enqueued before the subscription fiber, which writes hello synchronously.
       write(': keepalive\n\n')
+
+      subscriptionFiber = Effect.runFork(
+        Effect.gen(function* () {
+          const bounds = yield* readSubscriptionBounds(store, runId)
+
+          if (fromSeq < bounds.head) {
+            write(
+              `data: ${encodeSubscriptionFrame({
+                type: 'resync',
+                head: bounds.head,
+                reason: 'trimmed',
+              }            )}\n\n`,
+            )
+
+            close()
+            return
+          }
+
+          write(
+            `data: ${encodeSubscriptionFrame({
+              type: 'hello',
+              head: bounds.head,
+              tail: bounds.tail,
+            })}\n\n`,
+          )
+
+          yield* store.subscribe(runId, { fromSeq }).pipe(
+            Stream.tap((event: EventEnvelope) =>
+              Effect.sync(() => {
+                write(
+                  `id: ${event.seq}\ndata: ${encodeSubscriptionFrame({
+                    type: 'batch',
+                    batch: [encodeLoomsEvent(event)],
+                  })}\n\n`,
+                )
+              }),
+            ),
+            Stream.runDrain,
+          )
+        }),
+      )
 
       heartbeatFiber = Effect.runFork(
         Effect.repeat(

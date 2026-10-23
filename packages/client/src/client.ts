@@ -1,9 +1,10 @@
-import { Data, Effect, Option, Schema, Stream } from 'effect'
+import { Data, Effect, Option, Predicate, Schema, Stream } from 'effect'
 
 import {
   createRunId,
   DefinitionCatalogSchema,
   EventEnvelopeSchema,
+  readSubscriptionData,
   ReplayStepSchema,
   RunStateSchema,
   RunSummariesSchema,
@@ -14,6 +15,7 @@ import {
   type EventInput,
   type JsonValue,
   type RunState,
+  type SubscriptionTransport,
   type WorkerCallbackInput,
 } from '@looms/core'
 
@@ -118,14 +120,29 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
   const subscribeEvents = (
     runId: string,
     onEvent: (event: EventEnvelope) => void,
-    reconnectDelayMs = 1_000,
+    third: number | SubscribeEventsOptions = 1_000,
   ) => {
+    const settings = subscriptionSettings(third)
     let fromSeq = 1
     const controller = new AbortController()
 
     const run = Effect.gen(function* () {
       while (!controller.signal.aborted) {
         yield* Effect.gen(function* () {
+          if (useWebSocket(settings)) {
+            return yield* consumeWebSocket({
+              baseUrl,
+              runId,
+              settings,
+              signal: controller.signal,
+              currentSeq: () => fromSeq,
+              setSeq: (next) => {
+                fromSeq = next
+              },
+              onEvent,
+            })
+          }
+
           const cursor = Math.max(0, fromSeq - 1)
           const headers = new Headers({ accept: 'text/event-stream' })
 
@@ -135,7 +152,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 
           const res = yield* Effect.tryPromise({
             try: (signal) =>
-              fetchImpl(`${baseUrl}/runs/${encodeURIComponent(runId)}/events?fromSeq=${fromSeq}`, {
+              fetchImpl(`${baseUrl}${eventsQuery(runId, fromSeq, settings)}`, {
                 headers,
                 signal,
               }),
@@ -146,10 +163,22 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 
           if (res.ok && body) {
             return yield* consumeSseStreamEffect(body, (frame) => {
-              for (const event of eventsFromSseData(frame.data, runId)) {
-                onEvent(event)
-                fromSeq = Math.max(fromSeq, event.seq + 1)
-              }
+              let resync = false
+
+              deliverSubscriptionData({
+                data: frame.data,
+                runId,
+                currentSeq: () => fromSeq,
+                setSeq: (next) => {
+                  fromSeq = next
+                },
+                onEvent,
+                onResync: () => {
+                  resync = true
+                },
+              })
+
+              return resync ? false : undefined
             })
           }
 
@@ -162,7 +191,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
           break
         }
 
-        yield* Effect.sleep(reconnectDelayMs)
+        yield* Effect.sleep(settings.reconnectDelayMs)
       }
     })
 
@@ -329,3 +358,190 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
 }
 
 export type LoomsClient = ReturnType<typeof createLoomsClient>
+
+export interface SubscribeEventsOptions {
+  readonly transport?: SubscriptionTransport
+  readonly reconnectDelayMs?: number
+  readonly threadId?: string
+  readonly includeEphemeral?: boolean
+  readonly webSocket?: SubscriptionSocketConstructor
+}
+
+export interface SubscriptionSocket {
+  addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void
+  close(code?: number, reason?: string): void
+}
+
+export interface SubscriptionSocketConstructor {
+  new (url: string): SubscriptionSocket
+}
+
+interface SubscriptionDelivery {
+  readonly data: string
+  readonly runId: string
+  readonly currentSeq: () => number
+  readonly setSeq: (seq: number) => void
+  readonly onEvent: (event: EventEnvelope) => void
+  readonly onResync: () => void
+}
+
+interface WebSocketSubscription {
+  readonly baseUrl: string
+  readonly runId: string
+  readonly settings: ResolvedSubscription
+  readonly signal: AbortSignal
+  readonly currentSeq: () => number
+  readonly setSeq: (seq: number) => void
+  readonly onEvent: (event: EventEnvelope) => void
+}
+
+interface ResolvedSubscription extends SubscribeEventsOptions {
+  readonly transport: SubscriptionTransport
+  readonly reconnectDelayMs: number
+}
+
+function subscriptionSettings(third: number | SubscribeEventsOptions): ResolvedSubscription {
+  if (Predicate.isNumber(third)) {
+    return { transport: 'sse', reconnectDelayMs: third }
+  }
+
+  return {
+    transport: third.transport ?? 'sse',
+    reconnectDelayMs: third.reconnectDelayMs ?? 1_000,
+    threadId: third.threadId,
+    includeEphemeral: third.includeEphemeral,
+    webSocket: third.webSocket,
+  }
+}
+
+function useWebSocket(settings: ResolvedSubscription): boolean {
+  if (settings.transport !== 'websocket' && settings.transport !== 'auto') {
+    return false
+  }
+
+  return settings.webSocket !== undefined || globalWebSocket() !== undefined
+}
+
+function eventsQuery(runId: string, fromSeq: number, settings: ResolvedSubscription): string {
+  const params = new URLSearchParams({ fromSeq: String(fromSeq) })
+
+  if (settings.threadId) {
+    params.set('threadId', settings.threadId)
+  }
+
+  if (settings.includeEphemeral === false) {
+    params.set('includeEphemeral', 'false')
+  }
+
+  return `/runs/${encodeURIComponent(runId)}/events?${params.toString()}`
+}
+
+function webSocketUrl(baseUrl: string, path: string): string {
+  const url = new URL(path, baseUrl)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
+}
+
+function globalWebSocket(): SubscriptionSocketConstructor | undefined {
+  if (!('WebSocket' in globalThis) || !Predicate.isFunction(globalThis.WebSocket)) {
+    return undefined
+  }
+
+  return globalThis.WebSocket
+}
+
+function consumeWebSocket(subscription: WebSocketSubscription): Effect.Effect<void, LoomsClientError> {
+  const Socket = subscription.settings.webSocket ?? globalWebSocket()
+
+  if (!Socket) {
+    return Effect.void
+  }
+
+  const url = webSocketUrl(
+    subscription.baseUrl,
+    eventsQuery(subscription.runId, subscription.currentSeq(), subscription.settings),
+  )
+
+  return Effect.callback((resume) => {
+    const socket = new Socket(url)
+
+    const finish = () => {
+      resume(Effect.void)
+    }
+
+    if (subscription.signal.aborted) {
+      socket.close()
+      finish()
+      return Effect.void
+    }
+
+    const onAbort = () => {
+      socket.close()
+      finish()
+    }
+
+    subscription.signal.addEventListener('abort', onAbort)
+
+    socket.addEventListener('message', (event) => {
+      if (!Predicate.isString(event.data)) {
+        return
+      }
+
+      deliverSubscriptionData({
+        data: event.data,
+        runId: subscription.runId,
+        currentSeq: subscription.currentSeq,
+        setSeq: subscription.setSeq,
+        onEvent: subscription.onEvent,
+        onResync: () => {
+          socket.close()
+        },
+      })
+    })
+
+    socket.addEventListener('close', finish)
+    socket.addEventListener('error', finish)
+
+    return Effect.sync(() => {
+      subscription.signal.removeEventListener('abort', onAbort)
+      socket.close()
+    })
+  })
+}
+
+function deliverSubscriptionData(delivery: SubscriptionDelivery): void {
+  const read = readSubscriptionData(delivery.data, delivery.runId)
+
+  switch (read.kind) {
+    case 'events': {
+      const fromSeq = delivery.currentSeq()
+      let next = fromSeq
+
+      for (const event of read.events) {
+        if (event.seq < fromSeq) {
+          continue
+        }
+
+        delivery.onEvent(event)
+        next = Math.max(next, event.seq + 1)
+      }
+
+      delivery.setSeq(next)
+      return
+    }
+
+    case 'resync':
+      delivery.setSeq(read.head)
+      delivery.onResync()
+      return
+
+    case 'hello':
+    case 'ignore':
+      return
+
+    default: {
+      const unexpected: never = read
+      return unexpected
+    }
+  }
+}

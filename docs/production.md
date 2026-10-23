@@ -13,6 +13,8 @@ coalesced. A deployment, eviction, or alarm retry may repeat a wake; event
 preconditions make that safe. Cross-object queries and transactions are not
 provided. Build global run lists with a projector.
 
+Live subscribers on a Durable Object should open a WebSocket (`Upgrade: websocket` on `GET /runs/:id/events`). The object hibernates the socket, answers `ping` with `pong` without waking, and fans out events when the log is appended. SSE stays available, including on `looms.serve`, but its keepalive keeps a Durable Object awake. Writes stay on HTTP. A browser still cannot send `Authorization` on the upgrade; grant tokens are a separate change. An idle-socket billed-duration check on a real Cloudflare account has not been run.
+
 All built-in stores reject an event over 1 MiB and a snapshot over 8 MiB,
 measured as serialized UTF-8, before storage is mutated. The stable error names
 are `EventPayloadTooLargeError` and `SnapshotPayloadTooLargeError`.

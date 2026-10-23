@@ -285,3 +285,62 @@ describe('createLoomsStore reconnect', () => {
     }
   })
 })
+
+describe('createLoomsStore websocket', () => {
+  test('applies batches and resumes from a resync head', async () => {
+    class FakeSocket {
+      static latest: FakeSocket | undefined
+      readonly url: string
+      private readonly listeners = new Map<string, Array<(event: { readonly data?: unknown }) => void>>()
+
+      constructor(url: string) {
+        this.url = url
+        FakeSocket.latest = this
+      }
+
+      addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void {
+        const current = this.listeners.get(type) ?? []
+        current.push(listener)
+        this.listeners.set(type, current)
+      }
+
+      emit(type: string, data?: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data })
+        }
+      }
+
+      close(): void {
+        this.emit('close')
+      }
+    }
+
+    const store = createLoomsStore({
+      storeId: 'run_1',
+      endpoint: 'http://127.0.0.1:9',
+      transport: 'websocket',
+      reconnectDelayMs: 20,
+      webSocket: FakeSocket,
+    })
+
+    await waitFor(() => FakeSocket.latest !== undefined)
+    const first = FakeSocket.latest
+
+    if (!first) {
+      throw new Error('missing socket')
+    }
+
+    first.emit('message', JSON.stringify({ type: 'hello', head: 1, tail: 0 }))
+    expect(store.events()).toHaveLength(0)
+
+    first.emit(
+      'message',
+      JSON.stringify({ batch: [encodeLoomsEvent(event(1, 'runtime.run.started'))] }),
+    )
+
+    await waitFor(() => store.events().length === 1)
+    first.emit('message', JSON.stringify({ type: 'resync', head: 4, reason: 'trimmed' }))
+    await waitFor(() => FakeSocket.latest?.url.includes('fromSeq=4') === true)
+    store.dispose()
+  })
+})

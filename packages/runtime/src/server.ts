@@ -4,6 +4,7 @@ export { mountDebugger, type DebuggerMount } from './server/debugger-host'
 export {
   authAllowed,
   authDenied,
+  authResponse,
   bearerAuth,
   defaultAuthorize,
   type AuthDecision,

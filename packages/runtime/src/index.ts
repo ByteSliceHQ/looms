@@ -22,6 +22,7 @@ export {
   type WorkerCallbackInput,
 } from './runtime'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
+export { loadSubscriptionOpening, readSubscriptionBounds } from './subscription'
 export {
   serveHttp,
   createFetchHandler,
@@ -29,6 +30,7 @@ export {
   type FetchHandlerOptions,
   authAllowed,
   authDenied,
+  authResponse,
   bearerAuth,
   defaultAuthorize,
   type AuthDecision,

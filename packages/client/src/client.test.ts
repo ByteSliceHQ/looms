@@ -166,6 +166,148 @@ describe('createLoomsClient', () => {
     stop()
   })
 
+  test('subscribeEvents resumes from a resync head', async () => {
+    const calls: string[] = []
+    let attempt = 0
+
+    const started = {
+      id: 'evt_4',
+      runId: 'run_1',
+      seq: 4,
+      ts: 1,
+      type: 'runtime.run.started',
+      payload: {},
+      threadId: 'thr_1',
+      parentThreadId: null,
+      causationId: null,
+      correlationId: null,
+      effectId: null,
+      ephemeral: false,
+      origin: { type: 'system' },
+    }
+
+    const client = createLoomsClient({
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+        attempt += 1
+        const encoder = new TextEncoder()
+
+        const frame =
+          attempt === 1
+            ? `data: ${JSON.stringify({ type: 'resync', head: 4, reason: 'trimmed' })}\n\n`
+            : `id: 4\ndata: ${JSON.stringify({ batch: [started] })}\n\n`
+
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(frame))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      },
+    })
+
+    const received: number[] = []
+
+    const stop = client.subscribeEvents(
+      'run_1',
+      (event) => {
+        received.push(event.seq)
+      },
+      { reconnectDelayMs: 20 },
+    )
+
+    const start = Date.now()
+
+    while (received.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    expect(received).toEqual([4])
+    expect(calls[0]).toContain('fromSeq=1')
+    expect(calls.some((href) => href.includes('fromSeq=4'))).toBe(true)
+    stop()
+  })
+
+  test('subscribeEvents can follow a websocket', async () => {
+    const received: number[] = []
+
+    class FakeSocket {
+      static latest: FakeSocket | undefined
+      readonly url: string
+      private readonly listeners = new Map<string, Array<(event: { readonly data?: unknown }) => void>>()
+
+      constructor(url: string) {
+        this.url = url
+        FakeSocket.latest = this
+      }
+
+      addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void {
+        const current = this.listeners.get(type) ?? []
+        current.push(listener)
+        this.listeners.set(type, current)
+      }
+
+      emit(type: string, data?: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data })
+        }
+      }
+
+      close(): void {
+        this.emit('close')
+      }
+    }
+
+    const client = createLoomsClient({ baseUrl: 'http://looms.test' })
+
+    const stop = client.subscribeEvents(
+      'run_1',
+      (event) => {
+        received.push(event.seq)
+      },
+      { transport: 'websocket', webSocket: FakeSocket, reconnectDelayMs: 60_000 },
+    )
+
+    const socket = FakeSocket.latest
+    expect(socket?.url.startsWith('ws://looms.test/runs/run_1/events?fromSeq=1')).toBe(true)
+    socket?.emit('message', JSON.stringify({ type: 'hello', head: 1, tail: 1 }))
+
+    socket?.emit(
+      'message',
+      JSON.stringify({
+        batch: [
+          {
+            id: 'evt_1',
+            runId: 'run_1',
+            seq: 1,
+            ts: 1,
+            type: 'runtime.run.started',
+            payload: {},
+            threadId: 'thr_1',
+            parentThreadId: null,
+            causationId: null,
+            correlationId: null,
+            effectId: null,
+            ephemeral: false,
+            origin: { type: 'system' },
+          },
+        ],
+      }),
+    )
+
+    const start = Date.now()
+
+    while (received.length === 0 && Date.now() - start < 2_000) {
+      await Bun.sleep(10)
+    }
+
+    expect(received).toEqual([1])
+    stop()
+  })
+
   test('stream yields live deltas then the completed run events', async () => {
     const client = createLoomsClient({
       fetch: async (input, init) => {
