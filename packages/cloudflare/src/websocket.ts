@@ -14,6 +14,7 @@ import {
 import {
   authResponse,
   defaultAuthorize,
+  grantSubprotocol,
   loadSubscriptionOpening,
   readSubscriptionBounds,
   runRouteInfo,
@@ -143,7 +144,13 @@ export function openRunSocket(options: OpenRunSocketOptions): Effect.Effect<Resp
       socket.setAttachment(next)
     }
 
-    return new Response(null, { status: 101, webSocket: pair.client })
+    const protocol = grantSubprotocol(options.request)
+
+    return new Response(null, {
+      status: 101,
+      webSocket: pair.client,
+      headers: protocol ? { 'sec-websocket-protocol': protocol } : undefined,
+    })
   })
 }
 

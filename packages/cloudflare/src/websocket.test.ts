@@ -285,6 +285,26 @@ describe('hibernating run sockets', () => {
     ])
   })
 
+  test('echoes a grant offered as a WebSocket subprotocol', async () => {
+    const store = await seededStore()
+
+    const response = await Effect.runPromise(
+      openRunSocket({
+        runtime,
+        ctx: new FakeState(),
+        store,
+        request: new Request('http://looms.test/runs/run_1/events', {
+          headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'chat, v1.abc.def' },
+        }),
+        runId: 'run_1',
+        createPair: pairFrom(new FakeSocket(), new FakeSocket()),
+      }),
+    )
+
+    expect(response.status).toBe(101)
+    expect(response.headers.get('sec-websocket-protocol')).toBe('v1.abc.def')
+  })
+
   test('rejects an invalid Last-Event-ID and a mismatched run', async () => {
     const store = await seededStore()
 

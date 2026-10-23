@@ -144,7 +144,7 @@ export function verifyRunGrant(
  * Authorizes a read of the granted run. The token comes from the `grant` query parameter, or, when
  * that is absent, from a `v1.` WebSocket subprotocol. Writes, worker callbacks, operations, and
  * reads of any other run are refused. A host that accepts the subprotocol has to echo it on the
- * WebSocket response.
+ * WebSocket response; see `grantSubprotocol`.
  */
 export function grantAuth(options: GrantAuthOptions): Authorize {
   const now = options.now ?? Date.now
@@ -173,6 +173,14 @@ export function runGrantToken(request: Request): string | undefined {
     return query
   }
 
+  return grantSubprotocol(request)
+}
+
+/**
+ * The `v1.` grant the client offered as a WebSocket subprotocol. The upgrade response must echo it,
+ * or the browser fails the handshake.
+ */
+export function grantSubprotocol(request: Request): string | undefined {
   return websocketGrant(request.headers.get('sec-websocket-protocol'))
 }
 

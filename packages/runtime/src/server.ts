@@ -18,6 +18,7 @@ export {
 export {
   grantAuth,
   issueRunGrant,
+  grantSubprotocol,
   runGrantToken,
   verifyRunGrant,
   GrantError,

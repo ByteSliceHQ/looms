@@ -13,7 +13,7 @@ coalesced. A deployment, eviction, or alarm retry may repeat a wake; event
 preconditions make that safe. Cross-object queries and transactions are not
 provided. Build global run lists with a projector.
 
-Live subscribers on a Durable Object should open a WebSocket (`Upgrade: websocket` on `GET /runs/:id/events`). The object hibernates the socket, answers `ping` with `pong` without waking, and fans out events when the log is appended. SSE stays available, including on `looms.serve`, but its keepalive keeps a Durable Object awake. Writes stay on HTTP. A browser still cannot send `Authorization` on the upgrade; grant tokens are a separate change. An idle-socket billed-duration check on a real Cloudflare account has not been run.
+Live subscribers on a Durable Object should open a WebSocket (`Upgrade: websocket` on `GET /runs/:id/events`). The object hibernates the socket, answers `ping` with `pong` without waking, and fans out events when the log is appended. SSE stays available, including on `looms.serve`, but its keepalive keeps a Durable Object awake. Writes stay on HTTP. A browser cannot send `Authorization` on the upgrade, so pass a read grant (see `grantAuth` below); `@looms/client` puts `grant` on the socket URL. An idle-socket billed-duration check on a real Cloudflare account has not been run.
 
 A workflow can launch children with `childExecution: 'run'`. Each child is its own run, addressed by a deterministic id, and reports `runtime.child.settled` back to the parent. Cancelling the parent cancels those children. `childClose: 'wait'` records `runtime.child.close.requested` and cancels the parent only after the children reach a terminal status. `childClose: 'terminate'` cancels them as the parent closes. Children stay threads in the parent run unless `childExecution` is set.
 
@@ -145,8 +145,9 @@ in `Sec-WebSocket-Protocol` when the query parameter is absent. The grant names
 one run, one principal, and `read` access. It does not authorize writes, worker
 callbacks, operations, the debugger, or a different run. `exp` is an exclusive
 Unix millisecond timestamp. A host that accepts the grant as a WebSocket
-subprotocol must echo that protocol on the upgrade response; the query parameter
-needs no echo.
+subprotocol must echo that protocol on the upgrade response (`grantSubprotocol`
+returns it); the Durable Object socket already does. The query parameter needs no
+echo.
 
 ```ts
 import { Effect } from 'effect'

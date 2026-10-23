@@ -36,6 +36,7 @@ export {
   defaultAuthorize,
   grantAuth,
   issueRunGrant,
+  grantSubprotocol,
   runGrantToken,
   verifyRunGrant,
   GrantError,
