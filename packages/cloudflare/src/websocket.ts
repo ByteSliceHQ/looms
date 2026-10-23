@@ -16,7 +16,9 @@ import {
   defaultAuthorize,
   loadSubscriptionOpening,
   readSubscriptionBounds,
+  runRouteInfo,
   type Authorize,
+  type LoomsRuntime,
 } from '@looms/runtime'
 
 const EVENTS_PATH = /^\/runs\/([^/]+)\/events\/?$/
@@ -29,6 +31,7 @@ export interface HibernatingSocketState {
 
 export interface OpenRunSocketOptions {
   readonly ctx: HibernatingSocketState
+  readonly runtime: LoomsRuntime
   readonly store: EventStore
   readonly request: Request
   readonly runId: string
@@ -84,11 +87,17 @@ export function openRunSocket(options: OpenRunSocketOptions): Effect.Effect<Resp
   const authorize = options.authorize ?? defaultAuthorize
 
   return Effect.gen(function* () {
-    const decision = yield* authorize(options.request, {
+    const route = yield* runRouteInfo(options.runtime, options.store, {
       access: 'read',
       name: 'runs.events',
       runId: options.runId,
-    })
+    }).pipe(Effect.option)
+
+    if (Option.isNone(route)) {
+      return Response.json({ error: 'Event log is unavailable' }, { status: 500 })
+    }
+
+    const decision = yield* authorize(options.request, route.value)
 
     const denied = authResponse(decision)
 

@@ -4,12 +4,17 @@ import { Effect } from 'effect'
 
 import {
   createEvent,
+  emptyRunState,
   makeMemoryEventStore,
+  makeMemorySnapshotStore,
   type EventStore,
   type SubscriptionAttachment,
 } from '@looms/core'
+import { authAllowed, createRuntime, type RouteInfo } from '@looms/runtime'
 
 import { attachSocketFanout, openRunSocket, type HibernatingSocketState } from './websocket'
+
+const runtime = createRuntime({ modules: [] })
 
 class FakeSocket {
   readonly sent: string[] = []
@@ -102,6 +107,7 @@ describe('hibernating run sockets', () => {
 
     const response = await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx,
         store,
         request: upgrade('http://looms.test/runs/run_1/events'),
@@ -134,6 +140,7 @@ describe('hibernating run sockets', () => {
 
     await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx: new FakeState(),
         store,
         request: upgrade('http://looms.test/runs/run_1/events?fromSeq=2&threadId=thr_b'),
@@ -156,11 +163,24 @@ describe('hibernating run sockets', () => {
       throw new Error('memory store does not trim')
     }
 
+    const snapshotStore = await Effect.runPromise(makeMemorySnapshotStore)
+
+    await Effect.runPromise(
+      snapshotStore.save({
+        runId: 'run_1',
+        cursor: 2,
+        stateHash: 'test',
+        takenAt: 0,
+        state: emptyRunState('run_1'),
+      }),
+    )
+
     await Effect.runPromise(store.trim('run_1', 2))
     const server = new FakeSocket()
 
     await Effect.runPromise(
       openRunSocket({
+        runtime: createRuntime({ modules: [], snapshotStore }),
         ctx: new FakeState(),
         store,
         request: upgrade('http://looms.test/runs/run_1/events?fromSeq=1'),
@@ -185,6 +205,7 @@ describe('hibernating run sockets', () => {
 
     await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx: new FakeState(),
         store,
         request: upgrade('http://looms.test/runs/run_1/events'),
@@ -208,6 +229,7 @@ describe('hibernating run sockets', () => {
 
     const response = await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx,
         store,
         request: upgrade('http://looms.test/runs/run_1/events'),
@@ -220,11 +242,55 @@ describe('hibernating run sockets', () => {
     expect(ctx.accepted).toHaveLength(0)
   })
 
+  test('authorizes with the run attributes like every other run route', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const routes: RouteInfo[] = []
+
+    const started = createEvent('run_1', {
+      type: 'runtime.run.started',
+      payload: {
+        rootThreadId: 'thr_a',
+        kind: 'workflow',
+        definitionName: 'checkout',
+        definitionVersion: 'v1',
+        input: null,
+        requestedThreadId: null,
+        attributes: { tenant: 'acme' },
+      },
+      threadId: 'thr_a',
+      origin: { type: 'system' },
+    })
+
+    await Effect.runPromise(store.append('run_1', [started], { expectedTail: 0 }))
+
+    const response = await Effect.runPromise(
+      openRunSocket({
+        runtime,
+        ctx: new FakeState(),
+        store,
+        request: upgrade('http://looms.test/runs/run_1/events'),
+        runId: 'run_1',
+        createPair: pairFrom(new FakeSocket(), new FakeSocket()),
+        authorize: (_request, route) => {
+          routes.push(route)
+          return Effect.succeed(authAllowed)
+        },
+      }),
+    )
+
+    expect(response.status).toBe(101)
+
+    expect(routes).toEqual([
+      { access: 'read', name: 'runs.events', runId: 'run_1', attributes: { tenant: 'acme' } },
+    ])
+  })
+
   test('rejects an invalid Last-Event-ID and a mismatched run', async () => {
     const store = await seededStore()
 
     const invalid = await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx: new FakeState(),
         store,
         request: new Request('http://looms.test/runs/run_1/events', {
@@ -238,6 +304,7 @@ describe('hibernating run sockets', () => {
 
     const missing = await Effect.runPromise(
       openRunSocket({
+        runtime,
         ctx: new FakeState(),
         store,
         request: upgrade('http://looms.test/runs/other/events'),

@@ -42,6 +42,7 @@ export {
   type GrantAuthOptions,
   type GrantFailure,
   type RunGrant,
+  runRouteInfo,
   type AuthDecision,
   type AuthorizedAccess,
   type Authorize,
