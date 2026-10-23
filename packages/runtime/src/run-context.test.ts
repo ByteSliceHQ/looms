@@ -10,6 +10,8 @@ import {
   defineThread,
   hasEntries,
   invoke,
+  makeMemoryEventStore,
+  type EventStore,
 } from '@looms/core'
 
 import { SecretContextConflictError, StartRunConflictError } from './errors'
@@ -220,6 +222,46 @@ describe('run attributes and secret context', () => {
     const read = await looms.fetch(new Request('http://looms.test/runs/run_auth'))
     expect(read?.status).toBe(200)
     expect(decisions.some((route) => route.attributes?.tenant === 'acme')).toBe(true)
+    await looms.stop()
+  })
+
+  test('authorization reads only the start event to find attributes', async () => {
+    const memory = await Effect.runPromise(makeMemoryEventStore)
+    let fullReads = 0
+
+    const store: EventStore = {
+      ...memory,
+      read: (runId, options) => {
+        if (options?.limit !== 1) {
+          fullReads += 1
+        }
+
+        return memory.read(runId, options)
+      },
+    }
+
+    const readsAtDecision: number[] = []
+
+    const looms = createLooms({
+      modules: [contextModule],
+      store,
+      authorize: (_request, route) =>
+        Effect.sync(() => {
+          if (route.name === 'runs.get') {
+            readsAtDecision.push(fullReads)
+          }
+
+          return route.attributes?.tenant === 'acme' ? authAllowed : authDenied(403, 'Forbidden')
+        }),
+    })
+
+    await looms.start(context, null, { runId: 'run_cheap_auth', attributes: { tenant: 'acme' } })
+    fullReads = 0
+
+    const read = await looms.fetch(new Request('http://looms.test/runs/run_cheap_auth'))
+
+    expect(read?.status).toBe(200)
+    expect(readsAtDecision).toEqual([0])
     await looms.stop()
   })
 

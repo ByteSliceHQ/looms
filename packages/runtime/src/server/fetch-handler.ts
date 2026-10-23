@@ -3,6 +3,8 @@ import { Data, Effect, Option, Predicate, Schema } from 'effect'
 import {
   EventStoreTag,
   hasEntries,
+  isJsonObject,
+  readAttributes,
   RunAttributesSchema,
   type EventStore,
   type RunAttributes,
@@ -47,16 +49,50 @@ class UnreadableStartBody extends Data.TaggedError('UnreadableStartBody')<{
   readonly cause: unknown
 }> {}
 
+const noAttributes: RunAttributes = {}
+
 function readRequestAttributes(req: Request): Effect.Effect<RunAttributes> {
   return Effect.tryPromise({
     try: () => req.clone().json(),
     catch: (cause) => new UnreadableStartBody({ cause }),
   }).pipe(
-    Effect.map((body) => {
-      const decoded = Schema.decodeUnknownOption(StartAttributesSchema)(body)
-      return Option.getOrElse(decoded, () => ({})).attributes ?? {}
+    Effect.map((body) =>
+      Option.match(Schema.decodeUnknownOption(StartAttributesSchema)(body), {
+        onNone: () => noAttributes,
+        onSome: (decoded) => decoded.attributes ?? noAttributes,
+      }),
+    ),
+    Effect.catchTag('UnreadableStartBody', () => Effect.succeed(noAttributes)),
+  )
+}
+
+/**
+ * Attributes are immutable and recorded on `runtime.run.started`, which is seq 1 of every
+ * untrimmed log, forks included. Only a trimmed log needs the snapshot-backed fold.
+ */
+function readStoredAttributes(
+  runtime: LoomsRuntime,
+  store: EventStore,
+  runId: string,
+): Effect.Effect<RunAttributes, Error> {
+  const folded = runtime.getRun(runId).pipe(
+    Effect.provideService(EventStoreTag, store),
+    Effect.map((state) => state.attributes),
+  )
+
+  return store.read(runId, { fromSeq: 1, limit: 1 }).pipe(
+    Effect.flatMap(([first]) => {
+      if (first === undefined) {
+        return Effect.succeed(noAttributes)
+      }
+
+      if (first.type === 'runtime.run.started' && isJsonObject(first.payload)) {
+        return Effect.succeed(readAttributes(first.payload.attributes))
+      }
+
+      return folded
     }),
-    Effect.catchTag('UnreadableStartBody', () => Effect.succeed({})),
+    Effect.catch(() => folded),
   )
 }
 
@@ -66,7 +102,7 @@ function authorizeRoute(
   authorize: Authorize,
   runtime: LoomsRuntime,
   store: EventStore,
-): Effect.Effect<Response | null> {
+): Effect.Effect<Response | null, Error> {
   const { access, name } = matched.route
 
   if (access === 'public') {
@@ -77,14 +113,13 @@ function authorizeRoute(
 
   return Effect.gen(function* () {
     const stored = Predicate.isString(runId)
-      ? yield* runtime.getRun(runId).pipe(
-          Effect.provideService(EventStoreTag, store),
-          Effect.orElseSucceed(() => undefined),
-        )
-      : undefined
+      ? yield* readStoredAttributes(runtime, store, runId)
+      : noAttributes
 
-    const requested = matched.route.name === 'runs.start' ? yield* readRequestAttributes(req) : {}
-    const attributes = stored && hasEntries(stored.attributes) ? stored.attributes : requested
+    const requested =
+      matched.route.name === 'runs.start' ? yield* readRequestAttributes(req) : noAttributes
+
+    const attributes = hasEntries(stored) ? stored : requested
 
     const route = Predicate.isString(runId)
       ? hasEntries(attributes)
