@@ -1,4 +1,4 @@
-import { defineModule } from '@looms/core'
+import { defineModule, makeDefinitionStore } from '@looms/core'
 
 import type { ScheduleDefinition } from './definitions'
 import { ScheduleDefinitionsLive } from './definitions-store'
@@ -15,14 +15,18 @@ export interface ScheduleModuleOptions {
 }
 
 export function schedule(options: ScheduleModuleOptions = {}) {
-  const definitions = options.definitions ?? []
+  const listed = options.definitions ?? []
+  const definitions = makeDefinitionStore('schedule', listed)
   const minIntervalMs = options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS
 
   return defineModule(scheduleModule, () => ({
-    definitions,
+    definitions: listed,
     threads: { schedule: createScheduleThread(definitions, minIntervalMs) },
     effects: { plan: planEffect, fire: fireEffect },
     projections: { scheduleStatus },
     services: () => ScheduleDefinitionsLive(definitions),
+    bindHost(host) {
+      definitions.useResolver(host.definitionResolver)
+    },
   }))
 }

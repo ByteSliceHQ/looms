@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Option, Schema } from 'effect'
 
 import type { EventInput } from './envelope'
+import type { RunAttributes, SecretContext } from './run-context'
 import type { JsonValue, RunStatus } from './types'
 
 export const ChildCloseSchema = Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')])
@@ -46,6 +47,8 @@ export interface LaunchRunArgs {
    * `terminate` cancels the child. `wait` lets the child finish cancelling first.
    */
   readonly close?: ChildClose
+  readonly attributes?: RunAttributes
+  readonly secrets?: SecretContext
 }
 
 /** Enough of a run to decide whether a previous fire is still in progress. */

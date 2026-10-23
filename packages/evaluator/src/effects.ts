@@ -1,6 +1,12 @@
 import { Effect, Schema } from 'effect'
 
-import { stringifyJson, validateInputEffect, type EventInputOf, type JsonValue } from '@looms/core'
+import {
+  DEFAULT_DEFINITION_VERSION,
+  stringifyJson,
+  validateInputEffect,
+  type EventInputOf,
+  type JsonValue,
+} from '@looms/core'
 
 import { EvaluatorDefinitionsTag } from './definitions-store'
 import { EvaluatorTag } from './evaluator'
@@ -10,6 +16,7 @@ import type { EvaluatorAnswers, EvaluatorEvaluateResult, ResolvedEvaluatorDecisi
 const EvaluateInput = Schema.Struct({
   evaluationId: Schema.String,
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.optional(Schema.String),
   input: Schema.optional(Schema.Json),
 })
 
@@ -47,7 +54,11 @@ export const evaluateEffect = evaluatorModule.effect({
       const threadId = ctx.threadId
       const definitions = yield* EvaluatorDefinitionsTag
       const evaluator = yield* EvaluatorTag
-      const definition = input.definitionName ? definitions.get(input.definitionName) : undefined
+      const version = input.definitionVersion ?? DEFAULT_DEFINITION_VERSION
+
+      const definition = input.definitionName
+        ? yield* definitions.resolve(input.definitionName, version)
+        : undefined
 
       if (!definition) {
         const name = input.definitionName ?? 'unknown'

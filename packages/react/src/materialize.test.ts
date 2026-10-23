@@ -82,6 +82,7 @@ describe('materializeEvents', () => {
       kind: 'agent',
       definitionName: 'assistant',
       launchedBy,
+      attributes: {},
     })
   })
 

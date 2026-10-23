@@ -2,6 +2,7 @@ import { Data, Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
+  DefinitionResolver,
   EventInput,
   EventStore,
   EventStoreTrimCoverage,
@@ -54,6 +55,8 @@ export interface LocalActorHostOptions<
 > {
   readonly createStore: (runId: string) => EventStore | Promise<EventStore>
   readonly modules: TModules
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -137,6 +140,7 @@ export function createLocalActorHost<
           store,
           scheduler,
           modules: options.modules,
+          definitionResolver: options.definitionResolver,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,

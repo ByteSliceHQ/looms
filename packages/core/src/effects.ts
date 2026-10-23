@@ -2,6 +2,7 @@ import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
 import { EventInputSchema, type EventInput } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import type { RunAttributes, SecretContext } from './run-context'
 import {
   validateInputEffect,
   type InferDefinedSchema,
@@ -227,6 +228,10 @@ export interface EffectContext {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  /** Labels safe for every reader of the run. */
+  readonly attributes: RunAttributes
+  /** Bearer material for this run. Never copy it into an emitted event. */
+  readonly secrets: SecretContext
   emit(event: EventInput): Promise<void>
 }
 
@@ -236,6 +241,8 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
   emit(event: E): Promise<void>
 }
 
@@ -253,6 +260,52 @@ export class EffectHandlerError extends Data.TaggedError('EffectHandlerError')<{
 
     this.name = 'EffectHandlerError'
   }
+}
+
+export interface EffectFailureOptions {
+  readonly error: string
+  /** Fail the attempt even when the retry policy has attempts remaining. */
+  readonly nonRetryable?: boolean
+  /** Wait at least this long before the next attempt. Does not shorten the policy backoff. */
+  readonly retryAfterMs?: number
+}
+
+/** A handler's deliberate attempt failure, distinct from an unexpected thrown error. */
+export class EffectFailure extends Data.TaggedError('EffectFailure')<{
+  readonly error: string
+  readonly nonRetryable: boolean
+  readonly retryAfterMs?: number
+}> {
+  constructor(options: EffectFailureOptions) {
+    const error = options.error
+    const nonRetryable = options.nonRetryable === true
+
+    if (options.retryAfterMs === undefined) {
+      super({ error, nonRetryable })
+    } else {
+      super({ error, nonRetryable, retryAfterMs: options.retryAfterMs })
+    }
+
+    this.name = 'EffectFailure'
+  }
+}
+
+/** Fail the current attempt. The retry policy decides whether another attempt is scheduled. */
+export function failEffect(options: EffectFailureOptions): Effect.Effect<never, EffectFailure> {
+  return Effect.fail(new EffectFailure(options))
+}
+
+/** Unwrap a handler failure, including one wrapped by `EffectHandlerError`. */
+export function readEffectFailure(cause: unknown): EffectFailure | null {
+  if (cause instanceof EffectFailure) {
+    return cause
+  }
+
+  if (cause instanceof EffectHandlerError) {
+    return readEffectFailure(cause.cause)
+  }
+
+  return null
 }
 
 export type EffectHandlerResult<
@@ -304,6 +357,18 @@ function liftHandlerResult<R, E extends EventInput, HandlerError>(
   }
 
   return Effect.succeed(result)
+}
+
+function invokeHandler<R, E extends EventInput, HandlerError>(
+  handler: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>,
+  input: JsonValue,
+  ctx: EffectContext,
+): Effect.Effect<ReadonlyArray<E>, EffectHandlerError, R> {
+  try {
+    return liftHandlerResult(handler(input, ctx))
+  } catch (cause) {
+    return Effect.fail(new EffectHandlerError(cause))
+  }
 }
 
 /**
@@ -367,7 +432,12 @@ export function defineEffect<R, E extends EventInput, HandlerError>(def: {
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw
 
-        return handler ? yield* liftHandlerResult(handler(input, ctx)) : noOutput
+        if (!handler) {
+          return noOutput
+        }
+
+        // invokeHandler turns a synchronous throw into EffectHandlerError.
+        return yield* invokeHandler(handler, input, ctx)
       }),
   }
 }

@@ -7,14 +7,20 @@ import {
   ReplayStepSchema,
   RunStateSchema,
   RunSummariesSchema,
+  SecretContextSchema,
   stringifyJson,
   type DefinitionInput,
   type DefinitionRef,
   type EventEnvelope,
   type EventInput,
   type JsonValue,
+  type RunAttributes,
   type RunState,
+  type SecretContext,
+  type WorkerCallback,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
+  type WorkerSecretsResult,
 } from '@looms/core'
 
 import { consumeSseStreamEffect, eventsFromSseData, sseFrames } from './sse'
@@ -40,6 +46,62 @@ const StartResultSchema = Schema.Struct({
 })
 
 const RunResultSchema = Schema.Struct({ runId: Schema.String, state: RunStateSchema })
+
+interface WorkerFailRequestBody {
+  error: string
+  nonRetryable?: boolean
+  retryAfterMs?: number
+}
+
+function attemptPath(runId: string, attempt: WorkerCallback): string {
+  return `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(attempt.effectId)}/${attempt.attempt}`
+}
+
+function workerCallbackBody(input: WorkerCallbackInput) {
+  switch (input.kind) {
+    case 'complete':
+      return { events: input.events }
+
+    case 'fail': {
+      const body: WorkerFailRequestBody = { error: input.error }
+
+      if (input.nonRetryable !== undefined) {
+        body.nonRetryable = input.nonRetryable
+      }
+
+      if (input.retryAfterMs !== undefined) {
+        body.retryAfterMs = input.retryAfterMs
+      }
+
+      return body
+    }
+
+    case 'heartbeat':
+      return input.details === undefined ? {} : { details: input.details }
+    case 'started':
+    case 'cancelled':
+      return {}
+
+    default: {
+      const exhaustive: never = input
+      return exhaustive
+    }
+  }
+}
+
+const WorkerCallbackResultSchema = Schema.Struct({
+  status: Schema.Union([
+    Schema.Literal('accepted'),
+    Schema.Literal('stale'),
+    Schema.Literal('cancelled'),
+  ]),
+  cancelRequested: Schema.Boolean,
+})
+
+const WorkerSecretsResultSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal('accepted'), secrets: SecretContextSchema }),
+  Schema.Struct({ status: Schema.Union([Schema.Literal('stale'), Schema.Literal('cancelled')]) }),
+])
 
 /** `appended` counts the events the run gained while the wake ran. */
 const WakeResultSchema = Schema.Struct({
@@ -179,28 +241,34 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     definitionVersion?: string
     input?: JsonValue
     runId?: string
+    attributes?: RunAttributes
+    secrets?: SecretContext
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
-  const workerCallback = (runId: string, input: WorkerCallbackInput) => {
-    const body =
-      input.kind === 'complete'
-        ? { events: input.events }
-        : input.kind === 'fail'
-          ? { error: input.error }
-          : {}
+  const workerHeaders = options.workerCallbackToken
+    ? { authorization: `Bearer ${options.workerCallbackToken}` }
+    : undefined
 
-    return request(
-      `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(input.effectId)}/${input.attempt}/${input.kind}`,
-      RunResultSchema,
-      {
-        method: 'POST',
-        headers: options.workerCallbackToken
-          ? { authorization: `Bearer ${options.workerCallbackToken}` }
-          : undefined,
-        body: stringifyJson(body),
-      },
-    )
+  const workerCallback = (
+    runId: string,
+    input: WorkerCallbackInput,
+  ): Promise<WorkerCallbackResult> => {
+    const body = workerCallbackBody(input)
+
+    return request(`${attemptPath(runId, input)}/${input.kind}`, WorkerCallbackResultSchema, {
+      method: 'POST',
+      headers: workerHeaders,
+      body: stringifyJson(body),
+    })
   }
+
+  /** Read the run's secret context. Only the attempt that is currently running gets it. */
+  const workerSecrets = (runId: string, attempt: WorkerCallback): Promise<WorkerSecretsResult> =>
+    request(`${attemptPath(runId, attempt)}/secrets`, WorkerSecretsResultSchema, {
+      method: 'POST',
+      headers: workerHeaders,
+      body: '{}',
+    })
 
   const streamRun = (args: {
     kind: string
@@ -300,6 +368,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         body: stringifyJson(forkOptions?.runId === undefined ? {} : { runId: forkOptions.runId }),
       }),
     workerCallback,
+    workerSecrets,
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
     replayTo: (runId: string, seq: number) =>

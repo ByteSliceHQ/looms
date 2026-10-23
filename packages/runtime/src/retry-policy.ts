@@ -18,6 +18,17 @@ export function retryBackoff(retry: RetryPolicy, attempt: number): number {
   )
 }
 
+/** Policy backoff, extended when the failed attempt asked to wait longer. */
+export function retryDelay(retry: RetryPolicy, attempt: number, retryAfterMs?: number): number {
+  const backoff = retryBackoff(retry, attempt)
+
+  if (retryAfterMs === undefined || !Number.isFinite(retryAfterMs) || retryAfterMs < 0) {
+    return backoff
+  }
+
+  return Math.max(backoff, retryAfterMs)
+}
+
 export interface AttemptFailurePlan {
   readonly event: EventEnvelope
   readonly retrying: boolean
@@ -32,10 +43,13 @@ export function planAttemptFailure(input: {
   readonly now: number
   readonly retry: RetryPolicy | undefined
   readonly origin: EventOrigin
+  /** Customer/domain failures must not be retried even when attempts remain. */
+  readonly nonRetryable?: boolean
+  readonly retryAfterMs?: number
 }): AttemptFailurePlan {
   const { runId, item, attempt, error, retry } = input
 
-  if (!retry || attempt >= retry.maxAttempts) {
+  if (input.nonRetryable || !retry || attempt >= retry.maxAttempts) {
     return { event: createEffectFailedEvent(runId, item, error), retrying: false }
   }
 
@@ -46,7 +60,7 @@ export function planAttemptFailure(input: {
       payload: {
         effectId: item.effectId,
         attempt,
-        nextAttemptAt: input.now + retryBackoff(retry, attempt),
+        nextAttemptAt: input.now + retryDelay(retry, attempt, input.retryAfterMs),
         error,
       },
       threadId: item.threadId,

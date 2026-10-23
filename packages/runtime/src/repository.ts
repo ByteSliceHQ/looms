@@ -7,11 +7,14 @@ import {
   emptyCursor,
   EventStoreTrimmedError,
   hashRunState,
+  primePinnedDefinitions,
   summarizeRun,
   trimEventStoreSafely,
   type AppendableEvent,
   type AppendResult,
   type ComposedRegistry,
+  type DefinitionResolveError,
+  type DefinitionResolver,
   type EventEnvelope,
   type EventStore,
   type EventStoreAppendError,
@@ -100,11 +103,19 @@ export interface RuntimeRepositoryOptions {
   readonly runCache: RunCursorCache
   readonly executionContexts: RunExecutionContexts
   readonly observer?: RuntimeObserver
+  readonly definitionResolver: DefinitionResolver
 }
 
 export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
-  const { registry, snapshotStore, trimAfterSnapshot, keepSnapshots, runCache, executionContexts } =
-    options
+  const {
+    registry,
+    snapshotStore,
+    trimAfterSnapshot,
+    keepSnapshots,
+    runCache,
+    executionContexts,
+    definitionResolver,
+  } = options
 
   const headerFingerprints = new Map<string, string>()
 
@@ -196,7 +207,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     expectedTail?: number,
   ): Effect.Effect<
     RunCursor,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError
   > =>
     Effect.gen(function* () {
       if (expectedTail !== undefined && cursor.seq === expectedTail) {
@@ -226,6 +237,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
       }
 
       delta = yield* readRemaining(store, runId, delta, expectedTail)
+      yield* primePinnedDefinitions(definitionResolver, delta)
 
       return advanceCursor(cursor, delta, registry)
     })
@@ -235,7 +247,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     runId: string,
   ): Effect.Effect<
     RunCursor,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError
   > =>
     Effect.gen(function* () {
       let cursor = emptyCursor(runId)
@@ -310,6 +322,8 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
         delta = yield* readRemaining(store, runId, delta)
       }
 
+      yield* primePinnedDefinitions(definitionResolver, delta)
+
       return advanceCursor(cursor, delta, registry)
     })
 
@@ -318,7 +332,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     runId: string,
   ): Effect.Effect<
     RunCursor,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError
   > =>
     Effect.gen(function* () {
       const cached = runCache.get(runId)
@@ -439,7 +453,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     commandRecords = 0,
   ): Effect.Effect<
     RunCursor,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError
   > =>
     Effect.gen(function* () {
       const echo = assignSequences(batch, appendResult)
@@ -457,6 +471,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
         }
       }
 
+      yield* primePinnedDefinitions(definitionResolver, echo)
       next = advanceCursor(next, echo, registry)
       executionContexts.get(runId).liveCount = 0
 
@@ -484,7 +499,8 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     | EventStoreAppendError
     | EventStoreTruncationError
     | EventStoreTrimmedError
-    | EventStoreError,
+    | EventStoreError
+    | DefinitionResolveError,
     R
   > =>
     Effect.gen(function* () {

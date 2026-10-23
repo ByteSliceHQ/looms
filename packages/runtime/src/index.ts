@@ -20,6 +20,7 @@ export {
   type WakeScheduler,
   type WorkerCallback,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from './runtime'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
 export {
@@ -40,5 +41,6 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
+export { filesystemBlobStore } from './filesystem-blob-store'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'
 export { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'

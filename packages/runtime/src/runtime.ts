@@ -1,22 +1,28 @@
 import { Clock, Effect, ManagedRuntime, Predicate } from 'effect'
 
 import {
+  cachedDefinitionResolver,
+  chainDefinitionResolvers,
   composeModules,
   createEvent,
   createThreadId,
   createRunId,
   DEFAULT_DEFINITION_VERSION,
   DEFAULT_SNAPSHOT_EVERY,
-  definitionKey,
+  staticDefinitionResolver,
   descendantThreadIds,
   EventStoreTag,
   foldRun,
+  hasEntries,
   isRunTerminal,
   unavailableRunLauncher,
   planFork,
   project,
   replayTo,
+  sameStringRecord,
   summarizeRun,
+  type EventStore,
+  type SecretContext,
   type AnyRuntimeModule,
   type EventInput,
   type EventOrigin,
@@ -34,6 +40,7 @@ import {
   RunNotFoundError,
   RunTerminalError,
   RuntimeExecutionError,
+  SecretContextConflictError,
   StartRunConflictError,
 } from './errors'
 import {
@@ -79,7 +86,7 @@ export type {
   StartRunArgs,
   WakeError,
 } from './types'
-export type { WorkerCallback, WorkerCallbackInput } from '@looms/core'
+export type { WorkerCallback, WorkerCallbackInput, WorkerCallbackResult } from '@looms/core'
 import type { CreateRuntimeOptions, LoomsRuntime, StartRunArgs } from './types'
 
 function currentTimeMillis(): number {
@@ -111,6 +118,65 @@ const RESCAN_CONCURRENCY = 16
 const DEFAULT_KEEP_SNAPSHOTS = 1
 const DEFAULT_MAX_PENDING_RUN_OPERATIONS = 256
 
+interface StartedPayloadInput {
+  readonly threadId: string
+  readonly kind: string
+  readonly definitionName: string
+  readonly definitionVersion: string
+  readonly input: StartRunArgs['input']
+  readonly requestedThreadId: string | null
+  readonly launchedBy: StartRunArgs['launchedBy']
+  readonly attributes: StartRunArgs['attributes']
+}
+
+function startedPayload(input: StartedPayloadInput) {
+  const payload = {
+    rootThreadId: input.threadId,
+    kind: input.kind,
+    definitionName: input.definitionName,
+    definitionVersion: input.definitionVersion,
+    input: input.input ?? null,
+    requestedThreadId: input.requestedThreadId,
+  }
+
+  const launched = input.launchedBy ? { ...payload, launchedBy: input.launchedBy } : payload
+  const attributes = input.attributes ?? {}
+
+  return hasEntries(attributes) ? { ...launched, attributes } : launched
+}
+
+function reconcileRunSecrets(
+  store: EventStore,
+  runId: string,
+  requested: SecretContext | undefined,
+) {
+  const next = requested ?? {}
+
+  return Effect.gen(function* () {
+    const stored = store.runSecrets
+
+    if (!stored) {
+      if (hasEntries(next)) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
+
+      return yield* Effect.void
+    }
+
+    const current = yield* stored.get(runId)
+
+    if (sameStringRecord(current, next) || requested === undefined) {
+      return yield* Effect.void
+    }
+
+    if (!hasEntries(current)) {
+      return yield* stored.put(runId, next)
+    }
+
+    return yield* new SecretContextConflictError(runId)
+  })
+}
+
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
 ): LoomsRuntime<TModules> {
@@ -119,13 +185,25 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   }
 
   const registry = composeModules(options.modules)
-  const registeredDefinitions = registry.definitions
 
-  const definitions = new Map(
-    registeredDefinitions.map(
-      (def) => [definitionKey(def.kind, def.name, def.version), def] as const,
-    ),
+  const staticResolver = staticDefinitionResolver(
+    registry.definitions.map((definition) => ({
+      ...definition.value,
+      kind: definition.kind,
+      name: definition.name,
+      version: definition.version,
+    })),
   )
+
+  const definitionResolver = cachedDefinitionResolver(
+    options.definitionResolver
+      ? chainDefinitionResolvers([staticResolver, options.definitionResolver])
+      : staticResolver,
+  )
+
+  for (const module of options.modules) {
+    module.bindHost?.({ definitionResolver })
+  }
 
   // Module composition erases the heterogeneous service identifier union at this host boundary.
   // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context
@@ -155,6 +233,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     runCache,
     executionContexts,
     observer: options.observer,
+    definitionResolver,
   })
 
   const { commit, loadCursor } = repository
@@ -234,7 +313,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     Effect.gen(function* () {
       const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
 
-      if (!definitions.get(definitionKey(args.kind, args.definitionName, definitionVersion))) {
+      const resolved = yield* definitionResolver.resolve(
+        args.kind,
+        args.definitionName,
+        definitionVersion,
+      )
+
+      if (!resolved) {
         return yield* new UnknownDefinitionError(args.kind, args.definitionName, definitionVersion)
       }
 
@@ -243,7 +328,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
       const threadId = args.threadId ?? createThreadId()
 
-      const startedEvents = yield* threadStartedEvents(definitions, {
+      const startedEvents = yield* threadStartedEvents(definitionResolver, {
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
@@ -268,24 +353,27 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         idempotencyKey: args.idempotencyKey ?? null,
         launchedBy: args.launchedBy ?? null,
         correlationId: args.correlationId ?? null,
+        attributes: args.attributes ?? {},
       }
 
       const origin: EventOrigin = args.launchedBy
         ? { type: 'run', runId: args.launchedBy.runId }
         : { type: 'system' }
 
-      const startPayload = {
-        rootThreadId: threadId,
+      const startPayload = startedPayload({
+        threadId,
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
         input: startedInput,
         requestedThreadId: args.threadId ?? null,
-      }
+        launchedBy: args.launchedBy,
+        attributes: args.attributes,
+      })
 
-      const startedPayload = args.launchedBy
-        ? { ...startPayload, launchedBy: args.launchedBy }
-        : startPayload
+      if (hasEntries(args.secrets ?? {}) && !store.runSecrets) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
 
       const committed = yield* commit(
         store,
@@ -309,7 +397,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 [
                   {
                     type: 'runtime.run.started',
-                    payload: startedPayload,
+                    payload: startPayload,
                     threadId: null,
                     idempotencyKey: args.idempotencyKey,
                   },
@@ -328,6 +416,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ),
       )
 
+      yield* reconcileRunSecrets(store, runId, args.secrets)
+
       if (!committed.append?.deduplicated) {
         return committed.value
       }
@@ -344,13 +434,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const wakeEngine = createWakeEngine({
     registry,
     services,
-    definitions,
     executionContexts,
     repository,
     snapshotEvery,
     maxWakeIterations,
     worker: options.worker,
     observer: options.observer,
+    definitionResolver,
     scheduler: () => scheduler,
     launcher: () => launcher,
   })
@@ -620,6 +710,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ? Effect.succeed({ events: [], value: undefined })
               : Effect.fail(new ForkConflictError(runId, sourceRunId))
           })
+
+          const parentSecrets = store.runSecrets ? yield* store.runSecrets.get(sourceRunId) : {}
+
+          yield* reconcileRunSecrets(
+            store,
+            runId,
+            hasEntries(parentSecrets) ? parentSecrets : undefined,
+          )
 
           return plan.rootThreadId
         }),

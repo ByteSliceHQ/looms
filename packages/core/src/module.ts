@@ -1,6 +1,7 @@
 import type { Context, Effect, Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
+import type { DefinitionResolver } from './definition-resolver'
 import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
 import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
@@ -25,6 +26,11 @@ export type EffectMiddleware = (
  * descendants. Return an empty array when the event interrupts nothing.
  */
 export type SignalInterruptRule = (event: EventInput) => readonly string[]
+
+/** Passed to a module once, before its services layer is constructed. */
+export interface DefinitionHost {
+  readonly definitionResolver: DefinitionResolver
+}
 
 export interface RuntimeModuleDependency {
   readonly namespace: string
@@ -91,6 +97,11 @@ export interface RuntimeModule<
   readonly interruptsOnSignal?: SignalInterruptRule
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
   readonly services?: () => Layer.Layer<TServices>
+  /**
+   * Receives the host's definition resolver before `services()` runs.
+   * Modules that look definitions up during fold share one store with this resolver.
+   */
+  readonly bindHost?: (host: DefinitionHost) => void
 }
 
 export function defineRuntimeModule<

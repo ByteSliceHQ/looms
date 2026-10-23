@@ -2,6 +2,7 @@ import { Context, Data, Effect, Layer, Option, Queue, Ref, Stream } from 'effect
 
 import { withAssignedSeq, type AppendableEvent, type EventEnvelope } from './envelope'
 import { assertEventByteLimits, EventPayloadTooLargeError } from './limits'
+import { readSecretContext, type RunSecretStore, type SecretContext } from './run-context'
 
 export class EventStoreError extends Data.TaggedError('EventStoreError')<{
   readonly message: string
@@ -288,6 +289,11 @@ export interface EventStore {
   ) => Stream.Stream<EventEnvelope, EventStoreError>
 
   readonly listRuns: Effect.Effect<string[], EventStoreError>
+  /**
+   * Run-scoped bearer material. Absent on stores that cannot keep it out of the event log.
+   * A start that supplies secrets fails closed when this is missing.
+   */
+  readonly runSecrets?: RunSecretStore
 }
 
 /**
@@ -321,6 +327,13 @@ interface RunLog {
 
 export const makeMemoryEventStore = Effect.gen(function* () {
   const logs = yield* Ref.make(new Map<string, RunLog>())
+  const secrets = yield* Ref.make(new Map<string, SecretContext>())
+
+  const runSecrets: RunSecretStore = {
+    get: (runId) =>
+      Ref.get(secrets).pipe(Effect.map((map) => readSecretContext(map.get(runId) ?? {}))),
+    put: (runId, value) => Ref.update(secrets, (map) => new Map(map).set(runId, value)),
+  }
 
   const getOrCreate = (map: Map<string, RunLog>, runId: string): RunLog => {
     const existing = map.get(runId)
@@ -552,6 +565,7 @@ export const makeMemoryEventStore = Effect.gen(function* () {
       ),
 
     listRuns: Ref.get(logs).pipe(Effect.map((map) => [...map.keys()])),
+    runSecrets,
   }
 
   return service

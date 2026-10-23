@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import {
   EventStoreTag,
   type AnyRuntimeModule,
+  type DefinitionResolver,
   type EventInput,
   type EventStore,
   type EventStoreTrimCoverage,
@@ -32,6 +33,8 @@ export interface ActorCellOptions<
   readonly store: EventStore
   readonly scheduler?: WakeScheduler
   readonly modules: TModules
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   readonly maxPendingRunOperations?: number
@@ -84,6 +87,7 @@ export function createActorCell<
 
   const runtime = createRuntime({
     modules: options.modules,
+    definitionResolver: options.definitionResolver,
     store,
     scheduler,
     launcher: options.launcher,

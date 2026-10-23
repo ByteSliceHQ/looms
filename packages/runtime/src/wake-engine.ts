@@ -7,9 +7,9 @@ import {
   foldRun,
   isRunTerminal,
   type ComposedRegistry,
+  type DefinitionResolver,
   type EventEnvelope,
   type EventStore,
-  type RegisteredDefinition,
   type RunCursor,
   type RunLauncher,
   type RunState,
@@ -47,7 +47,7 @@ function currentTimeMillis(): number {
 export interface WakeEngineOptions {
   readonly registry: ComposedRegistry
   readonly services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>
-  readonly definitions: ReadonlyMap<string, RegisteredDefinition>
+  readonly definitionResolver: DefinitionResolver
   readonly executionContexts: RunExecutionContexts
   readonly repository: RuntimeRepository
   readonly snapshotEvery: number
@@ -62,7 +62,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
   const {
     registry,
     services,
-    definitions,
+    definitionResolver,
     executionContexts,
     repository,
     snapshotEvery,
@@ -176,6 +176,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
       return yield* Effect.gen(function* () {
         const store = yield* EventStoreTag
+        const secrets = store.runSecrets ? yield* store.runSecrets.get(runId) : {}
         const runInContext = Effect.runPromiseWith(yield* Effect.context())
         executionContext.liveStore = store
 
@@ -293,6 +294,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               registry,
               worker: options.worker,
               now,
+              secrets,
             })
 
             if (workerPlans.length > 0) {
@@ -424,7 +426,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               {
                 registry,
                 services,
-                definitions,
+                definitionResolver,
                 executionContext,
                 liveAppends,
                 runInContext,
@@ -434,6 +436,8 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               {
                 runId,
                 correlationId: cursor.state.startIdentity?.correlationId ?? runId,
+                attributes: cursor.state.attributes ?? {},
+                secrets,
                 outstanding,
                 attempts,
                 now,
