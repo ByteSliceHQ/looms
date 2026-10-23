@@ -9,6 +9,7 @@ import { readAttributes } from './run-context'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
+import { readStoredTrace } from './trace'
 import type { JsonValue } from './types'
 
 export interface FoldRegistry {
@@ -155,6 +156,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
               attributes: readAttributes(payload.attributes),
+              trace: readStoredTrace(payload.trace),
             }
           : null
 

@@ -9,6 +9,7 @@ import {
   type InvalidInputError,
   type SchemaInput,
 } from './schema'
+import type { TraceContext } from './trace'
 import { asJson, type JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -232,6 +233,8 @@ export interface EffectContext {
   readonly attributes: RunAttributes
   /** Bearer material for this run. Never copy it into an emitted event. */
   readonly secrets: SecretContext
+  /** The W3C trace context of the caller that started the run, to parent spans the handler starts. */
+  readonly trace: TraceContext | null
   emit(event: EventInput): Promise<void>
 }
 
@@ -243,6 +246,7 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly signal: AbortSignal
   readonly attributes: RunAttributes
   readonly secrets: SecretContext
+  readonly trace: TraceContext | null
   emit(event: E): Promise<void>
 }
 

@@ -11,6 +11,7 @@ import { RunLaunchSourceSchema, type ChildClose, type RunLaunchSource } from './
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import { RunAttributesSchema, type RunAttributes } from './run-context'
 import { isTerminalStatus } from './thread'
+import { TraceContextSchema, type TraceContext } from './trace'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
 
 export interface ThreadRecord {
@@ -75,6 +76,8 @@ export interface RunStartIdentity {
   launchedBy: RunLaunchSource | null
   correlationId: string | null
   attributes: RunAttributes
+  /** The caller's W3C trace context. Effects, workers, and launched runs inherit it. */
+  trace: TraceContext | null
 }
 
 /** The run and last sequence a fork copied its history from. */
@@ -135,6 +138,9 @@ export const RunStateSchema = Schema.Struct({
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+      trace: Schema.NullOr(TraceContextSchema).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),

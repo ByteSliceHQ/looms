@@ -21,6 +21,7 @@ import type {
   RunLaunchSource,
   RunAttributes,
   SecretContext,
+  TraceContext,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -107,6 +108,8 @@ export interface EffectWorkerTask {
   readonly input: JsonValue
   /** Progress from the previous attempt's last heartbeat, when it reported any. */
   readonly details?: JsonValue
+  /** The run's W3C trace context, for parenting the worker's spans. */
+  readonly trace?: TraceContext
   /**
    * Present only on the in-memory dispatch. A transport that persists the task must leave this out
    * and let the worker read the secret context through an authenticated callback.
@@ -142,6 +145,11 @@ export interface StartRunArgs {
    * Omitting it on a retry keeps the context already stored.
    */
   secrets?: SecretContext
+  /**
+   * The caller's W3C trace context, recorded on `runtime.run.started` when it is a valid version-00
+   * `traceparent`. It is not part of the start identity, so a retry from another trace is not a conflict.
+   */
+  trace?: TraceContext
 }
 
 export interface StartResult {

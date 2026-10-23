@@ -64,6 +64,25 @@ a different context conflicts, and the error does not include the secret values.
 Forks and effect-launched runs inherit the parent's attributes and secrets.
 A store without `runSecrets` rejects a start that supplies secrets.
 
+## Trace context
+
+`POST /runs` reads the W3C `traceparent` and `tracestate` headers. In process,
+pass `trace: { traceparent, tracestate }` to `start` or `startRun`, and
+`client.startRun({ trace })` sends it as those headers. A valid version-00
+`traceparent` is recorded on `runtime.run.started` and folded into
+`startIdentity.trace`. Anything else is dropped, and so is a `tracestate` over
+512 characters. It is not part of the start identity, so a retry from another
+trace returns the same run.
+
+The run's trace context is passed unchanged to every effect handler as
+`ctx.trace`, to every worker dispatch as `task.trace`, and to every run an
+effect launches, including workflow child runs. A launch can set its own
+`trace`, for example to parent the child under a span the handler started.
+Forks keep the source's context. Looms creates no spans itself. The object's
+keys are the W3C header names, so with OpenTelemetry,
+`propagation.extract(context.active(), ctx.trace ?? {})` gives the parent
+context for a handler's span.
+
 ## Worker effect protocol
 
 1. The runtime dispatches `{ runId, effectId, attempt, type, input, details? }`.

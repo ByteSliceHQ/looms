@@ -66,6 +66,36 @@ describe('createLoomsClient', () => {
     ])
   })
 
+  test('startRun sends the trace context as W3C headers, not in the body', async () => {
+    const calls: { traceparent: string | null; tracestate: string | null; body: unknown }[] = []
+
+    const client = createLoomsClient({
+      fetch: async (_input, init) => {
+        const headers = new Headers(init?.headers)
+
+        calls.push({
+          traceparent: headers.get('traceparent'),
+          tracestate: headers.get('tracestate'),
+          body: Predicate.isString(init?.body) ? JSON.parse(init.body) : null,
+        })
+
+        return Response.json({ runId: 'run_1', threadId: 'thr_1', state: emptyRunState('run_1') })
+      },
+    })
+
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+
+    await client.startRun({
+      kind: 'agent',
+      definitionName: 'echo',
+      trace: { traceparent, tracestate: 'k=v' },
+    })
+
+    expect(calls).toEqual([
+      { traceparent, tracestate: 'k=v', body: { kind: 'agent', definitionName: 'echo' } },
+    ])
+  })
+
   test('workerSecrets posts to the attempt with the worker token', async () => {
     const calls: { href: string; authorization?: string | null }[] = []
 

@@ -435,9 +435,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               },
               {
                 runId,
-                correlationId: cursor.state.startIdentity?.correlationId ?? runId,
-                attributes: cursor.state.attributes ?? {},
-                secrets,
+                context: {
+                  correlationId: cursor.state.startIdentity?.correlationId ?? runId,
+                  attributes: cursor.state.attributes ?? {},
+                  secrets,
+                  trace: cursor.state.startIdentity?.trace ?? null,
+                },
                 outstanding,
                 attempts,
                 now,

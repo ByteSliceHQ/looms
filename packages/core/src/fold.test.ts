@@ -102,6 +102,7 @@ describe('foldRun', () => {
       rootThreadId: threadId,
       launchedBy: null,
       correlationId: null,
+      trace: null,
     })
 
     expect(state.threads[threadId]?.status).toBe('running')

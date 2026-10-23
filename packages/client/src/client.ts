@@ -9,6 +9,7 @@ import {
   RunSummariesSchema,
   SecretContextSchema,
   stringifyJson,
+  traceHeaders,
   type DefinitionInput,
   type DefinitionRef,
   type EventEnvelope,
@@ -17,6 +18,7 @@ import {
   type RunAttributes,
   type RunState,
   type SecretContext,
+  type TraceContext,
   type WorkerCallback,
   type WorkerCallbackInput,
   type WorkerCallbackResult,
@@ -243,7 +245,17 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     runId?: string
     attributes?: RunAttributes
     secrets?: SecretContext
-  }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
+    /** Sent as the W3C `traceparent` and `tracestate` headers. */
+    trace?: TraceContext
+  }) => {
+    const { trace, ...body } = args
+
+    return request('/runs', StartResultSchema, {
+      method: 'POST',
+      headers: traceHeaders(trace),
+      body: stringifyJson(body),
+    })
+  }
 
   const workerHeaders = options.workerCallbackToken
     ? { authorization: `Bearer ${options.workerCallbackToken}` }
@@ -276,8 +288,10 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     definitionVersion?: string
     input?: JsonValue
     runId?: string
+    trace?: TraceContext
   }): StreamHandle => {
-    const runId = args.runId ?? createRunId()
+    const { trace, ...body } = args
+    const runId = body.runId ?? createRunId()
 
     const stream = Stream.unwrap(
       Effect.tryPromise({
@@ -285,10 +299,11 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
           fetchImpl(`${baseUrl}/runs`, {
             method: 'POST',
             headers: {
+              ...traceHeaders(trace),
               'content-type': 'application/json',
               accept: 'text/event-stream',
             },
-            body: stringifyJson({ ...args, runId }),
+            body: stringifyJson({ ...body, runId }),
             signal,
           }),
         catch: (cause) => new LoomsClientError('Failed to start event stream', cause),

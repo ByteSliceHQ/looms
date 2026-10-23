@@ -152,6 +152,7 @@ export function planWorkerEffects(input: {
         task: workerTask(input.runId, item, attempt, {
           details: existing?.heartbeatDetails,
           secrets: input.secrets,
+          trace: input.state.startIdentity?.trace,
         }),
         scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
           ? input.now + retry.scheduleToStartTimeoutMs

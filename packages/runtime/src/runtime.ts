@@ -1,4 +1,4 @@
-import { Clock, Effect, ManagedRuntime, Predicate } from 'effect'
+import { Clock, Effect, ManagedRuntime, Predicate, type Types } from 'effect'
 
 import {
   cachedDefinitionResolver,
@@ -18,6 +18,7 @@ import {
   unavailableRunLauncher,
   planFork,
   project,
+  readTraceContext,
   replayTo,
   sameStringRecord,
   summarizeRun,
@@ -27,8 +28,10 @@ import {
   type EventInput,
   type EventOrigin,
   type RunLauncher,
+  type RunStartedPayload,
   type RunState,
   type SignalInterruptRule,
+  type TraceContext,
   type InvalidEventError,
 } from '@looms/core'
 
@@ -127,10 +130,11 @@ interface StartedPayloadInput {
   readonly requestedThreadId: string | null
   readonly launchedBy: StartRunArgs['launchedBy']
   readonly attributes: StartRunArgs['attributes']
+  readonly trace: TraceContext | undefined
 }
 
-function startedPayload(input: StartedPayloadInput) {
-  const payload = {
+function startedPayload(input: StartedPayloadInput): RunStartedPayload {
+  const payload: Types.Mutable<RunStartedPayload> = {
     rootThreadId: input.threadId,
     kind: input.kind,
     definitionName: input.definitionName,
@@ -139,10 +143,19 @@ function startedPayload(input: StartedPayloadInput) {
     requestedThreadId: input.requestedThreadId,
   }
 
-  const launched = input.launchedBy ? { ...payload, launchedBy: input.launchedBy } : payload
-  const attributes = input.attributes ?? {}
+  if (input.launchedBy) {
+    payload.launchedBy = input.launchedBy
+  }
 
-  return hasEntries(attributes) ? { ...launched, attributes } : launched
+  if (input.attributes && hasEntries(input.attributes)) {
+    payload.attributes = input.attributes
+  }
+
+  if (input.trace) {
+    payload.trace = input.trace
+  }
+
+  return payload
 }
 
 function reconcileRunSecrets(
@@ -369,6 +382,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         requestedThreadId: args.threadId ?? null,
         launchedBy: args.launchedBy,
         attributes: args.attributes,
+        trace: args.trace && readTraceContext(args.trace.traceparent, args.trace.tracestate),
       })
 
       if (hasEntries(args.secrets ?? {}) && !store.runSecrets) {

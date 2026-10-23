@@ -2,6 +2,7 @@ import { Context, Data, Effect, Option, Schema } from 'effect'
 
 import type { EventInput } from './envelope'
 import type { RunAttributes, SecretContext } from './run-context'
+import type { TraceContext } from './trace'
 import type { JsonValue, RunStatus } from './types'
 
 export const ChildCloseSchema = Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')])
@@ -49,6 +50,8 @@ export interface LaunchRunArgs {
   readonly close?: ChildClose
   readonly attributes?: RunAttributes
   readonly secrets?: SecretContext
+  /** Defaults to the launching run's trace context. */
+  readonly trace?: TraceContext
 }
 
 /** Enough of a run to decide whether a previous fire is still in progress. */

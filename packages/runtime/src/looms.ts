@@ -117,6 +117,7 @@ export interface Looms {
       idempotencyKey?: string
       attributes?: StartRunArgs['attributes']
       secrets?: StartRunArgs['secrets']
+      trace?: StartRunArgs['trace']
     },
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
@@ -130,6 +131,7 @@ export interface Looms {
     idempotencyKey?: string
     attributes?: StartRunArgs['attributes']
     secrets?: StartRunArgs['secrets']
+    trace?: StartRunArgs['trace']
   }): Promise<StartResult>
   /** Commit a run's start and schedule a wake without waiting for it. */
   launchRun(args: {
@@ -142,6 +144,7 @@ export interface Looms {
     idempotencyKey?: string
     attributes?: StartRunArgs['attributes']
     secrets?: StartRunArgs['secrets']
+    trace?: StartRunArgs['trace']
   }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
@@ -300,6 +303,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           idempotencyKey: startOpts?.idempotencyKey,
           attributes: startOpts?.attributes,
           secrets: startOpts?.secrets,
+          trace: startOpts?.trace,
         }),
       ),
     getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),

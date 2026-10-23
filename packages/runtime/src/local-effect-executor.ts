@@ -16,6 +16,7 @@ import {
   type RunLauncher,
   type RunLaunchSource,
   type SecretContext,
+  type TraceContext,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -42,12 +43,17 @@ export interface LocalEffectExecutorOptions {
   readonly launcher: RunLauncher
 }
 
-export interface ExecuteLocalEffectsInput {
-  readonly runId: string
-  /** Inherited by runs the effects launch. */
+/** Run-level values every effect sees. Runs the effects launch inherit them unless the launch overrides them. */
+export interface RunContext {
   readonly correlationId: string
   readonly attributes: RunAttributes
   readonly secrets: SecretContext
+  readonly trace: TraceContext | null
+}
+
+export interface ExecuteLocalEffectsInput {
+  readonly runId: string
+  readonly context: RunContext
   readonly outstanding: ReadonlyArray<OutstandingEffect>
   readonly attempts: ReadonlyMap<string, number>
   readonly now: number
@@ -78,9 +84,7 @@ function runLaunchedPayload(args: LaunchRunArgs, targetRunId: string, effectId: 
 function launcherFor(
   launcher: RunLauncher,
   runId: string,
-  correlationId: string,
-  attributes: RunAttributes,
-  secrets: SecretContext,
+  context: RunContext,
   item: OutstandingEffect,
   launched: EventEnvelope[],
 ): RunLauncher {
@@ -101,9 +105,10 @@ function launcherFor(
           ...args,
           runId: targetRunId,
           launchedBy,
-          correlationId,
-          attributes: args.attributes ?? attributes,
-          secrets: args.secrets ?? secrets,
+          correlationId: context.correlationId,
+          attributes: args.attributes ?? context.attributes,
+          secrets: args.secrets ?? context.secrets,
+          trace: args.trace ?? context.trace ?? undefined,
         })
         .pipe(
           Effect.tap(() =>
@@ -114,7 +119,7 @@ function launcherFor(
                   payload: runLaunchedPayload(args, targetRunId, item.effectId),
                   threadId: item.threadId,
                   causationId: item.causingEventId,
-                  correlationId,
+                  correlationId: context.correlationId,
                   origin: { type: 'thread', threadId: item.threadId },
                 }),
               )
@@ -213,23 +218,16 @@ export function executeLocalEffects(
             registry,
             services,
             definitionResolver,
-            launcherFor(
-              launcher,
-              input.runId,
-              input.correlationId,
-              input.attributes,
-              input.secrets,
-              item,
-              launched,
-            ),
+            launcherFor(launcher, input.runId, input.context, item, launched),
             item.effect,
             {
               effectId: item.effectId,
               runId: input.runId,
               threadId: item.threadId,
               causingEventId: item.causingEventId,
-              attributes: input.attributes,
-              secrets: input.secrets,
+              attributes: input.context.attributes,
+              secrets: input.context.secrets,
+              trace: input.context.trace,
               signal: controller.signal,
               emit: appendLive,
             },

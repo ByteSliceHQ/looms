@@ -5,6 +5,7 @@ import {
   EventStoreTag,
   JsonValueSchema,
   RunAttributesSchema,
+  readTraceHeaders,
   SecretContextSchema,
   stringifyJson,
   type EventStore,
@@ -191,6 +192,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
             idempotencyKey,
             attributes: body.attributes,
             secrets: body.secrets,
+            trace: readTraceHeaders(req.headers),
           }
 
           if (wantsRunStream(req, url)) {

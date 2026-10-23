@@ -27,6 +27,7 @@ import {
   type JsonValue,
   type OutstandingEffect,
   type SecretContext,
+  type TraceContext,
   type RunCursor,
   type SchemaInput,
   type VersionedDefinition,
@@ -41,6 +42,7 @@ export interface WorkerTaskExtras {
   /** Progress from the previous attempt's last heartbeat. */
   readonly details?: JsonValue | null
   readonly secrets?: SecretContext
+  readonly trace?: TraceContext | null
 }
 
 export function workerTask(
@@ -63,6 +65,10 @@ export function workerTask(
 
   if (extras.secrets && hasEntries(extras.secrets)) {
     task.secrets = extras.secrets
+  }
+
+  if (extras.trace) {
+    task.trace = extras.trace
   }
 
   return task
