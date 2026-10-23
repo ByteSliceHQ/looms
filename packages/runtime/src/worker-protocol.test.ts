@@ -737,19 +737,19 @@ describe('durable external effect workers', () => {
       ],
     })
 
+    const before = Date.now()
     const started = await looms.start(workerDefinition, {})
 
-    const scheduled = (await looms.getEvents(started.runId)).find(
+    const payload = (await looms.getEvents(started.runId)).find(
       (event) => event.type === 'runtime.effect.retry.scheduled',
-    )
+    )?.payload
 
-    const payload = scheduled?.payload
+    const nextAttemptAt =
+      Predicate.isReadonlyObject(payload) && !Array.isArray(payload)
+        ? payload.nextAttemptAt
+        : undefined
 
-    expect(scheduled).toBeDefined()
-
-    if (payload && !Array.isArray(payload) && Predicate.isReadonlyObject(payload)) {
-      expect(payload.nextAttemptAt).toBeGreaterThanOrEqual((scheduled?.ts ?? 0) + 60_000)
-    }
+    expect(nextAttemptAt).toBeGreaterThanOrEqual(before + 60_000)
 
     await looms.stop()
   })
