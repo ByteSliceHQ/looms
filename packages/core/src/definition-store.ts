@@ -69,11 +69,13 @@ export function makeDefinitionStore<TDefinition extends VersionedDefinition>(
         return Effect.succeed(undefined)
       }
 
-      return resolver.resolve(kind, name, version).pipe(
-        Effect.map((found) =>
-          found && isStoredDefinition<TDefinition>(kind, found) ? found : undefined,
-        ),
-      )
+      return resolver
+        .resolve(kind, name, version)
+        .pipe(
+          Effect.map((found) =>
+            found && isStoredDefinition<TDefinition>(kind, found) ? found : undefined,
+          ),
+        )
     },
   }
 }

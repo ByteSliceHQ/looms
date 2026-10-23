@@ -172,10 +172,7 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunState,
-    | EventStoreTruncationError
-    | EventStoreTrimmedError
-    | EventStoreError
-    | DefinitionResolveError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   getEvents(
@@ -194,10 +191,7 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunOperationalStatus,
-    | EventStoreError
-    | EventStoreTrimmedError
-    | EventStoreTruncationError
-    | DefinitionResolveError,
+    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | DefinitionResolveError,
     EventStoreTag
   >
   retryEffect(
@@ -235,19 +229,13 @@ export interface LoomsRuntime<
   >
   readonly rescanTimers: Effect.Effect<
     number,
-    | EventStoreTruncationError
-    | EventStoreTrimmedError
-    | EventStoreError
-    | DefinitionResolveError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   /** Reschedule every durable timer and effect deadline after restart or repair. */
   readonly recoverDeadlines: Effect.Effect<
     number,
-    | EventStoreTruncationError
-    | EventStoreTrimmedError
-    | EventStoreError
-    | DefinitionResolveError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   readonly dispose: Effect.Effect<void>

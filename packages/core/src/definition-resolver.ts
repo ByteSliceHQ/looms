@@ -2,8 +2,8 @@ import { Data, Effect, Predicate } from 'effect'
 
 import type { VersionedDefinition } from './definition-store'
 import type { EventEnvelope } from './envelope'
-import type { JsonValue } from './types'
 import { DEFAULT_DEFINITION_VERSION, definitionKey } from './module'
+import type { JsonValue } from './types'
 
 export class DefinitionResolveError extends Data.TaggedError('DefinitionResolveError')<{
   readonly kind: string
