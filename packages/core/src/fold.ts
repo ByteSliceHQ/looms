@@ -5,6 +5,7 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { readAttributes } from './run-context'
 import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
@@ -35,6 +36,28 @@ function readString(obj: { [key: string]: JsonValue }, key: string): string | un
   return Predicate.isString(value) ? value : undefined
 }
 
+/** Heartbeat progress already recorded for this effect, if any. */
+function priorHeartbeatDetails(state: RunState, effectId: string): JsonValue | null {
+  return state.effectExecutions[effectId]?.heartbeatDetails ?? null
+}
+
+/**
+ * A heartbeat that carries `details` replaces the saved progress. Every other execution event
+ * keeps it, including the retry that starts the next attempt.
+ */
+function nextHeartbeatDetails(
+  state: RunState,
+  effectId: string,
+  event: EventEnvelope,
+  payload: { [key: string]: JsonValue },
+): JsonValue | null {
+  if (event.type === 'runtime.effect.heartbeat' && Object.hasOwn(payload, 'details')) {
+    return payload.details ?? null
+  }
+
+  return priorHeartbeatDetails(state, effectId)
+}
+
 function cloneState(state: RunState): RunState {
   return {
     runId: state.runId,
@@ -50,6 +73,7 @@ function cloneState(state: RunState): RunState {
     processedIdempotencyKeys: state.processedIdempotencyKeys
       ? [...state.processedIdempotencyKeys]
       : [],
+    attributes: state.attributes ?? {},
   }
 }
 
@@ -127,6 +151,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               rootThreadId,
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
+              attributes: readAttributes(payload.attributes),
             }
           : null
 
@@ -135,6 +160,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
         runId: event.runId,
         rootThreadId: rootThreadId ?? null,
         startIdentity,
+        attributes: startIdentity?.attributes ?? {},
         status: 'running',
       }
     }
@@ -290,6 +316,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: null,
             startedAt: event.ts,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: null,
           },
         },
@@ -352,6 +379,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               : sameAttempt
                 ? previous.lastHeartbeatAt
                 : null,
+            heartbeatDetails: nextHeartbeatDetails(state, effectId, event, payload),
             lastError: readString(payload, 'error') ?? null,
           },
         },
@@ -384,6 +412,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             deadlineAt: nextAttemptAt,
             startedAt: null,
             lastHeartbeatAt: null,
+            heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: readString(payload, 'error') ?? 'effect failed',
           },
         },

@@ -5,6 +5,7 @@ import { WaitConditionSchema, type WaitCondition } from './effects'
 import { JsonValueSchema } from './envelope'
 import { RunLaunchSourceSchema } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { RunAttributesSchema } from './run-context'
 
 const DefinitionVersionSchema = Schema.String.pipe(
   Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
@@ -19,6 +20,7 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     input: JsonValueSchema,
     requestedThreadId: Schema.optional(Schema.NullOr(Schema.String)),
     launchedBy: Schema.optional(RunLaunchSourceSchema),
+    attributes: Schema.optional(RunAttributesSchema),
   }),
   'run.completed': Schema.Struct({
     output: Schema.NullOr(JsonValueSchema),
@@ -94,6 +96,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'effect.failed': Schema.Struct({
     effectId: Schema.String,
     error: Schema.String,
+    nonRetryable: Schema.optional(Schema.Boolean),
+    retryAfterMs: Schema.optional(Schema.Finite),
   }),
   'effect.attempt.started': Schema.Struct({
     effectId: Schema.String,
@@ -119,6 +123,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     attempt: Schema.Finite,
     heartbeatAt: Schema.Finite,
     deadlineAt: Schema.NullOr(Schema.Finite),
+    /** Progress the next attempt should resume from. Absent on heartbeats that only extend the deadline. */
+    details: Schema.optional(JsonValueSchema),
   }),
   'effect.cancel.requested': Schema.Struct({
     effectId: Schema.String,

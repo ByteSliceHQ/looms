@@ -9,6 +9,7 @@ import {
 import { JsonValueSchema } from './envelope'
 import { RunLaunchSourceSchema, type RunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { RunAttributesSchema, type RunAttributes } from './run-context'
 import { isTerminalStatus } from './thread'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
 
@@ -58,6 +59,8 @@ export interface EffectExecutionRecord {
   /** When the current attempt started executing, locally or on a worker. */
   startedAt: number | null
   lastHeartbeatAt: number | null
+  /** Progress reported by the latest heartbeat. Survives retries so the next attempt can resume. */
+  heartbeatDetails: JsonValue | null
   lastError: string | null
 }
 
@@ -71,6 +74,7 @@ export interface RunStartIdentity {
   rootThreadId: string
   launchedBy: RunLaunchSource | null
   correlationId: string | null
+  attributes: RunAttributes
 }
 
 /** The run and last sequence a fork copied its history from. */
@@ -85,6 +89,8 @@ export interface RunState {
   rootThreadId: string | null
   startIdentity: RunStartIdentity | null
   forkedFrom: RunForkSource | null
+  /** Immutable labels copied from `runtime.run.started`. Safe for every reader of the run. */
+  attributes: RunAttributes
   threads: { [threadId: string]: ThreadRecord }
   waits: { [waitId: string]: WaitRecord }
   outstandingEffects: readonly OutstandingEffect[]
@@ -117,8 +123,10 @@ export const RunStateSchema = Schema.Struct({
       correlationId: Schema.NullOr(Schema.String).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
+      attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
   forkedFrom: Schema.NullOr(Schema.Struct({ runId: Schema.String, seq: Schema.Finite })).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
@@ -189,6 +197,9 @@ export const RunStateSchema = Schema.Struct({
       lastHeartbeatAt: Schema.NullOr(Schema.Finite).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
+      heartbeatDetails: Schema.NullOr(JsonValueSchema).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
       lastError: Schema.NullOr(Schema.String),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
@@ -207,6 +218,7 @@ export function emptyRunState(runId: string): RunState {
     rootThreadId: null,
     startIdentity: null,
     forkedFrom: null,
+    attributes: {},
     threads: {},
     waits: {},
     outstandingEffects: [],
