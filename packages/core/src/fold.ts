@@ -5,7 +5,13 @@ import type { EventEnvelope } from './envelope'
 import { createEffectId } from './ids'
 import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
-import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './state'
+import type {
+  ThreadRecord,
+  OutstandingEffect,
+  RunStartIdentity,
+  RunState,
+  WaitRecord,
+} from './state'
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
@@ -130,10 +136,16 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               rootThreadId,
               launchedBy: readRunLaunchSource(payload.launchedBy),
               correlationId: event.correlationId ?? null,
-              ...(traceparent ? { traceparent } : {}),
-              ...(tracestate ? { tracestate } : {}),
             }
           : null
+
+      if (startIdentity && traceparent) {
+        startIdentity.traceparent = traceparent
+      }
+
+      if (startIdentity && tracestate) {
+        startIdentity.tracestate = tracestate
+      }
 
       return {
         ...state,

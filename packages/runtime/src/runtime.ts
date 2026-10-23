@@ -257,8 +257,6 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         idempotencyKey: args.idempotencyKey ?? null,
         launchedBy: args.launchedBy ?? null,
         correlationId: args.correlationId ?? null,
-        ...(args.traceparent ? { traceparent: args.traceparent } : {}),
-        ...(args.tracestate ? { tracestate: args.tracestate } : {}),
       }
 
       const origin: EventOrigin = args.launchedBy
