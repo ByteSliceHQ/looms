@@ -89,6 +89,28 @@ export const AgentSpawnRequestedPayloadSchema = Schema.Struct({
   ),
   toolCallId: Schema.String,
   input: Schema.Json,
+  depth: Schema.optional(Schema.Finite),
+})
+
+export const AgentContextCompactedPayloadSchema = Schema.Struct({
+  turn: Schema.Finite,
+  originalCount: Schema.Finite,
+  compactedCount: Schema.Finite,
+  summary: Schema.optional(Schema.String),
+  reason: Schema.optional(
+    Schema.Union([
+      Schema.Literal('overflow'),
+      Schema.Literal('manual'),
+      Schema.Literal('threshold'),
+    ]),
+  ),
+  messages: Schema.optional(Schema.Array(MessageSchema)),
+})
+
+export const AgentTurnUsagePayloadSchema = Schema.Struct({
+  turn: Schema.Finite,
+  input: Schema.Finite,
+  output: Schema.Finite,
 })
 
 export const AgentEffectsRequestedPayloadSchema = Schema.Struct({
@@ -118,4 +140,6 @@ export const agentCatalog = defineEventCatalog('agent', {
   'session.cancel.requested': AgentSessionCancelRequestedPayloadSchema,
   'spawn.requested': AgentSpawnRequestedPayloadSchema,
   'effects.requested': AgentEffectsRequestedPayloadSchema,
+  'context.compacted': AgentContextCompactedPayloadSchema,
+  'turn.usage': AgentTurnUsagePayloadSchema,
 })

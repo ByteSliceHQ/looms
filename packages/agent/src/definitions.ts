@@ -11,6 +11,66 @@ import {
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
 
+export const TEAM_MEMBER_MAX_DEPTH = 3 as const
+
+export const STRUCTURED_OUTPUT_TOOL_NAME = 'submit_output' as const
+
+export interface AgentCompactionContext {
+  readonly threadId: string
+  readonly turn: number
+  readonly messages: readonly Message[]
+  readonly reason: 'overflow' | 'manual' | 'threshold'
+}
+
+export interface AgentCompactedResult {
+  readonly messages: readonly Message[]
+  readonly summary?: string
+}
+
+export type AgentCompactor = (
+  ctx: AgentCompactionContext,
+) => Promise<AgentCompactedResult> | AgentCompactedResult
+
+export function defaultAgentCompactor(ctx: AgentCompactionContext): AgentCompactedResult {
+  if (ctx.messages.length <= 6) {
+    return { messages: [...ctx.messages] }
+  }
+
+  const systemOrFirst = ctx.messages.slice(0, 2)
+  const recent = ctx.messages.slice(-4)
+  const elidedCount = ctx.messages.length - 6
+  const summary = `[${elidedCount} earlier messages compacted for context window]`
+  const summaryMessage: Message = { role: 'system', content: summary }
+
+  return {
+    messages: [...systemOrFirst, summaryMessage, ...recent],
+    summary,
+  }
+}
+
+export function isContextOverflowError(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  const lower = message.toLowerCase()
+
+  return (
+    lower.includes('context window') ||
+    lower.includes('context length') ||
+    lower.includes('prompt too long') ||
+    lower.includes('too many tokens') ||
+    lower.includes('maximum context') ||
+    lower.includes('context_length_exceeded') ||
+    lower.includes('overflow')
+  )
+}
+
+export function buildStructuredOutputInstructions(toolName = STRUCTURED_OUTPUT_TOOL_NAME): string {
+  return [
+    `This task requires structured output matching the output schema.`,
+    `When you have completed all work and have the final result, call the "${toolName}" tool with your output.`,
+    `If "${toolName}" returns an error indicating validation failure, inspect the errors, correct the values, and call "${toolName}" again.`,
+  ].join(' ')
+}
+
 export interface ToolContext {
   readonly threadId: string
   readonly turn: number
@@ -93,7 +153,17 @@ export interface AgentDefinition<
   readonly model?: string
   readonly instructions: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
+  readonly output?: StandardSchemaV1<any, TOutput> | Schema.ConstraintDecoder<TOutput> | SchemaInput
   readonly tools?: ToolLike[]
+  readonly resolveTools?: (
+    ctx: AgentTurnContext<TInput>,
+  ) => Promise<AgentToolEntry[]> | AgentToolEntry[]
+  readonly compact?: AgentCompactor
+  readonly assertCredits?: (ctx: AgentTurnContext<TInput>) => Promise<void> | void
+  readonly trackUsage?: (
+    usage: { input: number; output: number; turn: number },
+    ctx: AgentTurnContext<TInput>,
+  ) => Promise<void> | void
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen

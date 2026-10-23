@@ -6,6 +6,7 @@ import {
   DEFAULT_DEFINITION_VERSION,
   emit,
   invoke,
+  isJsonObject,
   isWithdrawnError,
   parseEffectId,
   spawn,
@@ -96,6 +97,9 @@ export const agentThread = agentModule.thread<AgentState>({
     needsLlmCall: false,
     turn: 0,
     maxTurns: 20,
+    depth: 0,
+    structuredOutput: null,
+    alreadyCompactedTurns: [],
     pendingSteer: null,
     input: ctx.input,
     output: null,
@@ -113,13 +117,21 @@ export const agentThread = agentModule.thread<AgentState>({
 
         // SAFETY: event payload input is JSON
         const input = payload.input !== undefined ? payload.input : state.input
+
+        const depth =
+          Predicate.isObject(input) && Predicate.isNumber(input.agentDepth)
+            ? input.agentDepth
+            : state.depth
+
         const line = inputToLine(input)
         const lines = line ? [line] : state.lines
+
         return {
           ...state,
           definitionName: defName,
           definitionVersion: defVersion,
           input,
+          depth,
           lines,
           needsLlmCall: true,
         }
@@ -172,6 +184,13 @@ export const agentThread = agentModule.thread<AgentState>({
         const content =
           Predicate.isString(error) && error.length > 0 ? error : JSON.stringify(result ?? null)
 
+        let structuredOutput = state.structuredOutput
+
+        if (name === 'submit_output' && !error && result !== null) {
+          structuredOutput =
+            isJsonObject(result) && 'output' in result ? (result.output ?? null) : result
+        }
+
         const lines: Message[] = [
           ...state.lines,
           {
@@ -186,6 +205,7 @@ export const agentThread = agentModule.thread<AgentState>({
         return {
           ...state,
           lines,
+          structuredOutput,
           pendingToolCalls,
           executingToolCalls,
           pendingSpawns,
@@ -225,11 +245,25 @@ export const agentThread = agentModule.thread<AgentState>({
         }
       }
 
+      case 'agent.context.compacted': {
+        const compactedMessages = event.payload.messages
+
+        const alreadyCompactedTurns = state.alreadyCompactedTurns
+          ? [...state.alreadyCompactedTurns, event.payload.turn]
+          : [event.payload.turn]
+
+        return {
+          ...state,
+          lines: compactedMessages ? [...compactedMessages] : state.lines,
+          alreadyCompactedTurns,
+        }
+      }
+
       case 'agent.turn.stopped':
         return abandonTurn(state)
 
       case 'agent.spawn.requested': {
-        const { childThreadId, kind, definitionName, definitionVersion, toolCallId, input } =
+        const { childThreadId, kind, definitionName, definitionVersion, toolCallId, input, depth } =
           event.payload
 
         return {
@@ -245,6 +279,7 @@ export const agentThread = agentModule.thread<AgentState>({
               toolCallId,
               // SAFETY: schema-decoded input is JSON
               input: input ?? null,
+              depth: depth ?? state.depth + 1,
             },
           ],
         }
@@ -424,6 +459,9 @@ export const agentThread = agentModule.thread<AgentState>({
             definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             messages: state.lines,
             input: state.input,
+            depth: state.depth,
+            structuredOutput: state.structuredOutput,
+            alreadyCompacted: (state.alreadyCompactedTurns ?? []).includes(state.turn + 1),
             consumedSteerMessageIds: state.consumedSteerMessageIds,
           },
           `llm_turn_${state.turn + 1}`,
@@ -440,6 +478,7 @@ export const agentThread = agentModule.thread<AgentState>({
             definitionName: state.definitionName,
             definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             toolCall,
+            depth: state.depth,
           },
           `tool_${toolCall.id}`,
         ),
@@ -448,6 +487,12 @@ export const agentThread = agentModule.thread<AgentState>({
 
     for (const spawnReq of state.pendingSpawns) {
       const waitId = createWaitId(ctx.threadId, `spawn_${spawnReq.childThreadId}`)
+      const childDepth = spawnReq.depth ?? state.depth + 1
+
+      const childInput =
+        spawnReq.input !== null && Predicate.isObject(spawnReq.input)
+          ? { ...spawnReq.input, agentDepth: childDepth }
+          : spawnReq.input
 
       effects.push(
         spawn({
@@ -455,7 +500,7 @@ export const agentThread = agentModule.thread<AgentState>({
           kind: spawnReq.kind,
           definitionName: spawnReq.definitionName,
           definitionVersion: spawnReq.definitionVersion,
-          input: spawnReq.input,
+          input: childInput,
         }),
         wait({
           waitId,

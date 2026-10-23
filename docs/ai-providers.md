@@ -53,6 +53,29 @@ defineAgent({
 - `stopWhen` completes the run gracefully (for example after an `answer` tool).
 - Tools can be functions, other agents, workflows, evaluators, or `gate()` approvals.
 
+## Structured output, compaction, and turn hooks
+
+### Structured output
+
+Define `output` on `defineAgent({ output: Schema })`. When set, Looms equips the model with the schema-validated `submit_output` tool. When the model invokes it, invalid fields return schema error feedback for self-repair, and a valid submission finishes the run with the typed result.
+
+### Context compaction
+
+When a model throws a context overflow error, Looms compacts the message history via `compact: (ctx) => ...` (or a built-in default compactor), records an `agent.context.compacted` event, and retries the turn once.
+
+### Dynamic tools per turn
+
+Use `resolveTools: (ctx) => ToolLike[]` to dynamically provide tools per turn (e.g. MCP tools or skills discovered based on current context).
+
+### Credit gates and usage tracking
+
+- `assertCredits: (ctx) => Promise<void>` runs before each LLM turn. Rejections fail the thread cleanly before calling the model.
+- `trackUsage: (usage, ctx) => Promise<void>` runs after model completion. Looms records an `agent.turn.usage` event on the run log.
+
+### Subagent depth limit
+
+Nested team subagents spawned via thread tools enforce `TEAM_MEMBER_MAX_DEPTH = 3`. Attempting to spawn beyond depth 3 returns an explicit tool error to the calling agent.
+
 ## Evaluation models
 
 An evaluator is not a chat model. Use `defineEvaluator` with your own `questions` and pass `vercelEvaluator()` into the evaluator module. Set `model` to `typesafe-ai/jev` today. A later model that answers the same boolean, choice, and score questions uses the same definition with a different `model` id. The evaluation lands on the run log like any other effect, so a workflow can branch on `route` and `reason` after a crash.
