@@ -15,6 +15,7 @@ import {
   type JsonValue,
   type RunState,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from '@looms/core'
 
 import { consumeSseStreamEffect, eventsFromSseData, sseFrames } from './sse'
@@ -40,6 +41,53 @@ const StartResultSchema = Schema.Struct({
 })
 
 const RunResultSchema = Schema.Struct({ runId: Schema.String, state: RunStateSchema })
+
+interface WorkerFailRequestBody {
+  error: string
+  nonRetryable?: boolean
+  retryAfterMs?: number
+}
+
+function workerCallbackBody(input: WorkerCallbackInput) {
+  switch (input.kind) {
+    case 'complete':
+      return { events: input.events }
+
+    case 'fail': {
+      const body: WorkerFailRequestBody = { error: input.error }
+
+      if (input.nonRetryable !== undefined) {
+        body.nonRetryable = input.nonRetryable
+      }
+
+      if (input.retryAfterMs !== undefined) {
+        body.retryAfterMs = input.retryAfterMs
+      }
+
+      return body
+    }
+
+    case 'heartbeat':
+      return input.details === undefined ? {} : { details: input.details }
+    case 'started':
+    case 'cancelled':
+      return {}
+
+    default: {
+      const exhaustive: never = input
+      return exhaustive
+    }
+  }
+}
+
+const WorkerCallbackResultSchema = Schema.Struct({
+  status: Schema.Union([
+    Schema.Literal('accepted'),
+    Schema.Literal('stale'),
+    Schema.Literal('cancelled'),
+  ]),
+  cancelRequested: Schema.Boolean,
+})
 
 /** `appended` counts the events the run gained while the wake ran. */
 const WakeResultSchema = Schema.Struct({
@@ -181,17 +229,15 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     runId?: string
   }) => request('/runs', StartResultSchema, { method: 'POST', body: stringifyJson(args) })
 
-  const workerCallback = (runId: string, input: WorkerCallbackInput) => {
-    const body =
-      input.kind === 'complete'
-        ? { events: input.events }
-        : input.kind === 'fail'
-          ? { error: input.error }
-          : {}
+  const workerCallback = (
+    runId: string,
+    input: WorkerCallbackInput,
+  ): Promise<WorkerCallbackResult> => {
+    const body = workerCallbackBody(input)
 
     return request(
       `/runs/${encodeURIComponent(runId)}/effects/${encodeURIComponent(input.effectId)}/${input.attempt}/${input.kind}`,
-      RunResultSchema,
+      WorkerCallbackResultSchema,
       {
         method: 'POST',
         headers: options.workerCallbackToken

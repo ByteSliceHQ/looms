@@ -10,6 +10,7 @@ import {
   type RetryPolicy,
   type RunState,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from '@looms/core'
 
 import { materializeEffectOutcome } from './helpers'
@@ -61,9 +62,28 @@ export interface WorkerCallbacksOptions {
 interface WorkerCallbackPlan {
   readonly events: ReadonlyArray<EventEnvelope>
   readonly notices: ReadonlyArray<RuntimeObservation>
+  readonly result: WorkerCallbackResult
 }
 
-const IGNORED: WorkerCallbackPlan = { events: [], notices: [] }
+const STALE: WorkerCallbackPlan = {
+  events: [],
+  notices: [],
+  result: { status: 'stale', cancelRequested: false },
+}
+
+const CANCELLED: WorkerCallbackPlan = {
+  events: [],
+  notices: [],
+  result: { status: 'cancelled', cancelRequested: true },
+}
+
+function accepted(
+  events: ReadonlyArray<EventEnvelope>,
+  notices: ReadonlyArray<RuntimeObservation> = [],
+  cancelRequested = false,
+): WorkerCallbackPlan {
+  return { events, notices, result: { status: 'accepted', cancelRequested } }
+}
 
 /**
  * Turn a worker callback into events against the current durable state. Callbacks for another
@@ -88,6 +108,15 @@ function planWorkerCallback(input: {
     execution?.attempt === callback.attempt &&
     execution.status === 'cancel_requested'
 
+  // A message already handed to a worker cannot be pulled back. Tell it to stop instead.
+  if (
+    execution?.attempt === callback.attempt &&
+    execution.status === 'cancel_requested' &&
+    callback.kind !== 'cancelled'
+  ) {
+    return Effect.succeed(CANCELLED)
+  }
+
   if (
     !execution ||
     execution.attempt !== callback.attempt ||
@@ -97,10 +126,9 @@ function planWorkerCallback(input: {
     execution.status === 'retry_wait' ||
     execution.status === 'timed_out' ||
     execution.status === 'ambiguous' ||
-    (callback.kind === 'cancelled' && !isCancellationAcknowledgement) ||
-    (execution.status === 'cancel_requested' && callback.kind !== 'cancelled')
+    (callback.kind === 'cancelled' && !isCancellationAcknowledgement)
   ) {
-    return Effect.succeed(IGNORED)
+    return Effect.succeed(STALE)
   }
 
   const retry = item ? registry.effects.get(item.effect.type)?.retry : undefined
@@ -117,8 +145,8 @@ function planWorkerCallback(input: {
     case 'started': {
       return Effect.succeed(
         item && execution.status === 'dispatched'
-          ? { events: [workerStartedEvent(runId, item, callback.attempt, retry, now)], notices: [] }
-          : IGNORED,
+          ? accepted([workerStartedEvent(runId, item, callback.attempt, retry, now)])
+          : STALE,
       )
     }
 
@@ -129,38 +157,47 @@ function planWorkerCallback(input: {
         !item ||
         (!implicitStart && execution.status !== 'started' && execution.status !== 'heartbeat')
       ) {
-        return Effect.succeed(IGNORED)
+        return Effect.succeed(STALE)
       }
 
-      return Effect.succeed({
-        events: [
-          ...(implicitStart ? [workerStartedEvent(runId, item, callback.attempt, retry, now)] : []),
-          createEvent(runId, {
-            type: 'runtime.effect.heartbeat',
-            payload: {
-              effectId: item.effectId,
-              attempt: callback.attempt,
-              heartbeatAt: now,
-              deadlineAt: workerDeadline(retry, execution.startedAt ?? now, now),
-            },
-            threadId: item.threadId,
-            origin: WORKER_ORIGIN,
-          }),
-        ],
-        notices: [notice('effect.heartbeat')],
-      })
+      const recorded = {
+        effectId: item.effectId,
+        attempt: callback.attempt,
+        heartbeatAt: now,
+        deadlineAt: workerDeadline(retry, execution.startedAt ?? now, now),
+      }
+
+      const payload =
+        callback.details === undefined ? recorded : { ...recorded, details: callback.details }
+
+      return Effect.succeed(
+        accepted(
+          [
+            ...(implicitStart
+              ? [workerStartedEvent(runId, item, callback.attempt, retry, now)]
+              : []),
+            createEvent(runId, {
+              type: 'runtime.effect.heartbeat',
+              payload,
+              threadId: item.threadId,
+              origin: WORKER_ORIGIN,
+            }),
+          ],
+          [notice('effect.heartbeat')],
+        ),
+      )
     }
 
     case 'complete': {
       if (!item) {
-        return Effect.succeed(IGNORED)
+        return Effect.succeed(STALE)
       }
 
       return Effect.forEach(callback.events, (event) =>
         materializeEffectOutcome(registry.catalogs, runId, item, event),
       ).pipe(
-        Effect.map((outcomes) => ({
-          events: [
+        Effect.map((outcomes) =>
+          accepted([
             ...outcomes,
             createEvent(runId, {
               type: 'runtime.effect.completed',
@@ -170,15 +207,14 @@ function planWorkerCallback(input: {
               causationId: item.causingEventId,
               origin: WORKER_ORIGIN,
             }),
-          ],
-          notices: [],
-        })),
+          ]),
+        ),
       )
     }
 
     case 'fail': {
       if (!item) {
-        return Effect.succeed(IGNORED)
+        return Effect.succeed(STALE)
       }
 
       const failure = planAttemptFailure({
@@ -189,38 +225,45 @@ function planWorkerCallback(input: {
         now,
         retry,
         origin: WORKER_ORIGIN,
+        nonRetryable: callback.nonRetryable,
+        retryAfterMs: callback.retryAfterMs,
       })
 
-      return Effect.succeed({
-        events: [failure.event],
-        notices: failure.retrying
-          ? [
-              {
-                type: 'effect.retry',
-                runId,
-                at: now,
-                effectId: item.effectId,
-                attempt: callback.attempt,
-                detail: callback.error,
-              },
-            ]
-          : [],
-      })
+      return Effect.succeed(
+        accepted(
+          [failure.event],
+          failure.retrying
+            ? [
+                {
+                  type: 'effect.retry',
+                  runId,
+                  at: now,
+                  effectId: item.effectId,
+                  attempt: callback.attempt,
+                  detail: callback.error,
+                },
+              ]
+            : [],
+        ),
+      )
     }
 
     case 'cancelled': {
-      return Effect.succeed({
-        events: [
-          createEvent(runId, {
-            type: 'runtime.effect.cancelled',
-            payload: { effectId: callback.effectId, attempt: callback.attempt },
-            threadId: item?.threadId ?? null,
-            effectId: callback.effectId,
-            origin: WORKER_ORIGIN,
-          }),
-        ],
-        notices: [notice('effect.cancellation')],
-      })
+      return Effect.succeed(
+        accepted(
+          [
+            createEvent(runId, {
+              type: 'runtime.effect.cancelled',
+              payload: { effectId: callback.effectId, attempt: callback.attempt },
+              threadId: item?.threadId ?? null,
+              effectId: callback.effectId,
+              origin: WORKER_ORIGIN,
+            }),
+          ],
+          [notice('effect.cancellation')],
+          true,
+        ),
+      )
     }
 
     default: {
@@ -242,19 +285,22 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
 
         const committed = yield* repository.commit(store, runId, (cursor) =>
           planWorkerCallback({ runId, state: cursor.state, callback, registry, now }).pipe(
-            Effect.map((plan) => ({ events: plan.events, value: plan.notices })),
+            Effect.map((plan) => ({
+              events: plan.events,
+              value: { notices: plan.notices, result: plan.result },
+            })),
           ),
         )
 
         if (committed.append) {
-          for (const notice of committed.value) {
+          for (const notice of committed.value.notices) {
             notifyObserver(options.observer, notice)
           }
         }
 
-        return committed.cursor.state
+        return committed.value.result
       }),
-    ).pipe(Effect.andThen(options.wake(runId)))
+    ).pipe(Effect.tap((result) => (result.status === 'stale' ? Effect.void : options.wake(runId))))
 
   return { workerCallback: applyWorkerCallback }
 }

@@ -1,10 +1,11 @@
 import type { Context, ManagedRuntime } from 'effect'
-import { Effect } from 'effect'
+import { Effect, Predicate } from 'effect'
 
 import {
   asJson,
   isPrimitiveEffect,
   isWaitOnTimer,
+  readEffectFailure,
   type ComposedRegistry,
   type EffectContext,
   type EventInput,
@@ -15,6 +16,50 @@ import {
 } from '@looms/core'
 
 import { threadStartedEvents } from './helpers'
+
+function causeMessage(cause: unknown): string {
+  if (Predicate.isString(cause)) {
+    return cause
+  }
+
+  if (cause instanceof Error) {
+    return cause.message
+  }
+
+  return String(cause)
+}
+
+function failedAttempt(effectId: string, threadId: string, cause: unknown): EventInput {
+  const failure = readEffectFailure(cause)
+  const error = failure?.error ?? causeMessage(cause)
+  const retryAfterMs = failure?.retryAfterMs
+
+  if (failure?.nonRetryable && retryAfterMs !== undefined) {
+    return {
+      type: 'runtime.effect.failed',
+      payload: { effectId, error, nonRetryable: true, retryAfterMs },
+      threadId,
+    }
+  }
+
+  if (failure?.nonRetryable) {
+    return {
+      type: 'runtime.effect.failed',
+      payload: { effectId, error, nonRetryable: true },
+      threadId,
+    }
+  }
+
+  if (retryAfterMs !== undefined) {
+    return {
+      type: 'runtime.effect.failed',
+      payload: { effectId, error, retryAfterMs },
+      threadId,
+    }
+  }
+
+  return { type: 'runtime.effect.failed', payload: { effectId, error }, threadId }
+}
 
 export function dispatchEffect(
   registry: ComposedRegistry,
@@ -110,11 +155,7 @@ export function dispatchEffect(
 
     if (!handler) {
       return Effect.succeed([
-        {
-          type: 'runtime.effect.failed',
-          payload: { effectId: effCtx.effectId, error: `No handler for ${eff.type}` },
-          threadId: currentThreadId,
-        },
+        failedAttempt(effCtx.effectId, currentThreadId, `No handler for ${eff.type}`),
       ])
     }
 
@@ -129,18 +170,7 @@ export function dispatchEffect(
     })
 
     return execution.pipe(
-      Effect.catch((err) =>
-        Effect.succeed([
-          {
-            type: 'runtime.effect.failed',
-            payload: {
-              effectId: effCtx.effectId,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            threadId: currentThreadId,
-          },
-        ]),
-      ),
+      Effect.catch((err) => Effect.succeed([failedAttempt(effCtx.effectId, currentThreadId, err)])),
     )
   }
 

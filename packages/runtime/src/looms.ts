@@ -29,6 +29,7 @@ import {
   type RunOperationalStatus,
   type WakeScheduler,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from './runtime'
 import {
   createFetchHandler,
@@ -135,7 +136,7 @@ export interface Looms {
   cancel(runId: string, threadId?: string): Promise<RunState>
   /** Start a new run that continues where a finished run ended. */
   fork(sourceRunId: string, options?: { runId?: string }): Promise<StartResult>
-  workerCallback(runId: string, input: WorkerCallbackInput): Promise<RunState>
+  workerCallback(runId: string, input: WorkerCallbackInput): Promise<WorkerCallbackResult>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
   stop(): Promise<void>
