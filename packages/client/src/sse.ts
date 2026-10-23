@@ -58,7 +58,7 @@ export class SseStreamError extends Data.TaggedError('SseStreamError')<{
 
 export function consumeSseStreamEffect(
   body: ReadableStream<Uint8Array>,
-  onFrame: (frame: SseFrame) => void,
+  onFrame: (frame: SseFrame) => void | boolean,
 ): Effect.Effect<void, SseStreamError> {
   const decoder = new TextDecoder()
 
@@ -85,8 +85,8 @@ export function consumeSseStreamEffect(
           for (const chunk of chunks) {
             const frame = parseSseFrame(chunk)
 
-            if (frame) {
-              onFrame(frame)
+            if (frame && onFrame(frame) === false) {
+              return
             }
           }
         }

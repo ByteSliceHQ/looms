@@ -5,7 +5,9 @@ import { createActorCell, type ActorCell } from '@looms/actor'
 import {
   createRemoteRunLauncher,
   type AnyRuntimeModule,
+  type DefinitionResolver,
   type EventInput,
+  type BlobStore,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
   type RunLauncher,
@@ -13,15 +15,25 @@ import {
   type RunStatusSnapshot,
 } from '@looms/core'
 import type { Projector } from '@looms/projectors'
-import type { Authorize, StartResult, StartRunArgs } from '@looms/runtime'
+import {
+  defaultAuthorize,
+  type Authorize,
+  type StartResult,
+  type StartRunArgs,
+} from '@looms/runtime'
 
 import { durableObjectAlarms } from './alarm-scheduler'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
 import type { DurableObjectNamespaceLike } from './router'
+import { attachSocketFanout, isRunSocketUpgrade, openRunSocket } from './websocket'
 
 export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
+  /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
+  readonly definitionResolver?: DefinitionResolver
   readonly projectors?: readonly Projector[]
+  /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
+  readonly blobs?: BlobStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   readonly maxPendingRunOperations?: number
@@ -46,6 +58,7 @@ export interface LoomsDurableObjectConfig {
 export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<Env> {
   private cellPromise?: Promise<ActorCell>
   private store?: DurableObjectEventStore
+  private authorize: Authorize = defaultAuthorize
 
   abstract configure(env: Env): LoomsDurableObjectConfig | Promise<LoomsDurableObjectConfig>
 
@@ -87,15 +100,18 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       const store = durableObjectEventStore(this.ctx, {
         projectors: config.projectors,
         scheduleProjectorRetry: alarms.scheduleAtEarliest,
+        blobs: config.blobs,
       })
 
       this.store = store
+      this.authorize = config.authorize ?? defaultAuthorize
 
       const cell = createActorCell({
         runId,
-        store,
+        store: attachSocketFanout(this.ctx, store, runId),
         scheduler: alarms.scheduler,
         modules: config.modules,
+        definitionResolver: config.definitionResolver,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,
@@ -115,7 +131,43 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
   }
 
   override fetch(req: Request): Promise<Response> {
+    if (isRunSocketUpgrade(req)) {
+      return this.getCell().then(() => this.acceptRunSocket(req))
+    }
+
     return this.getCell().then((cell) => cell.fetch(req))
+  }
+
+  /** Client messages are ignored. Signals and other writes stay on HTTP. */
+  override webSocketMessage(): void {
+    // A hibernated socket stays quiet. The platform delivers this only if a client writes.
+  }
+
+  override webSocketClose(): void {
+    // The platform drops the socket. Nothing is retained for it.
+  }
+
+  override webSocketError(): void {
+    // The platform drops the socket. Nothing is retained for it.
+  }
+
+  private acceptRunSocket(req: Request): Promise<Response> {
+    const store = this.store
+    const runId = this.ctx.id.name
+
+    if (!store || !runId) {
+      return Promise.resolve(Response.json({ error: 'Run is not ready' }, { status: 500 }))
+    }
+
+    return Effect.runPromise(
+      openRunSocket({
+        ctx: this.ctx,
+        store,
+        request: req,
+        runId,
+        authorize: this.authorize,
+      }),
+    )
   }
 
   /** Commit this object's run and set its alarm. Returns before the run wakes. */
@@ -133,9 +185,20 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState> {
     return this.getCell().then((cell) => cell.signal(events, options))
+  }
+
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState> {
+    return this.getCell().then((cell) => cell.accept(events, options))
+  }
+
+  cancel(): Promise<void> {
+    return this.getCell().then((cell) => cell.cancel())
   }
 
   getRun(): Promise<RunState> {
@@ -165,8 +228,13 @@ export interface DurableObjectRunStub {
   startRun(args: StartRunArgs): Promise<StartResult>
   signal(
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Promise<RunState>
+  accept(
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Promise<RunState>
+  cancel(): Promise<void>
   getRun(): Promise<RunState>
 }
 
@@ -181,6 +249,12 @@ export function durableObjectLauncher(namespace: { getByName(name: string): obje
   return createRemoteRunLauncher({
     launch: (runId, args) => runs.getByName(runId).launch(args),
     status: (runId) => runs.getByName(runId).status(),
+    accept: (runId, events, options) =>
+      runs
+        .getByName(runId)
+        .accept(events, options)
+        .then(() => undefined),
+    cancel: (runId) => runs.getByName(runId).cancel(),
   })
 }
 

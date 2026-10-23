@@ -17,5 +17,5 @@ export function makeScheduleDefinitionStore(
   return makeDefinitionStore('schedule', definitions)
 }
 
-export const ScheduleDefinitionsLive = (definitions: ReadonlyArray<ScheduleDefinition>) =>
-  Layer.succeed(ScheduleDefinitionsTag, makeScheduleDefinitionStore(definitions))
+export const ScheduleDefinitionsLive = (definitions: ScheduleDefinitionStore) =>
+  Layer.succeed(ScheduleDefinitionsTag, definitions)

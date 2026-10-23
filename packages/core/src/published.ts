@@ -1,7 +1,8 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { JsonValueSchema } from './envelope'
 import type { RegisteredDefinition } from './module'
+import { RunAttributesSchema } from './run-context'
 import { jsonSchemaOfInput } from './schema'
 import { RunStateSchema, type RunState } from './state'
 
@@ -40,6 +41,7 @@ export const RunSummarySchema = Schema.Struct({
   status: RunStateSchema.fields.status,
   kind: Schema.NullOr(Schema.String),
   definitionName: Schema.NullOr(Schema.String),
+  attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 })
 
 export type RunSummary = Schema.Schema.Type<typeof RunSummarySchema>
@@ -50,6 +52,7 @@ export function summarizeRun(state: RunState): RunSummary {
     status: state.status,
     kind: state.startIdentity?.kind ?? null,
     definitionName: state.startIdentity?.definitionName ?? null,
+    attributes: state.attributes ?? {},
   }
 }
 

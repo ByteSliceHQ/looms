@@ -1,25 +1,55 @@
-import type { Context, ManagedRuntime } from 'effect'
-import { Effect } from 'effect'
+import type { Context, ManagedRuntime, Types } from 'effect'
+import { Effect, Predicate } from 'effect'
 
 import {
   asJson,
   isPrimitiveEffect,
   isWaitOnTimer,
+  readEffectFailure,
   type ComposedRegistry,
   type EffectContext,
+  type EffectFailedPayload,
   type EventInput,
   RunLauncherTag,
-  type RegisteredDefinition,
+  type DefinitionResolver,
   type RunLauncher,
   type RuntimeEffect,
 } from '@looms/core'
 
 import { threadStartedEvents } from './helpers'
 
+function causeMessage(cause: unknown): string {
+  if (Predicate.isString(cause)) {
+    return cause
+  }
+
+  if (cause instanceof Error) {
+    return cause.message
+  }
+
+  return String(cause)
+}
+
+function failedAttempt(effectId: string, threadId: string, cause: unknown): EventInput {
+  const failure = readEffectFailure(cause)
+  const error = failure?.error ?? causeMessage(cause)
+  const payload: Types.Mutable<EffectFailedPayload> = { effectId, error }
+
+  if (failure?.nonRetryable) {
+    payload.nonRetryable = true
+  }
+
+  if (failure?.retryAfterMs !== undefined) {
+    payload.retryAfterMs = failure.retryAfterMs
+  }
+
+  return { type: 'runtime.effect.failed', payload, threadId }
+}
+
 export function dispatchEffect(
   registry: ComposedRegistry,
   services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>,
-  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  definitions: DefinitionResolver,
   launcher: RunLauncher,
   effect: RuntimeEffect,
   ctx: EffectContext,
@@ -99,6 +129,22 @@ export function dispatchEffect(
           ])
         }
 
+        case 'runtime.launch':
+          return launcher
+            .launch({
+              runId: eff.runId,
+              kind: eff.kind,
+              definitionName: eff.definitionName,
+              definitionVersion: eff.definitionVersion,
+              input: eff.input,
+              idempotencyKey: eff.runId,
+              close: eff.close,
+            })
+            .pipe(Effect.map(() => []))
+
+        case 'runtime.cancelRun':
+          return launcher.cancel(eff.runId).pipe(Effect.map(() => []))
+
         default: {
           const exhaustiveCheck: never = eff
           return exhaustiveCheck
@@ -110,11 +156,7 @@ export function dispatchEffect(
 
     if (!handler) {
       return Effect.succeed([
-        {
-          type: 'runtime.effect.failed',
-          payload: { effectId: effCtx.effectId, error: `No handler for ${eff.type}` },
-          threadId: currentThreadId,
-        },
+        failedAttempt(effCtx.effectId, currentThreadId, `No handler for ${eff.type}`),
       ])
     }
 
@@ -129,18 +171,7 @@ export function dispatchEffect(
     })
 
     return execution.pipe(
-      Effect.catch((err) =>
-        Effect.succeed([
-          {
-            type: 'runtime.effect.failed',
-            payload: {
-              effectId: effCtx.effectId,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            threadId: currentThreadId,
-          },
-        ]),
-      ),
+      Effect.catch((err) => Effect.succeed([failedAttempt(effCtx.effectId, currentThreadId, err)])),
     )
   }
 

@@ -34,6 +34,13 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
         title: 'run launched',
         detail: `${jsonText(payload.kind) ?? 'run'}:${jsonText(payload.definitionName) ?? 'unknown'} · ${jsonText(payload.runId) ?? 'unknown'}`,
       }
+    case 'runtime.child.settled':
+      return {
+        title: 'child settled',
+        detail: `${jsonText(payload.status) ?? 'done'} · ${jsonText(payload.runId) ?? ''}`,
+      }
+    case 'runtime.child.close.requested':
+      return { title: 'child close requested', detail: jsonText(payload.policy) }
     case 'runtime.run.forked':
       return {
         title: 'run forked',

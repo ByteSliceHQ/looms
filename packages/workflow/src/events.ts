@@ -42,6 +42,12 @@ export const WorkflowSpawnRequestedPayloadSchema = Schema.Struct({
   input: Schema.Json,
   /** Set for `loop` iterations: the node re-runs after this child instead of finishing. */
   loopIndex: Schema.NullOr(Schema.Finite).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  execution: Schema.Union([Schema.Literal('thread'), Schema.Literal('run')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('thread' as const)),
+  ),
+  close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+  ),
 })
 
 export const WorkflowMapRequestedPayloadSchema = Schema.Struct({
@@ -53,6 +59,12 @@ export const WorkflowMapRequestedPayloadSchema = Schema.Struct({
   items: Schema.Array(Schema.Json),
   concurrency: Schema.Finite,
   limitBytes: Schema.Finite,
+  execution: Schema.Union([Schema.Literal('thread'), Schema.Literal('run')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('thread' as const)),
+  ),
+  close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+  ),
 })
 
 export const WorkflowSleepRequestedPayloadSchema = Schema.Struct({
