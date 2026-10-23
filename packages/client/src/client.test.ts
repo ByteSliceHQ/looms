@@ -237,7 +237,10 @@ describe('createLoomsClient', () => {
     class FakeSocket {
       static latest: FakeSocket | undefined
       readonly url: string
-      private readonly listeners = new Map<string, Array<(event: { readonly data?: unknown }) => void>>()
+      private readonly listeners = new Map<
+        string,
+        Array<(event: { readonly data?: unknown }) => void>
+      >()
 
       constructor(url: string) {
         this.url = url

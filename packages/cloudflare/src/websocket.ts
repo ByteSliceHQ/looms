@@ -117,9 +117,11 @@ export function openRunSocket(options: OpenRunSocketOptions): Effect.Effect<Resp
     const socket = wrapSocket(pair.server)
     socket.setAttachment(attachment)
 
-    const loaded = yield* loadSubscriptionOpening(options.store, options.runId, cursor.fromSeq).pipe(
-      Effect.option,
-    )
+    const loaded = yield* loadSubscriptionOpening(
+      options.store,
+      options.runId,
+      cursor.fromSeq,
+    ).pipe(Effect.option)
 
     if (Option.isNone(loaded)) {
       return Response.json({ error: 'Event log is unavailable' }, { status: 500 })
@@ -221,8 +223,7 @@ function readAttachment(ws: WebSocket): SubscriptionAttachment | undefined {
       ? value.principal
       : null
 
-  const threadId =
-    'threadId' in value && Predicate.isString(value.threadId) ? value.threadId : null
+  const threadId = 'threadId' in value && Predicate.isString(value.threadId) ? value.threadId : null
 
   const includeEphemeral = !('includeEphemeral' in value) || value.includeEphemeral !== false
 

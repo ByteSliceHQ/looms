@@ -1,5 +1,6 @@
 import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 
+import type { SubscriptionSocketConstructor } from '@looms/client'
 import {
   decodeLoomsEvent,
   readSubscriptionData,
@@ -11,7 +12,6 @@ import {
   type RegisteredEvent,
   type SubscriptionTransport,
 } from '@looms/core'
-import type { SubscriptionSocketConstructor } from '@looms/client'
 
 import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'

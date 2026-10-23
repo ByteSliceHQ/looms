@@ -79,9 +79,9 @@ describe('subscription protocol', () => {
     const batch = decodeSubscriptionFrame('{"batch":[{"type":"runtime.run.started"}]}')
     expect(batch?.type).toBe('batch')
 
-    expect(encodeSubscriptionFrame({ type: 'batch', batch: [{ type: 'runtime.run.started' }] })).toBe(
-      '{"batch":[{"type":"runtime.run.started"}]}',
-    )
+    expect(
+      encodeSubscriptionFrame({ type: 'batch', batch: [{ type: 'runtime.run.started' }] }),
+    ).toBe('{"batch":[{"type":"runtime.run.started"}]}')
 
     expect(decodeSubscriptionFrame('{"type":"resync","head":3,"reason":"trimmed"}')).toEqual({
       type: 'resync',
@@ -93,7 +93,9 @@ describe('subscription protocol', () => {
   })
 
   test('cursor and filter follow the query string', () => {
-    const url = new URL('http://looms.test/runs/run_1/events?fromSeq=4&threadId=thr_a&includeEphemeral=0')
+    const url = new URL(
+      'http://looms.test/runs/run_1/events?fromSeq=4&threadId=thr_a&includeEphemeral=0',
+    )
 
     expect(subscriptionFromSeq(url, null)).toEqual({ ok: true, fromSeq: 4 })
     expect(subscriptionFromSeq(url, '2')).toEqual({ ok: true, fromSeq: 3 })
@@ -114,11 +116,7 @@ describe('subscription protocol', () => {
     const next = openSubscription(socket, socket.attachment()!, {
       kind: 'open',
       hello: { type: 'hello', head: 1, tail: 3 },
-      events: [
-        envelope(1, 'thr_a'),
-        envelope(2, 'thr_b'),
-        envelope(3, 'thr_a', true),
-      ],
+      events: [envelope(1, 'thr_a'), envelope(2, 'thr_b'), envelope(3, 'thr_a', true)],
     })
 
     expect(socket.sent.map((line) => JSON.parse(line))).toEqual([
@@ -131,7 +129,9 @@ describe('subscription protocol', () => {
   })
 
   test('a trimmed cursor closes with resync', () => {
-    const socket = new FakeSocket(attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, 'ada'))
+    const socket = new FakeSocket(
+      attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, 'ada'),
+    )
 
     const next = openSubscription(socket, socket.attachment()!, { kind: 'resync', head: 8 })
 
@@ -147,14 +147,26 @@ describe('subscription protocol', () => {
   })
 
   test('backpressure closes the socket and a later append does not write to it', () => {
-    const slow = new FakeSocket(attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null))
+    const slow = new FakeSocket(
+      attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null),
+    )
+
     slow.bufferedAmount = 32
-    const live = new FakeSocket(attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null))
+
+    const live = new FakeSocket(
+      attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null),
+    )
 
     fanoutSubscription([slow, live], [envelope(1, 'thr_a')], { bufferLimitBytes: 8, head: 4 })
 
     expect(slow.closed?.reason).toBe('backpressure')
-    expect(JSON.parse(slow.sent[0] ?? '{}')).toMatchObject({ type: 'resync', reason: 'backpressure', head: 4 })
+
+    expect(JSON.parse(slow.sent[0] ?? '{}')).toMatchObject({
+      type: 'resync',
+      reason: 'backpressure',
+      head: 4,
+    })
+
     expect(live.closed).toBeUndefined()
     expect(live.attachment()?.cursor).toBe(1)
 
@@ -190,9 +202,18 @@ describe('subscription protocol', () => {
   })
 
   test('push does not resend a seq the attachment already passed', () => {
-    const attachment = { ...attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null), cursor: 1 }
+    const attachment = {
+      ...attachmentFromFilter({ threadId: null, includeEphemeral: true }, 1, null),
+      cursor: 1,
+    }
+
     const socket = new FakeSocket(attachment)
-    const next = pushSubscriptionEvents(socket, [envelope(1, 'thr_a'), envelope(2, 'thr_a')], attachment)
+
+    const next = pushSubscriptionEvents(
+      socket,
+      [envelope(1, 'thr_a'), envelope(2, 'thr_a')],
+      attachment,
+    )
 
     expect(socket.sent).toHaveLength(1)
     expect(next?.cursor).toBe(2)

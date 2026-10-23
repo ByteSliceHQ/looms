@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect } from 'effect'
 
-import { createEvent, makeMemoryEventStore, type EventStore, type SubscriptionAttachment } from '@looms/core'
+import {
+  createEvent,
+  makeMemoryEventStore,
+  type EventStore,
+  type SubscriptionAttachment,
+} from '@looms/core'
 
 import { attachSocketFanout, openRunSocket, type HibernatingSocketState } from './websocket'
 
@@ -62,14 +67,7 @@ async function seededStore(): Promise<EventStore> {
   const store = await Effect.runPromise(makeMemoryEventStore)
 
   await Effect.runPromise(
-    store.append(
-      'run_1',
-      [
-        threadEvent('thr_a'),
-        threadEvent('thr_b'),
-      ],
-      { expectedTail: 0 },
-    ),
+    store.append('run_1', [threadEvent('thr_a'), threadEvent('thr_b')], { expectedTail: 0 }),
   )
 
   return store

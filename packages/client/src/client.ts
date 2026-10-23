@@ -450,7 +450,9 @@ function globalWebSocket(): SubscriptionSocketConstructor | undefined {
   return globalThis.WebSocket
 }
 
-function consumeWebSocket(subscription: WebSocketSubscription): Effect.Effect<void, LoomsClientError> {
+function consumeWebSocket(
+  subscription: WebSocketSubscription,
+): Effect.Effect<void, LoomsClientError> {
   const Socket = subscription.settings.webSocket ?? globalWebSocket()
 
   if (!Socket) {

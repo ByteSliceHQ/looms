@@ -124,7 +124,7 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
                 type: 'resync',
                 head: bounds.head,
                 reason: 'trimmed',
-              }            )}\n\n`,
+              })}\n\n`,
             )
 
             close()

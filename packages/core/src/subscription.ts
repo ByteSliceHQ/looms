@@ -1,7 +1,7 @@
 import { Option, Predicate, Schema } from 'effect'
 
-import { decodeLoomsEvent, encodeLoomsEvent } from './event-codec'
 import type { EventEnvelope } from './envelope'
+import { decodeLoomsEvent, encodeLoomsEvent } from './event-codec'
 import { stringifyJson, type JsonValue } from './types'
 
 /** A socket is closed with this code when the client must resume from `head`. */
@@ -161,7 +161,9 @@ export function decodeSubscriptionFrame(data: string): SubscriptionFrame | undef
 export function subscriptionFromSeq(
   url: URL,
   lastEventId: string | null,
-): { readonly ok: true; readonly fromSeq: number } | { readonly ok: false; readonly message: string } {
+):
+  | { readonly ok: true; readonly fromSeq: number }
+  | { readonly ok: false; readonly message: string } {
   if (lastEventId !== null && lastEventId.trim() !== '') {
     const value = Number(lastEventId)
 
@@ -200,7 +202,9 @@ export function subscriptionFilter(url: URL): SubscriptionFilter {
 export function subscriptionReplay(
   head: number,
   fromSeq: number,
-): { readonly kind: 'resync'; readonly head: number } | { readonly kind: 'play'; readonly fromSeq: number } {
+):
+  | { readonly kind: 'resync'; readonly head: number }
+  | { readonly kind: 'play'; readonly fromSeq: number } {
   if (fromSeq < head) {
     return { kind: 'resync', head }
   }
