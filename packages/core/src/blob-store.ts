@@ -33,8 +33,8 @@ export type BlobStoreFailure = BlobStoreError | BlobNotFoundError
 
 /**
  * Content-addressed bytes. `put` is idempotent: the same digest stores one body.
- * `retain` and `replaceRefs` record which digests a run still needs. A body is
- * deleted only when no run's reference set mentions it. One store should have one writer.
+ * `retain` and `replaceRefs` record which digests a run still needs. A body is deleted only
+ * when no run references it. Many runs may share one store, each writing its own references.
  */
 export interface BlobStore {
   readonly put: (digest: string, body: Uint8Array) => Effect.Effect<void, BlobStoreError>
@@ -58,8 +58,11 @@ export interface BlobBytes {
   readonly read: (key: string) => Effect.Effect<Uint8Array | null, BlobStoreError>
   readonly write: (key: string, body: Uint8Array) => Effect.Effect<void, BlobStoreError>
   readonly remove: (key: string) => Effect.Effect<void, BlobStoreError>
+  readonly exists: (key: string) => Effect.Effect<boolean, BlobStoreError>
   readonly list: (prefix: string) => Effect.Effect<ReadonlyArray<string>, BlobStoreError>
 }
+
+const EMPTY = new Uint8Array(0)
 
 export function memoryBlobStore(): BlobStore {
   return blobStoreFromBytes(memoryBlobBytes())
@@ -105,43 +108,90 @@ export function blobStoreFromBytes(bytes: BlobBytes): BlobStore {
         return body
       }),
 
+    // Markers go down before the existence check, and `collect` lists markers again after
+    // deleting. Whichever side runs second sees the other, so a referenced body is never lost:
+    // either `collect` restores it or this append fails and its retry uploads the body again.
     retain: (runId, digests) =>
       Effect.gen(function* () {
-        const current = yield* readRunDigests(bytes, runId)
-        const next = new Set(current)
+        const current = new Set(yield* readRunDigests(bytes, runId))
+        const added = [...new Set(digests)].filter((digest) => !current.has(digest))
 
-        for (const digest of digests) {
-          next.add(digest)
+        if (added.length === 0) {
+          return yield* Effect.void
         }
 
-        if (next.size === current.length) {
-          return
+        yield* Effect.forEach(added, assertDigest, { discard: true })
+
+        yield* Effect.forEach(added, (digest) => bytes.write(refKey(digest, runId), EMPTY), {
+          concurrency: REF_CONCURRENCY,
+          discard: true,
+        })
+
+        yield* writeRunDigests(bytes, runId, [...current, ...added])
+
+        const present = yield* Effect.forEach(added, (digest) => bytes.exists(objectKey(digest)), {
+          concurrency: REF_CONCURRENCY,
+        })
+
+        const missing = added.filter((_, index) => !present[index])
+
+        if (missing.length > 0) {
+          return yield* new BlobStoreError(
+            `blobs ${missing.join(', ')} were deleted before run ${runId} referenced them; retry the append`,
+          )
         }
 
-        yield* writeRunDigests(bytes, runId, [...next])
+        return yield* Effect.void
       }),
 
     replaceRefs: (runId, keep) =>
       Effect.gen(function* () {
         const previous = yield* readRunDigests(bytes, runId)
-
-        yield* writeRunDigests(bytes, runId, [...keep])
-
         const dropped = previous.filter((digest) => !keep.has(digest))
 
         if (dropped.length === 0) {
           return
         }
 
-        const referenced = yield* referencedDigests(bytes)
+        yield* Effect.forEach(
+          dropped,
+          (digest) =>
+            bytes.remove(refKey(digest, runId)).pipe(Effect.andThen(collect(bytes, digest))),
+          { concurrency: REF_CONCURRENCY, discard: true },
+        )
 
-        for (const digest of dropped) {
-          if (!referenced.has(digest)) {
-            yield* bytes.remove(objectKey(digest))
-          }
-        }
+        yield* writeRunDigests(
+          bytes,
+          runId,
+          previous.filter((digest) => keep.has(digest)),
+        )
       }),
   }
+}
+
+const REF_CONCURRENCY = 8
+
+/** Deletes a body no run references, and puts it back if a run referenced it meanwhile. */
+function collect(bytes: BlobBytes, digest: string): Effect.Effect<void, BlobStoreError> {
+  const referenced = bytes.list(refPrefix(digest)).pipe(Effect.map((keys) => keys.length > 0))
+
+  return Effect.gen(function* () {
+    if (yield* referenced) {
+      return
+    }
+
+    const body = yield* bytes.read(objectKey(digest))
+
+    if (!body) {
+      return
+    }
+
+    yield* bytes.remove(objectKey(digest))
+
+    if (yield* referenced) {
+      yield* bytes.write(objectKey(digest), body)
+    }
+  })
 }
 
 function memoryBlobBytes(): BlobBytes {
@@ -165,6 +215,8 @@ function memoryBlobBytes(): BlobBytes {
         objects.delete(key)
       }),
 
+    exists: (key) => Effect.sync(() => objects.has(key)),
+
     list: (prefix) =>
       Effect.sync(() => [...objects.keys()].filter((key) => key.startsWith(prefix))),
   }
@@ -176,6 +228,14 @@ function objectKey(digest: string): string {
 
 function runKey(runId: string): string {
   return `runs/${encodeURIComponent(runId)}`
+}
+
+function refPrefix(digest: string): string {
+  return `refs/${digest}/`
+}
+
+function refKey(digest: string, runId: string): string {
+  return `${refPrefix(digest)}${encodeURIComponent(runId)}`
 }
 
 function assertDigest(digest: string): Effect.Effect<void, BlobStoreError> {
@@ -231,37 +291,4 @@ function writeRunDigests(
   digests: ReadonlyArray<string>,
 ): Effect.Effect<void, BlobStoreError> {
   return bytes.write(runKey(runId), new TextEncoder().encode(JSON.stringify(digests)))
-}
-
-function referencedDigests(bytes: BlobBytes): Effect.Effect<ReadonlySet<string>, BlobStoreError> {
-  return bytes.list('runs/').pipe(
-    Effect.flatMap((keys) =>
-      Effect.forEach(keys, (key) =>
-        bytes.read(key).pipe(
-          Effect.flatMap((body) => {
-            if (!body) {
-              return Effect.succeed([])
-            }
-
-            return decodeDigestList(new TextDecoder().decode(body)).pipe(
-              Effect.mapError(
-                (cause) => new BlobStoreError('blob references are unreadable', cause),
-              ),
-            )
-          }),
-        ),
-      ),
-    ),
-    Effect.map((lists) => {
-      const digests = new Set<string>()
-
-      for (const list of lists) {
-        for (const digest of list) {
-          digests.add(digest)
-        }
-      }
-
-      return digests
-    }),
-  )
 }

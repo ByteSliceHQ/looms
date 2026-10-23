@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 
 import { Data, Effect, Predicate } from 'effect'
 
@@ -8,7 +8,7 @@ class MissingBlobFile extends Data.TaggedError('MissingBlobFile') {}
 
 /**
  * Content-addressed blob store rooted at `directory`. For Bun and Node hosts.
- * A Durable Object should use `r2BlobStore` instead. One directory should have one writer.
+ * A Durable Object should use `r2BlobStore` instead.
  */
 export function filesystemBlobStore(directory: string): BlobStore {
   return blobStoreFromBytes(filesystemBlobBytes(directory))
@@ -37,6 +37,18 @@ function filesystemBlobBytes(directory: string): BlobBytes {
         try: () => rm(`${directory}/${key}`, { force: true }),
         catch: (cause) => new BlobStoreError(`Unable to delete blob key ${key}`, cause),
       }),
+
+    exists: (key) =>
+      Effect.tryPromise({
+        try: () => stat(`${directory}/${key}`),
+        catch: (cause): BlobStoreError | MissingBlobFile =>
+          isMissingFile(cause)
+            ? new MissingBlobFile()
+            : new BlobStoreError(`Unable to check blob key ${key}`, cause),
+      }).pipe(
+        Effect.as(true),
+        Effect.catchTag('MissingBlobFile', () => Effect.succeed(false)),
+      ),
 
     list: (prefix) => listFolder(directory, prefix),
   }

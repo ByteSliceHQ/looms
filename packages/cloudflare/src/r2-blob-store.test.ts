@@ -32,6 +32,8 @@ function fakeBucket(): R2BucketLike & { readonly keys: () => string[] } {
       })
     },
 
+    head: (key) => Promise.resolve(objects.has(key) ? { key } : null),
+
     delete: (key) => {
       objects.delete(key)
       return Promise.resolve(undefined)
@@ -78,6 +80,9 @@ describe('r2BlobStore', () => {
     const resolved = await Effect.runPromise(resolveJson(stored, blobs))
 
     expect(resolved).toEqual(value)
-    expect(bucket.keys().length).toBeGreaterThan(1)
+
+    await Effect.runPromise(blobs.replaceRefs('run-b', new Set()))
+
+    expect(bucket.keys().filter((key) => key.includes(text.sha256))).toEqual([])
   })
 })

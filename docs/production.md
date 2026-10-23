@@ -32,8 +32,10 @@ are still rejected.
 
 `memoryBlobStore` is the in-memory implementation. `filesystemBlobStore(directory)`
 is the Bun and Node implementation. `r2BlobStore(bucket)` writes an R2 bucket
-under `looms/blobs/`. One blob store should have one writer. Two Durable Objects
-sharing a bucket can delete a hash the other still references.
+under `looms/blobs/`. Every run's Durable Object can share one bucket. Each run
+writes a marker per body it references, so trimming one run checks only that
+body's markers, never other runs' logs. If a body is deleted while another run
+is referencing it, that run's append fails and its retry uploads the body again.
 
 ## Worker effect protocol
 

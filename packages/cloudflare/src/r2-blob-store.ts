@@ -24,14 +24,15 @@ export interface R2StoredObject {
 export interface R2BucketLike {
   put(key: string, value: Uint8Array): Promise<R2StoredObject>
   get(key: string): Promise<R2ObjectBodyLike | null>
+  head(key: string): Promise<R2StoredObject | null>
   delete(key: string): Promise<void>
   list(options?: { prefix?: string; cursor?: string }): Promise<R2ListResult>
 }
 
 /**
- * Content-addressed blob store in R2 under `looms/blobs/`.
- * Reference counting is local to this bucket. Give one store one writer: two Durable
- * Objects deleting the same hash at the same time can remove a body the other still needs.
+ * Content-addressed blob store in R2 under `looms/blobs/`. Every run's Durable Object can
+ * share one bucket: each run writes its own reference markers, and a body is deleted only
+ * after no marker for it remains.
  */
 export function r2BlobStore(bucket: R2BucketLike): BlobStore {
   return blobStoreFromBytes(r2BlobBytes(bucket))
@@ -69,6 +70,12 @@ function r2BlobBytes(bucket: R2BucketLike): BlobBytes {
         try: () => bucket.delete(keyFor(key)),
         catch: (cause) => new BlobStoreError(`Unable to delete blob key ${key}`, cause),
       }).pipe(Effect.asVoid),
+
+    exists: (key) =>
+      Effect.tryPromise({
+        try: () => bucket.head(keyFor(key)),
+        catch: (cause) => new BlobStoreError(`Unable to check blob key ${key}`, cause),
+      }).pipe(Effect.map((object) => object !== null)),
 
     list: (prefix) => listPrefixed(bucket, `${PREFIX}${prefix}`),
   }
