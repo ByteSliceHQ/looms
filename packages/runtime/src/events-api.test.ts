@@ -61,10 +61,11 @@ describe('GET /runs/:id/events', () => {
     expect(res).not.toBeNull()
     expect(res!.headers.get('content-type')).toBe('text/event-stream')
     expect(res!.headers.get('cache-control')).toBe('no-cache, no-transform')
-    const frames = await readSseFrames(res!, 3)
-    expect(frames.length).toBeGreaterThanOrEqual(1)
-    expect(frames[0]).toContain('id: 1')
-    expect(frames[0]).toContain('data: ')
+    const frames = await readSseFrames(res!, 4)
+    const firstEvent = frames.find((frame) => frame.includes('id: 1'))
+    expect(firstEvent).toBeDefined()
+    expect(firstEvent).toContain('data: ')
+    expect(frames[0]).toContain('"type":"hello"')
   })
 
   test('Last-Event-ID skips already-seen events', async () => {
@@ -90,9 +91,11 @@ describe('GET /runs/:id/events', () => {
     )
 
     expect(res).not.toBeNull()
-    const frames = await readSseFrames(res!, 1)
-    expect(frames[0]).toContain('id: 2')
-    expect(frames[0]).not.toContain('id: 1\n')
+    const frames = await readSseFrames(res!, 2)
+    const resumed = frames.find((frame) => frame.includes('id: 2'))
+    expect(resumed).toBeDefined()
+    expect(resumed).not.toContain('id: 1\n')
+    expect(frames.some((frame) => frame.includes('id: 1\n'))).toBe(false)
   })
 
   test('non-live pull returns the event resource', async () => {

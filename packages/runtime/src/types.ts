@@ -3,9 +3,14 @@ import type { Effect } from 'effect'
 import type {
   AnyRuntimeModule,
   ComposedRegistry,
+  DefinitionResolver,
   EventEnvelope,
   EventInput,
+  WorkerCallback,
   WorkerCallbackInput,
+  DefinitionResolveError,
+  WorkerCallbackResult,
+  WorkerSecretsResult,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -14,6 +19,9 @@ import type {
   EventStoreTrimCoverage,
   RunLauncher,
   RunLaunchSource,
+  RunAttributes,
+  SecretContext,
+  TraceContext,
   EventStoreTruncationError,
   JsonValue,
   ProjectionDefinition,
@@ -42,6 +50,12 @@ export interface CreateRuntimeOptions<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   readonly modules: TModules
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. Lookups are cached, including misses. Start fails with `UnknownDefinitionError`
+   * and writes no events when the definition is missing.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore
   /**
    * Durable events between mid-wake snapshots. Default 200; `0` disables.
@@ -50,6 +64,8 @@ export interface CreateRuntimeOptions<
    */
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  /** Maximum concurrent in-flight worker effects dispatched per run (fairness guard). */
+  readonly maxInFlightWorkerEffects?: number
   /** Maximum active and queued mutation operations per run. Default 256. */
   readonly maxPendingRunOperations?: number
   /** Defaults to the EventStore's attached store or an in-memory SnapshotStore. */
@@ -92,6 +108,25 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  /** Progress from the previous attempt's last heartbeat, when it reported any. */
+  readonly details?: JsonValue
+  /** The run's W3C trace context, for parenting the worker's spans. */
+  readonly trace?: TraceContext
+  /** The attempt's deadlines from the effect's retry policy, when it sets any. */
+  readonly deadlines?: EffectWorkerDeadlines
+  /**
+   * Present only on the in-memory dispatch. A transport that persists the task must leave this out
+   * and let the worker read the secret context through an authenticated callback.
+   */
+  readonly secrets?: SecretContext
+}
+
+/** Looms enforces these; a worker can use them to pace heartbeats or give up early. */
+export interface EffectWorkerDeadlines {
+  /** Epoch ms. A `started` callback after this is stale. */
+  readonly scheduleToStartAt?: number
+  readonly startToCloseTimeoutMs?: number
+  readonly heartbeatTimeoutMs?: number
 }
 
 export interface EffectWorker {
@@ -101,6 +136,14 @@ export interface EffectWorker {
   readonly canDispatch?: (task: EffectWorkerTask) => boolean
   dispatch(task: EffectWorkerTask): void | Promise<void>
   cancel?(task: EffectWorkerTask): void | Promise<void>
+  /**
+   * What a rejected `dispatch` means. With `'unacknowledged'` (the default) the task may still have
+   * arrived, so the attempt waits for its schedule-to-start timeout or an operator. With
+   * `'acknowledged'` a rejection means the transport refused it, so the attempt fails under the
+   * retry policy. A transport can still lose an accepted message, so every effect such a worker
+   * claims must set `retry.scheduleToStartTimeoutMs`.
+   */
+  readonly dispatchSemantics?: 'unacknowledged' | 'acknowledged'
 }
 
 export interface StartRunArgs {
@@ -115,6 +158,18 @@ export interface StartRunArgs {
   launchedBy?: RunLaunchSource
   /** Recorded on `runtime.run.started` to group related runs. */
   correlationId?: string
+  /** Immutable labels stored on the start event and the run summary. */
+  attributes?: RunAttributes
+  /**
+   * Bearer material stored beside the log. A retry that sends a different context conflicts.
+   * Omitting it on a retry keeps the context already stored.
+   */
+  secrets?: SecretContext
+  /**
+   * The caller's W3C trace context, recorded on `runtime.run.started` when it is a valid version-00
+   * `traceparent`. It is not part of the start identity, so a retry from another trace is not a conflict.
+   */
+  trace?: TraceContext
 }
 
 export interface StartResult {
@@ -157,14 +212,23 @@ export interface LoomsRuntime<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; coalesce?: boolean },
+  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  /**
+   * Append events the runtime itself produced for another run. Unlike `signal`, this does not
+   * reject reserved runtime event types or rewrite their origin.
+   */
+  accept(
+    runId: string,
+    events: ReadonlyArray<EventInput>,
+    options?: { idempotencyKey?: string; coalesce?: boolean },
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   wake(runId: string): Effect.Effect<RunState, WakeError, EventStoreTag>
   getRun(
     runId: string,
   ): Effect.Effect<
     RunState,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   getEvents(
@@ -183,7 +247,7 @@ export interface LoomsRuntime<
     runId: string,
   ): Effect.Effect<
     RunOperationalStatus,
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError,
+    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | DefinitionResolveError,
     EventStoreTag
   >
   retryEffect(
@@ -203,27 +267,50 @@ export interface LoomsRuntime<
     sourceRunId: string,
     options?: { runId?: string },
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
+  /**
+   * Applies a worker's report about one effect attempt. A report for another attempt, or one that
+   * arrives after the attempt settled, is `stale` and changes nothing.
+   */
   workerCallback(
     runId: string,
     input: WorkerCallbackInput,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  ): Effect.Effect<
+    WorkerCallbackResult,
+    Error | EventStoreAppendError | EventStoreError,
+    EventStoreTag
+  >
+  /**
+   * The run's secret context for a worker attempt that has started and not settled. Any other
+   * attempt is `stale`, so a redelivered or superseded message never sees the secrets.
+   */
+  workerSecrets(
+    runId: string,
+    callback: WorkerCallback,
+  ): Effect.Effect<
+    WorkerSecretsResult,
+    Error | EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTag
+  >
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
   /** Indexed run rows. Folds a run only when its header has not been written yet. */
   readonly listRunSummaries: Effect.Effect<
     readonly RunSummary[],
-    EventStoreError | EventStoreTrimmedError | EventStoreTruncationError | SnapshotStoreError,
+    | EventStoreError
+    | EventStoreTrimmedError
+    | EventStoreTruncationError
+    | SnapshotStoreError
+    | DefinitionResolveError,
     EventStoreTag
   >
   readonly rescanTimers: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   /** Reschedule every durable timer and effect deadline after restart or repair. */
   readonly recoverDeadlines: Effect.Effect<
     number,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError,
+    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError,
     EventStoreTag
   >
   readonly dispose: Effect.Effect<void>

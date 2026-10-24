@@ -1,9 +1,11 @@
 export { createFetchHandler, handlesPath, type FetchHandlerOptions } from './server/fetch-handler'
 export { isLoomsApiPath } from './server/http'
 export { mountDebugger, type DebuggerMount } from './server/debugger-host'
+export { runRouteInfo } from './server/run-route'
 export {
   authAllowed,
   authDenied,
+  authResponse,
   bearerAuth,
   defaultAuthorize,
   type AuthDecision,
@@ -13,6 +15,17 @@ export {
   type RouteAccess,
   type RouteInfo,
 } from './server/auth'
+export {
+  grantAuth,
+  issueRunGrant,
+  grantSubprotocol,
+  runGrantToken,
+  verifyRunGrant,
+  GrantError,
+  type GrantAuthOptions,
+  type GrantFailure,
+  type RunGrant,
+} from './server/grant'
 
 export interface RunningServer {
   port: number

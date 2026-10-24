@@ -1,19 +1,22 @@
 import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 
+import type { SubscriptionSocketConstructor } from '@looms/client'
 import {
   decodeLoomsEvent,
+  readSubscriptionData,
   stringifyJson,
   type AnyEventEnvelope,
   type EventEnvelope,
   type EventInput,
   type ProjectionDefinition,
   type RegisteredEvent,
+  type SubscriptionTransport,
 } from '@looms/core'
 
 import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'
 import { createNotifyScheduler, type CoalesceOption } from './notify'
-import { consumeSseStreamEffect, eventsFromSseData } from './sse'
+import { consumeSseStreamEffect } from './sse'
 import { emptyTables, type MaterializedTables } from './tables'
 
 export type { CoalesceOption } from './notify'
@@ -41,10 +44,18 @@ export interface LoomsClientStoreOptions {
    * Opens `${endpoint}/runs/:id/events?live=true` as an SSE stream.
    */
   endpoint: string
-  /** Backoff between SSE reconnects. */
+  /** Backoff between reconnects. The delay stays fixed, matching the SSE client. */
   reconnectDelayMs?: number
   fetch?: typeof fetch
   coalesce?: CoalesceOption
+  /**
+   * `undefined` keeps the current SSE path. `websocket` and `auto` use a hibernating
+   * socket when a constructor is available.
+   */
+  transport?: SubscriptionTransport
+  threadId?: string
+  includeEphemeral?: boolean
+  webSocket?: SubscriptionSocketConstructor
 }
 
 export interface LoomsStoreQuery<TEvent extends AnyEventEnvelope = RegisteredEvent> {
@@ -72,6 +83,24 @@ export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEv
   commit: (event: EventInput | readonly EventInput[]) => Promise<void>
   sync: () => Promise<void>
   dispose: () => void
+}
+
+function socketConstructor(
+  options: LoomsClientStoreOptions,
+): SubscriptionSocketConstructor | undefined {
+  if (options.transport !== 'websocket' && options.transport !== 'auto') {
+    return undefined
+  }
+
+  if (options.webSocket) {
+    return options.webSocket
+  }
+
+  if (!('WebSocket' in globalThis) || !Predicate.isFunction(globalThis.WebSocket)) {
+    return undefined
+  }
+
+  return globalThis.WebSocket
 }
 
 function eventSourceCtor(): typeof EventSource | undefined {
@@ -108,6 +137,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let liveStarted = false
   let liveAbort: AbortController | undefined
   let eventSource: EventSource | undefined
+  let socket: { close(code?: number, reason?: string): void } | undefined
   let reconnectFiber: Fiber.Fiber<void> | undefined
   let syncing: Promise<void> | null = null
 
@@ -169,12 +199,39 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     notify.schedule()
   }
 
-  const applyEncoded = (data: string) => {
-    applyBatch(eventsFromSseData(data, options.storeId))
+  const applyLiveData = (data: string): 'continue' | 'resync' => {
+    const read = readSubscriptionData(data, options.storeId)
+
+    switch (read.kind) {
+      case 'events':
+        applyBatch(read.events.slice())
+        return 'continue'
+      case 'resync':
+        fromSeq = read.head
+        return 'resync'
+      case 'hello':
+      case 'ignore':
+        return 'continue'
+
+      default: {
+        const unexpected: never = read
+        return unexpected
+      }
+    }
   }
 
   const liveUrl = () => {
-    return `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?live=true&fromSeq=${fromSeq}`
+    const params = new URLSearchParams({ live: 'true', fromSeq: String(fromSeq) })
+
+    if (options.threadId) {
+      params.set('threadId', options.threadId)
+    }
+
+    if (options.includeEphemeral === false) {
+      params.set('includeEphemeral', 'false')
+    }
+
+    return `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?${params.toString()}`
   }
 
   const pull = Effect.gen(function* () {
@@ -238,7 +295,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     return syncing
   }
 
-  const scheduleReconnect = (Ctor: typeof EventSource) => {
+  const scheduleReconnect = (start: () => void) => {
     if (disposed || !liveStarted || reconnectFiber !== undefined) {
       return
     }
@@ -258,7 +315,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         }).pipe(Effect.ignore)
 
         if (!disposed && liveStarted) {
-          startEventSource(Ctor)
+          start()
         }
       }),
     )
@@ -278,7 +335,19 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     })
 
     es.addEventListener('message', (msg) => {
-      applyEncoded(msg.data)
+      if (applyLiveData(msg.data) === 'resync') {
+        es.close()
+
+        if (eventSource === es) {
+          eventSource = undefined
+        }
+
+        setStatus('reconnecting')
+
+        scheduleReconnect(() => {
+          startEventSource(Ctor)
+        })
+      }
     })
 
     es.addEventListener('error', () => {
@@ -295,7 +364,9 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
           eventSource = undefined
         }
 
-        scheduleReconnect(Ctor)
+        scheduleReconnect(() => {
+          startEventSource(Ctor)
+        })
       } else if (!live) {
         setStatus('reconnecting')
       }
@@ -336,9 +407,9 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
           live = true
           setStatus('live')
 
-          return yield* consumeSseStreamEffect(body, (frame) => {
-            applyEncoded(frame.data)
-          })
+          return yield* consumeSseStreamEffect(body, (frame) =>
+            applyLiveData(frame.data) === 'resync' ? false : undefined,
+          )
         }).pipe(
           Effect.catch(() =>
             Effect.sync(() => {
@@ -362,6 +433,57 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     void Effect.runPromise(run, { signal: controller.signal }).catch(() => undefined)
   }
 
+  const startWebSocket = (Ctor: SubscriptionSocketConstructor) => {
+    if (disposed || !liveStarted) {
+      return
+    }
+
+    let url: string
+
+    try {
+      const http = new URL(liveUrl())
+      http.protocol = http.protocol === 'https:' ? 'wss:' : 'ws:'
+      url = http.toString()
+    } catch {
+      startFetchStream()
+      return
+    }
+
+    const ws = new Ctor(url)
+    socket = ws
+
+    ws.addEventListener('open', () => {
+      live = true
+      setStatus('live')
+    })
+
+    ws.addEventListener('message', (event) => {
+      if (!Predicate.isString(event.data)) {
+        return
+      }
+
+      if (applyLiveData(event.data) === 'resync') {
+        ws.close()
+      }
+    })
+
+    ws.addEventListener('close', () => {
+      live = false
+
+      if (socket === ws) {
+        socket = undefined
+      }
+
+      if (!disposed && liveStarted) {
+        setStatus('reconnecting')
+
+        scheduleReconnect(() => {
+          startWebSocket(Ctor)
+        })
+      }
+    })
+  }
+
   const startLive = () => {
     if (!options.storeId || (liveStarted && !disposed)) {
       return
@@ -369,6 +491,13 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
     liveStarted = true
     disposed = false
+    const socketCtor = socketConstructor(options)
+
+    if (socketCtor) {
+      startWebSocket(socketCtor)
+      return
+    }
+
     const ctor = options.fetch === undefined ? eventSourceCtor() : undefined
 
     if (ctor) {
@@ -389,6 +518,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
     eventSource?.close()
     eventSource = undefined
+    socket?.close()
+    socket = undefined
     liveAbort?.abort()
     liveAbort = undefined
   }

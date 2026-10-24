@@ -2,7 +2,7 @@
   "name": "@looms/testing",
   "version": "0.0.1",
   "private": true,
-  "description": "Test helpers and module conformance for Looms",
+  "description": "Test helpers, module conformance, and upgrade-safety replay corpus for Looms",
   "license": "Apache-2.0",
   "files": [
     "dist",
@@ -21,7 +21,8 @@
   "scripts": {
     "build": "bun x tsc -p tsconfig.build.json",
     "check-types": "bun x tsc -p tsconfig.build.json --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "record-corpus": "bun scripts/record-corpus.ts"
   },
   "dependencies": {
     "@looms/core": "workspace:*",

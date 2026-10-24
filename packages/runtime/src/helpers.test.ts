@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { DEFAULT_DEFINITION_VERSION, definitionKey } from '@looms/core'
+import { DEFAULT_DEFINITION_VERSION, staticDefinitionResolver } from '@looms/core'
 
 import { threadStartedEvents } from './helpers'
 
@@ -15,12 +15,8 @@ describe('threadStartedEvents', () => {
       value: { kind: 'workflow', name: 'checkout', version: DEFAULT_DEFINITION_VERSION },
     }
 
-    const definitions = new Map([
-      [definitionKey('workflow', 'checkout', DEFAULT_DEFINITION_VERSION), def],
-    ])
-
     const events = await Effect.runPromise(
-      threadStartedEvents(definitions, {
+      threadStartedEvents(staticDefinitionResolver([def]), {
         kind: 'workflow',
         definitionName: 'checkout',
         definitionVersion: DEFAULT_DEFINITION_VERSION,
@@ -43,12 +39,10 @@ describe('threadStartedEvents', () => {
     })
   })
 
-  test('rejects unknown definitions with explicit error', async () => {
-    const definitions = new Map()
-
+  test('rejects unknown definitions with explicit error', () => {
     expect(
       Effect.runPromise(
-        threadStartedEvents(definitions, {
+        threadStartedEvents(staticDefinitionResolver([]), {
           kind: 'workflow',
           definitionName: 'checkout',
           definitionVersion: DEFAULT_DEFINITION_VERSION,
@@ -69,12 +63,8 @@ describe('threadStartedEvents', () => {
       value: { kind: 'workflow', name: 'checkout', version: DEFAULT_DEFINITION_VERSION },
     }
 
-    const definitions = new Map([
-      [definitionKey('workflow', 'checkout', DEFAULT_DEFINITION_VERSION), def],
-    ])
-
     const events = await Effect.runPromise(
-      threadStartedEvents(definitions, {
+      threadStartedEvents(staticDefinitionResolver([def]), {
         kind: 'workflow',
         definitionName: 'checkout',
         definitionVersion: DEFAULT_DEFINITION_VERSION,

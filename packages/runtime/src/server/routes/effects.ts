@@ -1,6 +1,11 @@
 import { Effect, Schema } from 'effect'
 
-import type { WorkerCallbackInput, WorkerCallbackKind } from '@looms/core'
+import {
+  JsonValueSchema,
+  type JsonValue,
+  type WorkerCallbackInput,
+  type WorkerCallbackKind,
+} from '@looms/core'
 
 import { EventInputBodySchema, provideStore, readJson, type RouteOptions } from '../http'
 import { integer, oneOf, route, type Route } from '../route-table'
@@ -13,9 +18,28 @@ const WORKER_CALLBACK_KINDS = [
   'cancelled',
 ] as const satisfies readonly WorkerCallbackKind[]
 
+interface FailWorkerCallback {
+  effectId: string
+  attempt: number
+  kind: 'fail'
+  error: string
+  nonRetryable?: boolean
+  retryAfterMs?: number
+}
+
+interface HeartbeatWorkerCallback {
+  effectId: string
+  attempt: number
+  kind: 'heartbeat'
+  details?: JsonValue
+}
+
 const WorkerCallbackBodySchema = Schema.Struct({
   events: Schema.optional(Schema.Array(EventInputBodySchema)),
   error: Schema.optional(Schema.String),
+  nonRetryable: Schema.optional(Schema.Boolean),
+  retryAfterMs: Schema.optional(Schema.Finite),
+  details: Schema.optional(JsonValueSchema),
 })
 
 function workerCallbackInput(
@@ -31,10 +55,47 @@ function workerCallbackInput(
   switch (params.action) {
     case 'complete':
       return { ...callback, kind: 'complete', events: body.events ?? [] }
-    case 'fail':
-      return body.error ? { ...callback, kind: 'fail', error: body.error } : null
-    default:
+
+    case 'fail': {
+      if (body.error === undefined) {
+        return null
+      }
+
+      const failure: FailWorkerCallback = {
+        ...callback,
+        kind: 'fail',
+        error: body.error,
+      }
+
+      if (body.nonRetryable !== undefined) {
+        failure.nonRetryable = body.nonRetryable
+      }
+
+      if (body.retryAfterMs !== undefined) {
+        failure.retryAfterMs = body.retryAfterMs
+      }
+
+      return failure
+    }
+
+    case 'heartbeat': {
+      const heartbeat: HeartbeatWorkerCallback = { ...callback, kind: 'heartbeat' }
+
+      if (body.details !== undefined) {
+        heartbeat.details = body.details
+      }
+
+      return heartbeat
+    }
+
+    case 'started':
+    case 'cancelled':
       return { ...callback, kind: params.action }
+
+    default: {
+      const exhaustive: never = params.action
+      return exhaustive
+    }
   }
 }
 
@@ -64,6 +125,25 @@ export function effectRoutes({ runtime, store }: RouteOptions): readonly Route[]
     }),
     route({
       method: 'POST',
+      path: '/runs/:runId/effects/:effectId/:attempt/secrets',
+      name: 'effects.workerSecrets',
+      access: 'worker',
+      params: { attempt: integer },
+      handle: ({ params }) =>
+        provideStore(
+          runtime.workerSecrets(params.runId, {
+            effectId: params.effectId,
+            attempt: params.attempt,
+          }),
+          store,
+        ).pipe(
+          Effect.map((result) =>
+            Response.json(result, { headers: { 'cache-control': 'no-store' } }),
+          ),
+        ),
+    }),
+    route({
+      method: 'POST',
       path: '/runs/:runId/effects/:effectId/:attempt/:action',
       name: 'effects.workerCallback',
       access: 'worker',
@@ -80,8 +160,8 @@ export function effectRoutes({ runtime, store }: RouteOptions): readonly Route[]
             return Response.json({ error: 'error required' }, { status: 400 })
           }
 
-          const state = yield* provideStore(runtime.workerCallback(params.runId, input), store)
-          return Response.json({ runId: params.runId, state })
+          const result = yield* provideStore(runtime.workerCallback(params.runId, input), store)
+          return Response.json(result)
         }),
     }),
   ]
