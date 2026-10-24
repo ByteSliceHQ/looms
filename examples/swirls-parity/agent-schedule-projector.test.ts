@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 import { z } from 'zod'
 
 import {
@@ -31,7 +31,7 @@ describe('swirls-parity agent, schedule, and projector', () => {
     const structured = defineAgent({
       name: 'parity-structured',
       instructions: 'Return structured output.',
-      output: Schema.Struct({ answer: Schema.String, confidence: Schema.Number }),
+      output: Schema.Struct({ answer: Schema.String, confidence: Schema.Finite }),
       runTurn: ({ turn }) => {
         if (turn === 1) {
           return {
@@ -75,6 +75,7 @@ describe('swirls-parity agent, schedule, and projector', () => {
       },
       runTurn: async ({ input }) => {
         turnsStarted += 1
+
         // Force one overflow recovery mid-suite so compaction is exercised.
         if (turnsStarted === 20 && compacted === 0) {
           throw new Error('context_length_exceeded: prompt is too long')
@@ -119,8 +120,10 @@ describe('swirls-parity agent, schedule, and projector', () => {
 
       await looms.signal(runId, batch)
       const target = Math.min(offset + batch.length, turns)
+
       await waitFor(async () => {
         const events = await looms.getEvents(runId)
+
         return events.filter((event) => event.type === 'agent.session.turn.closed').length >= target
       }, 60_000)
     }
@@ -144,7 +147,7 @@ describe('swirls-parity agent, schedule, and projector', () => {
     const childThreadId = (await looms.getEvents(runId))
       .filter((event) => event.type === 'runtime.thread.started')
       .map((event) => event.threadId)
-      .filter((id): id is string => typeof id === 'string' && id !== threadId)
+      .filter((id): id is string => Predicate.isString(id) && id !== threadId)
       .at(-1)
 
     await looms.signal(runId, [stopAgentTurn({ threadId: childThreadId ?? threadId })])
@@ -206,6 +209,7 @@ describe('swirls-parity agent, schedule, and projector', () => {
       runId: 'parity_log_a',
       attributes: { tenant: 'a' },
     })
+
     const second = await looms.start(unit, null, {
       runId: 'parity_log_b',
       attributes: { tenant: 'b' },
@@ -222,9 +226,11 @@ describe('swirls-parity agent, schedule, and projector', () => {
     expect(rebuilt.events(first.runId).map((entry) => entry.seq)).toEqual(
       live.events(first.runId).map((entry) => entry.seq),
     )
+
     expect(rebuilt.events(second.runId).map((entry) => entry.seq)).toEqual(
       live.events(second.runId).map((entry) => entry.seq),
     )
+
     expect(rebuilt.run(first.runId)).toMatchObject(live.run(first.runId) ?? {})
     expect(rebuilt.run(second.runId)).toMatchObject(live.run(second.runId) ?? {})
 

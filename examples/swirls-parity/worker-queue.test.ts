@@ -85,7 +85,7 @@ function callbacksFor(looms: Looms) {
     async (input: RequestInfo | URL, init?: RequestInit) =>
       (await looms.fetch(new Request(input, init))) ?? new Response(null, { status: 404 }),
     { preconnect: () => undefined },
-  ) as typeof fetch
+  )
 
   return createLoomsClient({
     baseUrl: 'http://looms.test',
@@ -151,6 +151,7 @@ describe('swirls-parity workers and queues', () => {
               send: async (message, options) => {
                 sends += 1
                 await queue.send(message, options)
+
                 // Duplicate delivery of the first attempt.
                 if (sends === 1) {
                   await queue.send(message, options)
@@ -178,6 +179,7 @@ describe('swirls-parity workers and queues', () => {
       handlers: {
         'parity.work': async (task, ctx) => {
           runs += 1
+
           // A long effect: heartbeats keep it alive past the queue lease.
           for (let i = 0; i < 3; i++) {
             await ctx.heartbeat({ tick: i })

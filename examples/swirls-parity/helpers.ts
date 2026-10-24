@@ -36,7 +36,7 @@ export async function waitFor(
   }
 }
 
-/** True when `needle` appears anywhere in a JSON-serializable value. */
-export function containsSecret(value: unknown, needle: string): boolean {
-  return JSON.stringify(value).includes(needle)
+/** True when `needle` appears in an already-serialized payload. */
+export function containsSecret(serialized: string, needle: string): boolean {
+  return serialized.includes(needle)
 }

@@ -52,6 +52,7 @@ describe('swirls-parity approval, blobs, and secrets', () => {
 
     const timedState = await looms.getRun(timed.runId)
     const timedEvents = await looms.getEvents(timed.runId)
+
     const timedOut = timedEvents.some(
       (event) =>
         event.type === 'runtime.wait.satisfied' &&
@@ -87,6 +88,7 @@ describe('swirls-parity approval, blobs, and secrets', () => {
 
     const blobs = memoryBlobStore()
     const store = withBlobOffload(await Effect.runPromise(makeMemoryEventStore), blobs)
+
     const looms = createLooms({
       store,
       blobStore: blobs,
@@ -133,9 +135,11 @@ describe('swirls-parity approval, blobs, and secrets', () => {
 
     const events = await looms.getEvents(started.runId)
     const state = await looms.getRun(started.runId)
+
     const snapshot = snapshots
       ? await Effect.runPromise(snapshots.loadLatest('parity_secret'))
       : null
+
     const projected = await looms.project(
       started.runId,
       defineProjection({
@@ -145,11 +149,11 @@ describe('swirls-parity approval, blobs, and secrets', () => {
       }),
     )
 
-    expect(containsSecret(events, SECRET)).toBe(false)
-    expect(containsSecret(state, SECRET)).toBe(false)
-    expect(containsSecret(started, SECRET)).toBe(false)
-    expect(containsSecret(snapshot, SECRET)).toBe(false)
-    expect(containsSecret(projected, SECRET)).toBe(false)
+    expect(containsSecret(JSON.stringify(events), SECRET)).toBe(false)
+    expect(containsSecret(JSON.stringify(state), SECRET)).toBe(false)
+    expect(containsSecret(JSON.stringify(started), SECRET)).toBe(false)
+    expect(containsSecret(JSON.stringify(snapshot), SECRET)).toBe(false)
+    expect(containsSecret(JSON.stringify(projected), SECRET)).toBe(false)
 
     const response = await looms.fetch(new Request('http://looms.test/runs/parity_secret'))
     const body = response ? await response.text() : ''

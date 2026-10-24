@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { Predicate } from 'effect'
+
 import { createLooms } from '@swirls/looms/runtime'
 import { defineWorkflow, workflow } from '@swirls/looms/workflow'
 
@@ -50,7 +52,7 @@ describe('swirls-parity fanout and loops', () => {
           id: 'count',
           run: (ctx) => {
             const previous = ctx.iteration?.previous
-            const n = typeof previous === 'number' ? previous : 0
+            const n = Predicate.isNumber(previous) ? previous : 0
 
             if (n >= 3) {
               return n

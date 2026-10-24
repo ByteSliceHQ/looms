@@ -40,7 +40,7 @@
   ],
   "overrides": [
     {
-      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "files": ["**/*.test.ts", "**/*.test.tsx", "examples/swirls-parity/helpers.ts"],
       "rules": {
         "effecttsgo/async-function": "off",
         "effecttsgo/global-date": "off",
