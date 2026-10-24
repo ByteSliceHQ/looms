@@ -81,11 +81,16 @@ function effectIdentity(events: Awaited<ReturnType<Looms['getEvents']>>) {
 }
 
 function callbacksFor(looms: Looms) {
+  const fetchImpl = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) =>
+      (await looms.fetch(new Request(input, init))) ?? new Response(null, { status: 404 }),
+    { preconnect: () => undefined },
+  ) as typeof fetch
+
   return createLoomsClient({
     baseUrl: 'http://looms.test',
     workerCallbackToken: WORKER_TOKEN,
-    fetch: async (input, init) =>
-      (await looms.fetch(new Request(input, init))) ?? new Response(null, { status: 404 }),
+    fetch: fetchImpl,
   })
 }
 
@@ -95,7 +100,11 @@ describe('swirls-parity workers and queues', () => {
 
     const looms = createLooms({
       modules: [workerModule()],
-      worker: { dispatch: (task) => dispatched.push(task) },
+      worker: {
+        dispatch: (task) => {
+          dispatched.push(task)
+        },
+      },
     })
 
     const started = await looms.start(workerDefinition, null)

@@ -32,9 +32,11 @@ describe('swirls-parity approval, blobs, and secrets', () => {
         {
           id: 'done',
           deps: ['ask'],
-          run: (ctx) => ({
-            outcome: isJsonObject(ctx.results.ask) ? ctx.results.ask.outcome : null,
-          }),
+          run: (ctx) => {
+            const ask = ctx.results.ask
+            const outcome = isJsonObject(ask) ? (ask.outcome ?? null) : null
+            return { outcome }
+          },
         },
       ],
       output: ({ results }) => results.done ?? null,
