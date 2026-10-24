@@ -3,12 +3,10 @@ import { Effect, Predicate } from 'effect'
 import {
   composeModules,
   EventStoreTag,
-  foldRun,
   makeMemoryEventStore,
   ModuleCompositionError,
   EventStoreError,
   snapshotStoreOf,
-  stringifyJson,
   withSnapshotStore,
   type AnyRuntimeModule,
   type AppendOptions,
@@ -16,6 +14,8 @@ import {
   type EventStore,
 } from '@looms/core'
 import { createRuntime, type LoomsRuntime } from '@looms/runtime'
+
+import { assertReplayDeterministicEvents } from './replay-corpus'
 
 type NamedEffect = {
   readonly type: string
@@ -71,14 +71,18 @@ export function createTestRuntime(modules: readonly AnyRuntimeModule[]): Promise
 
 export function assertReplayDeterministic(test: TestRuntime, runId: string): Promise<void> {
   return test.run(test.runtime.getEvents(runId)).then((events) => {
-    const first = foldRun(events, test.runtime.registry, { runId })
-    const second = foldRun(events, test.runtime.registry, { runId })
-
-    if (stringifyJson(first) !== stringifyJson(second)) {
-      throw new Error(`Replay is not deterministic for run ${runId}`)
-    }
+    assertReplayDeterministicEvents(events, test.runtime.registry, runId)
   })
 }
+
+export {
+  assertCorpusEntry,
+  assertReplayDeterministicEvents,
+  corpusRegistry,
+  readCorpusEntry,
+  type CorpusEntry,
+} from './replay-corpus'
+export { corpusChargeV1, corpusChargeV2, corpusDefinition, corpusModule } from './corpus-module'
 
 export function moduleConformance(module: AnyRuntimeModule): string[] {
   const errors: string[] = []

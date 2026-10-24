@@ -3,14 +3,18 @@ import { Data, Effect, Predicate } from 'effect'
 import {
   EventStoreTag,
   makeMemoryEventStore,
+  makeMemorySnapshotStore,
   snapshotStoreOf,
+  withBlobOffload,
   SnapshotStoreTag,
   type AnyRuntimeModule,
   type DebuggerHost,
   type DefinitionInput,
   type DefinitionRef,
+  type DefinitionResolver,
   type EventEnvelope,
   type EventInput,
+  type BlobStore,
   type EventStore,
   type EventStoreTrimCoverage,
   type JsonValue,
@@ -27,6 +31,7 @@ import {
   type EffectWorker,
   type LoomsRuntime,
   type RunOperationalStatus,
+  type StartRunArgs,
   type WakeScheduler,
   type WorkerCallbackInput,
   type WorkerCallbackResult,
@@ -43,6 +48,11 @@ import {
 export interface CreateLoomsOptions {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
   readonly modules?: readonly AnyRuntimeModule[]
+  /**
+   * Loads a definition that was not registered on a module. Registered definitions are checked
+   * first. A run pins the resolved version on its start event.
+   */
+  readonly definitionResolver?: DefinitionResolver
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
   readonly maxWakeIterations?: number
@@ -52,6 +62,11 @@ export interface CreateLoomsOptions {
   readonly snapshotEvery?: number
   /** Defaults to the EventStore's attached store (S2) or an in-memory SnapshotStore. */
   readonly snapshotStore?: SnapshotStore
+  /**
+   * Content-addressed store for JSON values that would exceed the 1 MiB event limit or the
+   * 8 MiB snapshot limit. Reads resolve references before folds, projections, and callers see them.
+   */
+  readonly blobStore?: BlobStore
   readonly trimAfterSnapshot?: {
     keepSnapshots: number
     coverage?: (runId: string) => EventStoreTrimCoverage | Promise<EventStoreTrimCoverage>
@@ -65,6 +80,8 @@ export interface CreateLoomsOptions {
   /** Starts runs from effect handlers. Defaults to launching into this runtime's own store. */
   readonly launcher?: RunLauncher
   readonly worker?: EffectWorker
+  /** Maximum concurrent in-flight worker effects dispatched per run (fairness guard). */
+  readonly maxInFlightWorkerEffects?: number
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
   /**
@@ -72,7 +89,8 @@ export interface CreateLoomsOptions {
    * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
    *
    * A mounted debugger is authorized as `{ access: 'read', name: 'debugger' }`. Bearer tokens on
-   * reads block browser navigation, so hosts that need auth should use a cookie or session policy.
+   * reads block browser navigation. `grantAuth` covers a browser EventSource or WebSocket that can
+   * only send a query parameter or a subprotocol.
    */
   readonly authorize?: Authorize
   /**
@@ -96,7 +114,14 @@ export interface Looms {
   start<TDef extends DefinitionRef>(
     definition: TDef,
     input?: DefinitionInput<TDef>,
-    options?: { runId?: string; threadId?: string; idempotencyKey?: string },
+    options?: {
+      runId?: string
+      threadId?: string
+      idempotencyKey?: string
+      attributes?: StartRunArgs['attributes']
+      secrets?: StartRunArgs['secrets']
+      trace?: StartRunArgs['trace']
+    },
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
   startRun(args: {
@@ -107,6 +132,9 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
+    attributes?: StartRunArgs['attributes']
+    secrets?: StartRunArgs['secrets']
+    trace?: StartRunArgs['trace']
   }): Promise<StartResult>
   /** Commit a run's start and schedule a wake without waiting for it. */
   launchRun(args: {
@@ -117,6 +145,9 @@ export interface Looms {
     runId?: string
     threadId?: string
     idempotencyKey?: string
+    attributes?: StartRunArgs['attributes']
+    secrets?: StartRunArgs['secrets']
+    trace?: StartRunArgs['trace']
   }): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
@@ -176,7 +207,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
         Effect.gen(function* () {
           const configuredStore = options.store
 
-          const store = !configuredStore
+          let store = !configuredStore
             ? yield* makeMemoryEventStore
             : Predicate.isFunction(configuredStore)
               ? yield* Effect.tryPromise({
@@ -190,20 +221,31 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
                   })
                 : configuredStore
 
+          if (options.blobStore) {
+            const snapshots =
+              options.snapshotStore ?? snapshotStoreOf(store) ?? (yield* makeMemorySnapshotStore)
+
+            store = withBlobOffload(store, options.blobStore, { snapshots })
+          }
+
           const runtime = createRuntime({
             modules,
             store,
             maxWakeIterations: options.maxWakeIterations,
             maxPendingRunOperations: options.maxPendingRunOperations,
             snapshotEvery: options.snapshotEvery,
-            snapshotStore: options.snapshotStore ?? snapshotStoreOf(store),
+            snapshotStore: options.blobStore
+              ? snapshotStoreOf(store)
+              : (options.snapshotStore ?? snapshotStoreOf(store)),
             trimAfterSnapshot: options.trimAfterSnapshot,
             runCacheSize: options.runCacheSize,
             scheduler: options.scheduler,
             launcher: options.launcher,
             localLauncher: options.launcher === undefined,
             worker: options.worker,
+            maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
             observer: options.observer,
+            definitionResolver: options.definitionResolver,
           })
 
           if (options.rescanTimers !== false) {
@@ -263,6 +305,9 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           runId: startOpts?.runId,
           threadId: startOpts?.threadId,
           idempotencyKey: startOpts?.idempotencyKey,
+          attributes: startOpts?.attributes,
+          secrets: startOpts?.secrets,
+          trace: startOpts?.trace,
         }),
       ),
     getRun: (runId) => runEffect((i) => i.runtime.getRun(runId)),

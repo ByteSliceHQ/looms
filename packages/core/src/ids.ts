@@ -34,6 +34,11 @@ function fnv1a32(value: string, seed: number): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
+/** A stable `run_` id derived from `parts`, so a retry launches the same child run. */
+export function deterministicRunId(...parts: readonly (string | number)[]): string {
+  return `run_${deterministicThreadId(...parts).replaceAll('-', '')}`
+}
+
 /**
  * A UUID-shaped id derived only from `parts`, so a reducer that replays the same events names the same
  * child thread every time.

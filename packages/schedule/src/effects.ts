@@ -86,7 +86,7 @@ export const fireEffect = scheduleModule.effect({
       const launcher = yield* RunLauncherTag
       const now = yield* Clock.currentTimeMillis
 
-      const definition = definitions.get(input.definitionName, input.definitionVersion)
+      const definition = yield* definitions.resolve(input.definitionName, input.definitionVersion)
 
       if (!definition) {
         return yield* new ScheduleEffectError({

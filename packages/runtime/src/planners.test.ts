@@ -24,12 +24,16 @@ function runningState(overrides: Partial<RunState> = {}): RunState {
     rootThreadId: null,
     startIdentity: null,
     forkedFrom: null,
+    attributes: {},
     threads: {},
     waits: {},
     outstandingEffects: [],
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
     ...overrides,
   }
 }
@@ -206,6 +210,7 @@ describe('worker effect planner', () => {
       attempt: 2,
       type: 'worker.send',
       input: { message: 'hello' },
+      deadlines: { scheduleToStartAt: 1_500 },
     })
 
     expect(plan?.queuedEvent?.type).toBe('runtime.effect.queued')

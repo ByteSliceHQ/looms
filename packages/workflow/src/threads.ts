@@ -2,14 +2,17 @@ import { Effect, Predicate, Schema } from 'effect'
 
 import {
   cancel,
+  cancelRun,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
+  deterministicRunId,
   EventInputSchema,
   emit,
   fail,
   invoke,
   isJsonObject,
   isWithdrawnError,
+  launch,
   RuntimeEffectSchema,
   spawn,
   stableEffectId,
@@ -21,7 +24,7 @@ import {
   waitOutcome,
 } from '@looms/core'
 
-import { NodeStateSchema, type NodeState } from './definitions'
+import { NodeStateSchema, type NodeState, type WorkflowChildMode } from './definitions'
 import { runNodeEffect, scheduleEffect } from './effects'
 import { iterationChildWorkflowId, nodeRunKey, WorkflowValueTooLargeError } from './graph'
 import { workflowModule } from './scope'
@@ -39,6 +42,12 @@ export const WorkflowPendingSpawnSchema = Schema.Struct({
   attempt: attemptNumber,
   input: Schema.Json,
   loopIndex: Schema.NullOr(Schema.Finite).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  execution: Schema.Union([Schema.Literal('thread'), Schema.Literal('run')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('thread' as const)),
+  ),
+  close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+  ),
 })
 export type WorkflowPendingSpawn = Schema.Schema.Type<typeof WorkflowPendingSpawnSchema>
 
@@ -54,6 +63,12 @@ export const WorkflowPendingMapSchema = Schema.Struct({
   /** Items before this index have been started; later ones wait for a free slot. */
   nextIndex: Schema.Finite,
   outputs: Schema.Record(Schema.String, Schema.Json),
+  execution: Schema.Union([Schema.Literal('thread'), Schema.Literal('run')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('thread' as const)),
+  ),
+  close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+  ),
 })
 export type WorkflowPendingMap = Schema.Schema.Type<typeof WorkflowPendingMapSchema>
 
@@ -136,12 +151,37 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
 }
 
 function spawnAndWait(
+  runId: string,
   threadId: string,
-  child: Pick<WorkflowPendingSpawn, 'kind' | 'definitionName' | 'definitionVersion'>,
+  child: Pick<
+    WorkflowPendingSpawn,
+    'kind' | 'definitionName' | 'definitionVersion' | 'execution' | 'close'
+  >,
   childThreadId: string,
   input: JsonValue,
   tag: { readonly [key: string]: JsonValue },
 ): RuntimeEffect[] {
+  if (child.execution === 'run') {
+    const childRunId = deterministicRunId(runId, childThreadId)
+
+    return [
+      launch({
+        runId: childRunId,
+        kind: child.kind,
+        definitionName: child.definitionName,
+        definitionVersion: child.definitionVersion,
+        input,
+        close: child.close,
+        tag: `launch_${childRunId}`,
+      }),
+      wait({
+        waitId: createWaitId(threadId, `spawn_${childRunId}`),
+        on: { type: 'runtime.child.settled', match: { runId: childRunId } },
+        tag,
+      }),
+    ]
+  }
+
   return [
     spawn({
       childThreadId,
@@ -161,6 +201,16 @@ function spawnAndWait(
   ]
 }
 
+function childMode(
+  execution: JsonValue | undefined,
+  close: JsonValue | undefined,
+): WorkflowChildMode {
+  return {
+    execution: execution === 'run' ? 'run' : 'thread',
+    close: close === 'wait' ? 'wait' : 'terminate',
+  }
+}
+
 function mapChildThreadId(threadId: string, map: WorkflowPendingMap, index: number): string {
   return iterationChildWorkflowId(threadId, map.nodeId, 'map', map.attempt, index)
 }
@@ -171,7 +221,7 @@ interface NodeEffect {
 }
 
 /** Every effect a node currently needs, attributed to that node. */
-function nodeEffects(state: WorkflowState, threadId: string): NodeEffect[] {
+function nodeEffects(state: WorkflowState, threadId: string, runId: string): NodeEffect[] {
   const effects: NodeEffect[] = []
 
   const add = (nodeId: string, items: readonly RuntimeEffect[]) => {
@@ -189,7 +239,7 @@ function nodeEffects(state: WorkflowState, threadId: string): NodeEffect[] {
 
     add(
       item.nodeId,
-      spawnAndWait(threadId, item, item.childThreadId, item.input, {
+      spawnAndWait(runId, threadId, item, item.childThreadId, item.input, {
         ...tag,
         loopIndex: item.loopIndex,
       }),
@@ -202,6 +252,7 @@ function nodeEffects(state: WorkflowState, threadId: string): NodeEffect[] {
         add(
           map.nodeId,
           spawnAndWait(
+            runId,
             threadId,
             map,
             mapChildThreadId(threadId, map, index),
@@ -226,29 +277,75 @@ function nodeEffects(state: WorkflowState, threadId: string): NodeEffect[] {
   return effects
 }
 
-function nodeIdForEffect(state: WorkflowState, threadId: string, effectId: string): string | null {
-  const match = nodeEffects(state, threadId).find(
+function nodeIdForEffect(
+  state: WorkflowState,
+  threadId: string,
+  runId: string,
+  effectId: string,
+): string | null {
+  const match = nodeEffects(state, threadId, runId).find(
     (item) => stableEffectId(threadId, item.effect) === effectId,
   )
 
   return match?.nodeId ?? null
 }
 
+interface UnsettledChild {
+  readonly key: string
+  readonly target: string
+  readonly execution: 'thread' | 'run'
+  readonly close: 'terminate' | 'wait'
+}
+
+function childTarget(runId: string, childThreadId: string, execution: 'thread' | 'run'): string {
+  return execution === 'run' ? deterministicRunId(runId, childThreadId) : childThreadId
+}
+
 /** Children a node started that have not reported back yet. */
-function unsettledChildren(state: WorkflowState, nodeId: string, threadId: string): string[] {
-  const children = state.pendingSpawns
-    .filter((item) => item.nodeId === nodeId)
-    .map((item) => item.childThreadId)
+function unsettledChildren(
+  state: WorkflowState,
+  nodeId: string,
+  threadId: string,
+  runId: string,
+): UnsettledChild[] {
+  const children: UnsettledChild[] = []
+
+  for (const item of state.pendingSpawns) {
+    if (item.nodeId !== nodeId) {
+      continue
+    }
+
+    const execution = item.execution === 'run' ? 'run' : 'thread'
+
+    children.push({
+      key: item.childThreadId,
+      target: childTarget(runId, item.childThreadId, execution),
+      execution,
+      close: item.close === 'wait' ? 'wait' : 'terminate',
+    })
+  }
 
   for (const map of state.pendingMaps) {
     if (map.nodeId !== nodeId) {
       continue
     }
 
+    const execution = map.execution === 'run' ? 'run' : 'thread'
+    const close = map.close === 'wait' ? 'wait' : 'terminate'
+
     for (let index = 0; index < map.nextIndex; index++) {
-      if (!(String(index) in map.outputs)) {
-        children.push(mapChildThreadId(threadId, map, index))
+      if (String(index) in map.outputs) {
+        continue
       }
+
+      const key = mapChildThreadId(threadId, map, index)
+
+      children.push({
+        key,
+        target: childTarget(runId, key, execution),
+        execution,
+        close,
+      })
     }
   }
 
@@ -257,32 +354,55 @@ function unsettledChildren(state: WorkflowState, nodeId: string, threadId: strin
 
 /**
  * Drops a node's pending work and cancels the children it leaves running. `settled` is the child
- * whose result is finishing the node, which must not be cancelled.
+ * whose result is finishing the node, which must not be cancelled. A `wait` child run stays
+ * pending until it settles, so the node does not finish ahead of that cancellation.
  */
 function withoutPendingWork(
   state: WorkflowState,
   nodeId: string,
   threadId: string,
+  runId: string,
   settled: string | null = null,
 ): WorkflowState {
-  const cancels = unsettledChildren(state, nodeId, threadId).filter(
-    (childThreadId) => childThreadId !== settled && !state.pendingCancels.includes(childThreadId),
+  const children = unsettledChildren(state, nodeId, threadId, runId)
+
+  const cancels = children
+    .map((child) => child.target)
+    .filter((target) => target !== settled && !state.pendingCancels.includes(target))
+
+  const keptSpawns = new Set(
+    children
+      .filter(
+        (child) => child.execution === 'run' && child.close === 'wait' && child.target !== settled,
+      )
+      .map((child) => child.key),
+  )
+
+  const keepMap = children.some(
+    (child) => child.execution === 'run' && child.close === 'wait' && child.target !== settled,
   )
 
   return {
     ...state,
     pendingCancels:
       cancels.length === 0 ? state.pendingCancels : [...state.pendingCancels, ...cancels],
-    pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
-    pendingMaps: state.pendingMaps.filter((item) => item.nodeId !== nodeId),
+    pendingSpawns: state.pendingSpawns.filter(
+      (item) => item.nodeId !== nodeId || keptSpawns.has(item.childThreadId),
+    ),
+    pendingMaps: state.pendingMaps.filter((item) => item.nodeId !== nodeId || keepMap),
     pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
     pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
   }
 }
 
-function stopNode(state: WorkflowState, nodeId: string, threadId: string): WorkflowState {
+function stopNode(
+  state: WorkflowState,
+  nodeId: string,
+  threadId: string,
+  runId: string,
+): WorkflowState {
   return {
-    ...withoutPendingWork(state, nodeId, threadId),
+    ...withoutPendingWork(state, nodeId, threadId, runId),
     runningNodes: state.runningNodes.filter((id) => id !== nodeId),
   }
 }
@@ -294,6 +414,7 @@ function finishNode(
   result: JsonValue | null,
   error: string | null,
   threadId: string,
+  runId: string,
   settled: string | null = null,
 ): WorkflowState {
   const id = `finished_${nodeId}`
@@ -305,7 +426,7 @@ function finishNode(
   }
 
   return {
-    ...withoutPendingWork(state, nodeId, threadId, settled),
+    ...withoutPendingWork(state, nodeId, threadId, runId, settled),
     pendingEmits: [...state.pendingEmits.filter((item) => item.id !== id), { id, event }],
   }
 }
@@ -316,23 +437,25 @@ function recordMapOutput(
   index: number,
   output: JsonValue | null,
   threadId: string,
+  runId: string,
 ): WorkflowState {
   if (String(index) in map.outputs) {
     return state
   }
 
-  const settled = mapChildThreadId(threadId, map, index)
+  const childThreadId = mapChildThreadId(threadId, map, index)
+  const settled = childTarget(runId, childThreadId, map.execution === 'run' ? 'run' : 'thread')
   const outputs = { ...map.outputs, [String(index)]: output }
   const size = utf8JsonBytes(outputs)
 
   if (size > map.limitBytes) {
     const error = new WorkflowValueTooLargeError(`Node ${map.nodeId} outputs`, size, map.limitBytes)
-    return finishNode(state, map.nodeId, null, error.message, threadId, settled)
+    return finishNode(state, map.nodeId, null, error.message, threadId, runId, settled)
   }
 
   if (Object.keys(outputs).length === map.items.length) {
     const ordered = map.items.map((_, i) => outputs[String(i)] ?? null)
-    return finishNode(state, map.nodeId, ordered, null, threadId, settled)
+    return finishNode(state, map.nodeId, ordered, null, threadId, runId, settled)
   }
 
   const nextIndex = Math.min(map.items.length, map.nextIndex + 1)
@@ -437,7 +560,7 @@ export const workflowThread = workflowModule.thread({
 
         const failed = Predicate.isString(error) && error.length > 0
         return {
-          ...stopNode(state, nodeId, ctx.threadId),
+          ...stopNode(state, nodeId, ctx.threadId, ctx.runId),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -457,7 +580,7 @@ export const workflowThread = workflowModule.thread({
       case 'workflow.node.skipped': {
         const { nodeId, reason, cause } = event.payload
         return {
-          ...stopNode(state, nodeId, ctx.threadId),
+          ...stopNode(state, nodeId, ctx.threadId, ctx.runId),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -483,7 +606,10 @@ export const workflowThread = workflowModule.thread({
           ...state,
           pendingSpawns: [
             ...state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
-            event.payload,
+            {
+              ...event.payload,
+              ...childMode(event.payload.execution, event.payload.close),
+            },
           ],
         }
       }
@@ -501,6 +627,7 @@ export const workflowThread = workflowModule.thread({
             ...state.pendingMaps.filter((item) => item.nodeId !== nodeId),
             {
               ...event.payload,
+              ...childMode(event.payload.execution, event.payload.close),
               nextIndex: Math.min(event.payload.concurrency, event.payload.items.length),
               outputs: {},
             },
@@ -568,7 +695,7 @@ export const workflowThread = workflowModule.thread({
         const effectId = event.payload.effectId
 
         const nodeId = Predicate.isString(effectId)
-          ? nodeIdForEffect(state, ctx.threadId, effectId)
+          ? nodeIdForEffect(state, ctx.threadId, ctx.runId, effectId)
           : null
 
         if (!nodeId) {
@@ -578,7 +705,14 @@ export const workflowThread = workflowModule.thread({
         const message = `Node ${nodeId} failed: ${error}`
 
         return {
-          ...finishNode(stopNode(state, nodeId, ctx.threadId), nodeId, null, message, ctx.threadId),
+          ...finishNode(
+            stopNode(state, nodeId, ctx.threadId, ctx.runId),
+            nodeId,
+            null,
+            message,
+            ctx.threadId,
+            ctx.runId,
+          ),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -608,7 +742,7 @@ export const workflowThread = workflowModule.thread({
         const map = state.pendingMaps.find((item) => item.nodeId === nodeId)
 
         if (error === null && map && Predicate.isNumber(tag.index)) {
-          return recordMapOutput(state, map, tag.index, result, ctx.threadId)
+          return recordMapOutput(state, map, tag.index, result, ctx.threadId, ctx.runId)
         }
 
         const node = state.nodes[nodeId]
@@ -627,12 +761,15 @@ export const workflowThread = workflowModule.thread({
         const satisfied = event.payload.event
         const satisfiedPayload = Predicate.isObject(satisfied) ? satisfied.payload : undefined
 
-        const settled =
-          Predicate.isObject(satisfiedPayload) && Predicate.isString(satisfiedPayload.threadId)
-            ? satisfiedPayload.threadId
-            : null
+        const settled = Predicate.isObject(satisfiedPayload)
+          ? Predicate.isString(satisfiedPayload.runId)
+            ? satisfiedPayload.runId
+            : Predicate.isString(satisfiedPayload.threadId)
+              ? satisfiedPayload.threadId
+              : null
+          : null
 
-        return finishNode(state, nodeId, result, error, ctx.threadId, settled)
+        return finishNode(state, nodeId, result, error, ctx.threadId, ctx.runId, settled)
       }
 
       default:
@@ -646,7 +783,7 @@ export const workflowThread = workflowModule.thread({
       effects.push(scheduleInvocation(state))
     }
 
-    for (const item of nodeEffects(state, ctx.threadId)) {
+    for (const item of nodeEffects(state, ctx.threadId, ctx.runId)) {
       effects.push(item.effect)
     }
 
@@ -654,8 +791,10 @@ export const workflowThread = workflowModule.thread({
       effects.push(emit(emitReq.event))
     }
 
-    for (const childThreadId of state.pendingCancels) {
-      effects.push(cancel(childThreadId))
+    for (const childId of state.pendingCancels) {
+      effects.push(
+        childId.startsWith('run_') ? cancelRun(childId, `cancel_${childId}`) : cancel(childId),
+      )
     }
 
     if (state.status === 'failed') {

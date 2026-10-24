@@ -493,6 +493,7 @@ describe('server routing', () => {
         status: 'completed',
         kind: 'workflow',
         definitionName: 'summarized',
+        attributes: {},
       },
     ])
 

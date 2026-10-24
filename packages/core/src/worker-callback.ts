@@ -1,4 +1,5 @@
 import type { EventInput } from './envelope'
+import type { SecretContext } from './run-context'
 import type { JsonValue } from './types'
 
 /** Identifies one attempt of an effect executed by an external worker. */
@@ -31,3 +32,8 @@ export interface WorkerCallbackResult {
   readonly status: 'accepted' | 'stale' | 'cancelled'
   readonly cancelRequested: boolean
 }
+
+/** The run's secret context, released only to the attempt that is currently running. */
+export type WorkerSecretsResult =
+  | { readonly status: 'accepted'; readonly secrets: SecretContext }
+  | { readonly status: 'stale' | 'cancelled' }

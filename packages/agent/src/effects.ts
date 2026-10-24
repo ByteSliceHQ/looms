@@ -4,6 +4,7 @@ import {
   createThreadId,
   DEFAULT_DEFINITION_VERSION,
   validateInputEffect,
+  type DefinitionResolveError,
   type EventInputOf,
   type JsonValue,
 } from '@looms/core'
@@ -86,7 +87,7 @@ function runCallLlm(args: {
   emit: (event: EventInputOf<AgentEvent>) => Promise<void>
 }): Effect.Effect<
   ReadonlyArray<EventInputOf<AgentEvent>>,
-  AgentExecutionError | LlmError,
+  AgentExecutionError | LlmError | DefinitionResolveError,
   LlmTag | AgentDefinitionsTag
 > {
   return Effect.gen(function* () {
@@ -104,7 +105,10 @@ function runCallLlm(args: {
 
     const agents = yield* AgentDefinitionsTag
     const llm = yield* LlmTag
-    const definition = definitionName ? agents.get(definitionName, definitionVersion) : undefined
+
+    const definition = definitionName
+      ? yield* agents.resolve(definitionName, definitionVersion)
+      : undefined
 
     if (!definition) {
       return [
@@ -240,7 +244,7 @@ export const executeToolEffect = agentModule.effect({
       const agents = yield* AgentDefinitionsTag
 
       const definition = input.definitionName
-        ? agents.get(input.definitionName, input.definitionVersion)
+        ? yield* agents.resolve(input.definitionName, input.definitionVersion)
         : undefined
 
       if (!definition) {

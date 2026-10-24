@@ -127,7 +127,22 @@ export interface WorkflowDefinition<
   readonly inputLimitBytes?: number
   readonly outputLimitBytes?: number
   readonly checkpointLimitBytes?: number
+  /**
+   * `thread` keeps spawned, mapped, and looped children in this run.
+   * `run` launches each child as its own run.
+   */
+  readonly childExecution?: 'thread' | 'run'
+  /**
+   * When this run is cancelled, `terminate` cancels child runs immediately and `wait` cancels
+   * this run only after those children have finished cancelling. Ignored when children are threads.
+   */
+  readonly childClose?: 'terminate' | 'wait'
   output?(ctx: { input: TInput; results: { [nodeId: string]: JsonValue | null } }): TOutput
+}
+
+export interface WorkflowChildMode {
+  readonly execution: 'thread' | 'run'
+  readonly close: 'terminate' | 'wait'
 }
 
 export type AnyWorkflowDefinition = WorkflowDefinition

@@ -11,7 +11,7 @@ import {
   type EffectFailedPayload,
   type EventInput,
   RunLauncherTag,
-  type RegisteredDefinition,
+  type DefinitionResolver,
   type RunLauncher,
   type RuntimeEffect,
 } from '@looms/core'
@@ -49,7 +49,7 @@ function failedAttempt(effectId: string, threadId: string, cause: unknown): Even
 export function dispatchEffect(
   registry: ComposedRegistry,
   services: ManagedRuntime.ManagedRuntime<Context.Service.Any, never>,
-  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  definitions: DefinitionResolver,
   launcher: RunLauncher,
   effect: RuntimeEffect,
   ctx: EffectContext,
@@ -128,6 +128,22 @@ export function dispatchEffect(
             },
           ])
         }
+
+        case 'runtime.launch':
+          return launcher
+            .launch({
+              runId: eff.runId,
+              kind: eff.kind,
+              definitionName: eff.definitionName,
+              definitionVersion: eff.definitionVersion,
+              input: eff.input,
+              idempotencyKey: eff.runId,
+              close: eff.close,
+            })
+            .pipe(Effect.map(() => []))
+
+        case 'runtime.cancelRun':
+          return launcher.cancel(eff.runId).pipe(Effect.map(() => []))
 
         default: {
           const exhaustiveCheck: never = eff

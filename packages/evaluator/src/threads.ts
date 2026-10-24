@@ -17,6 +17,7 @@ import { evaluatorModule } from './scope'
 
 export const EvaluatorThreadStateSchema = Schema.Struct({
   definitionName: Schema.optional(Schema.String),
+  definitionVersion: Schema.optional(Schema.String),
   input: Schema.Json,
   evaluationId: Schema.String,
   dispatched: Schema.Boolean,
@@ -42,6 +43,7 @@ export const evaluatorThread = evaluatorModule.thread({
   shape: EvaluatorThreadStateSchema,
   initialState: (ctx) => ({
     definitionName: ctx.definitionName,
+    definitionVersion: ctx.definitionVersion,
     input: ctx.input,
     evaluationId: `eval_${ctx.threadId}`,
     dispatched: false,
@@ -59,6 +61,7 @@ export const evaluatorThread = evaluatorModule.thread({
         return {
           ...state,
           definitionName: event.payload.definitionName || state.definitionName,
+          definitionVersion: event.payload.definitionVersion || state.definitionVersion,
           input: event.payload.input ?? state.input,
           evaluationId: `eval_${ctx.threadId}`,
         }
@@ -139,6 +142,7 @@ export const evaluatorThread = evaluatorModule.thread({
           {
             evaluationId: state.evaluationId,
             definitionName: state.definitionName,
+            definitionVersion: state.definitionVersion,
             input: state.input,
           },
           `evaluate_${state.evaluationId}`,

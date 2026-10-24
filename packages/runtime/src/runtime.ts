@@ -1,28 +1,37 @@
-import { Clock, Effect, ManagedRuntime, Predicate } from 'effect'
+import { Clock, Effect, ManagedRuntime, Predicate, type Types } from 'effect'
 
 import {
+  cachedDefinitionResolver,
+  chainDefinitionResolvers,
   composeModules,
   createEvent,
   createThreadId,
   createRunId,
   DEFAULT_DEFINITION_VERSION,
   DEFAULT_SNAPSHOT_EVERY,
-  definitionKey,
+  staticDefinitionResolver,
   descendantThreadIds,
   EventStoreTag,
   foldRun,
+  hasEntries,
   isRunTerminal,
   unavailableRunLauncher,
   planFork,
   project,
+  readTraceContext,
   replayTo,
+  sameStringRecord,
   summarizeRun,
+  type EventStore,
+  type SecretContext,
   type AnyRuntimeModule,
   type EventInput,
   type EventOrigin,
   type RunLauncher,
+  type RunStartedPayload,
   type RunState,
   type SignalInterruptRule,
+  type TraceContext,
   type InvalidEventError,
 } from '@looms/core'
 
@@ -34,6 +43,7 @@ import {
   RunNotFoundError,
   RunTerminalError,
   RuntimeExecutionError,
+  SecretContextConflictError,
   StartRunConflictError,
 } from './errors'
 import {
@@ -54,6 +64,7 @@ import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
 import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
 import { createWorkerCallbacks } from './worker-callbacks'
+import { assertWorkerDeadlines } from './worker-effect-dispatch'
 
 export type { RegisteredDefinition } from '@looms/core'
 export type { WakeScheduler } from './wake-scheduler'
@@ -72,6 +83,7 @@ export { RunOverloadedError } from './ingress'
 export type {
   CreateRuntimeOptions,
   EffectWorker,
+  EffectWorkerDeadlines,
   EffectWorkerTask,
   LoomsRuntime,
   RunOperationalStatus,
@@ -111,6 +123,75 @@ const RESCAN_CONCURRENCY = 16
 const DEFAULT_KEEP_SNAPSHOTS = 1
 const DEFAULT_MAX_PENDING_RUN_OPERATIONS = 256
 
+interface StartedPayloadInput {
+  readonly threadId: string
+  readonly kind: string
+  readonly definitionName: string
+  readonly definitionVersion: string
+  readonly input: StartRunArgs['input']
+  readonly requestedThreadId: string | null
+  readonly launchedBy: StartRunArgs['launchedBy']
+  readonly attributes: StartRunArgs['attributes']
+  readonly trace: TraceContext | undefined
+}
+
+function startedPayload(input: StartedPayloadInput): RunStartedPayload {
+  const payload: Types.Mutable<RunStartedPayload> = {
+    rootThreadId: input.threadId,
+    kind: input.kind,
+    definitionName: input.definitionName,
+    definitionVersion: input.definitionVersion,
+    input: input.input ?? null,
+    requestedThreadId: input.requestedThreadId,
+  }
+
+  if (input.launchedBy) {
+    payload.launchedBy = input.launchedBy
+  }
+
+  if (input.attributes && hasEntries(input.attributes)) {
+    payload.attributes = input.attributes
+  }
+
+  if (input.trace) {
+    payload.trace = input.trace
+  }
+
+  return payload
+}
+
+function reconcileRunSecrets(
+  store: EventStore,
+  runId: string,
+  requested: SecretContext | undefined,
+) {
+  const next = requested ?? {}
+
+  return Effect.gen(function* () {
+    const stored = store.runSecrets
+
+    if (!stored) {
+      if (hasEntries(next)) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
+
+      return yield* Effect.void
+    }
+
+    const current = yield* stored.get(runId)
+
+    if (sameStringRecord(current, next) || requested === undefined) {
+      return yield* Effect.void
+    }
+
+    if (!hasEntries(current)) {
+      return yield* stored.put(runId, next)
+    }
+
+    return yield* new SecretContextConflictError(runId)
+  })
+}
+
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
 ): LoomsRuntime<TModules> {
@@ -119,13 +200,27 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   }
 
   const registry = composeModules(options.modules)
-  const registeredDefinitions = registry.definitions
 
-  const definitions = new Map(
-    registeredDefinitions.map(
-      (def) => [definitionKey(def.kind, def.name, def.version), def] as const,
-    ),
+  assertWorkerDeadlines(registry, options.worker)
+
+  const staticResolver = staticDefinitionResolver(
+    registry.definitions.map((definition) => ({
+      ...definition.value,
+      kind: definition.kind,
+      name: definition.name,
+      version: definition.version,
+    })),
   )
+
+  const definitionResolver = cachedDefinitionResolver(
+    options.definitionResolver
+      ? chainDefinitionResolvers([staticResolver, options.definitionResolver])
+      : staticResolver,
+  )
+
+  for (const module of options.modules) {
+    module.bindHost?.({ definitionResolver })
+  }
 
   // Module composition erases the heterogeneous service identifier union at this host boundary.
   // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context
@@ -155,6 +250,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     runCache,
     executionContexts,
     observer: options.observer,
+    definitionResolver,
   })
 
   const { commit, loadCursor } = repository
@@ -190,13 +286,24 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             { origin: { type: 'external' }, threadId: current.state.rootThreadId },
           )
 
-          if (isRunTerminal(current.state)) {
+          const terminal = isRunTerminal(current.state)
+
+          const settlementOnly = filteredEvents.every(
+            (event) => event.type === 'runtime.child.settled',
+          )
+
+          if (terminal && !settlementOnly) {
             return yield* new RunTerminalError(runId, current.state.status)
           }
 
           const folded = foldRun(batch, registry, { runId, initial: current.state })
 
-          const satisfiedEvents = waitSatisfiedEvents(folded, batch).map((input) =>
+          const forWaits =
+            terminal || current.state.closeWaiting
+              ? batch.filter((event) => event.type !== 'runtime.child.settled')
+              : batch
+
+          const satisfiedEvents = waitSatisfiedEvents(folded, forWaits).map((input) =>
             createEvent(runId, input),
           )
 
@@ -223,7 +330,13 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     Effect.gen(function* () {
       const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
 
-      if (!definitions.get(definitionKey(args.kind, args.definitionName, definitionVersion))) {
+      const resolved = yield* definitionResolver.resolve(
+        args.kind,
+        args.definitionName,
+        definitionVersion,
+      )
+
+      if (!resolved) {
         return yield* new UnknownDefinitionError(args.kind, args.definitionName, definitionVersion)
       }
 
@@ -232,7 +345,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
       const threadId = args.threadId ?? createThreadId()
 
-      const startedEvents = yield* threadStartedEvents(definitions, {
+      const startedEvents = yield* threadStartedEvents(definitionResolver, {
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
@@ -257,24 +370,28 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         idempotencyKey: args.idempotencyKey ?? null,
         launchedBy: args.launchedBy ?? null,
         correlationId: args.correlationId ?? null,
+        attributes: args.attributes ?? {},
       }
 
       const origin: EventOrigin = args.launchedBy
         ? { type: 'run', runId: args.launchedBy.runId }
         : { type: 'system' }
 
-      const startPayload = {
-        rootThreadId: threadId,
+      const startPayload = startedPayload({
+        threadId,
         kind: args.kind,
         definitionName: args.definitionName,
         definitionVersion,
         input: startedInput,
         requestedThreadId: args.threadId ?? null,
-      }
+        launchedBy: args.launchedBy,
+        attributes: args.attributes,
+        trace: args.trace && readTraceContext(args.trace.traceparent, args.trace.tracestate),
+      })
 
-      const startedPayload = args.launchedBy
-        ? { ...startPayload, launchedBy: args.launchedBy }
-        : startPayload
+      if (hasEntries(args.secrets ?? {}) && !store.runSecrets) {
+        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
+      }
 
       const committed = yield* commit(
         store,
@@ -298,7 +415,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 [
                   {
                     type: 'runtime.run.started',
-                    payload: startedPayload,
+                    payload: startPayload,
                     threadId: null,
                     idempotencyKey: args.idempotencyKey,
                   },
@@ -317,6 +434,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ),
       )
 
+      yield* reconcileRunSecrets(store, runId, args.secrets)
+
       if (!committed.append?.deduplicated) {
         return committed.value
       }
@@ -333,13 +452,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const wakeEngine = createWakeEngine({
     registry,
     services,
-    definitions,
     executionContexts,
     repository,
     snapshotEvery,
     maxWakeIterations,
+    maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
     worker: options.worker,
     observer: options.observer,
+    definitionResolver,
     scheduler: () => scheduler,
     launcher: () => launcher,
   })
@@ -360,7 +480,20 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     observer: options.observer,
     wake: wakeEngine,
     withRunIngress,
+    launcher: () => launcher,
   })
+
+  const appendAndWake: LoomsRuntime<TModules>['accept'] = (runId, events, signalOpts) =>
+    withRunIngress(runId, signalAdmitted(runId, events, signalOpts)).pipe(
+      Effect.flatMap((state) => {
+        if (signalOpts?.coalesce && executionContexts.get(runId).waking) {
+          executionContexts.get(runId).wakeAgain = true
+          return Effect.succeed(state)
+        }
+
+        return runtime.wake(runId)
+      }),
+    )
 
   runtime = {
     modules: options.modules,
@@ -555,11 +688,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
     signal: (runId, events, signalOpts) =>
       admitExternalEvents(events).pipe(
-        Effect.flatMap((admitted) =>
-          withRunIngress(runId, signalAdmitted(runId, admitted, signalOpts)),
-        ),
-        Effect.andThen(runtime.wake(runId)),
+        Effect.flatMap((admitted) => appendAndWake(runId, admitted, signalOpts)),
       ),
+
+    accept: (runId, events, signalOpts) => appendAndWake(runId, events, signalOpts),
 
     cancel: cancellation,
 
@@ -597,6 +729,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ? Effect.succeed({ events: [], value: undefined })
               : Effect.fail(new ForkConflictError(runId, sourceRunId))
           })
+
+          const parentSecrets = store.runSecrets ? yield* store.runSecrets.get(sourceRunId) : {}
+
+          yield* reconcileRunSecrets(
+            store,
+            runId,
+            hasEntries(parentSecrets) ? parentSecrets : undefined,
+          )
 
           return plan.rootThreadId
         }),
@@ -648,6 +788,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 state.rootThreadId === null ? null : { status: state.status },
               ),
             ),
+          signal: (runId, events, signalOptions) =>
+            runtime
+              .accept(runId, events, { ...signalOptions, coalesce: true })
+              .pipe(Effect.provideService(EventStoreTag, store), Effect.asVoid),
+          cancel: (runId) =>
+            runtime.cancel(runId).pipe(Effect.provideService(EventStoreTag, store), Effect.asVoid),
         }
       : unavailableRunLauncher)
 

@@ -4,7 +4,12 @@ import { describe, expect, mock, setSystemTime, test } from 'bun:test'
 import { Effect, Schema } from 'effect'
 
 import { createLocalActorHost } from '@looms/actor'
-import { DefinitionCatalogSchema, emptyRunState, makeMemoryEventStore } from '@looms/core'
+import {
+  DefinitionCatalogSchema,
+  emptyRunState,
+  makeMemoryEventStore,
+  type SubscriptionAttachment,
+} from '@looms/core'
 import { defineSchedule, ensureSchedule, every, once, schedule } from '@looms/schedule'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
@@ -318,6 +323,104 @@ describe('@looms/cloudflare', () => {
 
     const fetchRes = await doInstance.fetch(new Request('http://localhost/health'))
     expect(fetchRes.status).toBe(200)
+  })
+
+  test('LoomsDurableObject replays a run over a hibernating socket', async () => {
+    class Socket {
+      readonly sent: string[] = []
+      bufferedAmount = 0
+      private attachment: SubscriptionAttachment | undefined
+
+      send(data: string): void {
+        this.sent.push(data)
+      }
+
+      close(): void {
+        // The platform drops the socket.
+      }
+
+      serializeAttachment(value: SubscriptionAttachment): void {
+        this.attachment = value
+      }
+
+      deserializeAttachment(): SubscriptionAttachment | undefined {
+        return this.attachment
+      }
+    }
+
+    let server: Socket | undefined
+    const hadPair = 'WebSocketPair' in globalThis
+    const previous = globalThis.WebSocketPair
+
+    Object.defineProperty(globalThis, 'WebSocketPair', {
+      configurable: true,
+      writable: true,
+      value: class {
+        0: Socket
+        1: Socket
+
+        constructor() {
+          this[0] = new Socket()
+          this[1] = new Socket()
+          server = this[1]
+        }
+      },
+    })
+
+    try {
+      const accepted: Socket[] = []
+
+      const ctx = {
+        ...objectContext('run_ws', sqliteStorage()),
+        acceptWebSocket(ws: Socket) {
+          accepted.push(ws)
+        },
+        getWebSockets() {
+          return accepted
+        },
+      }
+
+      const flow = defineWorkflow({
+        name: 'ws-flow',
+        nodes: [{ id: 'work', run: () => ({ ok: true }) }],
+      })
+
+      class SocketObject extends LoomsDurableObject {
+        override configure(): LoomsDurableObjectConfig {
+          return { modules: [workflow({ definitions: [flow] })] }
+        }
+      }
+
+      // SAFETY: the test stands in for a Durable Object state.
+      // @ts-expect-error mock socket context in unit test
+      const object = new SocketObject(ctx, {})
+
+      await object.startRun({
+        runId: 'run_ws',
+        kind: 'workflow',
+        definitionName: 'ws-flow',
+        input: null,
+      })
+
+      const response = await object.fetch(
+        new Request('http://localhost/runs/run_ws/events', { headers: { upgrade: 'websocket' } }),
+      )
+
+      expect(response.status).toBe(101)
+      expect(server?.sent[0]).toContain('"type":"hello"')
+      expect(server?.sent.some((frame) => frame.includes('"batch"'))).toBe(true)
+      expect(accepted).toHaveLength(1)
+    } finally {
+      if (hadPair) {
+        Object.defineProperty(globalThis, 'WebSocketPair', {
+          configurable: true,
+          writable: true,
+          value: previous,
+        })
+      } else {
+        Reflect.deleteProperty(globalThis, 'WebSocketPair')
+      }
+    }
   })
 })
 

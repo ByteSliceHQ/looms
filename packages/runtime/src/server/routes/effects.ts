@@ -125,6 +125,25 @@ export function effectRoutes({ runtime, store }: RouteOptions): readonly Route[]
     }),
     route({
       method: 'POST',
+      path: '/runs/:runId/effects/:effectId/:attempt/secrets',
+      name: 'effects.workerSecrets',
+      access: 'worker',
+      params: { attempt: integer },
+      handle: ({ params }) =>
+        provideStore(
+          runtime.workerSecrets(params.runId, {
+            effectId: params.effectId,
+            attempt: params.attempt,
+          }),
+          store,
+        ).pipe(
+          Effect.map((result) =>
+            Response.json(result, { headers: { 'cache-control': 'no-store' } }),
+          ),
+        ),
+    }),
+    route({
+      method: 'POST',
       path: '/runs/:runId/effects/:effectId/:attempt/:action',
       name: 'effects.workerCallback',
       access: 'worker',

@@ -1,4 +1,4 @@
-import { Data, Effect, Layer, Predicate, type Context } from 'effect'
+import { Data, Effect, Layer, Predicate, type Context, type Types } from 'effect'
 
 import {
   asJson,
@@ -13,6 +13,7 @@ import {
   validateEventsEffect,
   validateInputEffect,
   withSnapshotStore,
+  hasEntries,
   type AnyRuntimeModule,
   type AppendableEvent,
   type EventCatalog,
@@ -21,23 +22,39 @@ import {
   type EventOrigin,
   type EventStore,
   InvalidEventError,
+  type DefinitionResolveError,
+  type DefinitionResolver,
   type JsonValue,
   type OutstandingEffect,
-  type RegisteredDefinition,
+  type RetryPolicy,
+  type SecretContext,
+  type TraceContext,
   type RunCursor,
+  type SchemaInput,
+  type VersionedDefinition,
   type RunState,
   type SnapshotStore,
 } from '@looms/core'
 
-import type { EffectWorkerTask } from './types'
+import type { EffectWorkerDeadlines, EffectWorkerTask } from './types'
+
+/** What a dispatch carries beyond the effect itself. */
+export interface WorkerTaskExtras {
+  /** Progress from the previous attempt's last heartbeat. */
+  readonly details?: JsonValue | null
+  readonly secrets?: SecretContext
+  readonly trace?: TraceContext | null
+  readonly retry?: RetryPolicy
+  readonly scheduleToStartAt?: number | null
+}
 
 export function workerTask(
   runId: string,
   item: OutstandingEffect,
   attempt: number,
-  details?: JsonValue | null,
+  extras: WorkerTaskExtras = {},
 ): EffectWorkerTask {
-  const task = {
+  const task: Types.Mutable<EffectWorkerTask> = {
     runId,
     effectId: item.effectId,
     attempt,
@@ -45,11 +62,43 @@ export function workerTask(
     input: 'input' in item.effect ? item.effect.input : null,
   }
 
-  if (details != null) {
-    return { ...task, details }
+  if (extras.details != null) {
+    task.details = extras.details
+  }
+
+  if (extras.secrets && hasEntries(extras.secrets)) {
+    task.secrets = extras.secrets
+  }
+
+  if (extras.trace) {
+    task.trace = extras.trace
+  }
+
+  const deadlines = workerDeadlines(extras)
+
+  if (deadlines) {
+    task.deadlines = deadlines
   }
 
   return task
+}
+
+function workerDeadlines(extras: WorkerTaskExtras): EffectWorkerDeadlines | undefined {
+  const deadlines: Types.Mutable<EffectWorkerDeadlines> = {}
+
+  if (extras.scheduleToStartAt != null) {
+    deadlines.scheduleToStartAt = extras.scheduleToStartAt
+  }
+
+  if (extras.retry?.startToCloseTimeoutMs) {
+    deadlines.startToCloseTimeoutMs = extras.retry.startToCloseTimeoutMs
+  }
+
+  if (extras.retry?.heartbeatTimeoutMs) {
+    deadlines.heartbeatTimeoutMs = extras.retry.heartbeatTimeoutMs
+  }
+
+  return Object.keys(deadlines).length > 0 ? deadlines : undefined
 }
 
 export class UnknownDefinitionError extends Data.TaggedError('UnknownDefinitionError')<{
@@ -185,7 +234,7 @@ export function groupOutstanding(
  * event with raw input.
  */
 export function threadStartedEvents(
-  definitions: ReadonlyMap<string, RegisteredDefinition>,
+  definitions: DefinitionResolver,
   args: {
     kind: string
     definitionName: string
@@ -194,11 +243,9 @@ export function threadStartedEvents(
     threadId: string
     parentThreadId: string | null
   },
-): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError> {
+): Effect.Effect<ReadonlyArray<EventInput>, UnknownDefinitionError | DefinitionResolveError> {
   return Effect.gen(function* () {
-    const def = definitions.get(
-      definitionKey(args.kind, args.definitionName, args.definitionVersion),
-    )
+    const def = yield* definitions.resolve(args.kind, args.definitionName, args.definitionVersion)
 
     if (!def) {
       return yield* new UnknownDefinitionError(
@@ -211,9 +258,10 @@ export function threadStartedEvents(
     const raw = args.input ?? null
     let startedInput = raw
     let validationError: string | undefined
+    const input = schemaInputOf(def)
 
-    if (def?.input) {
-      const validated = yield* validateInputEffect(def.input, raw).pipe(
+    if (input) {
+      const validated = yield* validateInputEffect(input, raw).pipe(
         Effect.match({
           onFailure: (error) => ({ ok: false as const, error: error.message }),
           onSuccess: (value) => ({ ok: true as const, value }),
@@ -254,6 +302,22 @@ export function threadStartedEvents(
       },
     ]
   })
+}
+
+function schemaInputOf(definition: VersionedDefinition): SchemaInput | undefined {
+  if (!('input' in definition)) {
+    return undefined
+  }
+
+  return isSchemaInput(definition.input) ? definition.input : undefined
+}
+
+function isSchemaInput(value: unknown): value is SchemaInput {
+  if (value === null || (!Predicate.isObject(value) && !Predicate.isFunction(value))) {
+    return false
+  }
+
+  return '~standard' in value || 'ast' in value
 }
 
 export function synthesizedThreadFailed(

@@ -7,9 +7,11 @@ import {
   type WaitCondition,
 } from './effects'
 import { JsonValueSchema } from './envelope'
-import { RunLaunchSourceSchema, type RunLaunchSource } from './launcher'
+import { RunLaunchSourceSchema, type ChildClose, type RunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import { RunAttributesSchema, type RunAttributes } from './run-context'
 import { isTerminalStatus } from './thread'
+import { TraceContextSchema, type TraceContext } from './trace'
 import type { JsonValue, ThreadStatus, RunStatus } from './types'
 
 export interface ThreadRecord {
@@ -73,6 +75,9 @@ export interface RunStartIdentity {
   rootThreadId: string
   launchedBy: RunLaunchSource | null
   correlationId: string | null
+  attributes: RunAttributes
+  /** The caller's W3C trace context. Effects, workers, and launched runs inherit it. */
+  trace: TraceContext | null
 }
 
 /** The run and last sequence a fork copied its history from. */
@@ -81,18 +86,31 @@ export interface RunForkSource {
   seq: number
 }
 
+export interface LaunchedRun {
+  runId: string
+  close: ChildClose
+}
+
 export interface RunState {
   runId: string
   status: RunStatus
   rootThreadId: string | null
   startIdentity: RunStartIdentity | null
   forkedFrom: RunForkSource | null
+  /** Immutable labels copied from `runtime.run.started`. Safe for every reader of the run. */
+  attributes: RunAttributes
   threads: { [threadId: string]: ThreadRecord }
   waits: { [waitId: string]: WaitRecord }
   outstandingEffects: readonly OutstandingEffect[]
   effectExecutions: { [effectId: string]: EffectExecutionRecord }
   completedEffectIds: readonly string[]
   processedIdempotencyKeys: readonly string[]
+  /** Child runs this run launched and has not yet seen settle. */
+  launchedRuns: readonly LaunchedRun[]
+  /** The run is cancelling and will not finish until `wait` children settle. */
+  closeWaiting: boolean
+  /** Child runs were already asked to stop because this run closed. */
+  childCloseSent: boolean
 }
 
 export const RunStateSchema = Schema.Struct({
@@ -119,8 +137,13 @@ export const RunStateSchema = Schema.Struct({
       correlationId: Schema.NullOr(Schema.String).pipe(
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
+      attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+      trace: Schema.NullOr(TraceContextSchema).pipe(
+        Schema.withDecodingDefaultKey(Effect.succeed(null)),
+      ),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  attributes: RunAttributesSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
   forkedFrom: Schema.NullOr(Schema.Struct({ runId: Schema.String, seq: Schema.Finite })).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
@@ -203,6 +226,14 @@ export const RunStateSchema = Schema.Struct({
   processedIdempotencyKeys: Schema.Array(Schema.String).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([])),
   ),
+  launchedRuns: Schema.Array(
+    Schema.Struct({
+      runId: Schema.String,
+      close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]),
+    }),
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  closeWaiting: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  childCloseSent: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 
 export function emptyRunState(runId: string): RunState {
@@ -212,12 +243,16 @@ export function emptyRunState(runId: string): RunState {
     rootThreadId: null,
     startIdentity: null,
     forkedFrom: null,
+    attributes: {},
     threads: {},
     waits: {},
     outstandingEffects: [],
     effectExecutions: {},
     completedEffectIds: [],
     processedIdempotencyKeys: [],
+    launchedRuns: [],
+    closeWaiting: false,
+    childCloseSent: false,
   }
 }
 

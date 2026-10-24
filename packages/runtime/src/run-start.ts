@@ -1,6 +1,6 @@
 import { Effect, Predicate } from 'effect'
 
-import type { JsonValue, RunState } from '@looms/core'
+import { sameStringRecord, type JsonValue, type RunState } from '@looms/core'
 
 import { RuntimeExecutionError, StartRunConflictError, type RunStartIdentity } from './errors'
 
@@ -67,6 +67,10 @@ export function assertSameDurableStart(
 
   if (existing.correlationId !== requested.correlationId) {
     mismatches.push('correlationId')
+  }
+
+  if (!sameStringRecord(existing.attributes ?? {}, requested.attributes)) {
+    mismatches.push('attributes')
   }
 
   return mismatches.length > 0

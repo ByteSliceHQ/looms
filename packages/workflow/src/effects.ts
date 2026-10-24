@@ -13,6 +13,7 @@ import {
   nodeResultBuilders,
   type NodeResult,
   type NodeState,
+  type WorkflowChildMode,
   type WorkflowDefinition,
   type WorkflowIteration,
 } from './definitions'
@@ -97,11 +98,16 @@ export const scheduleEffect = workflowModule.effect({
       const workflows = yield* WorkflowDefinitionsTag
 
       const definition = input.definitionName
-        ? workflows.get(input.definitionName, input.definitionVersion)
+        ? yield* workflows.resolve(input.definitionName, input.definitionVersion)
         : undefined
 
       if (!definition) {
-        return []
+        return input.definitionName
+          ? threadFailed(
+              ctx.threadId,
+              `Unknown workflow definition ${input.definitionName}@${input.definitionVersion}`,
+            )
+          : []
       }
 
       const nodes = { ...input.nodes } satisfies Record<string, NodeState>
@@ -236,7 +242,7 @@ export const runNodeEffect = workflowModule.effect({
       const workflows = yield* WorkflowDefinitionsTag
 
       const definition = input.definitionName
-        ? workflows.get(input.definitionName, input.definitionVersion)
+        ? yield* workflows.resolve(input.definitionName, input.definitionVersion)
         : undefined
 
       const run: NodeRun = {
@@ -352,7 +358,7 @@ function nodeResultEvents(
             ? nodeChildWorkflowId(threadId, nodeId, attempt)
             : createThreadId())
 
-        return spawnRequested(run, childThreadId, result, result.input)
+        return spawnRequested(definition, run, childThreadId, result, result.input)
       }
 
       case 'sleep': {
@@ -401,6 +407,7 @@ function nodeResultEvents(
               items: result.items,
               concurrency: result.concurrency,
               limitBytes,
+              ...childPolicy(definition),
             },
             threadId,
           },
@@ -415,7 +422,7 @@ function nodeResultEvents(
         }
 
         const childThreadId = iterationChildWorkflowId(threadId, nodeId, 'loop', attempt, index)
-        return spawnRequested(run, childThreadId, result, result.input, index)
+        return spawnRequested(definition, run, childThreadId, result, result.input, index)
       }
 
       default: {
@@ -426,7 +433,15 @@ function nodeResultEvents(
   })
 }
 
+function childPolicy(definition: WorkflowDefinition): WorkflowChildMode {
+  return {
+    execution: definition.childExecution ?? 'thread',
+    close: definition.childClose ?? 'terminate',
+  }
+}
+
 function spawnRequested(
+  definition: WorkflowDefinition,
   run: NodeRun,
   childThreadId: string,
   child: { readonly kind: string; readonly name: string; readonly version: string },
@@ -445,6 +460,7 @@ function spawnRequested(
         definitionVersion: child.version,
         input,
         loopIndex,
+        ...childPolicy(definition),
       },
       threadId: run.threadId,
     },
