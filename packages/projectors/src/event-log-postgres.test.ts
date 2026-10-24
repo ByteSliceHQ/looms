@@ -11,32 +11,13 @@ import { memoryEventLog, postgresEventLog, type RunLogRow } from './event-log'
 const PORT = 54_329
 const RUN_STATUSES: readonly RunStatus[] = ['running', 'completed', 'failed', 'cancelled']
 
-let db: PGlite
-let server: PGLiteSocketServer
-let sql: Sql
+/** Cold PGlite WASM load under a busy CI runner can exceed Bun's default hook timeout. */
+const SETUP_TIMEOUT_MS = 60_000
+
+let db: PGlite | undefined
+let server: PGLiteSocketServer | undefined
+let sql: Sql | undefined
 const statements: string[] = []
-
-beforeAll(async () => {
-  db = await PGlite.create()
-  server = new PGLiteSocketServer({ db, port: PORT, host: '127.0.0.1' })
-  await server.start()
-
-  sql = createPostgresClient({
-    host: '127.0.0.1',
-    port: PORT,
-    max: 1,
-    onnotice: () => undefined,
-    debug: (_connection, query) => {
-      statements.push(query)
-    },
-  })
-})
-
-afterAll(async () => {
-  await sql.end({ timeout: 1 })
-  await server.stop()
-  await db.close()
-})
 
 function event(runId: string, seq: number, input: EventInput): EventEnvelope {
   return { ...createEvent(runId, input), seq, ts: 1_700_000_000_000 + seq * 1_000 }
@@ -124,15 +105,46 @@ function fromIndexRow(row: IndexRow): RunLogRow {
   }
 }
 
-function indexRow(runId: string): Promise<RunLogRow | null> {
-  return sql<IndexRow[]>`SELECT * FROM looms_run_index WHERE run_id = ${runId}`.then(([row]) =>
-    row ? fromIndexRow(row) : null,
-  )
-}
-
 describe('postgres event log', () => {
+  beforeAll(async () => {
+    db = await PGlite.create()
+    server = new PGLiteSocketServer({ db, port: PORT, host: '127.0.0.1' })
+    await server.start()
+
+    sql = createPostgresClient({
+      host: '127.0.0.1',
+      port: PORT,
+      max: 1,
+      onnotice: () => undefined,
+      debug: (_connection, query) => {
+        statements.push(query)
+      },
+    })
+  }, SETUP_TIMEOUT_MS)
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 1 })
+    await server?.stop()
+    await db?.close()
+  }, SETUP_TIMEOUT_MS)
+
+  function requireSql(): Sql {
+    if (!sql) {
+      throw new Error('postgres client was not started')
+    }
+
+    return sql
+  }
+
+  function indexRow(runId: string): Promise<RunLogRow | null> {
+    return requireSql()<IndexRow[]>`SELECT * FROM looms_run_index WHERE run_id = ${runId}`.then(
+      ([row]) => (row ? fromIndexRow(row) : null),
+    )
+  }
+
   test('matches the memory sink for starts, steps, a replay, and a finish', async () => {
-    const postgres = postgresEventLog({ sql })
+    const client = requireSql()
+    const postgres = postgresEventLog({ sql: client })
     const memory = memoryEventLog()
     await postgres.init?.()
 
@@ -151,7 +163,7 @@ describe('postgres event log', () => {
       expect(await indexRow(runId)).toEqual(memory.run(runId))
     }
 
-    const events = await sql<{ seq: string; payload: unknown }[]>`
+    const events = await client<{ seq: string; payload: unknown }[]>`
       SELECT seq, payload FROM looms_run_events WHERE run_id = 'run_a' ORDER BY seq
     `
 
@@ -161,7 +173,8 @@ describe('postgres event log', () => {
   })
 
   test('writes a batch with a fixed number of statements', async () => {
-    const postgres = postgresEventLog({ sql })
+    const client = requireSql()
+    const postgres = postgresEventLog({ sql: client })
     await postgres.init?.()
 
     const batch = Array.from({ length: 50 }, (_, index) => [
@@ -175,7 +188,7 @@ describe('postgres event log', () => {
 
     const writes = statements.filter((query) => /^\s*(INSERT|UPDATE)/i.test(query))
 
-    const [count] = await sql<{ count: string }[]>`
+    const [count] = await client<{ count: string }[]>`
       SELECT count(*) FROM looms_run_index WHERE run_id LIKE 'run_many_%'
     `
 
@@ -184,7 +197,8 @@ describe('postgres event log', () => {
   })
 
   test('a touch-only batch updates existing runs and ignores unknown ones', async () => {
-    const postgres = postgresEventLog({ sql })
+    const client = requireSql()
+    const postgres = postgresEventLog({ sql: client })
     await postgres.init?.()
     await postgres.project([started('run_touch')])
 
