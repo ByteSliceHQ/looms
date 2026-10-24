@@ -65,6 +65,10 @@
       "types": "./dist/cloudflare/index.d.ts",
       "import": "./dist/cloudflare/index.js"
     },
+    "./cloudflare/queues": {
+      "types": "./dist/cloudflare/queues.d.ts",
+      "import": "./dist/cloudflare/queues.js"
+    },
     "./core": {
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
