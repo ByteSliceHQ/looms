@@ -12,6 +12,15 @@ import { runProjectorPromise } from './projector'
 import { POSTGRES_SCHEMA_SQL } from './schema'
 
 export { POSTGRES_SCHEMA_SQL } from './schema'
+export {
+  memoryEventLog,
+  postgresEventLog,
+  POSTGRES_EVENT_LOG_SCHEMA_SQL,
+  type EventLogEntry,
+  type EventLogProjector,
+  type MemoryEventLog,
+  type RunLogRow,
+} from './event-log'
 
 export type PostgresProjectorOptions = { url: string } | { sql: Sql }
 

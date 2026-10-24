@@ -13,6 +13,31 @@ coalesced. A deployment, eviction, or alarm retry may repeat a wake; event
 preconditions make that safe. Cross-object queries and transactions are not
 provided. Build global run lists with a projector.
 
+On a Durable Object, projector delivery is scheduled with `waitUntil` after the
+append commits, so projector latency is not part of the run step. The cursor is
+durable. A delivery that fails, or an isolate that stops before `waitUntil`
+finishes, is retried on the next alarm or request.
+
+`postgresEventLog` is the generic sink: one row per non-ephemeral envelope,
+keyed by `(run_id, seq)`, and a `looms_run_index` row with status, timestamps,
+the parent run, the launching effect, and the run's attributes. `tenant`,
+`project`, and `org` are copied out of string attributes so row-level security
+can index them:
+
+```sql
+ALTER TABLE looms_run_index ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON looms_run_index
+  USING (tenant = current_setting('looms.tenant', true));
+```
+
+Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Each
+delivered batch is one transaction of about three statements, however many
+events and runs it holds: one multi-row event insert per 1,000 events, one
+run-index upsert, and one update for runs that only gained events. Writes are
+idempotent. `rebuild(source)` replays a run from seq 1; run that while live
+delivery is paused, then let the cursor catch up. Ephemeral events are left out
+of the log.
+
 Live subscribers on a Durable Object should open a WebSocket (`Upgrade: websocket` on `GET /runs/:id/events`). The object hibernates the socket, answers `ping` with `pong` without waking, and fans out events when the log is appended. SSE stays available, including on `looms.serve`, but its keepalive keeps a Durable Object awake. Writes stay on HTTP. A browser cannot send `Authorization` on the upgrade, so pass a read grant (see `grantAuth` below); `@looms/client` puts `grant` on the socket URL. An idle-socket billed-duration check on a real Cloudflare account has not been run.
 
 A workflow can launch children with `childExecution: 'run'`. Each child is its own run, addressed by a deterministic id, and reports `runtime.child.settled` back to the parent. Cancelling the parent cancels those children. `childClose: 'wait'` records `runtime.child.close.requested` and cancels the parent only after the children reach a terminal status. `childClose: 'terminate'` cancels them as the parent closes. Children stay threads in the parent run unless `childExecution` is set.

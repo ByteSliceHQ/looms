@@ -140,6 +140,42 @@ describe('withProjectors', () => {
     await pending
   })
 
+  test('a scheduled delivery returns from append before the projector runs', async () => {
+    const base = await Effect.runPromise(makeMemoryEventStore)
+    let started = false
+    const scheduled: Array<Effect.Effect<void>> = []
+
+    const store = withProjectors(
+      base,
+      [
+        {
+          name: 'slow',
+          version: '1',
+          project: async () => {
+            started = true
+          },
+        },
+      ],
+      {
+        scheduleDelivery: (_runId, delivery) => {
+          scheduled.push(delivery)
+        },
+      },
+    )
+
+    await Effect.runPromise(store.append('run_parallel', [testEvent()]))
+    expect(started).toBe(false)
+    expect(scheduled).toHaveLength(1)
+
+    const delivery = scheduled[0]
+
+    if (delivery) {
+      await Effect.runPromise(delivery)
+    }
+
+    expect(started).toBe(true)
+  })
+
   test('projects independent explicit handlers concurrently', async () => {
     const release = Promise.withResolvers<void>()
     const started: string[] = []
