@@ -1,0 +1,229 @@
+{
+  "name": "happy-path",
+  "runId": "corpus_happy",
+  "stateHash": "54c93dd3bef5a0d8",
+  "events": [
+    {
+      "id": "evt_mvlc1fqp_2_26de35616ef343748332aa7cc50de476",
+      "runId": "corpus_happy",
+      "ts": 1792781874673,
+      "type": "runtime.run.started",
+      "payload": {
+        "rootThreadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 42,
+        "requestedThreadId": null
+      },
+      "threadId": null,
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 1
+    },
+    {
+      "id": "evt_mvlc1fqp_3_6d411648eed140fb948e9a2d501a70b7",
+      "runId": "corpus_happy",
+      "ts": 1792781874673,
+      "type": "runtime.thread.started",
+      "payload": {
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 42,
+        "parentThreadId": null
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 2
+    },
+    {
+      "id": "evt_mvlc1fqs_4_5f2054e093a9444aae7453b3c80ccbe4",
+      "runId": "corpus_happy",
+      "ts": 1792781874676,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:approval",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 3
+    },
+    {
+      "id": "evt_mvlc1fqt_5_97929aa090b0463797f8b717e918f3c4",
+      "runId": "corpus_happy",
+      "ts": 1792781874677,
+      "type": "runtime.wait.registered",
+      "payload": {
+        "waitId": "approval",
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+        "on": {
+          "type": "corpus.approved"
+        },
+        "tag": null
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqp_3_6d411648eed140fb948e9a2d501a70b7",
+      "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:approval",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7"
+      },
+      "idempotencyKey": null,
+      "seq": 4
+    },
+    {
+      "id": "evt_mvlc1fqv_6_d20e2e807dcd493d8c8354f9beb9f0ac",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "corpus.approved",
+      "payload": {
+        "decision": "approve"
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "effectId": null,
+      "origin": {
+        "type": "external"
+      },
+      "idempotencyKey": null,
+      "seq": 5
+    },
+    {
+      "id": "evt_mvlc1fqv_7_e3ce4ddf320c474294b816cc44402aff",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "runtime.wait.satisfied",
+      "payload": {
+        "waitId": "approval",
+        "tag": null,
+        "event": {
+          "id": "evt_mvlc1fqv_6_d20e2e807dcd493d8c8354f9beb9f0ac",
+          "type": "corpus.approved",
+          "payload": {
+            "decision": "approve"
+          }
+        }
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqv_6_d20e2e807dcd493d8c8354f9beb9f0ac",
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 6
+    },
+    {
+      "id": "evt_mvlc1fqv_8_4f337cf8ea974e3ab577d93d601120f6",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:charge",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 7
+    },
+    {
+      "id": "evt_mvlc1fqv_9_d153a6c35c8845e380ca7fac51282fe0",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "corpus.charged",
+      "payload": {
+        "amount": 42,
+        "version": "v1"
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqv_6_d20e2e807dcd493d8c8354f9beb9f0ac",
+      "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:charge",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7"
+      },
+      "idempotencyKey": null,
+      "seq": 8
+    },
+    {
+      "id": "evt_mvlc1fqv_a_292fd8b584394c16b528ed5e59c3fd7e",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:8:0",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 9
+    },
+    {
+      "id": "evt_mvlc1fqv_b_e41da8691231444fadf9b320a5cbc3b7",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "runtime.thread.completed",
+      "payload": {
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+        "output": {
+          "amount": 42,
+          "ok": true
+        }
+      },
+      "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqv_9_d153a6c35c8845e380ca7fac51282fe0",
+      "effectId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7:8:0",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqm_1_5860e37710f14fcc977e4df1bd3af5f7"
+      },
+      "idempotencyKey": null,
+      "seq": 10
+    },
+    {
+      "id": "evt_mvlc1fqv_c_a473a59de74744f4b48a835fe682d5f4",
+      "runId": "corpus_happy",
+      "ts": 1792781874679,
+      "type": "runtime.run.completed",
+      "payload": {
+        "output": {
+          "amount": 42,
+          "ok": true
+        },
+        "error": null
+      },
+      "threadId": null,
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 11
+    }
+  ]
+}

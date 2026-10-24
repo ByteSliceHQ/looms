@@ -1,10 +1,10 @@
 import { Context, Layer } from 'effect'
 
+import { makeDefinitionStore, type DefinitionStore } from '@looms/core'
+
 import type { EvaluatorDefinition } from './definitions'
 
-export interface EvaluatorDefinitionStore {
-  get(name: string): EvaluatorDefinition | undefined
-}
+export type EvaluatorDefinitionStore = DefinitionStore<EvaluatorDefinition>
 
 export class EvaluatorDefinitionsTag extends Context.Service<
   EvaluatorDefinitionsTag,
@@ -14,9 +14,8 @@ export class EvaluatorDefinitionsTag extends Context.Service<
 export function makeEvaluatorDefinitionStore(
   definitions: ReadonlyArray<EvaluatorDefinition>,
 ): EvaluatorDefinitionStore {
-  const map = new Map(definitions.map((def) => [def.name, def]))
-  return { get: (name) => map.get(name) }
+  return makeDefinitionStore('evaluator', definitions)
 }
 
-export const EvaluatorDefinitionsLive = (definitions: ReadonlyArray<EvaluatorDefinition>) =>
-  Layer.succeed(EvaluatorDefinitionsTag, makeEvaluatorDefinitionStore(definitions))
+export const EvaluatorDefinitionsLive = (definitions: EvaluatorDefinitionStore) =>
+  Layer.succeed(EvaluatorDefinitionsTag, definitions)

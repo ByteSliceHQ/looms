@@ -17,5 +17,5 @@ export function makeWorkflowDefinitionStore(
   return makeDefinitionStore('workflow', definitions)
 }
 
-export const WorkflowDefinitionsLive = (definitions: ReadonlyArray<WorkflowDefinition>) =>
-  Layer.succeed(WorkflowDefinitionsTag, makeWorkflowDefinitionStore(definitions))
+export const WorkflowDefinitionsLive = (definitions: WorkflowDefinitionStore) =>
+  Layer.succeed(WorkflowDefinitionsTag, definitions)

@@ -4,6 +4,9 @@ export {
   type LoomsClientOptions,
   type StartResult,
   type StreamHandle,
+  type SubscribeEventsOptions,
+  type SubscriptionSocket,
+  type SubscriptionSocketConstructor,
 } from './client'
 export {
   consumeSseStream,

@@ -97,10 +97,12 @@ describe('foldRun', () => {
       definitionVersion: 'v1',
       input: null,
       requestedThreadId: null,
+      attributes: {},
       idempotencyKey: null,
       rootThreadId: threadId,
       launchedBy: null,
       correlationId: null,
+      trace: null,
     })
 
     expect(state.threads[threadId]?.status).toBe('running')

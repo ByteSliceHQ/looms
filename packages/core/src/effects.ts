@@ -2,12 +2,14 @@ import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
 import { EventInputSchema, type EventInput } from './envelope'
 import { DEFAULT_DEFINITION_VERSION } from './module'
+import type { RunAttributes, SecretContext } from './run-context'
 import {
   validateInputEffect,
   type InferDefinedSchema,
   type InvalidInputError,
   type SchemaInput,
 } from './schema'
+import type { TraceContext } from './trace'
 import { asJson, type JsonValue } from './types'
 
 export type WaitOnEvent = {
@@ -60,6 +62,23 @@ export type CancelEffect = {
   tag?: string
 }
 
+export type LaunchEffect = {
+  type: 'runtime.launch'
+  runId: string
+  kind: string
+  definitionName: string
+  definitionVersion: string
+  input: JsonValue
+  close: 'terminate' | 'wait'
+  tag?: string
+}
+
+export type CancelRunEffect = {
+  type: 'runtime.cancelRun'
+  runId: string
+  tag?: string
+}
+
 export interface RetryPolicy {
   readonly maxAttempts: number
   readonly backoffMs?: number
@@ -86,6 +105,8 @@ export type PrimitiveEffect =
   | CompleteEffect
   | FailEffect
   | CancelEffect
+  | LaunchEffect
+  | CancelRunEffect
 
 export type RuntimeEffect = PrimitiveEffect | InvokeEffect
 
@@ -133,6 +154,25 @@ export const RuntimeEffectSchema = Schema.Union([
     tag: Schema.optional(Schema.String),
   }),
   Schema.Struct({
+    type: Schema.Literal('runtime.launch'),
+    runId: Schema.String,
+    kind: Schema.String,
+    definitionName: Schema.String,
+    definitionVersion: Schema.String.pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
+    ),
+    input: Schema.Json,
+    close: Schema.Union([Schema.Literal('terminate'), Schema.Literal('wait')]).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed('terminate' as const)),
+    ),
+    tag: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('runtime.cancelRun'),
+    runId: Schema.String,
+    tag: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
     type: Schema.String,
     input: Schema.Json,
     tag: Schema.optional(Schema.String),
@@ -148,6 +188,8 @@ export function isPrimitiveEffect(effect: RuntimeEffect): effect is PrimitiveEff
     case 'runtime.complete':
     case 'runtime.fail':
     case 'runtime.cancel':
+    case 'runtime.launch':
+    case 'runtime.cancelRun':
       return true
     default:
       return false
@@ -187,6 +229,12 @@ export interface EffectContext {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  /** Labels safe for every reader of the run. */
+  readonly attributes: RunAttributes
+  /** Bearer material for this run. Never copy it into an emitted event. */
+  readonly secrets: SecretContext
+  /** The W3C trace context of the caller that started the run, to parent spans the handler starts. */
+  readonly trace: TraceContext | null
   emit(event: EventInput): Promise<void>
 }
 
@@ -196,6 +244,9 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly threadId: string
   readonly causingEventId: string
   readonly signal: AbortSignal
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
+  readonly trace: TraceContext | null
   emit(event: E): Promise<void>
 }
 
@@ -213,6 +264,52 @@ export class EffectHandlerError extends Data.TaggedError('EffectHandlerError')<{
 
     this.name = 'EffectHandlerError'
   }
+}
+
+export interface EffectFailureOptions {
+  readonly error: string
+  /** Fail the attempt even when the retry policy has attempts remaining. */
+  readonly nonRetryable?: boolean
+  /** Wait at least this long before the next attempt. Does not shorten the policy backoff. */
+  readonly retryAfterMs?: number
+}
+
+/** A handler's deliberate attempt failure, distinct from an unexpected thrown error. */
+export class EffectFailure extends Data.TaggedError('EffectFailure')<{
+  readonly error: string
+  readonly nonRetryable: boolean
+  readonly retryAfterMs?: number
+}> {
+  constructor(options: EffectFailureOptions) {
+    const error = options.error
+    const nonRetryable = options.nonRetryable === true
+
+    if (options.retryAfterMs === undefined) {
+      super({ error, nonRetryable })
+    } else {
+      super({ error, nonRetryable, retryAfterMs: options.retryAfterMs })
+    }
+
+    this.name = 'EffectFailure'
+  }
+}
+
+/** Fail the current attempt. The retry policy decides whether another attempt is scheduled. */
+export function failEffect(options: EffectFailureOptions): Effect.Effect<never, EffectFailure> {
+  return Effect.fail(new EffectFailure(options))
+}
+
+/** Unwrap a handler failure, including one wrapped by `EffectHandlerError`. */
+export function readEffectFailure(cause: unknown): EffectFailure | null {
+  if (cause instanceof EffectFailure) {
+    return cause
+  }
+
+  if (cause instanceof EffectHandlerError) {
+    return readEffectFailure(cause.cause)
+  }
+
+  return null
 }
 
 export type EffectHandlerResult<
@@ -264,6 +361,18 @@ function liftHandlerResult<R, E extends EventInput, HandlerError>(
   }
 
   return Effect.succeed(result)
+}
+
+function invokeHandler<R, E extends EventInput, HandlerError>(
+  handler: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>,
+  input: JsonValue,
+  ctx: EffectContext,
+): Effect.Effect<ReadonlyArray<E>, EffectHandlerError, R> {
+  try {
+    return liftHandlerResult(handler(input, ctx))
+  } catch (cause) {
+    return Effect.fail(new EffectHandlerError(cause))
+  }
 }
 
 /**
@@ -327,7 +436,12 @@ export function defineEffect<R, E extends EventInput, HandlerError>(def: {
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw
 
-        return handler ? yield* liftHandlerResult(handler(input, ctx)) : noOutput
+        if (!handler) {
+          return noOutput
+        }
+
+        // invokeHandler turns a synchronous throw into EffectHandlerError.
+        return yield* invokeHandler(handler, input, ctx)
       }),
   }
 }
@@ -411,6 +525,38 @@ export function cancel(threadId: string, tag?: string): CancelEffect {
   return tag === undefined
     ? { type: 'runtime.cancel', threadId }
     : { type: 'runtime.cancel', threadId, tag }
+}
+
+export function launch(args: {
+  runId: string
+  kind: string
+  definitionName: string
+  definitionVersion?: string
+  input: JsonValue
+  close?: 'terminate' | 'wait'
+  tag?: string
+}): LaunchEffect {
+  const effect: LaunchEffect = {
+    type: 'runtime.launch',
+    runId: args.runId,
+    kind: args.kind,
+    definitionName: args.definitionName,
+    definitionVersion: args.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
+    input: args.input,
+    close: args.close ?? 'terminate',
+  }
+
+  if (args.tag !== undefined) {
+    effect.tag = args.tag
+  }
+
+  return effect
+}
+
+export function cancelRun(runId: string, tag?: string): CancelRunEffect {
+  return tag === undefined
+    ? { type: 'runtime.cancelRun', runId }
+    : { type: 'runtime.cancelRun', runId, tag }
 }
 
 export interface InvokeOptions {

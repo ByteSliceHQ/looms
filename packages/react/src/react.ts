@@ -13,13 +13,16 @@ import {
 
 import {
   isTerminalStatus,
+  sameStringRecord,
   threadTree,
   toThreadTree,
   type AnyEventEnvelope,
   type ProjectionDefinition,
   type RegisteredEvent,
+  type RunAttributes,
   type RunLaunchSource,
   type RunStatus,
+  type SubscriptionTransport,
   type ThreadTree,
 } from '@looms/core'
 
@@ -35,11 +38,13 @@ export interface LoomsProviderProps {
   children: ReactNode
   endpoint?: string
   coalesce?: CoalesceOption
+  transport?: SubscriptionTransport
 }
 
 interface ProviderContextValue {
   endpoint: string
   coalesce?: CoalesceOption
+  transport?: SubscriptionTransport
 }
 
 const LoomsContext = createContext<ProviderContextValue>({ endpoint: '' })
@@ -53,8 +58,23 @@ interface RegistryEntry {
 
 const registry = new Map<string, RegistryEntry>()
 
-function registryKey(endpoint: string, runId: string): string {
-  return `${endpoint}\0${runId}`
+interface StoreIdentity {
+  readonly endpoint: string
+  readonly reconnectDelayMs?: number
+  readonly coalesce?: CoalesceOption
+  readonly transport?: SubscriptionTransport
+  readonly threadId?: string
+  readonly includeEphemeral?: boolean
+}
+
+function registryKey(runId: string, identity: StoreIdentity): string {
+  return [
+    identity.endpoint,
+    runId,
+    identity.transport ?? '',
+    identity.threadId ?? '',
+    identity.includeEphemeral === false ? '0' : '1',
+  ].join('\0')
 }
 
 function disposeEntry(key: string): void {
@@ -74,13 +94,8 @@ function scheduleDisposal(key: string): Fiber.Fiber<void> {
   )
 }
 
-function peekStore(
-  runId: string,
-  endpoint: string,
-  reconnectDelayMs?: number,
-  coalesce?: CoalesceOption,
-): LoomsClientStore {
-  const key = registryKey(endpoint, runId)
+function peekStore(runId: string, identity: StoreIdentity): LoomsClientStore {
+  const key = registryKey(runId, identity)
   const existing = registry.get(key)
 
   if (existing) {
@@ -89,9 +104,12 @@ function peekStore(
 
   const store = createLoomsStore({
     storeId: runId,
-    endpoint,
-    reconnectDelayMs,
-    coalesce,
+    endpoint: identity.endpoint,
+    reconnectDelayMs: identity.reconnectDelayMs,
+    coalesce: identity.coalesce,
+    transport: identity.transport,
+    threadId: identity.threadId,
+    includeEphemeral: identity.includeEphemeral,
   })
 
   registry.set(key, {
@@ -103,14 +121,9 @@ function peekStore(
   return store
 }
 
-function retainStore(
-  runId: string,
-  endpoint: string,
-  reconnectDelayMs?: number,
-  coalesce?: CoalesceOption,
-): void {
-  const key = registryKey(endpoint, runId)
-  peekStore(runId, endpoint, reconnectDelayMs, coalesce)
+function retainStore(runId: string, identity: StoreIdentity): void {
+  const key = registryKey(runId, identity)
+  peekStore(runId, identity)
   const entry = registry.get(key)
 
   if (!entry) {
@@ -125,8 +138,8 @@ function retainStore(
   }
 }
 
-function releaseStore(runId: string, endpoint: string): void {
-  const key = registryKey(endpoint, runId)
+function releaseStore(runId: string, identity: StoreIdentity): void {
+  const key = registryKey(runId, identity)
   const entry = registry.get(key)
 
   if (!entry) {
@@ -141,8 +154,13 @@ function releaseStore(runId: string, endpoint: string): void {
 }
 
 /** Root provider that supplies the Looms host endpoint to run stores. */
-export function LoomsProvider({ children, endpoint = '', coalesce }: LoomsProviderProps) {
-  const value = useMemo(() => ({ endpoint, coalesce }), [endpoint, coalesce])
+export function LoomsProvider({
+  children,
+  endpoint = '',
+  coalesce,
+  transport,
+}: LoomsProviderProps) {
+  const value = useMemo(() => ({ endpoint, coalesce, transport }), [endpoint, coalesce, transport])
   return createElement(LoomsContext.Provider, { value, children })
 }
 
@@ -150,6 +168,9 @@ export interface UseRunStoreOptions {
   endpoint?: string
   reconnectDelayMs?: number
   coalesce?: CoalesceOption
+  transport?: SubscriptionTransport
+  threadId?: string
+  includeEphemeral?: boolean
 }
 
 /**
@@ -162,12 +183,25 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
   const endpoint = options?.endpoint ?? context.endpoint
   const reconnectDelayMs = options?.reconnectDelayMs
   const coalesce = options?.coalesce ?? context.coalesce
-  const store = peekStore(runId, endpoint, reconnectDelayMs, coalesce)
+  const transport = options?.transport ?? context.transport
+  const threadId = options?.threadId
+  const includeEphemeral = options?.includeEphemeral
+
+  const identity = {
+    endpoint,
+    reconnectDelayMs,
+    coalesce,
+    transport,
+    threadId,
+    includeEphemeral,
+  }
+
+  const store = peekStore(runId, identity)
 
   useEffect(() => {
-    retainStore(runId, endpoint, reconnectDelayMs, coalesce)
-    return () => releaseStore(runId, endpoint)
-  }, [runId, endpoint, reconnectDelayMs, coalesce])
+    retainStore(runId, identity)
+    return () => releaseStore(runId, identity)
+  }, [runId, endpoint, reconnectDelayMs, coalesce, transport, threadId, includeEphemeral])
 
   return store
 }
@@ -232,6 +266,7 @@ export interface RunSummary {
   readonly startedAt: number | undefined
   /** The effect in another run that launched this one. */
   readonly launchedBy: RunLaunchSource | undefined
+  readonly attributes: RunAttributes
   readonly connection: LoomsConnectionStatus
 }
 
@@ -243,6 +278,7 @@ function shallowEqualSummary(a: RunSummary, b: RunSummary): boolean {
     a.rootThreadId === b.rootThreadId &&
     a.startedAt === b.startedAt &&
     a.launchedBy === b.launchedBy &&
+    sameStringRecord(a.attributes, b.attributes) &&
     a.connection === b.connection
   )
 }
@@ -264,6 +300,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
       rootThreadId: run?.rootThreadId ?? undefined,
       startedAt: s.query.startedAt(),
       launchedBy: run?.launchedBy ?? undefined,
+      attributes: run?.attributes ?? {},
       connection: s.status(),
     }
   }, [])

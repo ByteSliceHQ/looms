@@ -11,6 +11,7 @@ export {
   StartRunConflictError,
   type CreateRuntimeOptions,
   type EffectWorker,
+  type EffectWorkerDeadlines,
   type EffectWorkerTask,
   type LoomsRuntime,
   type RunOperationalStatus,
@@ -20,8 +21,10 @@ export {
   type WakeScheduler,
   type WorkerCallback,
   type WorkerCallbackInput,
+  type WorkerCallbackResult,
 } from './runtime'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
+export { loadSubscriptionOpening, readSubscriptionBounds } from './subscription'
 export {
   serveHttp,
   createFetchHandler,
@@ -29,8 +32,19 @@ export {
   type FetchHandlerOptions,
   authAllowed,
   authDenied,
+  authResponse,
   bearerAuth,
   defaultAuthorize,
+  grantAuth,
+  issueRunGrant,
+  grantSubprotocol,
+  runGrantToken,
+  verifyRunGrant,
+  GrantError,
+  type GrantAuthOptions,
+  type GrantFailure,
+  type RunGrant,
+  runRouteInfo,
   type AuthDecision,
   type AuthorizedAccess,
   type Authorize,
@@ -40,5 +54,6 @@ export {
   type RunningServer,
   type LoomsFetchResult,
 } from './server'
+export { filesystemBlobStore } from './filesystem-blob-store'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'
 export { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'

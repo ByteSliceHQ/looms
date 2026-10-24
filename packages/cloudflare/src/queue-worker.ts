@@ -1,0 +1,123 @@
+import { Data, Effect, Predicate, type Types } from 'effect'
+
+import { claimJson, utf8JsonBytes, type BlobStore } from '@looms/core'
+import type { EffectWorker, EffectWorkerTask } from '@looms/runtime'
+
+import type { QueueEffectMessage } from './queue-message'
+
+/** Leaves room under Cloudflare's 128 KB message limit. */
+export const DEFAULT_MAX_QUEUE_MESSAGE_BYTES = 100_000
+
+/** A Cloudflare Queue producer binding, or anything that sends the same way. */
+export interface QueueProducer {
+  send(message: QueueEffectMessage, options?: { readonly contentType?: 'json' }): Promise<void>
+}
+
+export interface QueueRoute {
+  readonly handles: ReadonlyArray<string> | ((type: string) => boolean)
+  readonly queue: QueueProducer
+}
+
+export interface CloudflareQueueWorkerOptions {
+  /** The first route that handles an effect type gets its attempts. */
+  readonly routes: ReadonlyArray<QueueRoute>
+  /** Holds an input that would push a message past `maxMessageBytes`. Without it, that dispatch fails. */
+  readonly blobs?: BlobStore
+  readonly maxMessageBytes?: number
+}
+
+export class QueueDispatchError extends Data.TaggedError('QueueDispatchError')<{
+  readonly message: string
+}> {}
+
+/**
+ * An {@link EffectWorker} that sends each attempt to a Cloudflare Queue. A send the queue rejects
+ * (a 429, for one) fails the attempt under the effect's retry policy. A message the queue accepts
+ * and later dead-letters is recovered by the effect's schedule-to-start timeout, which every routed
+ * effect must set. Cancellation reaches a running attempt through its callback responses, since a
+ * queued message cannot be recalled.
+ */
+export function cloudflareQueueWorker(options: CloudflareQueueWorkerOptions): EffectWorker {
+  const routeFor = (type: string) =>
+    options.routes.find((route) =>
+      Predicate.isFunction(route.handles) ? route.handles(type) : route.handles.includes(type),
+    )
+
+  return {
+    dispatchSemantics: 'acknowledged',
+    handles: (type) => routeFor(type) !== undefined,
+    dispatch: (task) => Effect.runPromise(sendTask(task, routeFor(task.type), options)),
+  }
+}
+
+function sendTask(
+  task: EffectWorkerTask,
+  route: QueueRoute | undefined,
+  options: CloudflareQueueWorkerOptions,
+): Effect.Effect<void, QueueDispatchError> {
+  if (!route) {
+    return Effect.fail(new QueueDispatchError({ message: `no queue route handles "${task.type}"` }))
+  }
+
+  return queueMessage(task, options).pipe(
+    Effect.flatMap((message) =>
+      Effect.tryPromise({
+        try: () => route.queue.send(message, { contentType: 'json' }),
+        catch: (cause) =>
+          new QueueDispatchError({
+            message: `queue send failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          }),
+      }),
+    ),
+  )
+}
+
+function queueMessage(
+  task: EffectWorkerTask,
+  options: CloudflareQueueWorkerOptions,
+): Effect.Effect<QueueEffectMessage, QueueDispatchError> {
+  const message: Types.Mutable<QueueEffectMessage> = {
+    v: 1,
+    runId: task.runId,
+    effectId: task.effectId,
+    attempt: task.attempt,
+    type: task.type,
+  }
+
+  if (task.details !== undefined) {
+    message.details = task.details
+  }
+
+  if (task.trace) {
+    message.trace = task.trace
+  }
+
+  if (task.deadlines) {
+    message.deadlines = task.deadlines
+  }
+
+  const inline: QueueEffectMessage = { ...message, input: task.input }
+  const limit = options.maxMessageBytes ?? DEFAULT_MAX_QUEUE_MESSAGE_BYTES
+
+  if (utf8JsonBytes(inline) <= limit) {
+    return Effect.succeed(inline)
+  }
+
+  const { blobs } = options
+
+  if (!blobs) {
+    return Effect.fail(
+      new QueueDispatchError({
+        message: `the "${task.type}" message is over ${limit} bytes and no blob store is configured`,
+      }),
+    )
+  }
+
+  return claimJson(task.input, blobs).pipe(
+    Effect.tap((ref) => blobs.retain(task.runId, [ref.sha256])),
+    Effect.map((inputRef): QueueEffectMessage => ({ ...message, inputRef })),
+    Effect.mapError(
+      (error) => new QueueDispatchError({ message: `could not store the input: ${error.message}` }),
+    ),
+  )
+}

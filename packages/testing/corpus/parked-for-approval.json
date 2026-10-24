@@ -1,0 +1,90 @@
+{
+  "name": "parked-for-approval",
+  "runId": "corpus_parked",
+  "stateHash": "f27e896ad3aa1a4c",
+  "events": [
+    {
+      "id": "evt_mvlc1fqz_o_a67d820299d8441b9178b509cc3a1a88",
+      "runId": "corpus_parked",
+      "ts": 1792781874683,
+      "type": "runtime.run.started",
+      "payload": {
+        "rootThreadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 99,
+        "requestedThreadId": null
+      },
+      "threadId": null,
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 1
+    },
+    {
+      "id": "evt_mvlc1fqz_p_a91976be42584a0da016fc199ce3637f",
+      "runId": "corpus_parked",
+      "ts": 1792781874683,
+      "type": "runtime.thread.started",
+      "payload": {
+        "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 99,
+        "parentThreadId": null
+      },
+      "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 2
+    },
+    {
+      "id": "evt_mvlc1fqz_q_230db458cb574fbe9b2021a015dc3fe3",
+      "runId": "corpus_parked",
+      "ts": 1792781874683,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc:approval",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 3
+    },
+    {
+      "id": "evt_mvlc1fqz_r_3185fc3e8d0a48a0b034576af9d69d24",
+      "runId": "corpus_parked",
+      "ts": 1792781874683,
+      "type": "runtime.wait.registered",
+      "payload": {
+        "waitId": "approval",
+        "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+        "on": {
+          "type": "corpus.approved"
+        },
+        "tag": null
+      },
+      "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqz_p_a91976be42584a0da016fc199ce3637f",
+      "effectId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc:approval",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqz_n_0fe90ec68d824cc7beb0817d5367a6cc"
+      },
+      "idempotencyKey": null,
+      "seq": 4
+    }
+  ]
+}

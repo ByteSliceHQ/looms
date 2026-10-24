@@ -1,6 +1,6 @@
 import type { Effect } from 'effect'
 
-import type { EventStore } from '@looms/core'
+import { snapshotStoreOf, withBlobOffload, type BlobStore, type EventStore } from '@looms/core'
 import { sqliteEventStore, sqlStorageExec } from '@looms/core/sqlite-store'
 import {
   createProjectorDelivery,
@@ -13,6 +13,8 @@ import {
 export interface DurableObjectStoreOptions {
   readonly projectors?: readonly Projector[]
   readonly scheduleProjectorRetry?: (at: number) => Effect.Effect<void>
+  /** Offloads oversized event and snapshot JSON. See `withBlobOffload`. */
+  readonly blobs?: BlobStore
 }
 
 export interface DurableObjectEventStore extends EventStore {
@@ -32,7 +34,12 @@ export function durableObjectEventStore(
     transaction: (fn) => ctx.storage.transactionSync(fn),
   })
 
-  const store = sqliteEventStore({ exec })
+  const sqlite = sqliteEventStore({ exec })
+  const snapshots = snapshotStoreOf(sqlite)
+
+  const store = options.blobs
+    ? withBlobOffload(sqlite, options.blobs, snapshots ? { snapshots } : undefined)
+    : sqlite
 
   if (options.projectors && options.projectors.length > 0) {
     const delivery = createProjectorDelivery(
