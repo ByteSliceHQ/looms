@@ -21,6 +21,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./queues": {
+      "types": "./src/queues.ts",
+      "import": "./src/queues.ts",
+      "default": "./src/queues.ts"
     }
   },
   "scripts": {
