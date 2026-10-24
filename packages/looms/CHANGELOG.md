@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.5.1
+
+### Patch Changes
+
+- 86280a0: Export `@swirls/looms/cloudflare/queues` so Bun/Node pull consumers can load queue helpers without importing `cloudflare:workers`.
+
 ## 0.5.0
 
 ### Minor Changes
