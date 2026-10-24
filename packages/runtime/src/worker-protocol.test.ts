@@ -7,6 +7,7 @@ import {
   defineEffect,
   defineRuntimeModule,
   defineThread,
+  failEffect,
   invoke,
   makeMemoryEventStore,
   type EventEnvelope,
@@ -22,7 +23,10 @@ const workerDefinition = {
   value: { kind: 'worker-test', name: 'worker-test' },
 }
 
-function workerModule(retry: RetryPolicy, execute?: () => ReadonlyArray<EventInput>) {
+function workerModule(
+  retry: RetryPolicy,
+  execute?: () => ReadonlyArray<EventInput> | Effect.Effect<ReadonlyArray<EventInput>, unknown>,
+) {
   const effect = defineEffect({
     type: 'worker.do',
     retry,
@@ -418,7 +422,9 @@ describe('durable external effect workers', () => {
     expect(unauthorized?.status).toBe(401)
     expect(unknownAction?.status).toBe(404)
     expect(startedResponse?.status).toBe(200)
+    expect(await startedResponse?.json()).toEqual({ status: 'accepted', cancelRequested: false })
     expect(completedResponse?.status).toBe(200)
+    expect(await completedResponse?.json()).toEqual({ status: 'accepted', cancelRequested: false })
 
     expect(
       (await looms.getEvents(started.runId)).some((event) => event.type === 'worker.done'),
@@ -701,6 +707,116 @@ describe('durable external effect workers', () => {
     expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(true)
     expect(events.some((event) => event.type === 'worker.done')).toBe(false)
     expect((await looms.getRun(started.runId)).status).toBe('cancelled')
+    await looms.stop()
+  })
+
+  test('a non-retryable failure spends no further attempts', async () => {
+    const looms = createLooms({
+      modules: [
+        workerModule({ maxAttempts: 3, backoffMs: 1 }, () =>
+          failEffect({ error: 'bad input', nonRetryable: true }),
+        ),
+      ],
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const types = (await looms.getEvents(started.runId)).map((event) => event.type)
+
+    expect(types).toContain('runtime.effect.failed')
+    expect(types).not.toContain('runtime.effect.retry.scheduled')
+    expect((await looms.getRun(started.runId)).status).toBe('failed')
+    await looms.stop()
+  })
+
+  test('retryAfterMs extends the policy backoff', async () => {
+    const looms = createLooms({
+      modules: [
+        workerModule({ maxAttempts: 3, backoffMs: 10 }, () =>
+          failEffect({ error: 'later', retryAfterMs: 60_000 }),
+        ),
+      ],
+    })
+
+    const before = Date.now()
+    const started = await looms.start(workerDefinition, {})
+
+    const payload = (await looms.getEvents(started.runId)).find(
+      (event) => event.type === 'runtime.effect.retry.scheduled',
+    )?.payload
+
+    const nextAttemptAt =
+      Predicate.isReadonlyObject(payload) && !Array.isArray(payload)
+        ? payload.nextAttemptAt
+        : undefined
+
+    expect(nextAttemptAt).toBeGreaterThanOrEqual(before + 60_000)
+
+    await looms.stop()
+  })
+
+  test('heartbeat details resume on the next worker attempt', async () => {
+    const dispatched: EffectWorkerTask[] = []
+
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 3, backoffMs: 5 })],
+      worker: { dispatch: (task) => dispatched.push(task) },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
+
+    const heartbeat = await looms.workerCallback(started.runId, {
+      ...identity,
+      kind: 'heartbeat',
+      details: { page: 2 },
+    })
+
+    expect(heartbeat).toEqual({ status: 'accepted', cancelRequested: false })
+
+    const failed = await looms.workerCallback(started.runId, {
+      ...identity,
+      kind: 'fail',
+      error: 'transient',
+    })
+
+    expect(failed).toEqual({ status: 'accepted', cancelRequested: false })
+    await Bun.sleep(40)
+
+    expect(dispatched.at(-1)?.attempt).toBe(2)
+    expect(dispatched.at(-1)?.details).toEqual({ page: 2 })
+
+    const stale = await looms.workerCallback(started.runId, {
+      ...identity,
+      kind: 'heartbeat',
+      details: { page: 9 },
+    })
+
+    expect(stale).toEqual({ status: 'stale', cancelRequested: false })
+    await looms.stop()
+  })
+
+  test('a heartbeat during cancellation tells the worker to stop', async () => {
+    const looms = createLooms({
+      modules: [workerModule({ maxAttempts: 1, cancellationTimeoutMs: 60_000 })],
+      worker: { dispatch: () => undefined, cancel: () => undefined },
+    })
+
+    const started = await looms.start(workerDefinition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
+    await looms.workerCallback(started.runId, { ...identity, kind: 'started' })
+    await looms.cancel(started.runId)
+
+    const heartbeat = await looms.workerCallback(started.runId, {
+      ...identity,
+      kind: 'heartbeat',
+      details: { page: 1 },
+    })
+
+    expect(heartbeat).toEqual({ status: 'cancelled', cancelRequested: true })
+
+    const events = await looms.getEvents(started.runId)
+    const heartbeats = events.filter((event) => event.type === 'runtime.effect.heartbeat')
+    expect(heartbeats).toHaveLength(0)
     await looms.stop()
   })
 })

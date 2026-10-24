@@ -94,6 +94,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
   'effect.failed': Schema.Struct({
     effectId: Schema.String,
     error: Schema.String,
+    nonRetryable: Schema.optional(Schema.Boolean),
+    retryAfterMs: Schema.optional(Schema.Finite),
   }),
   'effect.attempt.started': Schema.Struct({
     effectId: Schema.String,
@@ -119,6 +121,8 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     attempt: Schema.Finite,
     heartbeatAt: Schema.Finite,
     deadlineAt: Schema.NullOr(Schema.Finite),
+    /** Progress the next attempt should resume from. Absent on heartbeats that only extend the deadline. */
+    details: Schema.optional(JsonValueSchema),
   }),
   'effect.cancel.requested': Schema.Struct({
     effectId: Schema.String,

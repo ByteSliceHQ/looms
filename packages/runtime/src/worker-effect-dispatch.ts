@@ -147,7 +147,7 @@ export function planWorkerEffects(input: {
                 causationId: item.causingEventId,
                 origin: { type: 'system' },
               }),
-        task: workerTask(input.runId, item, attempt),
+        task: workerTask(input.runId, item, attempt, existing?.heartbeatDetails),
         scheduleToStartDeadlineAt: retry?.scheduleToStartTimeoutMs
           ? input.now + retry.scheduleToStartTimeoutMs
           : null,

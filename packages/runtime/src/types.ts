@@ -6,6 +6,7 @@ import type {
   EventEnvelope,
   EventInput,
   WorkerCallbackInput,
+  WorkerCallbackResult,
   EventStore,
   EventStoreAppendError,
   EventStoreError,
@@ -92,6 +93,8 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  /** Progress from the previous attempt's last heartbeat, when it reported any. */
+  readonly details?: JsonValue
 }
 
 export interface EffectWorker {
@@ -203,11 +206,18 @@ export interface LoomsRuntime<
     sourceRunId: string,
     options?: { runId?: string },
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
-  /** Applies a worker's report about one effect attempt; stale or foreign reports are ignored. */
+  /**
+   * Applies a worker's report about one effect attempt. A report for another attempt, or one that
+   * arrives after the attempt settled, is `stale` and changes nothing.
+   */
   workerCallback(
     runId: string,
     input: WorkerCallbackInput,
-  ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
+  ): Effect.Effect<
+    WorkerCallbackResult,
+    Error | EventStoreAppendError | EventStoreError,
+    EventStoreTag
+  >
   readonly listRuns: Effect.Effect<string[], EventStoreError, EventStoreTag>
   /** Indexed run rows. Folds a run only when its header has not been written yet. */
   readonly listRunSummaries: Effect.Effect<
