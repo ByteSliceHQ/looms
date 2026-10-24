@@ -275,6 +275,29 @@ and schemas needed by active old-version runs. If a new projector is bad, stop
 delivery, deploy a corrected new version, and rebuild from archive; do not move a
 checkpoint backward after source events were trimmed.
 
+## Effect contracts and worker versioning
+
+An effect `type` is a durable contract between the run that invokes it and the
+worker that claims it. Changing what an input or outcome means under the same
+type breaks in-flight attempts and recorded logs. Version the type instead:
+
+- Prefer an explicit suffix such as `payments.charge@v2` (or a new leaf name)
+  when the input schema, side effects, or completion events change.
+- Keep the old type and its handler until every outstanding attempt of that type
+  has settled. New runs can route to the new type immediately.
+- A worker's `handles` list (or predicate) is how fleets version: run a v1 fleet
+  that claims only `payments.charge` beside a v2 fleet that claims
+  `payments.charge@v2`. Do not have two fleets claim the same type with
+  incompatible behavior.
+- Recorded run logs stay valid across binary upgrades because fold is a pure
+  function of the log and the registered modules. The replay corpus under
+  `packages/testing/corpus` is folded in CI with `assertCorpusEntry`; re-record
+  a fixture only after confirming a fold or reducer change is intentional
+  (`bun packages/testing/scripts/record-corpus.ts`).
+
+This replaces Temporal `patched()` and worker build-id versioning for Looms
+effects: the type string is the contract, and the log is the source of truth.
+
 ## Resolving definitions
 
 Pass `definitionResolver` to `createLooms`, `createRuntime`, an actor host, or

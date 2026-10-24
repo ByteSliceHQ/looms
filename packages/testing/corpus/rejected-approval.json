@@ -1,0 +1,186 @@
+{
+  "name": "rejected-approval",
+  "runId": "corpus_reject",
+  "stateHash": "c9a3b9d7c73c15f8",
+  "events": [
+    {
+      "id": "evt_mvlc1fqx_e_91f5282a15a342258cc8fb6f6bd17546",
+      "runId": "corpus_reject",
+      "ts": 1792781874681,
+      "type": "runtime.run.started",
+      "payload": {
+        "rootThreadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 7,
+        "requestedThreadId": null
+      },
+      "threadId": null,
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 1
+    },
+    {
+      "id": "evt_mvlc1fqx_f_f78411c3dc1d4257941ddbd465c64b53",
+      "runId": "corpus_reject",
+      "ts": 1792781874681,
+      "type": "runtime.thread.started",
+      "payload": {
+        "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+        "kind": "corpus.checkout",
+        "definitionName": "checkout",
+        "definitionVersion": "v1",
+        "input": 7,
+        "parentThreadId": null
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 2
+    },
+    {
+      "id": "evt_mvlc1fqx_g_fb7b092e61ca42f1b7c3bbf74f759d33",
+      "runId": "corpus_reject",
+      "ts": 1792781874681,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba:approval",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 3
+    },
+    {
+      "id": "evt_mvlc1fqx_h_1799a9de23cc41fda112ce3a742f91a3",
+      "runId": "corpus_reject",
+      "ts": 1792781874681,
+      "type": "runtime.wait.registered",
+      "payload": {
+        "waitId": "approval",
+        "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+        "on": {
+          "type": "corpus.approved"
+        },
+        "tag": null
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqx_f_f78411c3dc1d4257941ddbd465c64b53",
+      "effectId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba:approval",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba"
+      },
+      "idempotencyKey": null,
+      "seq": 4
+    },
+    {
+      "id": "evt_mvlc1fqy_i_373201b7aabe4d5bbc13a51f467de48d",
+      "runId": "corpus_reject",
+      "ts": 1792781874682,
+      "type": "corpus.approved",
+      "payload": {
+        "decision": "reject"
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "effectId": null,
+      "origin": {
+        "type": "external"
+      },
+      "idempotencyKey": null,
+      "seq": 5
+    },
+    {
+      "id": "evt_mvlc1fqy_j_72d30ec3a86946238ba94ca6e5e95b32",
+      "runId": "corpus_reject",
+      "ts": 1792781874682,
+      "type": "runtime.wait.satisfied",
+      "payload": {
+        "waitId": "approval",
+        "tag": null,
+        "event": {
+          "id": "evt_mvlc1fqy_i_373201b7aabe4d5bbc13a51f467de48d",
+          "type": "corpus.approved",
+          "payload": {
+            "decision": "reject"
+          }
+        }
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqy_i_373201b7aabe4d5bbc13a51f467de48d",
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 6
+    },
+    {
+      "id": "evt_mvlc1fqy_k_2c40eb4b74c54305b825033b74689681",
+      "runId": "corpus_reject",
+      "ts": 1792781874682,
+      "type": "runtime.effect.attempt.started",
+      "payload": {
+        "effectId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba:5:0",
+        "attempt": 1
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 7
+    },
+    {
+      "id": "evt_mvlc1fqy_l_08d314d59d174fc0a6fdfae7ef3332d3",
+      "runId": "corpus_reject",
+      "ts": 1792781874682,
+      "type": "runtime.thread.failed",
+      "payload": {
+        "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+        "error": "rejected"
+      },
+      "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba",
+      "parentThreadId": null,
+      "causationId": "evt_mvlc1fqy_i_373201b7aabe4d5bbc13a51f467de48d",
+      "effectId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba:5:0",
+      "origin": {
+        "type": "thread",
+        "threadId": "thr_mvlc1fqx_d_8fefc05a43bb4db98307621ac0e2c5ba"
+      },
+      "idempotencyKey": null,
+      "seq": 8
+    },
+    {
+      "id": "evt_mvlc1fqy_m_635090a103124f279e34980782a759a7",
+      "runId": "corpus_reject",
+      "ts": 1792781874682,
+      "type": "runtime.run.completed",
+      "payload": {
+        "output": null,
+        "error": "rejected"
+      },
+      "threadId": null,
+      "parentThreadId": null,
+      "origin": {
+        "type": "system"
+      },
+      "idempotencyKey": null,
+      "seq": 9
+    }
+  ]
+}
