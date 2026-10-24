@@ -53,6 +53,29 @@ defineAgent({
 - `stopWhen` completes the run gracefully (for example after an `answer` tool).
 - Tools can be functions, other agents, workflows, evaluators, or `gate()` approvals.
 
+## Structured output, compaction, and turn hooks
+
+### Structured output
+
+Set `output` to a schema and the model gets a `submit_output` tool that takes that schema. An invalid submission returns the validation error to the model so it can correct the fields and call the tool again. Once a submission passes, it becomes the thread output when the agent finishes, in place of `{ text }`.
+
+### Context compaction
+
+When the model call fails because the prompt exceeded the context window, Looms runs `compact` (or `defaultAgentCompactor`), records `agent.context.compacted` with the shorter conversation, and retries the turn once. The default keeps the first message and the most recent ones, and never keeps a tool result without the assistant message that requested it.
+
+### Tools resolved per turn
+
+`resolveTools({ threadId, turn, input })` adds tools beside the static `tools`, such as integrations configured for one tenant. Looms calls it before each model turn and again when a tool runs, so it must return the same tools for the same input and turn.
+
+### Credit gates and usage
+
+- `assertCredits(ctx)` runs before each model call. If it throws, the thread fails with that message and the model is not called.
+- Every model call that reports usage records `agent.turn.usage`. `trackUsage(usage, ctx)` is called after it. A retried turn calls it again, so deduplicate on `threadId` and `turn`. A `trackUsage` failure is logged and does not fail the turn.
+
+### Team member depth
+
+An agent that spawns another agent through a thread tool (`asAgentTool`) sends it an `agent.lineage` event with its depth, so the limit survives input schemas that strip unknown keys. A spawn beyond `TEAM_MEMBER_MAX_DEPTH` (3) returns a tool error to the calling agent. A workflow or other thread between two agents starts the count again.
+
 ## Evaluation models
 
 An evaluator is not a chat model. Use `defineEvaluator` with your own `questions` and pass `vercelEvaluator()` into the evaluator module. Set `model` to `typesafe-ai/jev` today. A later model that answers the same boolean, choice, and score questions uses the same definition with a different `model` id. The evaluation lands on the run log like any other effect, so a workflow can branch on `route` and `reason` after a crash.

@@ -9,7 +9,19 @@ import {
   type JsonValue,
 } from '@looms/core'
 
-import { normalizeTools, type ToolLike } from './definitions'
+import {
+  buildStructuredOutputInstructions,
+  defaultAgentCompactor,
+  defineTool,
+  isContextOverflowError,
+  normalizeTools,
+  STRUCTURED_OUTPUT_TOOL_NAME,
+  TEAM_MEMBER_MAX_DEPTH,
+  type AgentDefinition,
+  type AgentToolResolutionContext,
+  type AgentTurnResult,
+  type ToolLike,
+} from './definitions'
 import { AgentDefinitionsTag } from './definitions-store'
 import { LlmTag, type LlmError } from './llm'
 import { agentModule, type AgentEvent } from './scope'
@@ -24,6 +36,8 @@ const CallLlmInput = Schema.Struct({
   ),
   messages: Schema.optional(Schema.Array(MessageSchema)),
   input: Schema.optional(Schema.Json),
+  structuredOutput: Schema.optional(Schema.NullOr(Schema.Json)),
+  alreadyCompacted: Schema.optional(Schema.Boolean),
   consumedSteerMessageIds: Schema.optional(Schema.Array(Schema.String)),
 })
 
@@ -34,6 +48,8 @@ const ExecuteToolInput = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
   ),
   toolCall: ToolCallSchema,
+  input: Schema.optional(Schema.Json),
+  depth: Schema.optional(Schema.Finite),
 })
 
 class AgentExecutionError extends Data.TaggedError('AgentExecutionError')<{
@@ -56,6 +72,57 @@ function findTool(tools: ToolLike[], name: string): ToolLike | undefined {
   return tools.find((tool) => tool.name === name)
 }
 
+/** Static tools, then `resolveTools`, then `submit_output` when the agent declares an output. */
+function agentTools(
+  definition: AgentDefinition,
+  ctx: AgentToolResolutionContext,
+): Effect.Effect<ToolLike[], AgentExecutionError> {
+  return Effect.gen(function* () {
+    const tools = normalizeTools(definition.tools)
+
+    if (definition.resolveTools) {
+      const resolved = yield* Effect.tryPromise({
+        try: () => Promise.resolve(definition.resolveTools!(ctx)),
+        catch: (cause) => new AgentExecutionError('resolve tools', cause),
+      })
+
+      tools.push(...normalizeTools(resolved))
+    }
+
+    if (definition.output) {
+      tools.push(
+        defineTool({
+          name: STRUCTURED_OUTPUT_TOOL_NAME,
+          description:
+            'Submit the final structured output for this task. Call it once all work is done, with values that match the output schema.',
+          input: definition.output,
+          handler: (output) => ({ accepted: true, output }),
+        }),
+      )
+    }
+
+    return tools
+  })
+}
+
+function toolError(
+  input: { readonly turn: number; readonly toolCall: ToolCall },
+  threadId: string,
+  error: string,
+): EventInputOf<AgentEvent> {
+  return {
+    type: 'agent.tool.result',
+    payload: {
+      turn: input.turn,
+      toolCallId: input.toolCall.id,
+      name: input.toolCall.name,
+      result: null,
+      error,
+    },
+    threadId,
+  }
+}
+
 export const callLlmEffect = agentModule.effect({
   type: 'agent.callLLM',
   input: CallLlmInput,
@@ -66,6 +133,8 @@ export const callLlmEffect = agentModule.effect({
       definitionVersion: input.definitionVersion,
       messages: [...(input.messages ?? [])],
       input: input.input ?? null,
+      structuredOutput: input.structuredOutput ?? null,
+      alreadyCompacted: input.alreadyCompacted ?? false,
       consumedSteerMessageIds: [...(input.consumedSteerMessageIds ?? [])],
       runId: ctx.runId,
       threadId: ctx.threadId,
@@ -80,6 +149,8 @@ function runCallLlm(args: {
   definitionVersion: string
   messages: Message[]
   input: JsonValue
+  structuredOutput: JsonValue | null
+  alreadyCompacted: boolean
   consumedSteerMessageIds: string[]
   runId: string
   threadId: string
@@ -99,6 +170,7 @@ function runCallLlm(args: {
       definitionVersion,
       messages,
       input,
+      structuredOutput,
       consumedSteerMessageIds,
       signal,
     } = args
@@ -130,7 +202,43 @@ function runCallLlm(args: {
       ]
     }
 
-    const tools = normalizeTools(definition.tools)
+    const tools = yield* agentTools(definition, { threadId, turn, input })
+
+    const instructions = definition.output
+      ? `${definition.instructions}\n\n${buildStructuredOutputInstructions(STRUCTURED_OUTPUT_TOOL_NAME)}`
+      : definition.instructions
+
+    const turnCtx = {
+      threadId,
+      turn,
+      messages,
+      input,
+      tools,
+      instructions,
+      signal,
+    }
+
+    if (definition.assertCredits) {
+      const creditCheck = yield* Effect.tryPromise({
+        try: () => Promise.resolve(definition.assertCredits!(turnCtx)),
+        catch: (cause) => new AgentExecutionError('credit gate check', cause),
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false as const, error: error.message }),
+          onSuccess: () => ({ ok: true as const }),
+        }),
+      )
+
+      if (!creditCheck.ok) {
+        return [
+          {
+            type: 'runtime.thread.failed',
+            payload: { threadId, error: creditCheck.error },
+            threadId,
+          },
+        ]
+      }
+    }
 
     const events: EventInputOf<AgentEvent>[] = [
       {
@@ -140,43 +248,93 @@ function runCallLlm(args: {
       },
     ]
 
-    const turnCtx = {
-      threadId,
-      turn,
-      messages,
-      input,
-      tools,
-      instructions: definition.instructions,
-      signal,
-    }
-
-    const result = definition.runTurn
-      ? yield* Effect.tryPromise({
-          try: () => Promise.resolve(definition.runTurn!(turnCtx)),
+    const executeTurn = (
+      turnMessages: readonly Message[],
+    ): Effect.Effect<AgentTurnResult, AgentExecutionError | LlmError> => {
+      if (definition.runTurn) {
+        return Effect.tryPromise({
+          try: () =>
+            Promise.resolve(
+              definition.runTurn!({
+                ...turnCtx,
+                messages: [...turnMessages],
+                instructions,
+              }),
+            ),
           catch: (cause) => new AgentExecutionError('run agent turn', cause),
         })
-      : yield* llm.complete({
-          model: definition.model,
-          instructions: definition.instructions,
-          messages: [{ role: 'system', content: definition.instructions }, ...turnCtx.messages],
-          tools,
-          toolSpecs: toolSpecs(tools),
-          signal,
-          onTextDelta: (delta) =>
-            emit({
-              type: 'agent.turn.text_delta',
-              payload: { turn, delta },
-              threadId,
-              ephemeral: true,
-            }),
-        })
+      }
+
+      return llm.complete({
+        model: definition.model,
+        instructions,
+        messages: [{ role: 'system', content: instructions }, ...turnMessages],
+        tools,
+        toolSpecs: toolSpecs(tools),
+        signal,
+        onTextDelta: (delta) =>
+          emit({
+            type: 'agent.turn.text_delta',
+            payload: { turn, delta },
+            threadId,
+            ephemeral: true,
+          }),
+      })
+    }
+
+    let currentMessages = turnCtx.messages
+
+    const result = yield* executeTurn(currentMessages).pipe(
+      Effect.matchEffect({
+        onFailure: (err) => {
+          if (isContextOverflowError(err) && !args.alreadyCompacted) {
+            return Effect.gen(function* () {
+              const compactor = definition.compact ?? defaultAgentCompactor
+              const originalCount = currentMessages.length
+
+              const compacted = yield* Effect.tryPromise({
+                try: () =>
+                  Promise.resolve(
+                    compactor({
+                      threadId,
+                      turn,
+                      messages: currentMessages,
+                      reason: 'overflow',
+                    }),
+                  ),
+                catch: (cause) => new AgentExecutionError('context compaction', cause),
+              })
+
+              events.push({
+                type: 'agent.context.compacted',
+                payload: {
+                  turn,
+                  originalCount,
+                  compactedCount: compacted.messages.length,
+                  summary: compacted.summary,
+                  reason: 'overflow',
+                  messages: [...compacted.messages],
+                },
+                threadId,
+              })
+
+              currentMessages = [...compacted.messages]
+              return yield* executeTurn(currentMessages)
+            })
+          }
+
+          return Effect.fail(err)
+        },
+        onSuccess: (res) => Effect.succeed(res),
+      }),
+    )
 
     const toolCalls = result.toolCalls ?? result.message.toolCalls ?? []
 
     const shouldStop = definition.stopWhen?.({
       turn,
       maxTurns: definition.maxTurns ?? 20,
-      messages: turnCtx.messages,
+      messages: currentMessages,
       toolCalls,
       result,
     })
@@ -191,9 +349,36 @@ function runCallLlm(args: {
       threadId,
     })
 
+    if (result.usage) {
+      events.push({
+        type: 'agent.turn.usage',
+        payload: {
+          turn,
+          input: result.usage.input,
+          output: result.usage.output,
+        },
+        threadId,
+      })
+
+      if (definition.trackUsage) {
+        yield* Effect.tryPromise({
+          try: () =>
+            Promise.resolve(
+              definition.trackUsage!(
+                { input: result.usage!.input, output: result.usage!.output, turn },
+                turnCtx,
+              ),
+            ),
+          catch: (cause) => new AgentExecutionError('track usage', cause),
+        }).pipe(
+          Effect.catch((error) => Effect.logWarning('[@looms/agent] trackUsage failed', error)),
+        )
+      }
+    }
+
     if (shouldStop) {
       if (!definition.conversational) {
-        const output = result.output ?? { text: result.message.content }
+        const output = structuredOutput ?? result.output ?? { text: result.message.content }
 
         events.push({
           type: 'runtime.thread.completed',
@@ -218,7 +403,7 @@ function runCallLlm(args: {
     }
 
     if (toolCalls.length === 0 && !definition.conversational) {
-      const output = result.output ?? { text: result.message.content }
+      const output = structuredOutput ?? result.output ?? { text: result.message.content }
 
       events.push({
         type: 'runtime.thread.completed',
@@ -263,23 +448,25 @@ export const executeToolEffect = agentModule.effect({
         ]
       }
 
-      const tools = normalizeTools(definition.tools)
-      const tool = findTool(tools, input.toolCall.name)
+      const resolved = yield* agentTools(definition, {
+        threadId,
+        turn: input.turn,
+        input: input.input ?? null,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false as const, error: error.message }),
+          onSuccess: (tools) => ({ ok: true as const, tools }),
+        }),
+      )
+
+      if (!resolved.ok) {
+        return [toolError(input, threadId, `Could not resolve tools: ${resolved.error}`)]
+      }
+
+      const tool = findTool(resolved.tools, input.toolCall.name)
 
       if (!tool) {
-        return [
-          {
-            type: 'agent.tool.result',
-            payload: {
-              turn: input.turn,
-              toolCallId: input.toolCall.id,
-              name: input.toolCall.name,
-              result: null,
-              error: `Unknown tool: ${input.toolCall.name}`,
-            },
-            threadId,
-          },
-        ]
+        return [toolError(input, threadId, `Unknown tool: ${input.toolCall.name}`)]
       }
 
       switch (tool.kind) {
@@ -292,6 +479,8 @@ export const executeToolEffect = agentModule.effect({
           )
 
           if (!validated.ok) {
+            const isSubmit = tool.name === STRUCTURED_OUTPUT_TOOL_NAME
+
             return [
               {
                 type: 'agent.tool.result',
@@ -300,7 +489,9 @@ export const executeToolEffect = agentModule.effect({
                   toolCallId: input.toolCall.id,
                   name: input.toolCall.name,
                   result: null,
-                  error: validated.error,
+                  error: isSubmit
+                    ? `Output validation failed: ${validated.error}. Fix the fields and call ${STRUCTURED_OUTPUT_TOOL_NAME} again.`
+                    : validated.error,
                 },
                 threadId,
               },
@@ -339,6 +530,18 @@ export const executeToolEffect = agentModule.effect({
         }
 
         case 'thread': {
+          const depth = input.depth ?? 0
+
+          if (depth >= TEAM_MEMBER_MAX_DEPTH) {
+            return [
+              toolError(
+                input,
+                threadId,
+                `Subagent depth limit reached (max depth: ${TEAM_MEMBER_MAX_DEPTH})`,
+              ),
+            ]
+          }
+
           const validated = tool.input
             ? yield* validateInputEffect(tool.input, input.toolCall.arguments).pipe(
                 Effect.match({
@@ -376,6 +579,7 @@ export const executeToolEffect = agentModule.effect({
                 definitionVersion: tool.childVersion,
                 input: childInput,
                 toolCallId: input.toolCall.id,
+                depth: depth + 1,
               },
               threadId,
             },

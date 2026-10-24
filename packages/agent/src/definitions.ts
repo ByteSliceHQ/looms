@@ -11,6 +11,77 @@ import {
 import type { StopWhen } from './stop-when'
 import type { Message, ToolCall } from './types'
 
+export const TEAM_MEMBER_MAX_DEPTH = 3 as const
+
+export const STRUCTURED_OUTPUT_TOOL_NAME = 'submit_output' as const
+
+export interface AgentCompactionContext {
+  readonly threadId: string
+  readonly turn: number
+  readonly messages: readonly Message[]
+  readonly reason: 'overflow' | 'manual' | 'threshold'
+}
+
+export interface AgentCompactedResult {
+  readonly messages: readonly Message[]
+  readonly summary?: string
+}
+
+export type AgentCompactor = (
+  ctx: AgentCompactionContext,
+) => Promise<AgentCompactedResult> | AgentCompactedResult
+
+const COMPACTION_RECENT_MESSAGES = 4
+
+/**
+ * Keeps the first message (the task) and the most recent messages, replacing the rest with a
+ * note. The recent window never starts on a tool result, so every kept result still follows
+ * the assistant message that requested it.
+ */
+export function defaultAgentCompactor(ctx: AgentCompactionContext): AgentCompactedResult {
+  let start = ctx.messages.length - COMPACTION_RECENT_MESSAGES
+
+  while (start > 1 && ctx.messages[start]?.role === 'tool') {
+    start -= 1
+  }
+
+  if (start <= 1) {
+    return { messages: [...ctx.messages] }
+  }
+
+  const summary = `[${start - 1} earlier messages compacted for context window]`
+  const summaryMessage: Message = { role: 'system', content: summary }
+
+  return {
+    messages: [...ctx.messages.slice(0, 1), summaryMessage, ...ctx.messages.slice(start)],
+    summary,
+  }
+}
+
+const CONTEXT_OVERFLOW_MARKERS = [
+  'context window',
+  'context length',
+  'context_length_exceeded',
+  'maximum context',
+  'prompt is too long',
+  'prompt too long',
+  'too many tokens',
+]
+
+/** Whether a model error reports that the prompt exceeded the model's context window. */
+export function isContextOverflowError(error: Error): boolean {
+  const message = error.message.toLowerCase()
+  return CONTEXT_OVERFLOW_MARKERS.some((marker) => message.includes(marker))
+}
+
+export function buildStructuredOutputInstructions(toolName = STRUCTURED_OUTPUT_TOOL_NAME): string {
+  return [
+    `This task requires structured output matching the output schema.`,
+    `When you have completed all work and have the final result, call the "${toolName}" tool with your output.`,
+    `If "${toolName}" returns an error indicating validation failure, inspect the errors, correct the values, and call "${toolName}" again.`,
+  ].join(' ')
+}
+
 export interface ToolContext {
   readonly threadId: string
   readonly turn: number
@@ -73,6 +144,19 @@ export interface AgentTurnContext<TInput = JsonValue> {
   readonly signal?: AbortSignal
 }
 
+/** What `resolveTools` sees. It runs before each model turn and again when a tool executes. */
+export interface AgentToolResolutionContext<TInput = JsonValue> {
+  readonly threadId: string
+  readonly turn: number
+  readonly input: TInput
+}
+
+export interface AgentUsage {
+  readonly input: number
+  readonly output: number
+  readonly turn: number
+}
+
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {
   message: Message
   toolCalls?: ToolCall[]
@@ -93,7 +177,24 @@ export interface AgentDefinition<
   readonly model?: string
   readonly instructions: string
   readonly input?: StandardSchemaV1<any, TInput> | Schema.ConstraintDecoder<TInput>
+  readonly output?: StandardSchemaV1<any, TOutput> | Schema.ConstraintDecoder<TOutput> | SchemaInput
   readonly tools?: ToolLike[]
+  /**
+   * Tools added for one turn, such as per-tenant integrations. Must return the same tools for the
+   * same input and turn, because tool execution resolves them again to find the handler.
+   */
+  resolveTools?(
+    ctx: AgentToolResolutionContext<TInput>,
+  ): Promise<readonly AgentToolEntry[]> | readonly AgentToolEntry[]
+  /** Shrinks the conversation after the model reports a context overflow. */
+  readonly compact?: AgentCompactor
+  /** Runs before each model call. Throwing fails the agent thread with the thrown message. */
+  assertCredits?(ctx: AgentTurnContext<TInput>): Promise<void> | void
+  /**
+   * Reports token usage after each model call. Usage is also recorded as `agent.turn.usage`;
+   * a retried turn calls this again, so deduplicate on `threadId` and `turn`.
+   */
+  trackUsage?(usage: AgentUsage, ctx: AgentTurnContext<TInput>): Promise<void> | void
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen

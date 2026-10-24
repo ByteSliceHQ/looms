@@ -68,6 +68,7 @@ export interface AgentPendingSpawn {
   readonly definitionVersion: string
   readonly toolCallId: string
   readonly input: JsonValue
+  readonly depth?: number
 }
 
 export interface AgentPendingEffects {
@@ -93,6 +94,9 @@ export interface AgentState {
   needsLlmCall: boolean
   turn: number
   maxTurns: number
+  depth: number
+  structuredOutput?: JsonValue | null
+  alreadyCompactedTurns?: number[]
   pendingSteer: Message | null
   input: JsonValue
   output: JsonValue | null
