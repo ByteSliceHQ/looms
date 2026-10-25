@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.5.2
+
+### Patch Changes
+
+- a51bc1a: Allow Durable Object hosts to pass an `EffectWorker` through `LoomsDurableObjectConfig.worker` so queue-routed effects can leave the cell.
+
 ## 0.5.1
 
 ### Patch Changes
