@@ -18,6 +18,7 @@ import type { Projector } from '@looms/projectors'
 import {
   defaultAuthorize,
   type Authorize,
+  type EffectWorker,
   type LoomsRuntime,
   type StartResult,
   type StartRunArgs,
@@ -49,6 +50,12 @@ export interface LoomsDurableObjectConfig {
    * land in the target's object. Without it, a fire fails instead of writing into this object.
    */
   readonly launcher?: RunLauncher
+  /**
+   * Dispatches `execution: 'worker'` effects out of this object (typically a
+   * Cloudflare Queue producer via `cloudflareQueueWorker`). Without it, worker
+   * effects cannot leave the Durable Object.
+   */
+  readonly worker?: EffectWorker
 }
 
 /**
@@ -119,6 +126,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         trimAfterSnapshot: config.trimAfterSnapshot,
         authorize: config.authorize,
         launcher: config.launcher,
+        worker: config.worker,
       })
 
       const delivery = store.projectorDelivery
