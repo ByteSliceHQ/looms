@@ -18,6 +18,7 @@ import {
   createRuntime,
   StartRunConflictError,
   type Authorize,
+  type EffectWorker,
   type LoomsRuntime,
   type StartResult,
   type StartRunArgs,
@@ -47,6 +48,11 @@ export interface ActorCellOptions<
   readonly authorize?: Authorize
   /** Starts runs from effect handlers. Required for schedules; there is no default inside a cell. */
   readonly launcher?: RunLauncher
+  /**
+   * Dispatches `execution: 'worker'` effects out of the cell (for example a
+   * Cloudflare Queue producer). Without it, worker effects cannot leave the object.
+   */
+  readonly worker?: EffectWorker
 }
 
 export interface ActorCell<
@@ -91,6 +97,7 @@ export function createActorCell<
     store,
     scheduler,
     launcher: options.launcher,
+    worker: options.worker,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,
     maxPendingRunOperations: options.maxPendingRunOperations,

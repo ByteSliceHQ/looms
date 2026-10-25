@@ -2,8 +2,16 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Schema } from 'effect'
 
-import { makeMemoryEventStore, wait } from '@looms/core'
-import type { WakeScheduler } from '@looms/runtime'
+import {
+  complete,
+  defineEffect,
+  defineRuntimeModule,
+  defineThread,
+  invoke,
+  makeMemoryEventStore,
+  wait,
+} from '@looms/core'
+import type { EffectWorkerTask, WakeScheduler } from '@looms/runtime'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createActorCell } from './cell'
@@ -139,6 +147,77 @@ describe('ActorCell', () => {
     const state = await cell.wake()
 
     expect(state.status).toBe('running')
+
+    await cell.dispose()
+  })
+
+  test('dispatches worker effects when a worker is configured', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const runId = 'run_worker_cell'
+    const dispatched: EffectWorkerTask[] = []
+
+    const remote = defineEffect({
+      type: 'actor.remote',
+      execution: 'worker',
+      retry: {
+        maxAttempts: 2,
+        backoffMs: 5,
+        scheduleToStartTimeoutMs: 60_000,
+        heartbeatTimeoutMs: 60_000,
+      },
+    })
+
+    const definition = {
+      kind: 'actor-worker',
+      name: 'actor-worker',
+      version: 'v1',
+    }
+
+    const module = defineRuntimeModule({
+      namespace: 'actor',
+      protocolVersion: '1.0.0',
+      effects: { remote },
+      threads: {
+        'actor-worker': defineThread({
+          kind: 'actor-worker',
+          initialState: () => ({ done: false }),
+          step: (state, event) => (event.type === 'actor.done' ? { done: true } : state),
+          effects: (state) =>
+            state.done ? [complete({ ok: true })] : [invoke(remote, { n: 1 }, 'work')],
+        }),
+      },
+      definitions: [definition],
+    })
+
+    const cell = createActorCell({
+      runId,
+      store,
+      modules: [module],
+      worker: {
+        dispatch: (task) => {
+          dispatched.push(task)
+        },
+      },
+    })
+
+    const startRes = await cell.fetch(
+      new Request('http://localhost:8787/runs', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-looms-run-id': runId,
+        },
+        body: JSON.stringify({
+          kind: 'actor-worker',
+          definitionName: 'actor-worker',
+          runId,
+        }),
+      }),
+    )
+
+    expect(startRes.status).toBe(200)
+    expect(dispatched).toHaveLength(1)
+    expect(dispatched[0]?.type).toBe('actor.remote')
 
     await cell.dispose()
   })
