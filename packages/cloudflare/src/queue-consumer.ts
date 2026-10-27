@@ -131,8 +131,21 @@ function runAttempt(
     controller.abort()
   }
 
-  const report = (input: WorkerCallbackInput) =>
-    callback(() => options.callbacks.workerCallback(task.runId, input)).pipe(Effect.ignore)
+  const report = (input: WorkerCallbackInput): Effect.Effect<void> => {
+    const send = (remaining: number): Effect.Effect<void> =>
+      callback(() => options.callbacks.workerCallback(task.runId, input)).pipe(
+        Effect.asVoid,
+        Effect.catch(() =>
+          remaining <= 0
+            ? Effect.logWarning(
+                `[@looms/cloudflare] lost terminal worker callback for ${task.runId} ${attempt.effectId} attempt ${attempt.attempt}`,
+              ).pipe(Effect.asVoid)
+            : Effect.sleep(50 * (5 - remaining)).pipe(Effect.andThen(send(remaining - 1))),
+        ),
+      )
+
+    return send(4)
+  }
 
   const ctx: QueueTaskContext = {
     signal: controller.signal,

@@ -141,7 +141,8 @@ export interface EffectWorker {
    * arrived, so the attempt waits for its schedule-to-start timeout or an operator. With
    * `'acknowledged'` a rejection means the transport refused it, so the attempt fails under the
    * retry policy. A transport can still lose an accepted message, so every effect such a worker
-   * claims must set `retry.scheduleToStartTimeoutMs`.
+   * claims must set `retry.scheduleToStartTimeoutMs`, and either `startToCloseTimeoutMs` or
+   * `heartbeatTimeoutMs` so a lost terminal callback cannot leave the attempt running forever.
    */
   readonly dispatchSemantics?: 'unacknowledged' | 'acknowledged'
 }

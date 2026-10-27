@@ -726,7 +726,14 @@ describe('durable external effect workers', () => {
     const dispatched: EffectWorkerTask[] = []
 
     const looms = createLooms({
-      modules: [workerModule({ maxAttempts: 3, backoffMs: 5, scheduleToStartTimeoutMs: 60_000 })],
+      modules: [
+        workerModule({
+          maxAttempts: 3,
+          backoffMs: 5,
+          scheduleToStartTimeoutMs: 60_000,
+          startToCloseTimeoutMs: 60_000,
+        }),
+      ],
       worker: {
         dispatchSemantics: 'acknowledged',
         dispatch: (task) => {
@@ -757,7 +764,16 @@ describe('durable external effect workers', () => {
         modules: [workerModule({ maxAttempts: 3 })],
         worker: { dispatchSemantics: 'acknowledged', dispatch: () => undefined },
       }),
-    ).toThrow('worker.do')
+    ).toThrow('scheduleToStartTimeoutMs')
+  })
+
+  test('an acknowledged worker needs a start-to-close or heartbeat timeout on every effect it claims', () => {
+    expect(() =>
+      createRuntime({
+        modules: [workerModule({ maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 })],
+        worker: { dispatchSemantics: 'acknowledged', dispatch: () => undefined },
+      }),
+    ).toThrow('startToCloseTimeoutMs')
   })
 
   test('a worker task carries the deadlines from the retry policy', async () => {

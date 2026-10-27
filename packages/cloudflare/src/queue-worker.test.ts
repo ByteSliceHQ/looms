@@ -31,6 +31,7 @@ const FAST: RetryPolicy = {
   maxAttempts: 3,
   backoffMs: 5,
   scheduleToStartTimeoutMs: 60_000,
+  startToCloseTimeoutMs: 60_000,
 }
 
 interface SandboxState {
