@@ -616,6 +616,57 @@ effects(state, ctx) {
   return []
 }`}</CodeBlock>
 
+      <h2 id="effect-middleware">
+        Effect middleware
+        <a className="heading-anchor" href="#effect-middleware" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Modules may declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
+        (in-process) effect dispatch. They run for every effect the host executes in the actor cell,
+        including built-in ones such as <code>agent.callLLM</code>. Effects routed to an{' '}
+        <code>EffectWorker</code> never see middleware — put gates that must apply there on the
+        worker side, or keep the effect local.
+      </p>
+      <p>
+        Use middleware for host concerns that are not part of a domain definition: audit logs,
+        tenant credit checks, feature flags. Prefer <code>onEffect</code> when you only care about
+        one effect type, and <code>failEffect</code> when the attempt should fail under the retry
+        policy:
+      </p>
+      <CodeBlock lang="ts">{`import { callLlmEffect } from '@swirls/looms/agent'
+import { defineRuntimeModule, failEffect, onEffect } from '@swirls/looms/core'
+
+const billing = defineRuntimeModule({
+  namespace: 'billing',
+  protocolVersion: '1.0.0',
+  middleware: [
+    onEffect(callLlmEffect, (_input, ctx, next) => {
+      if (!hasCredits(ctx.attributes.orgId)) {
+        return failEffect({ error: 'credits exhausted', nonRetryable: true })
+      }
+
+      return next()
+    }),
+  ],
+})`}</CodeBlock>
+      <p>
+        <code>failEffect</code> from middleware becomes <code>runtime.effect.failed</code> the same
+        way a handler failure does. Set <code>nonRetryable: true</code> to end the attempt even when
+        a retry policy remains, or <code>retryAfterMs</code> to delay the next try.
+      </p>
+      <p>
+        For usage and billing totals, fold <code>agent.turn.usage</code> (or use the agent
+        module&apos;s <code>tokenUsage</code> projection) instead of side-effect hooks on the agent
+        definition. <code>assertCredits</code> and <code>trackUsage</code> on{' '}
+        <code>defineAgent</code> are deprecated in favor of middleware and projections.
+      </p>
+      <p>
+        Install middleware by composing a module that declares it — a module may ship middleware
+        alone, with no threads or effects of its own.
+      </p>
+
       <h2 id="file-layout">
         File layout
         <a className="heading-anchor" href="#file-layout" aria-label="Link to this section">

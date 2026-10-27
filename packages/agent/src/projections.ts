@@ -134,6 +134,11 @@ export const turnActivity = agentModule.projection({
   },
 })
 
+/**
+ * Cumulative token totals for a run. Folds usage attached to `agent.message`.
+ * Modern turns also emit `agent.turn.usage` with the same numbers — fold that event in a
+ * custom projector when you need turn-level rows; do not add both or totals double.
+ */
 export const tokenUsage = agentModule.projection({
   name: 'tokenUsage',
   shape: TokenUsageSchema,

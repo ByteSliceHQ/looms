@@ -2,13 +2,15 @@ import { describe, expect, test } from 'bun:test'
 
 import { Effect, Predicate, Schema } from 'effect'
 
-import { agent, asEffectsTool, defineAgent } from '@looms/agent'
+import { agent, asEffectsTool, callLlmEffect, defineAgent } from '@looms/agent'
 import {
   defineEffect,
   defineRuntimeModule,
   defineThread,
+  failEffect,
   invoke,
   makeMemoryEventStore,
+  onEffect,
   wait,
   type EventStore,
   type JsonValue,
@@ -17,10 +19,13 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 1_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs
 
-  while (!predicate() && Date.now() < deadline) {
+  while (!(await predicate()) && Date.now() < deadline) {
     await Bun.sleep(10)
   }
 }
@@ -560,6 +565,106 @@ describe('createLooms runtime', () => {
     expect(intercepted).toContain('agent.callLLM')
     const events = await looms.getEvents(runId)
     expect(events.some((e) => e.type === 'agent.message')).toBe(true)
+  })
+
+  test('middleware failEffect becomes a non-retryable effect failure', async () => {
+    const bot = defineAgent({
+      name: 'gated',
+      instructions: 'echo',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'should not run' },
+        done: true,
+      }),
+    })
+
+    const looms = createLooms({
+      modules: [
+        agent({ definitions: [bot] }),
+        defineRuntimeModule({
+          namespace: 'billing',
+          protocolVersion: '1.0.0',
+          middleware: [
+            onEffect(callLlmEffect, (_input, _ctx, _next) =>
+              failEffect({ error: 'credits exhausted', nonRetryable: true }),
+            ),
+          ],
+        }),
+      ],
+    })
+
+    const { runId } = await looms.start(bot, 'hi', { attributes: { orgId: 'org_1' } })
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.run.completed')
+    })
+
+    const events = await looms.getEvents(runId)
+    const failed = events.find((e) => e.type === 'runtime.effect.failed')
+
+    expect(failed?.payload).toMatchObject({
+      error: 'credits exhausted',
+      nonRetryable: true,
+    })
+
+    expect(events.some((e) => e.type === 'agent.message')).toBe(false)
+
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'runtime.thread.failed' &&
+          Predicate.isObject(e.payload) &&
+          e.payload.error === 'credits exhausted',
+      ),
+    ).toBe(true)
+  })
+
+  test('onEffect only wraps the matched effect type', async () => {
+    const seen: string[] = []
+
+    const other = defineEffect({
+      type: 'audit.other',
+      execute: () => Effect.succeed([{ type: 'audit.noted', payload: { ok: true } }]),
+    })
+
+    const bot = defineAgent({
+      name: 'echo',
+      instructions: 'echo',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'done' },
+        done: true,
+      }),
+    })
+
+    const looms = createLooms({
+      modules: [
+        agent({ definitions: [bot] }),
+        defineRuntimeModule({
+          namespace: 'audit',
+          protocolVersion: '1.0.0',
+          effects: { other },
+          middleware: [
+            onEffect(other, (_input, _ctx, next) => {
+              seen.push('other')
+              return next()
+            }),
+            onEffect(callLlmEffect, (input, _ctx, next) => {
+              seen.push(`llm:${String(input.turn)}`)
+              return next()
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const { runId } = await looms.start(bot, 'hi')
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.run.completed')
+    })
+
+    expect(seen).toEqual(['llm:1'])
   })
 
   test('retries transient effect failures according to retry policy', async () => {
