@@ -3,8 +3,10 @@ import { Effect, Fiber, Schedule, Stream } from 'effect'
 import {
   encodeLoomsEvent,
   encodeSubscriptionFrame,
+  eventMatchesSubscription,
   type EventEnvelope,
   type EventStore,
+  type SubscriptionFilter,
 } from '@looms/core'
 
 import { readSubscriptionBounds } from './subscription'
@@ -14,6 +16,8 @@ export interface EventStreamOptions {
   store: EventStore
   runId: string
   fromSeq?: number
+  /** When set, only matching events are written to the stream. Defaults to all events. */
+  filter?: SubscriptionFilter
   heartbeatMs?: number
   onStart?: (
     write: (text: string) => void,
@@ -57,7 +61,17 @@ function disableBunSocketTimeout(request?: Request): void {
  * Handles heartbeats, fiber cancellation on disconnect, event encoding, and optional lifecycle hooks.
  */
 export function createEventStreamResponse(options: EventStreamOptions): Response {
-  const { signal, store, runId, fromSeq = 1, heartbeatMs = 3_000, onStart, request } = options
+  const {
+    signal,
+    store,
+    runId,
+    fromSeq = 1,
+    filter = { threadId: null, includeEphemeral: true },
+    heartbeatMs = 3_000,
+    onStart,
+    request,
+  } = options
+
   disableBunSocketTimeout(request)
 
   let closed = false
@@ -142,6 +156,10 @@ export function createEventStreamResponse(options: EventStreamOptions): Response
           yield* store.subscribe(runId, { fromSeq }).pipe(
             Stream.tap((event: EventEnvelope) =>
               Effect.sync(() => {
+                if (!eventMatchesSubscription(event, filter)) {
+                  return
+                }
+
                 write(
                   `id: ${event.seq}\ndata: ${encodeSubscriptionFrame({
                     type: 'batch',

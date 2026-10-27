@@ -266,7 +266,9 @@ export function dispatchWorkerEffect(
 
 /**
  * An acknowledged transport can lose a message it accepted, for example to a dead-letter queue.
- * Only a schedule-to-start timeout notices, so every effect such a worker claims needs one.
+ * schedule-to-start covers a message that never starts. After `started` is acked, only
+ * start-to-close or a heartbeat timeout notices a lost terminal callback, so every claimed
+ * effect needs one of those as well.
  */
 export function assertWorkerDeadlines(
   registry: ComposedRegistry,
@@ -276,15 +278,30 @@ export function assertWorkerDeadlines(
     return
   }
 
-  const missing = [...registry.effects.values()]
+  const claimed = [...registry.effects.values()].filter((definition) =>
+    claimsType(worker, definition),
+  )
+
+  const missingStart = claimed
+    .filter((definition) => !definition.retry?.scheduleToStartTimeoutMs)
+    .map((definition) => definition.type)
+
+  if (missingStart.length > 0) {
+    throw new Error(
+      `An acknowledged worker claims effects without retry.scheduleToStartTimeoutMs: ${missingStart.join(', ')}`,
+    )
+  }
+
+  const missingClose = claimed
     .filter(
-      (definition) => claimsType(worker, definition) && !definition.retry?.scheduleToStartTimeoutMs,
+      (definition) =>
+        !definition.retry?.startToCloseTimeoutMs && !definition.retry?.heartbeatTimeoutMs,
     )
     .map((definition) => definition.type)
 
-  if (missing.length > 0) {
+  if (missingClose.length > 0) {
     throw new Error(
-      `An acknowledged worker claims effects without retry.scheduleToStartTimeoutMs: ${missing.join(', ')}`,
+      `An acknowledged worker claims effects without retry.startToCloseTimeoutMs or retry.heartbeatTimeoutMs: ${missingClose.join(', ')}`,
     )
   }
 }

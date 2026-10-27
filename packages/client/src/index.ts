@@ -1,4 +1,5 @@
 export {
+  absoluteHttpBase,
   createLoomsClient,
   type LoomsClient,
   type LoomsClientOptions,

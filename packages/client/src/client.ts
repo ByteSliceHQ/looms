@@ -534,8 +534,22 @@ function eventsQuery(runId: string, fromSeq: number, settings: ResolvedSubscript
   return `/runs/${encodeURIComponent(runId)}/events?${params.toString()}`
 }
 
+/** Resolve a possibly-relative HTTP base so `new URL(path, base)` never throws on `''` or `/app`. */
+export function absoluteHttpBase(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).toString()
+  } catch {
+    const page =
+      typeof globalThis.location !== 'undefined' && Predicate.isString(globalThis.location.href)
+        ? globalThis.location.href
+        : 'http://localhost/'
+
+    return new URL(baseUrl === '' ? '.' : baseUrl, page).toString()
+  }
+}
+
 function webSocketUrl(baseUrl: string, path: string): string {
-  const url = new URL(path, baseUrl)
+  const url = new URL(path, absoluteHttpBase(baseUrl))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()
 }

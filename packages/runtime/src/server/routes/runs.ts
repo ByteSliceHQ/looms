@@ -8,6 +8,8 @@ import {
   readTraceHeaders,
   SecretContextSchema,
   stringifyJson,
+  subscriptionFilter,
+  subscriptionFromSeq,
   type EventStore,
   type JsonValue,
 } from '@looms/core'
@@ -65,25 +67,13 @@ function wantsEventStream(req: Request, url: URL): boolean {
 }
 
 function readEventStreamFromSeq(req: Request, url: URL): Effect.Effect<number, RequestQueryError> {
-  const lastEventId = req.headers.get('last-event-id')
+  const parsed = subscriptionFromSeq(url, req.headers.get('last-event-id'))
 
-  if (lastEventId !== null && lastEventId.trim() !== '') {
-    const value = Number(lastEventId)
-
-    if (!Number.isSafeInteger(value) || value < 0) {
-      return Effect.fail(
-        new RequestQueryError({
-          message: 'Last-Event-ID must be a non-negative integer',
-        }),
-      )
-    }
-
-    return Effect.succeed(value + 1)
+  if (!parsed.ok) {
+    return Effect.fail(new RequestQueryError({ message: parsed.message }))
   }
 
-  return readIntegerQuery(url, 'fromSeq', { minimum: 1 }).pipe(
-    Effect.map((fromSeq) => fromSeq ?? 1),
-  )
+  return Effect.succeed(parsed.fromSeq)
 }
 
 function streamStartRun(
@@ -262,6 +252,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
               store,
               runId: params.runId,
               fromSeq: yield* readEventStreamFromSeq(req, url),
+              filter: subscriptionFilter(url),
             })
           }
 

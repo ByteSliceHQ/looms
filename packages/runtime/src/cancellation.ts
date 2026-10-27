@@ -179,6 +179,30 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
               })
             }
 
+            // A prior wait-close may have recorded close.requested then failed mid-cancel.
+            // Keep cancelling remaining wait children on later cancel attempts.
+            const retryChildIds =
+              rootCancel && current.state.childCloseSent
+                ? current.state.launchedRuns
+                    .filter((child) => child.close === 'wait')
+                    .map((child) => child.runId)
+                : []
+
+            if (retryChildIds.length > 0) {
+              return Effect.succeed({
+                events: [],
+                value: {
+                  plan: {
+                    events: [],
+                    threadIds: new Set<string>(),
+                    workerCancellations: [],
+                  } satisfies CancellationPlan,
+                  now,
+                  childRunIds: retryChildIds,
+                },
+              })
+            }
+
             const plan = planCancellation({
               runId,
               seq: current.seq,

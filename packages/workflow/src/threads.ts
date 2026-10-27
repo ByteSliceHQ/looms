@@ -354,8 +354,9 @@ function unsettledChildren(
 
 /**
  * Drops a node's pending work and cancels the children it leaves running. `settled` is the child
- * whose result is finishing the node, which must not be cancelled. A `wait` child run stays
- * pending until it settles, so the node does not finish ahead of that cancellation.
+ * whose result is finishing the node, which must not be cancelled. Wait-policy child runs are
+ * cancelled here too; run-level `childClose: 'wait'` is enforced by the runtime's launched-run
+ * bookkeeping, not by leaving stale entries in workflow pending state.
  */
 function withoutPendingWork(
   state: WorkflowState,
@@ -370,26 +371,12 @@ function withoutPendingWork(
     .map((child) => child.target)
     .filter((target) => target !== settled && !state.pendingCancels.includes(target))
 
-  const keptSpawns = new Set(
-    children
-      .filter(
-        (child) => child.execution === 'run' && child.close === 'wait' && child.target !== settled,
-      )
-      .map((child) => child.key),
-  )
-
-  const keepMap = children.some(
-    (child) => child.execution === 'run' && child.close === 'wait' && child.target !== settled,
-  )
-
   return {
     ...state,
     pendingCancels:
       cancels.length === 0 ? state.pendingCancels : [...state.pendingCancels, ...cancels],
-    pendingSpawns: state.pendingSpawns.filter(
-      (item) => item.nodeId !== nodeId || keptSpawns.has(item.childThreadId),
-    ),
-    pendingMaps: state.pendingMaps.filter((item) => item.nodeId !== nodeId || keepMap),
+    pendingSpawns: state.pendingSpawns.filter((item) => item.nodeId !== nodeId),
+    pendingMaps: state.pendingMaps.filter((item) => item.nodeId !== nodeId),
     pendingSleeps: state.pendingSleeps.filter((item) => item.nodeId !== nodeId),
     pendingEffects: state.pendingEffects.filter((item) => item.nodeId !== nodeId),
   }

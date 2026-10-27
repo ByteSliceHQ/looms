@@ -1,6 +1,6 @@
 import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 
-import type { SubscriptionSocketConstructor } from '@looms/client'
+import { absoluteHttpBase, type SubscriptionSocketConstructor } from '@looms/client'
 import {
   decodeLoomsEvent,
   readSubscriptionData,
@@ -441,7 +441,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     let url: string
 
     try {
-      const http = new URL(liveUrl())
+      const http = new URL(liveUrl(), absoluteHttpBase(endpoint))
       http.protocol = http.protocol === 'https:' ? 'wss:' : 'ws:'
       url = http.toString()
     } catch {

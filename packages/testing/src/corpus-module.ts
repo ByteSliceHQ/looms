@@ -38,13 +38,22 @@ export function corpusModule(options?: {
 }) {
   const charge = defineEffect({
     type: corpusChargeV1,
-    retry: { maxAttempts: 3, backoffMs: 1, scheduleToStartTimeoutMs: 60_000 },
+    retry: {
+      maxAttempts: 3,
+      backoffMs: 1,
+      scheduleToStartTimeoutMs: 60_000,
+      startToCloseTimeoutMs: 60_000,
+    },
     execute: options?.charge,
   })
 
   const chargeV2 = defineEffect({
     type: corpusChargeV2,
-    retry: { maxAttempts: 1, scheduleToStartTimeoutMs: 60_000 },
+    retry: {
+      maxAttempts: 1,
+      scheduleToStartTimeoutMs: 60_000,
+      startToCloseTimeoutMs: 60_000,
+    },
     execute: options?.charge,
   })
 

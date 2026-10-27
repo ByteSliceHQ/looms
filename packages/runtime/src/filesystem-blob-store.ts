@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { Data, Effect, Predicate } from 'effect'
 
@@ -18,19 +19,30 @@ function filesystemBlobBytes(directory: string): BlobBytes {
   return {
     read: (key) => readOptional(`${directory}/${key}`, key),
 
-    write: (key, body) =>
-      Effect.tryPromise({
-        try: () => mkdir(`${directory}/${folderOf(key)}`, { recursive: true }),
+    write: (key, body) => {
+      const folder = `${directory}/${folderOf(key)}`
+      const target = `${directory}/${key}`
+      const temp = join(folder, `.${key.slice(key.lastIndexOf('/') + 1)}.${process.pid}.tmp`)
+
+      return Effect.tryPromise({
+        try: () => mkdir(folder, { recursive: true }),
         catch: (cause) =>
           new BlobStoreError(`Unable to create a directory for blob key ${key}`, cause),
       }).pipe(
         Effect.andThen(
           Effect.tryPromise({
-            try: () => writeFile(`${directory}/${key}`, body),
+            try: () => writeFile(temp, body),
             catch: (cause) => new BlobStoreError(`Unable to write blob key ${key}`, cause),
           }),
         ),
-      ),
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => rename(temp, target),
+            catch: (cause) => new BlobStoreError(`Unable to finalize blob key ${key}`, cause),
+          }),
+        ),
+      )
+    },
 
     remove: (key) =>
       Effect.tryPromise({
