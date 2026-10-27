@@ -186,6 +186,58 @@ export function primePinnedDefinitions(
   })
 }
 
+/**
+ * Resolves definitions pinned on a materialized run state (snapshot). Needed because delta-only
+ * priming misses identities whose start events sit behind the snapshot cursor.
+ */
+export function primePinnedDefinitionsFromState(
+  resolver: DefinitionResolver,
+  state: {
+    readonly startIdentity: {
+      readonly kind: string
+      readonly definitionName: string
+      readonly definitionVersion: string
+    } | null
+    readonly threads: Readonly<
+      Record<
+        string,
+        {
+          readonly kind: string
+          readonly definitionName: string
+          readonly definitionVersion: string
+        }
+      >
+    >
+  },
+): Effect.Effect<void, DefinitionResolveError> {
+  return Effect.gen(function* () {
+    const seen = new Set<string>()
+
+    const resolve = (kind: string, name: string, version: string) => {
+      const key = definitionKey(kind, name, version)
+
+      if (seen.has(key)) {
+        return Effect.void
+      }
+
+      seen.add(key)
+      return resolver.resolve(kind, name, version).pipe(Effect.asVoid)
+    }
+
+    if (state.startIdentity) {
+      yield* resolve(
+        state.startIdentity.kind,
+        state.startIdentity.definitionName,
+        state.startIdentity.definitionVersion,
+      )
+    }
+
+    for (const thread of Object.values(state.threads)) {
+      yield* resolve(thread.kind, thread.definitionName, thread.definitionVersion)
+    }
+  })
+}
+
 function readPinned(payload: JsonValue): VersionedDefinition | undefined {
   if (!Predicate.isObject(payload) || !('kind' in payload) || !('definitionName' in payload)) {
     return undefined

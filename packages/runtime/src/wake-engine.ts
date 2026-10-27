@@ -85,20 +85,25 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
       let next = cursor
       const state = next.state
 
-      if (isRunTerminal(state) && !state.childCloseSent && state.launchedRuns.length > 0) {
-        const requested = createEvent(runId, {
-          type: 'runtime.child.close.requested',
-          payload: { policy: 'terminate' },
-          threadId: state.rootThreadId,
-          origin: { type: 'system' },
-          idempotencyKey: `child-close:${runId}`,
-        })
+      if (isRunTerminal(state) && state.launchedRuns.length > 0) {
+        // Record close.requested once so closeWaiting / terminate policy is durable, then cancel
+        // every remaining child. Retries keep cancelling while launchedRuns is non-empty even after
+        // childCloseSent, so a partial cancel failure cannot orphan the rest.
+        if (!state.childCloseSent) {
+          const requested = createEvent(runId, {
+            type: 'runtime.child.close.requested',
+            payload: { policy: 'terminate' },
+            threadId: state.rootThreadId,
+            origin: { type: 'system' },
+            idempotencyKey: `child-close:${runId}`,
+          })
 
-        const appended = yield* appendObserved(store, runId, stripSeq([requested]))
-        next = yield* applyAppend(store, runId, next, stripSeq([requested]), appended)
+          const appended = yield* appendObserved(store, runId, stripSeq([requested]))
+          next = yield* applyAppend(store, runId, next, stripSeq([requested]), appended)
+        }
 
         yield* Effect.forEach(
-          state.launchedRuns,
+          next.state.launchedRuns,
           (child) => options.launcher().cancel(child.runId),
           {
             concurrency: 1,

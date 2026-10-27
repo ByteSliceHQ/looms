@@ -8,6 +8,7 @@ import {
   EventStoreTrimmedError,
   hashRunState,
   primePinnedDefinitions,
+  primePinnedDefinitionsFromState,
   summarizeRun,
   trimEventStoreSafely,
   type AppendableEvent,
@@ -292,6 +293,8 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
             seq: snap.value.cursor,
             durableSinceSnapshot: 0,
           }
+
+          yield* primePinnedDefinitionsFromState(definitionResolver, snap.value.state)
         } else {
           observe({
             type: 'snapshot.load',

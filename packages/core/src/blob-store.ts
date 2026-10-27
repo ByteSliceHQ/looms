@@ -83,7 +83,12 @@ export function blobStoreFromBytes(bytes: BlobBytes): BlobStore {
         const existing = yield* bytes.read(objectKey(digest))
 
         if (existing) {
-          return yield* Effect.void
+          const existingDigest = yield* sha256Hex(existing)
+
+          // A truncated or corrupted object must be overwritten; skipping leaves get() broken forever.
+          if (existingDigest === digest) {
+            return yield* Effect.void
+          }
         }
 
         return yield* bytes.write(objectKey(digest), body)
