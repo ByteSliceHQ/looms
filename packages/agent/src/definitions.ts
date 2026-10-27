@@ -151,12 +151,6 @@ export interface AgentToolResolutionContext<TInput = JsonValue> {
   readonly input: TInput
 }
 
-export interface AgentUsage {
-  readonly input: number
-  readonly output: number
-  readonly turn: number
-}
-
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {
   message: Message
   toolCalls?: ToolCall[]
@@ -188,16 +182,6 @@ export interface AgentDefinition<
   ): Promise<readonly AgentToolEntry[]> | readonly AgentToolEntry[]
   /** Shrinks the conversation after the model reports a context overflow. */
   readonly compact?: AgentCompactor
-  /**
-   * @deprecated Use effect middleware (`onEffect` + `failEffect`) before `agent.callLLM`.
-   * @internal Kept for binary compatibility; do not use in new code.
-   */
-  assertCredits?(ctx: AgentTurnContext<TInput>): Promise<void> | void
-  /**
-   * @deprecated Use the `tokenUsage` projection or fold `agent.turn.usage`.
-   * @internal Kept for binary compatibility; do not use in new code.
-   */
-  trackUsage?(usage: AgentUsage, ctx: AgentTurnContext<TInput>): Promise<void> | void
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen
