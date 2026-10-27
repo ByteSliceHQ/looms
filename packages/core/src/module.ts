@@ -14,6 +14,8 @@ import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
 
+export { DEFAULT_DEFINITION_VERSION, definitionKey } from './definition-version'
+
 export type NextEffectHandler = (
   effect: RuntimeEffect,
   ctx: EffectContext,
@@ -78,12 +80,6 @@ export interface DefinitionRef {
   readonly version?: string
   readonly input?: SchemaInput | undefined
   readonly description?: string | undefined
-}
-
-export const DEFAULT_DEFINITION_VERSION = 'v1'
-
-export function definitionKey(kind: string, name: string, version: string): string {
-  return `${kind}:${name}@${version}`
 }
 
 /** A definition registered on a host, keyed by `${kind}:${name}@${version}`. */
