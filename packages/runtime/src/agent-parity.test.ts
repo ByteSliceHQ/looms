@@ -9,7 +9,6 @@ import {
   defineTool,
   STRUCTURED_OUTPUT_TOOL_NAME,
   TEAM_MEMBER_MAX_DEPTH,
-  type AgentUsage,
 } from '@looms/agent'
 import type { EventEnvelope, RunState } from '@looms/core'
 
@@ -188,40 +187,10 @@ describe('agent parity on the runtime', () => {
     await looms.stop()
   })
 
-  test('a failed credit check fails the thread before the model runs', async () => {
-    let modelCalls = 0
-
-    const metered = defineAgent({
-      name: 'metered',
-      instructions: 'Answer.',
-      assertCredits: () => {
-        throw new Error('out of credits')
-      },
-      runTurn: () => {
-        modelCalls += 1
-        return { message: { role: 'assistant', content: 'unreachable' } }
-      },
-    })
-
-    const looms = createLooms({ modules: [agent({ definitions: [metered] })] })
-    const result = await looms.start(metered, 'hi')
-
-    expect(rootOf(result.state)?.status).toBe('failed')
-    expect(rootOf(result.state)?.error).toBe('out of credits')
-    expect(modelCalls).toBe(0)
-    await looms.stop()
-  })
-
-  test('usage is recorded and reported, and a failing reporter does not fail the turn', async () => {
-    const reported: AgentUsage[] = []
-
+  test('usage is recorded on agent.turn.usage', async () => {
     const usageAgent = defineAgent({
       name: 'usage-agent',
       instructions: 'Answer.',
-      trackUsage: (usage) => {
-        reported.push(usage)
-        throw new Error('billing is down')
-      },
       runTurn: () => ({
         message: { role: 'assistant', content: 'answer' },
         usage: { input: 10, output: 5 },
@@ -234,7 +203,6 @@ describe('agent parity on the runtime', () => {
     const usage = events.filter((event) => event.type === 'agent.turn.usage')
 
     expect(rootOf(result.state)?.status).toBe('completed')
-    expect(reported).toEqual([{ input: 10, output: 5, turn: 1 }])
     expect(usage.map((event) => event.payload)).toEqual([{ turn: 1, input: 10, output: 5 }])
     await looms.stop()
   })

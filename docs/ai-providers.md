@@ -67,10 +67,11 @@ When the model call fails because the prompt exceeded the context window, Looms 
 
 `resolveTools({ threadId, turn, input })` adds tools beside the static `tools`, such as integrations configured for one tenant. Looms calls it before each model turn and again when a tool runs, so it must return the same tools for the same input and turn.
 
-### Credit gates and usage
+### Gates and usage
 
-- `assertCredits(ctx)` runs before each model call. If it throws, the thread fails with that message and the model is not called.
-- Every model call that reports usage records `agent.turn.usage`. `trackUsage(usage, ctx)` is called after it. A retried turn calls it again, so deduplicate on `threadId` and `turn`. A `trackUsage` failure is logged and does not fail the turn.
+Product-specific gates such as credit checks belong in **effect middleware**. Use `onEffect(callLlmEffect, …)` with `failEffect({ error, nonRetryable: true })` before the model call runs; see [Modules](./modules.md#effect-middleware).
+
+Every model call that reports usage records `agent.turn.usage`. Fold that event, or use the built-in `tokenUsage` projection, for durable billing.
 
 ### Team member depth
 

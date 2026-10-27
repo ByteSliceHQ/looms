@@ -180,7 +180,12 @@ export function dispatchEffect(
       (e: RuntimeEffect, c: EffectContext) => Effect.Effect<ReadonlyArray<EventInput>, Error>
     >((next, mw) => (e, c) => mw(e, c, next), baseDispatch)
 
-    return pipeline(effect, ctx)
+    // Middleware may call `failEffect` (or otherwise fail) before `next`. Catch those the same
+    // way handler failures are caught inside `baseDispatch`, so a deliberate gate becomes
+    // `runtime.effect.failed` instead of failing the wake.
+    return pipeline(effect, ctx).pipe(
+      Effect.catch((err) => Effect.succeed([failedAttempt(ctx.effectId, currentThreadId, err)])),
+    )
   }
 
   return baseDispatch(effect, ctx)

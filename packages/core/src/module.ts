@@ -2,12 +2,19 @@ import type { Context, Effect, Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
 import type { DefinitionResolver } from './definition-resolver'
-import type { EffectContext, EffectDefinition, RuntimeEffect } from './effects'
+import {
+  isPrimitiveEffect,
+  type EffectContext,
+  type EffectDefinition,
+  type RuntimeEffect,
+} from './effects'
 import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
 import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ThreadDefinition } from './thread'
 import type { JsonValue } from './types'
+
+export { DEFAULT_DEFINITION_VERSION, definitionKey } from './definition-version'
 
 export type NextEffectHandler = (
   effect: RuntimeEffect,
@@ -19,6 +26,35 @@ export type EffectMiddleware = (
   ctx: EffectContext,
   next: NextEffectHandler,
 ) => Effect.Effect<ReadonlyArray<EventInput>, Error>
+
+/** Continues the middleware chain for the effect `onEffect` already matched. */
+export type OnEffectNext = () => Effect.Effect<ReadonlyArray<EventInput>, Error>
+
+/**
+ * Middleware that runs only for one effect definition. The handler receives the effect's
+ * decoded input type and must call `next()` to continue (or `failEffect` to reject the attempt).
+ *
+ * Middleware wraps local (in-process) effect dispatch only. Effects routed to an `EffectWorker`
+ * never see it.
+ */
+export function onEffect<TInput>(
+  definition: EffectDefinition<TInput>,
+  handler: (
+    input: TInput,
+    ctx: EffectContext,
+    next: OnEffectNext,
+  ) => Effect.Effect<ReadonlyArray<EventInput>, Error>,
+): EffectMiddleware {
+  return (effect, ctx, next) => {
+    if (isPrimitiveEffect(effect) || effect.type !== definition.type) {
+      return next(effect, ctx)
+    }
+
+    // SAFETY: matched definition's phantom TInput is the schema type handlers receive after validation.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return handler(effect.input as TInput, ctx, () => next(effect, ctx))
+  }
+}
 
 /**
  * Names the threads whose in-process effects an admitted signal event interrupts, so a running
@@ -44,12 +80,6 @@ export interface DefinitionRef {
   readonly version?: string
   readonly input?: SchemaInput | undefined
   readonly description?: string | undefined
-}
-
-export const DEFAULT_DEFINITION_VERSION = 'v1'
-
-export function definitionKey(kind: string, name: string, version: string): string {
-  return `${kind}:${name}@${version}`
 }
 
 /** A definition registered on a host, keyed by `${kind}:${name}@${version}`. */

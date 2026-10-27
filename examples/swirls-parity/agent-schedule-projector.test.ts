@@ -60,7 +60,6 @@ describe('swirls-parity agent, schedule, and projector', () => {
   test('an agent session handles many turns, steering, cancellation, and compaction', async () => {
     let compacted = 0
     let turnsStarted = 0
-    const usages: Array<{ input: number; output: number }> = []
 
     const responder = defineAgent({
       name: 'parity-responder',
@@ -69,9 +68,6 @@ describe('swirls-parity agent, schedule, and projector', () => {
       compact: (ctx) => {
         compacted += 1
         return defaultAgentCompactor(ctx)
-      },
-      trackUsage: (usage) => {
-        usages.push(usage)
       },
       runTurn: async ({ input }) => {
         turnsStarted += 1
@@ -157,7 +153,7 @@ describe('swirls-parity agent, schedule, and projector', () => {
     const closed = events.filter((event) => event.type === 'agent.session.turn.closed')
 
     expect(closed.length).toBeGreaterThanOrEqual(turns)
-    expect(usages.length).toBeGreaterThan(0)
+    expect(events.some((event) => event.type === 'agent.turn.usage')).toBe(true)
     expect(compacted).toBeGreaterThan(0)
     expect(events.some((event) => event.type === 'agent.steered')).toBe(true)
     expect(events.some((event) => event.type === 'agent.turn.stopped')).toBe(true)

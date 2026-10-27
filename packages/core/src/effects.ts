@@ -1,7 +1,7 @@
 import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
+import { DEFAULT_DEFINITION_VERSION } from './definition-version'
 import { EventInputSchema, type EventInput } from './envelope'
-import { DEFAULT_DEFINITION_VERSION } from './module'
 import type { RunAttributes, SecretContext } from './run-context'
 import {
   validateInputEffect,

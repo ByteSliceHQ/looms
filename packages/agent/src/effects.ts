@@ -218,28 +218,6 @@ function runCallLlm(args: {
       signal,
     }
 
-    if (definition.assertCredits) {
-      const creditCheck = yield* Effect.tryPromise({
-        try: () => Promise.resolve(definition.assertCredits!(turnCtx)),
-        catch: (cause) => new AgentExecutionError('credit gate check', cause),
-      }).pipe(
-        Effect.match({
-          onFailure: (error) => ({ ok: false as const, error: error.message }),
-          onSuccess: () => ({ ok: true as const }),
-        }),
-      )
-
-      if (!creditCheck.ok) {
-        return [
-          {
-            type: 'runtime.thread.failed',
-            payload: { threadId, error: creditCheck.error },
-            threadId,
-          },
-        ]
-      }
-    }
-
     const events: EventInputOf<AgentEvent>[] = [
       {
         type: 'agent.turn.started',
@@ -359,21 +337,6 @@ function runCallLlm(args: {
         },
         threadId,
       })
-
-      if (definition.trackUsage) {
-        yield* Effect.tryPromise({
-          try: () =>
-            Promise.resolve(
-              definition.trackUsage!(
-                { input: result.usage!.input, output: result.usage!.output, turn },
-                turnCtx,
-              ),
-            ),
-          catch: (cause) => new AgentExecutionError('track usage', cause),
-        }).pipe(
-          Effect.catch((error) => Effect.logWarning('[@looms/agent] trackUsage failed', error)),
-        )
-      }
     }
 
     if (shouldStop) {

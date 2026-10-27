@@ -151,12 +151,6 @@ export interface AgentToolResolutionContext<TInput = JsonValue> {
   readonly input: TInput
 }
 
-export interface AgentUsage {
-  readonly input: number
-  readonly output: number
-  readonly turn: number
-}
-
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {
   message: Message
   toolCalls?: ToolCall[]
@@ -188,13 +182,6 @@ export interface AgentDefinition<
   ): Promise<readonly AgentToolEntry[]> | readonly AgentToolEntry[]
   /** Shrinks the conversation after the model reports a context overflow. */
   readonly compact?: AgentCompactor
-  /** Runs before each model call. Throwing fails the agent thread with the thrown message. */
-  assertCredits?(ctx: AgentTurnContext<TInput>): Promise<void> | void
-  /**
-   * Reports token usage after each model call. Usage is also recorded as `agent.turn.usage`;
-   * a retried turn calls this again, so deduplicate on `threadId` and `turn`.
-   */
-  trackUsage?(usage: AgentUsage, ctx: AgentTurnContext<TInput>): Promise<void> | void
   readonly maxTurns?: number
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen
