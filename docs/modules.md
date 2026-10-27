@@ -199,7 +199,7 @@ const billing = defineRuntimeModule({
 
 `failEffect` from middleware becomes `runtime.effect.failed` the same way a handler failure does. Set `nonRetryable: true` to end the attempt even when a retry policy remains, or `retryAfterMs` to delay the next try.
 
-For usage and billing totals, fold `agent.turn.usage` (or use the agent module's `tokenUsage` projection) instead of side-effect hooks on the agent definition. `assertCredits` and `trackUsage` on `defineAgent` are deprecated in favor of middleware and projections.
+For usage and billing totals, fold `agent.turn.usage` or use the agent module's `tokenUsage` projection.
 
 Install middleware by composing a module that declares it — a module may ship middleware alone, with no threads or effects of its own.
 

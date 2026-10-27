@@ -657,10 +657,8 @@ const billing = defineRuntimeModule({
         a retry policy remains, or <code>retryAfterMs</code> to delay the next try.
       </p>
       <p>
-        For usage and billing totals, fold <code>agent.turn.usage</code> (or use the agent
-        module&apos;s <code>tokenUsage</code> projection) instead of side-effect hooks on the agent
-        definition. <code>assertCredits</code> and <code>trackUsage</code> on{' '}
-        <code>defineAgent</code> are deprecated in favor of middleware and projections.
+        For usage and billing totals, fold <code>agent.turn.usage</code> or use the agent
+        module&apos;s <code>tokenUsage</code> projection.
       </p>
       <p>
         Install middleware by composing a module that declares it — a module may ship middleware

@@ -67,14 +67,11 @@ When the model call fails because the prompt exceeded the context window, Looms 
 
 `resolveTools({ threadId, turn, input })` adds tools beside the static `tools`, such as integrations configured for one tenant. Looms calls it before each model turn and again when a tool runs, so it must return the same tools for the same input and turn.
 
-### Gates and usage (prefer middleware and projections)
+### Gates and usage
 
-Product-specific gates such as credit checks belong in **effect middleware**, not on the agent definition. Middleware can call `failEffect({ error, nonRetryable: true })` before `agent.callLLM` runs; see [Modules](./modules.md#effect-middleware).
+Product-specific gates such as credit checks belong in **effect middleware**. Use `onEffect(callLlmEffect, …)` with `failEffect({ error, nonRetryable: true })` before the model call runs; see [Modules](./modules.md#effect-middleware).
 
-Every model call that reports usage records `agent.turn.usage`. Fold that event (or use the built-in `tokenUsage` projection) for durable billing. The agent hooks below still work but are deprecated:
-
-- `assertCredits(ctx)` — prefer `onEffect(callLlmEffect, …)` + `failEffect`
-- `trackUsage(usage, ctx)` — prefer `tokenUsage` / an `agent.turn.usage` projector. A retried turn used to call this again, so callers had to deduplicate on `threadId` and `turn`.
+Every model call that reports usage records `agent.turn.usage`. Fold that event, or use the built-in `tokenUsage` projection, for durable billing.
 
 ### Team member depth
 

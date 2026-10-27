@@ -189,18 +189,13 @@ export interface AgentDefinition<
   /** Shrinks the conversation after the model reports a context overflow. */
   readonly compact?: AgentCompactor
   /**
-   * @deprecated Use effect middleware with `onEffect` and `failEffect` instead of a
-   * product-specific agent hook. See `docs/modules.md` (Effect middleware).
-   *
-   * Runs before each model call. Throwing fails the agent thread with the thrown message.
+   * @deprecated Use effect middleware (`onEffect` + `failEffect`) before `agent.callLLM`.
+   * @internal Kept for binary compatibility; do not use in new code.
    */
   assertCredits?(ctx: AgentTurnContext<TInput>): Promise<void> | void
   /**
-   * @deprecated Prefer the built-in `tokenUsage` projection or a projector over
-   * `agent.turn.usage`. Side-effect hooks are not durable across replay.
-   *
-   * Reports token usage after each model call. Usage is also recorded as `agent.turn.usage`;
-   * a retried turn calls this again, so deduplicate on `threadId` and `turn`.
+   * @deprecated Use the `tokenUsage` projection or fold `agent.turn.usage`.
+   * @internal Kept for binary compatibility; do not use in new code.
    */
   trackUsage?(usage: AgentUsage, ctx: AgentTurnContext<TInput>): Promise<void> | void
   readonly maxTurns?: number
