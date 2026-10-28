@@ -302,10 +302,11 @@ export function executeLocalEffects(
 
           const { outcomes } = settled
 
-          const sideEffect =
-            item.effect.type === 'runtime.launch' || item.effect.type === 'runtime.cancelRun'
-
-          if (outcomes.length === 0 && sideEffect) {
+          // A handler that returns no events succeeded with nothing to report (a launch, a
+          // cancel, or a scheduler with nothing ready). Record the attempt as completed, as the
+          // worker path does; treating it as a failure made the thread re-request the same
+          // effect from the failure event and spin the wake loop.
+          if (outcomes.length === 0) {
             const attempt = input.attempts.get(item.effectId) ?? 1
 
             produced.push(
@@ -318,8 +319,6 @@ export function executeLocalEffects(
                 origin: { type: 'system' },
               }),
             )
-          } else if (outcomes.length === 0) {
-            produced.push(createEffectFailedEvent(input.runId, item, 'empty-outcome'))
           }
 
           for (const outcome of outcomes) {

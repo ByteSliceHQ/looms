@@ -377,6 +377,66 @@ describe('foldRun', () => {
     expect(state.outstandingEffects[0]?.effect.type).toBe('counter.tick')
   })
 
+  test('an untagged effect completed with no outcome is not re-issued by that event', () => {
+    const scheduler = defineThread({
+      kind: 'scheduler',
+      shape: Schema.Struct({ needsPlan: Schema.Boolean }),
+      initialState: () => ({ needsPlan: true }),
+      step: (state) => state,
+      effects: (state) => (state.needsPlan ? [invoke('scheduler.plan', { tick: 1 })] : []),
+    })
+
+    const registry = composeModules([
+      defineRuntimeModule({
+        namespace: 'scheduler',
+        protocolVersion: '1.0.0',
+        threads: { scheduler },
+      }),
+    ])
+
+    const runId = 'run_settled'
+    const threadId = 'thr_settled'
+    const planId = createEffectId(threadId, 1, 0)
+
+    const started = createEvent(runId, {
+      type: 'runtime.thread.started',
+      payload: {
+        threadId,
+        kind: 'scheduler',
+        definitionName: 'scheduler',
+        input: null,
+        parentThreadId: null,
+      },
+      threadId,
+      origin: { type: 'system' },
+    })
+
+    const completed = createEvent(runId, {
+      type: 'runtime.effect.completed',
+      payload: { effectId: planId, attempt: 1 },
+      threadId,
+      effectId: planId,
+      origin: { type: 'system' },
+    })
+
+    const parked = foldRun(assignSeq([started, completed]), registry)
+    expect(parked.threads[threadId]?.status).toBe('running')
+    expect(parked.outstandingEffects).toEqual([])
+
+    const signalled = createEvent(runId, {
+      type: 'runtime.signal.received',
+      payload: { signal: 'poke' },
+      threadId,
+      origin: { type: 'external' },
+    })
+
+    const woken = foldRun(assignSeq([started, completed, signalled]), registry)
+
+    expect(woken.outstandingEffects.map((item) => item.effectId)).toEqual([
+      createEffectId(threadId, 3, 0),
+    ])
+  })
+
   test('handled effect.failed leaves the thread running', () => {
     const handler = defineThread({
       kind: 'handler',
