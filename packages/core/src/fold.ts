@@ -10,7 +10,7 @@ import type { ThreadRecord, OutstandingEffect, RunState, WaitRecord } from './st
 import { completedRunStatus, emptyRunState } from './state'
 import { isTerminalStatus, type ThreadContext, type ThreadDefinition } from './thread'
 import { readStoredTrace } from './trace'
-import type { JsonValue } from './types'
+import { asJson, isJsonObject, type JsonValue } from './types'
 
 export interface FoldRegistry {
   readonly threads: ReadonlyMap<string, ThreadDefinition>
@@ -587,16 +587,60 @@ export function stableEffectId(threadId: string, effect: RuntimeEffect): string 
   return undefined
 }
 
+function jsonEquals(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) {
+    return true
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => jsonEquals(item, right[index] ?? null))
+    )
+  }
+
+  if (!isJsonObject(left) || !isJsonObject(right)) {
+    return false
+  }
+
+  const leftKeys = Object.keys(left)
+
+  return (
+    leftKeys.length === Object.keys(right).length &&
+    leftKeys.every((key) => key in right && jsonEquals(left[key] ?? null, right[key] ?? null))
+  )
+}
+
+/**
+ * An untagged effect that `runtime.effect.completed` just settled with no outcome. The thread
+ * re-emitting the same effect from that very event asks nothing new, so it is not re-issued;
+ * any later event for the thread gives it a fresh id again.
+ */
+function settledWithoutOutcome(
+  state: RunState,
+  event: EventEnvelope,
+): OutstandingEffect | undefined {
+  if (event.type !== 'runtime.effect.completed' || !event.effectId) {
+    return undefined
+  }
+
+  const item = state.outstandingEffects.find((candidate) => candidate.effectId === event.effectId)
+  return item && stableEffectId(item.threadId, item.effect) === undefined ? item : undefined
+}
+
 function mapEffects(
   threadId: string,
   event: EventEnvelope,
   effects: RuntimeEffect[],
   completed: readonly string[],
   existingForThread: readonly OutstandingEffect[],
+  settled: OutstandingEffect | undefined,
 ): OutstandingEffect[] {
   const remainingExisting = [...existingForThread]
   return effects
-    .map((effect, index) => {
+    .flatMap((effect, index) => {
       const stableId = stableEffectId(threadId, effect)
 
       const matchIndex = remainingExisting.findIndex((item) =>
@@ -604,16 +648,26 @@ function mapEffects(
       )
 
       const existing = matchIndex >= 0 ? remainingExisting.splice(matchIndex, 1)[0] : undefined
+
+      if (
+        existing === undefined &&
+        stableId === undefined &&
+        settled?.threadId === threadId &&
+        jsonEquals(asJson(settled.effect), asJson(effect))
+      ) {
+        return []
+      }
+
       const effectId = stableId ?? existing?.effectId ?? createEffectId(threadId, event.seq, index)
-      return (
+      return [
         existing ?? {
           effectId,
           threadId,
           causingSeq: event.seq,
           causingEventId: event.id,
           effect,
-        }
-      )
+        },
+      ]
     })
     .filter((item) => !completed.includes(item.effectId))
 }
@@ -624,6 +678,7 @@ function reconcileEffects(
   threadId: string,
   event: EventEnvelope,
   effects: RuntimeEffect[],
+  settled: OutstandingEffect | undefined,
 ): RunState {
   const record = state.threads[threadId]
 
@@ -636,7 +691,7 @@ function reconcileEffects(
 
   const completed = state.completedEffectIds ?? []
   const existingForThread = state.outstandingEffects.filter((item) => item.threadId === threadId)
-  const mapped = mapEffects(threadId, event, effects, completed, existingForThread)
+  const mapped = mapEffects(threadId, event, effects, completed, existingForThread, settled)
   const otherThreadEffects = state.outstandingEffects.filter((item) => item.threadId !== threadId)
 
   return {
@@ -645,7 +700,12 @@ function reconcileEffects(
   }
 }
 
-function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry): RunState {
+function deliver(
+  state: RunState,
+  event: EventEnvelope,
+  registry: FoldRegistry,
+  settled: OutstandingEffect | undefined,
+): RunState {
   const threadId = event.threadId ?? (event.origin.type === 'external' ? state.rootThreadId : null)
 
   if (!threadId) {
@@ -678,7 +738,7 @@ function deliver(state: RunState, event: EventEnvelope, registry: FoldRegistry):
   const enabled = definition.effects(nextState, ctx)
 
   let next = putThread(state, { ...record, state: nextState })
-  next = reconcileEffects(next, threadId, event, enabled)
+  next = reconcileEffects(next, threadId, event, enabled, settled)
 
   if (definition.forgetsCompletedEffects) {
     next = forgetCompletedEffects(next, threadId, enabled)
@@ -768,6 +828,8 @@ export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldR
     next = { ...next, runId: event.runId }
   }
 
+  const settled = settledWithoutOutcome(next, event)
+
   if (event.effectId) {
     next = completeEffect(next, event.effectId)
   }
@@ -782,7 +844,7 @@ export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldR
 
   next = applyProtocol(next, event, registry)
   const effectIdsBeforeDeliver = new Set(next.outstandingEffects.map((item) => item.effectId))
-  next = deliver(next, event, registry)
+  next = deliver(next, event, registry, settled)
   return failUnhandledEffect(next, event, effectIdsBeforeDeliver)
 }
 
