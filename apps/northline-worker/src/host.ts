@@ -12,10 +12,12 @@ import {
   type LoomsDurableObjectConfig,
   type QueueProducer,
 } from '@swirls/looms/cloudflare'
+import type { Projector } from '@swirls/looms/projectors'
 import { bearerAuth } from '@swirls/looms/runtime'
 import { ensureSchedule } from '@swirls/looms/schedule'
 
 import { resolveEvaluator, resolveLlm, type Env } from './env'
+import { eventReplica } from './replica'
 import { deskStatusProjector } from './status'
 
 let cached: ReturnType<typeof northlineModules> | undefined
@@ -38,6 +40,11 @@ export function modulesFor(env: Env) {
   cachedKey = key
   cached = evaluator ? northlineModules({ llm, evaluator }) : northlineModules({ llm })
   return cached
+}
+
+function attachedReplica(env: Env): readonly Projector[] {
+  const replica = eventReplica(env)
+  return replica ? [replica] : []
 }
 
 function recoveryQueue(queue: Queue): QueueProducer {
@@ -79,7 +86,7 @@ export class LoomsRun extends LoomsDurableObject<Env> {
     return {
       modules: modulesFor(env),
       launcher: durableObjectLauncher(env.LOOMS_RUN),
-      projectors: [deskStatusProjector(env.DESK)],
+      projectors: [deskStatusProjector(env.DESK), ...attachedReplica(env)],
       authorize: bearerAuth({ worker: env.LOOMS_WORKER_TOKEN }),
       worker: cloudflareQueueWorker({
         routes: [{ effects: [bookRecovery], queue: recoveryQueue(env.RECOVERY_QUEUE) }],

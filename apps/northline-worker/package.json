@@ -16,10 +16,12 @@
     "@looms/northline": "workspace:*",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@swirls/looms": "workspace:*",
-    "ai": "^7.0.0"
+    "ai": "^7.0.0",
+    "postgres": "^3.4.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260914.1",
+    "@looms/projectors": "workspace:*",
     "typescript": "7.0.2",
     "wrangler": "^4.131.2"
   }

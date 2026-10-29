@@ -49,4 +49,18 @@ The morning sweep is cron `0 13 * * 1-5` UTC on the fixed run `northline-morning
 
 Reads and writes on a run stay open. Worker callbacks require `LOOMS_WORKER_TOKEN`. Local dev sets `northline-dev-worker` in `wrangler.jsonc`. A deploy should replace that with `wrangler secret put LOOMS_WORKER_TOKEN`.
 
+## Postgres replica
+
+Each run's log lives in that run's Durable Object. When a database is configured, `LoomsRun` also attaches `postgresReplica`, so every event is copied into Postgres the desk owns. Delivery runs after the append commits. The case page reports how far that copy has got.
+
+Local dev uses `DATABASE_URL` in `apps/northline-worker/.dev.vars`. Production binds Hyperdrive as `NORTHLINE_DB` (prepared statements off, which Hyperdrive requires). Hyperdrive wins when both are set. Without either, the desk still runs and the case page says the copy is not attached.
+
+The host uses `migrate: 'verify'`. Apply the SQL in `apps/northline-worker/migrations` before the first request:
+
+```sh
+looms replica migrate --database "$DATABASE_URL"
+```
+
+Generate again only when Looms ships a new replica migration. `bun test` in the worker fails if `migrations/` is behind `looms replica generate`.
+
 The floor desk is one shared conversation on the board object. A recovery the dispatcher opens stays on that conversation. A case on the board is the tracked recovery.

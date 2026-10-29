@@ -50,8 +50,24 @@ export const SweepInfo = z.object({
 })
 export type SweepInfo = z.infer<typeof SweepInfo>
 
+export const ReplicaCopy = z.object({
+  replicatedSeq: z.number().int().nonnegative(),
+  finished: z.boolean(),
+  complete: z.boolean(),
+  purgedAt: z.number().nullable(),
+})
+export type ReplicaCopy = z.infer<typeof ReplicaCopy>
+
+/** `attached` is false when this desk has no Postgres. `copy` is null until the run lands. */
+export const ReplicaView = z.object({
+  attached: z.boolean(),
+  copy: ReplicaCopy.nullable(),
+})
+export type ReplicaView = z.infer<typeof ReplicaView>
+
 export const CaseResponse = z.object({
   case: CaseRecord,
+  replica: ReplicaView,
 })
 export type CaseResponse = z.infer<typeof CaseResponse>
 

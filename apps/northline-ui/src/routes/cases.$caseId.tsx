@@ -6,7 +6,7 @@ import { CaseRun } from '../components/case-run'
 export const Route = createFileRoute('/cases/$caseId')({
   loader: ({ params }) =>
     fetchCase(params.caseId).then(
-      (body) => body.case,
+      (body) => body,
       (cause) => {
         if (cause instanceof DeskRequestError && cause.status === 404) {
           throw notFound()
@@ -28,14 +28,14 @@ export const Route = createFileRoute('/cases/$caseId')({
 })
 
 function CasePage() {
-  const record = Route.useLoaderData()
+  const loaded = Route.useLoaderData()
 
   return (
     <>
       <Link to="/" className="back">
         Back to the board
       </Link>
-      <CaseRun record={record} />
+      <CaseRun record={loaded.case} replica={loaded.replica} />
     </>
   )
 }

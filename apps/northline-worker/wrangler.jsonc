@@ -26,4 +26,8 @@
     "LOOMS_WORKER_TOKEN": "northline-dev-worker",
     "LOOMS_MODEL": "openai/gpt-4o-mini",
   },
+  // Copy each run into Postgres. Local dev reads DATABASE_URL from .dev.vars.
+  // Production binds Hyperdrive as NORTHLINE_DB. Apply apps/northline-worker/migrations
+  // with `looms replica migrate` before the first request; the host only verifies them.
+  // "hyperdrive": [{ "binding": "NORTHLINE_DB", "id": "<hyperdrive-id>" }]
 }

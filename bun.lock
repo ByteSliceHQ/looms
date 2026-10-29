@@ -152,9 +152,11 @@
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@swirls/looms": "workspace:*",
         "ai": "^7.0.0",
+        "postgres": "^3.4.0",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^5.20260914.1",
+        "@looms/projectors": "workspace:*",
         "typescript": "7.0.2",
         "wrangler": "^4.131.2",
       },
@@ -364,7 +366,7 @@
     },
     "packages/looms": {
       "name": "@swirls/looms",
-      "version": "0.6.1",
+      "version": "0.8.0",
       "bin": {
         "looms": "dist/cli/cli.js",
       },

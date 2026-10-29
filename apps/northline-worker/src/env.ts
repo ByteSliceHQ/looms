@@ -11,6 +11,10 @@ export interface Env {
   readonly DESK: DurableObjectNamespace
   readonly RECOVERY_QUEUE: Queue
   readonly LOOMS_WORKER_TOKEN: string
+  /** Hyperdrive binding. Production reaches Postgres through this, with prepared statements off. */
+  readonly NORTHLINE_DB?: { readonly connectionString: string }
+  /** Direct Postgres URL for local dev. Ignored when Hyperdrive is bound. */
+  readonly DATABASE_URL?: string
   readonly OPENROUTER_API_KEY?: string
   readonly LOOMS_MODEL?: string
   readonly TYPESAFE_AI_API_KEY?: string

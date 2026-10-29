@@ -33,6 +33,7 @@ import {
 } from '@swirls/looms/core'
 
 import type { Env } from './env'
+import { replicaView } from './replica'
 
 const DESK_SESSION = 'desk'
 
@@ -86,7 +87,7 @@ function route(sql: SqlStorage, env: Env, request: Request): Promise<Response> {
   }
 
   if (request.method === 'GET' && pathname.startsWith('/api/cases/')) {
-    return Promise.resolve(readCaseResponse(sql, pathname.slice('/api/cases/'.length)))
+    return readCase(sql, env, pathname.slice('/api/cases/'.length))
   }
 
   if (request.method === 'GET' && pathname === '/api/desk') {
@@ -173,7 +174,9 @@ function openCase(sql: SqlStorage, env: Env, request: Request): Promise<Response
             return problem('The case was not saved.', 500)
           }
 
-          return Response.json(CaseResponse.parse({ case: record }))
+          return replicaView(env, runId).then((replica) =>
+            Response.json(CaseResponse.parse({ case: record, replica })),
+          )
         }),
       )
     })
@@ -320,17 +323,22 @@ function findCase(sql: SqlStorage, id: string): CaseRecordValue | undefined {
   return row ? toCase(row) : undefined
 }
 
-function readCaseResponse(sql: SqlStorage, rawId: string): Response {
+function readCase(sql: SqlStorage, env: Env, rawId: string): Promise<Response> {
   const id = decodeURIComponent(rawId)
 
   if (!id || id.includes('/')) {
-    return problem('Not found', 404)
+    return Promise.resolve(problem('Not found', 404))
   }
 
   const record = findCase(sql, id)
-  return record
-    ? Response.json(CaseResponse.parse({ case: record }))
-    : problem('That case is not on the board.', 404)
+
+  if (!record) {
+    return Promise.resolve(problem('That case is not on the board.', 404))
+  }
+
+  return replicaView(env, record.runId).then((replica) =>
+    Response.json(CaseResponse.parse({ case: record, replica })),
+  )
 }
 
 function sessionRunId(sql: SqlStorage): string | null {

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import type { CaseRecord, CaseStatus } from '@looms/northline/http'
+import type { CaseRecord, CaseStatus, ReplicaView } from '@looms/northline/http'
 import { booking, dossier, outbox } from '@looms/northline/views'
 import { decision, pendingApprovals } from '@swirls/looms/approval'
 import { isJsonObject, type JsonValue, type RunStatus } from '@swirls/looms/core'
@@ -13,6 +13,7 @@ import {
 } from '@swirls/looms/react'
 import { nodes, type NodeStatus } from '@swirls/looms/workflow'
 
+import { fetchCase } from '../api'
 import { kindLabel, money, openedLabel } from '../format'
 import { LiveDot, StatusPill } from './marks'
 
@@ -24,7 +25,13 @@ const STEPS = [
   { id: 'notify', title: 'Notice', detail: 'Email the consignee' },
 ] as const
 
-export function CaseRun({ record }: { record: CaseRecord }) {
+export function CaseRun({
+  record,
+  replica: initialReplica,
+}: {
+  record: CaseRecord
+  replica: ReplicaView
+}) {
   const store = useRunStore(record.runId)
   const summary = useRunSummary(store)
   const graph = useProjection(store, nodes)
@@ -35,6 +42,26 @@ export function CaseRun({ record }: { record: CaseRecord }) {
   const mail = useProjection(store, outbox)
   const [busy, setBusy] = useState<'approve' | 'reject' | undefined>(undefined)
   const [decisionError, setDecisionError] = useState<string | undefined>(undefined)
+  const [replica, setReplica] = useState(initialReplica)
+
+  useEffect(() => {
+    let current = true
+
+    if (initialReplica.attached) {
+      void fetchCase(record.id).then(
+        (body) => {
+          if (current) {
+            setReplica(body.replica)
+          }
+        },
+        () => undefined,
+      )
+    }
+
+    return () => {
+      current = false
+    }
+  }, [initialReplica.attached, record.id, summary.status])
 
   const pending = approvals.items.filter((item) => item.status === 'pending')
   const evaluation = scored.items[scored.items.length - 1]
@@ -74,6 +101,7 @@ export function CaseRun({ record }: { record: CaseRecord }) {
             Opened by {record.openedBy}
             {when ? ` · ${when}` : ''}
           </p>
+          <p className="quiet">{ledgerLine(replica)}</p>
         </div>
         <div className="case-status">
           <StatusPill status={status} />
@@ -244,4 +272,26 @@ function routeCopy(
       return unreachable
     }
   }
+}
+
+function ledgerLine(replica: ReplicaView): string {
+  if (!replica.attached) {
+    return 'Events stay on the run until Postgres is attached.'
+  }
+
+  const copy = replica.copy
+
+  if (!copy) {
+    return 'Waiting for this run to land in Postgres.'
+  }
+
+  if (copy.purgedAt !== null) {
+    return 'The event copy was purged. The case summary is still in Postgres.'
+  }
+
+  if (copy.complete) {
+    return `Copied through event ${copy.replicatedSeq}. The run is complete in Postgres.`
+  }
+
+  return `Copied through event ${copy.replicatedSeq}.`
 }
