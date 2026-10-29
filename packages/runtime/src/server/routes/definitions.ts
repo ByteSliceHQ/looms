@@ -21,5 +21,12 @@ export function definitionRoutes({ runtime }: RouteOptions): readonly Route[] {
         return Effect.succeed(Response.json(catalog))
       },
     }),
+    route({
+      method: 'GET',
+      path: '/definitions/effect-placements',
+      name: 'definitions.effectPlacements',
+      access: 'read',
+      handle: () => Effect.succeed(Response.json({ effects: runtime.effectPlacements })),
+    }),
   ]
 }

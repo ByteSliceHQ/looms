@@ -91,6 +91,7 @@ function threadFailed(threadId: string, error: string): WorkflowEvents {
 
 export const scheduleEffect = workflowModule.effect({
   type: 'workflow.schedule',
+  placement: 'local',
   input: ScheduleInput,
   deterministic: true,
   execute: (input, ctx) =>
@@ -236,6 +237,7 @@ export function scheduleEvents(
 
 export const runNodeEffect = workflowModule.effect({
   type: 'workflow.runNode',
+  placement: 'local',
   input: RunNodeInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

@@ -272,8 +272,108 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link>.
       </p>
 
+      <h3 id="effect-placement">
+        Effect placement
+        <a className="heading-anchor" href="#effect-placement" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>
+        Every effect sets <code>placement</code> when you define it, and the field changes what the
+        definition accepts:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <code>placement</code>
+            </th>
+            <th>Runs in</th>
+            <th>Handler</th>
+            <th>
+              <code>emit</code>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>&apos;local&apos;</code>
+            </td>
+            <td>Host actor cell (Durable Object, in-process host)</td>
+            <td>
+              <code>execute</code> on the definition (required)
+            </td>
+            <td>Live — subscribers see events as they append</td>
+          </tr>
+          <tr>
+            <td>
+              <code>&apos;worker&apos;</code>
+            </td>
+            <td>
+              External <code>EffectWorker</code> (Cloudflare Queue, …)
+            </td>
+            <td>
+              <code>workerHandlers([[def, handler]])</code>; no <code>execute</code>
+            </td>
+            <td>Buffered until the attempt completes</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        The host and the consumer are separate programs, and both of them import the effect
+        definition. The host imports it to register the effect, typecheck <code>invoke</code>, and
+        route the attempt to a queue. The consumer imports it and binds the handler with{' '}
+        <code>workerHandlers([[definition, handler]])</code>, which checks the queued input against
+        the effect&apos;s schema before the handler runs.
+      </p>
+      <p>
+        A <code>handler</code> field on the definition is part of the host&apos;s import, so the
+        host bundle would include the handler and its dependencies, such as a sandbox runtime or a
+        vendor SDK. The host sends a worker attempt to the queue. An attempt that runs in the host
+        actor cell instead fails.
+      </p>
+      <p>
+        The definition carries the type, the input schema, and the retry policy. Keep the handler in
+        the consumer you deploy, and a v1 fleet can finish in-flight <code>payments.charge</code>{' '}
+        attempts while a v2 fleet handles <code>payments.charge@v2</code>.
+      </p>
+      <p>
+        A local effect without <code>execute</code>, a worker effect with one, or an effect with no{' '}
+        <code>placement</code> fails to compile. The host does not infer placement from a missing{' '}
+        <code>execute</code>, and queue routes do not take overlapping type-string{' '}
+        <code>handles</code> lists. Pass the worker definitions into the route:
+      </p>
+      <CodeBlock lang="ts">{`import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
+import { sandboxScope } from './scope'
+
+const sandboxExec = sandboxScope.effect({
+  type: 'sandbox.exec',
+  placement: 'worker',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
+cloudflareQueueWorker({
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
+})`}</CodeBlock>
+      <p>
+        Bind the handler in the consumer, which imports the same definition. Pass{' '}
+        <code>handlers</code> to <code>queueConsumer</code> or <code>createQueuePullConsumer</code>:
+      </p>
+      <CodeBlock lang="ts">{`import { workerHandlers } from '@swirls/looms/cloudflare'
+
+const handlers = workerHandlers([[sandboxExec, runSandbox]])`}</CodeBlock>
+      <p>
+        <code>onEffect</code> middleware accepts only local definitions. <code>onAdmit</code>{' '}
+        accepts either. Operators can read the registry map from{' '}
+        <code>runtime.effectPlacements</code> or <code>GET /definitions/effect-placements</code>.{' '}
+        <code>inspectRun</code> and <code>GET /runs/:id/effects</code> include each outstanding
+        effect&apos;s <code>placement</code>. Dual local/worker placement for one definition is a
+        separate follow-up; pick local or worker at define time.
+      </p>
+
       <h3 id="anatomy-of-an-effect-handler">
-        Anatomy of an Effect Handler
+        Anatomy of a local effect handler
         <a
           className="heading-anchor"
           href="#anatomy-of-an-effect-handler"
@@ -283,12 +383,14 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         </a>
       </h3>
       <p>
-        Define effects within a module using <code>scope.effect</code> (or standalone with{' '}
-        <code>defineEffect</code> from <code>@swirls/looms/core</code>). Using{' '}
-        <code>scope.effect</code> constrains the effect&apos;s type name to your module&apos;s
-        namespace and ensures that both the returned events and any events passed to{' '}
-        <code>ctx.emit</code> match your module&apos;s event catalog. This handler excerpt assumes a
-        configured server-side Stripe client and a payments catalog containing the authorized event:
+        Define effects with <code>m.effect</code> inside <code>defineModule</code>, or with{' '}
+        <code>scope.effect</code> from a shared scope when the effect lives in its own file. Both
+        keep the type under your module namespace and check returned events and{' '}
+        <code>ctx.emit</code> against the catalog. A worker effect leaves the handler off the
+        definition and binds it on the consumer; see{' '}
+        <a href="#effect-placement">Effect placement</a>. The Stripe excerpt below is a local
+        effect; it assumes a configured server-side Stripe client and a payments catalog that
+        includes the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@swirls/looms/core'
@@ -309,6 +411,7 @@ const ChargeCardInput = z.object({
 
 export const chargeCardEffect = paymentsScope.effect({
   type: 'payments.chargeCard',
+  placement: 'local',
   input: ChargeCardInput,
   retry: {
     maxAttempts: 3,
@@ -367,42 +470,44 @@ export const chargeCardEffect = paymentsScope.effect({
         </a>
       </h3>
       <p>
-        Every handler receives an <code>EffectContext</code> providing metadata and runtime tools:
+        Handlers receive <code>LocalEffectContext</code> or <code>WorkerEffectContext</code> (
+        <code>placement: &apos;local&apos; | &apos;worker&apos;</code>). Shared fields:
       </p>
       <ul>
         <li>
           <strong>
             <code>ctx.effectId</code>:
           </strong>{' '}
-          A unique, deterministic identifier for this effect invocation.{' '}
-          <em>
-            Always pass <code>ctx.effectId</code> as an idempotency key
-          </em>{' '}
-          when communicating with external APIs (Stripe, GitHub, payment gateways) or writing to
-          databases. If an actor cell crashes or fails over mid-execution, the replacement actor may
-          re-run the effect. Deduplication depends on the external service honoring the key, its
-          retention window, or your own durable deduplication mechanism.
+          Stable across retries for this invocation. Pass it as an idempotency key to external APIs
+          (Stripe, GitHub, payment gateways) or when writing to databases. If an actor cell crashes
+          mid-execution, the replacement may re-run the effect. Deduplication depends on the
+          external service honoring the key, its retention window, or your own durable store.
         </li>
         <li>
           <strong>
             <code>ctx.runId</code> &amp; <code>ctx.threadId</code>:
           </strong>{' '}
-          Identifiers of the enclosing run and calling thread.
+          Enclosing run and calling thread.
         </li>
         <li>
           <strong>
             <code>ctx.causingEventId</code>:
           </strong>{' '}
-          The sequence ID of the event that caused this effect to be requested, preserving the
-          causal provenance graph.
+          Sequence id of the event that requested this effect.
         </li>
         <li>
           <strong>
             <code>ctx.emit(event)</code>:
           </strong>{' '}
-          Stream intermediate events to the log while the handler is still executing.
+          On local effects, appends immediately so subscribers see intermediate progress. On worker
+          effects, buffers until the attempt completes — there is no live worker stream today.
         </li>
       </ul>
+      <p>
+        Worker handlers also get <code>ctx.secrets</code> (loaded before the handler runs),{' '}
+        <code>ctx.heartbeat(details)</code>, and <code>ctx.signal</code> for cancellation. Timeouts
+        and callback semantics are in <Link to="/docs/reliability">Reliability</Link>.
+      </p>
 
       <h3 id="three-execution-styles-sync-async-and-effect-ts">
         Three Execution Styles: Sync, Async, and Effect-TS
@@ -491,6 +596,7 @@ export function payments(db: DatabaseService) {
     effects: {
       recordInDb: m.effect({
         type: 'payments.recordInDb',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => Effect.gen(function* () {
           const database = yield* DatabaseTag
@@ -521,6 +627,7 @@ export function payments(db: DatabaseService) {
       </p>
       <CodeBlock lang="ts">{`const downloadAndProcessEffect = m.effect({
   type: 'payments.downloadBatch',
+  placement: 'local',
   input: z.object({ batchUrl: z.string() }),
   execute: async (input, ctx) => {
     // Stream progress events as chunks arrive:
@@ -555,6 +662,7 @@ export function payments(db: DatabaseService) {
       </p>
       <CodeBlock lang="ts">{`export const callGatewayEffect = paymentsScope.effect({
   type: 'payments.callGateway',
+  placement: 'local',
   retry: {
     maxAttempts: 4,     // Four total attempts, including the first
     backoffMs: 200,     // Initial backoff
@@ -652,10 +760,10 @@ const billing = defineRuntimeModule({
       </p>
       <p>
         Modules may also declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
-        (in-process) effect dispatch only, including built-ins such as <code>agent.callLLM</code>.
-        Effects routed to an <code>EffectWorker</code> never see middleware — use{' '}
-        <code>admission</code> for shared gates, or wrap execution on the worker side. Prefer{' '}
-        <code>onEffect</code> when you only care about one local effect type.
+        effect dispatch only, including built-ins such as <code>agent.callLLM</code>.{' '}
+        <code>onEffect</code> is typed for local definitions, so attaching it to a worker effect is
+        a compile error. Use <code>admission</code> for shared gates, or wrap work in{' '}
+        <code>workerHandlers</code> on the consumer.
       </p>
       <p>
         For usage and billing totals, fold <code>agent.turn.usage</code> or use the agent
@@ -686,10 +794,84 @@ const billing = defineRuntimeModule({
   module.ts        # defineModule(options, setup) assembly
   index.ts         # public re-exports`}</CodeBlock>
       <p>
-        Small modules can stay in one callback. For larger modules, export a shared
+        Small modules can stay in one callback. For larger modules, export a shared{' '}
         <code>createModuleScope(options)</code> from <code>scope.ts</code>, author members across
-        files, and return them from <code>defineModule(options, setup)</code>. Only the finished
+        files, and return them from <code>defineModule(scope, setup)</code>. Only the finished
         module is passed to the host.
+      </p>
+      <p>
+        <code>effects.ts</code> is part of the host bundle. A worker effect&apos;s definition can
+        live there; its handler belongs in the consumer, bound with <code>workerHandlers</code>.
+      </p>
+
+      <h3 id="effects-in-their-own-file">
+        Effects in their own file
+        <a
+          className="heading-anchor"
+          href="#effects-in-their-own-file"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
+      <p>
+        <code>scope.effect</code> takes the same fields as <code>m.effect</code> and checks them
+        against the same catalog, so an effect can live in <code>effects.ts</code> and keep its
+        types:
+      </p>
+      <CodeBlock lang="ts">{`// events.ts
+import { defineEventCatalog } from '@swirls/looms/core'
+import { z } from 'zod'
+
+export const paymentsEvents = defineEventCatalog('payments', {
+  recorded: z.object({ chargeId: z.string(), amount: z.number() }),
+})
+
+// scope.ts
+import { createModuleScope } from '@swirls/looms/core'
+import { paymentsEvents } from './events'
+
+export const paymentsScope = createModuleScope({
+  namespace: 'payments',
+  protocolVersion: '1.0.0',
+  events: paymentsEvents,
+})
+
+// effects.ts
+import { z } from 'zod'
+import { paymentsScope } from './scope'
+
+export const recordPaymentEffect = paymentsScope.effect({
+  type: 'payments.record',
+  placement: 'local',
+  input: z.object({ amount: z.number() }),
+  execute: (input, ctx) => [
+    { type: 'payments.recorded', payload: { chargeId: ctx.effectId, amount: input.amount } },
+  ],
+})
+
+// module.ts
+import { defineModule } from '@swirls/looms/core'
+import { recordPaymentEffect } from './effects'
+import { paymentsScope } from './scope'
+
+export const payments = defineModule(paymentsScope, () => ({
+  effects: { recordPayment: recordPaymentEffect },
+}))`}</CodeBlock>
+      <p>
+        <code>payments.effects.recordPayment</code> has the same type as{' '}
+        <code>recordPaymentEffect</code>, so{' '}
+        <code>invoke(payments.effects.recordPayment, {'{ amount: 40 }'})</code> still checks its
+        input. <code>defineModule</code> rejects an effect whose events fall outside the
+        module&apos;s catalog and <code>observes</code>. That covers effects built with another
+        module&apos;s scope and unscoped <code>defineEffect</code> handlers that return untyped
+        events.
+      </p>
+      <p>
+        <code>defineEffect</code> is the unscoped primitive under <code>m.effect</code> and{' '}
+        <code>scope.effect</code>. It takes the same <code>placement</code> field, but it has no
+        catalog, so returned events are only checked against <code>EventInput</code>. Use it for
+        effects that emit nothing or belong to no module.
       </p>
 
       <h2 id="module-composition-principles">

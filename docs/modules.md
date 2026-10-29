@@ -105,6 +105,7 @@ export const payments = defineModule(
     effects: {
       charge: m.effect({
         type: 'payments.charge',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => [
           {
@@ -161,7 +162,65 @@ src/
   index.ts         # public re-exports
 ```
 
-A small domain module can stay in one callback. Larger modules can use `createModuleScope(options)` in `scope.ts` to author members across files, then return those members from `defineModule(options, setup)` in `module.ts`. The scope is an authoring helper; pass the finished module to the host.
+A small domain module can stay in one callback. Larger modules can use `createModuleScope(options)` in `scope.ts` to author members across files, then return those members from `defineModule(scope, setup)` in `module.ts`. The scope is an authoring helper; pass the finished module to the host.
+
+`effects.ts` is part of the host bundle. A worker effect's definition can live there; its handler belongs in the consumer, bound with `workerHandlers`.
+
+### Effects in their own file
+
+`scope.effect` takes the same fields as `m.effect` and checks them against the same catalog, so an effect can live in `effects.ts` and keep its types:
+
+```ts
+// events.ts
+import { defineEventCatalog } from '@swirls/looms/core'
+import { z } from 'zod'
+
+export const paymentsEvents = defineEventCatalog('payments', {
+  recorded: z.object({ chargeId: z.string(), amount: z.number() }),
+})
+```
+
+```ts
+// scope.ts
+import { createModuleScope } from '@swirls/looms/core'
+import { paymentsEvents } from './events'
+
+export const paymentsScope = createModuleScope({
+  namespace: 'payments',
+  protocolVersion: '1.0.0',
+  events: paymentsEvents,
+})
+```
+
+```ts
+// effects.ts
+import { z } from 'zod'
+import { paymentsScope } from './scope'
+
+export const recordPaymentEffect = paymentsScope.effect({
+  type: 'payments.record',
+  placement: 'local',
+  input: z.object({ amount: z.number() }),
+  execute: (input, ctx) => [
+    { type: 'payments.recorded', payload: { chargeId: ctx.effectId, amount: input.amount } },
+  ],
+})
+```
+
+```ts
+// module.ts
+import { defineModule } from '@swirls/looms/core'
+import { recordPaymentEffect } from './effects'
+import { paymentsScope } from './scope'
+
+export const payments = defineModule(paymentsScope, () => ({
+  effects: { recordPayment: recordPaymentEffect },
+}))
+```
+
+`payments.effects.recordPayment` has the same type as `recordPaymentEffect`, so `invoke(payments.effects.recordPayment, { amount: 40 })` still checks its input. `defineModule` rejects an effect whose events fall outside the module's catalog and `observes`. That covers effects built with another module's scope and unscoped `defineEffect` handlers that return untyped events.
+
+`defineEffect` is the unscoped primitive under `m.effect` and `scope.effect`. It takes the same `placement` field, but it has no catalog, so returned events are only checked against `EventInput`. Use it for effects that emit nothing or belong to no module.
 
 Conventions that keep modules composable:
 
@@ -171,6 +230,45 @@ Conventions that keep modules composable:
 - Declare `dependencies` when you wait on another module's events
 - Put each module slot in its own file once the module is more than a sketch
 - Pass `input` or `shape` (a Standard Schema or Effect Schema) to `define*` and let types infer — do not pass generics
+
+## Effect placement
+
+Every effect sets `placement` when you define it, and the field changes what the definition accepts:
+
+| `placement` | Runs in                                         | Handler                                          | `emit`                                       |
+| ----------- | ----------------------------------------------- | ------------------------------------------------ | -------------------------------------------- |
+| `'local'`   | Host actor cell (e.g. Durable Object)           | `execute` on the definition (required)           | Live — subscribers see events as they append |
+| `'worker'`  | External `EffectWorker` (e.g. Cloudflare Queue) | `workerHandlers([[def, handler]])`; no `execute` | Buffered until the attempt completes         |
+
+The host and the consumer are separate programs, and both of them import the effect definition. The host imports it to register the effect, typecheck `invoke`, and route the attempt to a queue. The consumer imports it and binds the handler with `workerHandlers([[definition, handler]])`, which checks the queued input against the effect's schema before the handler runs.
+
+A `handler` field on the definition is part of the host's import, so the host bundle would include the handler and its dependencies, such as a sandbox runtime or a vendor SDK. The host sends a worker attempt to the queue. An attempt that runs in the host actor cell instead fails.
+
+The definition carries the type, the input schema, and the retry policy. Keep the handler in the consumer you deploy, and a v1 fleet can finish in-flight `payments.charge` attempts while a v2 fleet handles `payments.charge@v2`.
+
+A local effect without `execute`, a worker effect with one, or an effect with no `placement` fails to compile. The host does not infer placement from a missing `execute`, and queue routes do not take overlapping type-string `handles` lists. Pass the worker definitions into the route:
+
+```ts
+const sandboxExec = sandboxScope.effect({
+  type: 'sandbox.exec',
+  placement: 'worker',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
+cloudflareQueueWorker({
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
+})
+```
+
+Bind the handler in the consumer, which imports the same definition. Pass `handlers` to `queueConsumer` or `createQueuePullConsumer`:
+
+```ts
+import { workerHandlers } from '@swirls/looms/cloudflare'
+
+const handlers = workerHandlers([[sandboxExec, runSandbox]])
+```
+
+`onEffect` middleware accepts only local definitions. `onAdmit` accepts either. Operators can read the registry map from `runtime.effectPlacements` or `GET /definitions/effect-placements`. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`. Dual local/worker placement for one definition is a separate follow-up; pick local or worker at define time.
 
 ## Effect admission and middleware
 
@@ -198,9 +296,9 @@ const billing = defineRuntimeModule({
 
 `failEffect` from admission becomes `runtime.effect.failed` the same way a handler failure does. A rejected worker admission never queues or dispatches the attempt.
 
-Modules may also declare **`middleware`**: functions that wrap **local** (in-process) effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. Effects routed to an `EffectWorker` never see middleware — use `admission` for shared gates, or put execution-time wraps on the worker side (`workerHandlers` / consumer code).
+Modules may also declare **`middleware`**: functions that wrap **local** effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. `onEffect` is typed to accept only `placement: 'local'` definitions, so attaching middleware to a worker effect is a compile error. Use `admission` for shared gates, or wrap execution on the worker side (`workerHandlers`).
 
-Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes). Prefer `onEffect` when you only care about one effect type.
+Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes).
 
 For usage and billing totals, fold `agent.turn.usage` or use the agent module's `tokenUsage` projection.
 

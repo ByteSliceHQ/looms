@@ -68,6 +68,7 @@ import {
   assertWorkerClaimsExplicit,
   assertWorkerConfigured,
   assertWorkerDeadlines,
+  listEffectPlacements,
 } from './worker-effect-dispatch'
 
 export type { RegisteredDefinition } from '@looms/core'
@@ -504,6 +505,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   runtime = {
     modules: options.modules,
     registry,
+    effectPlacements: listEffectPlacements(registry),
     ...workerCallbacks,
     listRuns: Effect.gen(function* () {
       const store = yield* EventStoreTag
@@ -571,6 +573,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             effectId: item.effectId,
             threadId: item.threadId,
             type: item.effect.type,
+            placement: registry.effects.get(item.effect.type)?.placement,
             attempt: execution?.attempt ?? 0,
             status: execution?.status ?? 'pending',
             deadlineAt: execution?.deadlineAt ?? null,

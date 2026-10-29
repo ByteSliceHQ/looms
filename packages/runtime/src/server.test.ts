@@ -476,6 +476,20 @@ describe('server routing', () => {
     await looms.stop()
   })
 
+  test('GET /definitions/effect-placements lists declared effect placements', async () => {
+    const looms = createLooms({ modules: [] })
+    const { runtime } = await looms.ready()
+
+    const response = await looms.fetch(
+      new Request('http://looms.test/definitions/effect-placements'),
+    )
+
+    expect(response?.status).toBe(200)
+    expect(await response?.json()).toEqual({ effects: runtime.effectPlacements })
+    expect(runtime.effectPlacements.every((entry) => entry.placement === 'local')).toBe(true)
+    await looms.stop()
+  })
+
   test('GET /runs/summaries lists each run with its status and definition', async () => {
     const flow = defineWorkflow({ name: 'summarized', nodes: [{ id: 'step', run: () => null }] })
     const looms = createLooms({ modules: [workflow({ definitions: [flow] })] })

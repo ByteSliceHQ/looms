@@ -42,10 +42,11 @@ const workerDefinition = {
 function workerModule(retry: RetryPolicy = FAST) {
   const effect = defineEffect({
     type: 'parity.work',
+    placement: 'worker',
     retry,
   })
 
-  return defineRuntimeModule({
+  const module = defineRuntimeModule({
     namespace: 'parity',
     protocolVersion: '1.0.0',
     effects: { effect },
@@ -60,6 +61,8 @@ function workerModule(retry: RetryPolicy = FAST) {
     },
     definitions: [workerDefinition],
   })
+
+  return { effect, module }
 }
 
 function effectIdentity(events: Awaited<ReturnType<Looms['getEvents']>>) {
@@ -99,7 +102,7 @@ describe('swirls-parity workers and queues', () => {
     const dispatched: EffectWorkerTask[] = []
 
     const looms = createLooms({
-      modules: [workerModule()],
+      modules: [workerModule().module],
       worker: {
         dispatch: (task) => {
           dispatched.push(task)
@@ -141,12 +144,17 @@ describe('swirls-parity workers and queues', () => {
     const queue: MemoryQueue = createMemoryQueue({ maxRetries: 2 })
     let sends = 0
 
+    const { effect: parityEffect, module: parityModule } = workerModule({
+      ...FAST,
+      startToCloseTimeoutMs: 3_600_000,
+    })
+
     const looms = createLooms({
-      modules: [workerModule({ ...FAST, startToCloseTimeoutMs: 3_600_000 })],
+      modules: [parityModule],
       worker: cloudflareQueueWorker({
         routes: [
           {
-            handles: ['parity.work'],
+            effects: [parityEffect],
             queue: {
               send: async (message, options) => {
                 sends += 1
@@ -226,10 +234,12 @@ describe('swirls-parity workers and queues', () => {
   test('a non-retryable worker failure spends no further attempts', async () => {
     const queue = createMemoryQueue()
 
+    const { effect: parityEffect, module: parityModule } = workerModule()
+
     const looms = createLooms({
-      modules: [workerModule()],
+      modules: [parityModule],
       worker: cloudflareQueueWorker({
-        routes: [{ handles: ['parity.work'], queue }],
+        routes: [{ effects: [parityEffect], queue }],
       }),
       authorize: bearerAuth({ worker: WORKER_TOKEN }),
     })

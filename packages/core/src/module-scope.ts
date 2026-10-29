@@ -13,12 +13,15 @@ import {
   emit,
   defineEffect,
   type EffectDefinition,
-  type EffectExecution,
   type EffectHandlerResult,
+  type EffectPlacement,
   type EmitEffect,
+  type LocalEffectDefinition,
+  type PlacedEffectDefinition,
+  type PlacementHandler,
   type RetryPolicy,
   type RuntimeEffect,
-  type ScopedEffectContext,
+  type ScopedLocalEffectContext,
 } from './effects'
 import type { EventEnvelope, EventInput } from './envelope'
 import type { RunLauncherTag } from './launcher'
@@ -67,11 +70,25 @@ export type EffectRequirementsOf<TEffects> = TEffects extends {
 }
   ? Exclude<
       {
-        [K in keyof TEffects]: TEffects[K] extends EffectDefinition<any, infer R, any> ? R : never
+        [K in keyof TEffects]: TEffects[K] extends LocalEffectDefinition<any, infer R, any>
+          ? R
+          : never
       }[keyof TEffects],
       RunLauncherTag
     >
   : never
+
+type EffectEventsOf<T> = T extends EffectDefinition<any, any, infer Ev> ? Ev : never
+
+/**
+ * Marks each effect whose events fall outside the module's catalogs, such as one built with
+ * another module's scope or the unscoped `defineEffect`.
+ */
+export type ForeignEffectsCheck<FX, TAllowed> = {
+  readonly [
+    K in keyof FX as [EffectEventsOf<FX[K]>] extends [TAllowed] ? never : K
+  ]: 'Effect events are outside this module catalog; build it with this module scope'
+}
 
 export type ModuleServicesConfig<TR> = [TR] extends [never]
   ? { readonly services?: () => Layer.Layer<any> }
@@ -130,22 +147,32 @@ export interface ModuleScope<
     reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: U): InferSchemaOutput<TShape>
   }): ProjectionDefinition<InferSchemaOutput<TShape>>
 
+  /**
+   * Declare an effect for this module. `placement: 'local'` runs `execute` in the host actor cell
+   * with live `emit`. `placement: 'worker'` has no `execute`; implement it on the worker with
+   * `workerHandlers`. The type must start with the module namespace.
+   */
   effect<
+    const P extends EffectPlacement,
     TSchema extends SchemaInput | undefined = undefined,
     TInput = InferDefinedSchema<TSchema>,
     R = never,
     HandlerError = never,
-  >(def: {
-    type: `${TNamespace}.${string}`
-    input?: TSchema
-    retry?: RetryPolicy
-    execution?: EffectExecution
-    deterministic?: boolean
-    execute?: (
-      input: TInput,
-      ctx: ScopedEffectContext<EventInputOf<U>>,
-    ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
-  }): NoInfer<EffectDefinition<TInput, R, EventInputOf<U>>>
+  >(
+    def: {
+      type: `${TNamespace}.${string}`
+      placement: P
+      input?: TSchema
+      retry?: RetryPolicy
+      deterministic?: boolean
+    } & PlacementHandler<
+      P,
+      (
+        input: TInput,
+        ctx: ScopedLocalEffectContext<EventInputOf<U>>,
+      ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
+    >,
+  ): NoInfer<PlacedEffectDefinition<P, TInput, R, EventInputOf<U>>>
 
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
@@ -251,7 +278,8 @@ export function defineModule<
 >(
   options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
   setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
-    readonly effects?: FX
+    readonly effects?: FX &
+      ForeignEffectsCheck<FX, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly threads?: TH
     readonly projections?: PR
     readonly definitions?: readonly DefinitionRef[]

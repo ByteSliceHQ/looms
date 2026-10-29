@@ -37,16 +37,18 @@ const seen = new Map<string, TraceContext | null>()
 
 const observe = defineEffect({
   type: 'traced.observe',
+  placement: 'local',
   execute: (_input, ctx) => {
     seen.set(ctx.runId, ctx.trace)
     return [{ type: 'traced.observed', payload: {}, threadId: ctx.threadId }]
   },
 })
 
-const remote = defineEffect({ type: 'traced.remote', execution: 'worker', execute: () => [] })
+const remote = defineEffect({ type: 'traced.remote', placement: 'worker' })
 
 const launch = defineEffect({
   type: 'traced.launch',
+  placement: 'local',
   input: TracedInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

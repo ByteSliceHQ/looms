@@ -223,7 +223,8 @@ export function isWithdrawnError(error: string): boolean {
   return error.startsWith(WITHDRAWN_ERROR_PREFIX)
 }
 
-export interface EffectContext {
+/** Shared identity and credentials for an effect attempt. */
+export interface EffectContextBase {
   readonly effectId: string
   readonly runId: string
   readonly threadId: string
@@ -238,30 +239,44 @@ export interface EffectContext {
   readonly secrets: SecretContext
   /** The W3C trace context of the caller that started the run, to parent spans the handler starts. */
   readonly trace: TraceContext | null
-  /**
-   * Report progress. On a worker this extends the heartbeat deadline; locally it is a no-op that
-   * still resolves so one handler can call it on either path.
-   */
+}
+
+/**
+ * Context for an effect that runs in the host actor cell (for example a Durable Object).
+ * `emit` appends live so subscribers see events as they happen.
+ */
+export interface LocalEffectContext extends EffectContextBase {
+  readonly placement: 'local'
+  /** No-op locally; present so local handlers can call the same progress API as workers. */
   heartbeat(details?: JsonValue): Promise<void>
-  /**
-   * Emit an event from the attempt. Locally it is appended live. On a worker it is buffered and
-   * included with the attempt's completion events (not visible to subscribers until complete).
-   */
+  /** Appended to the run log immediately. */
   emit(event: EventInput): Promise<void>
 }
 
-export interface ScopedEffectContext<E extends EventInput = EventInput> {
-  readonly effectId: string
-  readonly runId: string
-  readonly threadId: string
-  readonly causingEventId: string
-  readonly signal: AbortSignal
-  readonly attributes: RunAttributes
-  readonly secrets: SecretContext
-  readonly trace: TraceContext | null
+/**
+ * Context for an effect that runs on an external effect worker (for example a Cloudflare Queue consumer).
+ * `emit` is buffered until the attempt completes — not a live stream.
+ */
+export interface WorkerEffectContext extends EffectContextBase {
+  readonly placement: 'worker'
+  /** Extends the heartbeat deadline on the host. */
   heartbeat(details?: JsonValue): Promise<void>
+  /** Buffered until `complete`; subscribers do not see the event until then. */
+  emit(event: EventInput): Promise<void>
+}
+
+/** Either placement's context. Prefer {@link LocalEffectContext} or {@link WorkerEffectContext}. */
+export type EffectContext = LocalEffectContext | WorkerEffectContext
+
+export interface ScopedLocalEffectContext<E extends EventInput = EventInput> extends Omit<
+  LocalEffectContext,
+  'emit'
+> {
   emit(event: E): Promise<void>
 }
+
+/** @deprecated Use {@link ScopedLocalEffectContext}. */
+export type ScopedEffectContext<E extends EventInput = EventInput> = ScopedLocalEffectContext<E>
 
 export type EffectInputSchema = SchemaInput
 
@@ -332,31 +347,73 @@ export type EffectHandlerResult<
 > = ReadonlyArray<E> | Promise<ReadonlyArray<E>> | Effect.Effect<ReadonlyArray<E>, HandlerError, R>
 
 declare const effectInputType: unique symbol
+declare const effectEventType: unique symbol
 
-export type EffectExecution = 'local' | 'worker'
+/** Where an effect attempt runs. Declared with `placement` on `m.effect` / {@link defineEffect}. */
+export type EffectPlacement = 'local' | 'worker'
 
-export interface EffectDefinition<
-  TInput = JsonValue,
-  R = Context.Service.Any,
-  E extends EventInput = EventInput,
-> {
+/** @deprecated Use {@link EffectPlacement}. */
+export type EffectExecution = EffectPlacement
+
+interface EffectDefinitionFields<TInput> {
   readonly type: string
   readonly input?: SchemaInput
   readonly retry?: RetryPolicy
-  /** Forces where the effect runs. When omitted, the runtime decides from `hasHandler` and the configured worker. */
-  readonly execution?: EffectExecution
-  /** Whether `execute` runs a user handler. Without one, the effect can only complete through a worker. */
-  readonly hasHandler: boolean
   /**
    * The outcome follows from the input alone, like scheduling from state already folded. Forking
    * a failed run retries the effect that produced the failure, not a deterministic one passing it on.
    */
   readonly deterministic?: boolean
   readonly [effectInputType]?: (input: TInput) => TInput
+}
+
+/**
+ * An effect that runs in the host actor cell. Requires `execute`. Live `emit` / local middleware apply.
+ */
+export interface LocalEffectDefinition<
+  TInput = JsonValue,
+  R = Context.Service.Any,
+  E extends EventInput = EventInput,
+> extends EffectDefinitionFields<TInput> {
+  readonly placement: 'local'
   execute(
     input: JsonValue,
-    ctx: EffectContext,
+    ctx: LocalEffectContext,
   ): Effect.Effect<ReadonlyArray<E>, InvalidInputError | EffectHandlerError, R>
+}
+
+/**
+ * An effect that only an external effect worker completes. Declare it with `placement: 'worker'`
+ * and implement the handler via `workerHandlers` (or an equivalent consumer). The host never runs it.
+ */
+export interface WorkerEffectDefinition<
+  TInput = JsonValue,
+  E extends EventInput = EventInput,
+> extends EffectDefinitionFields<TInput> {
+  readonly placement: 'worker'
+  readonly [effectEventType]?: E
+}
+
+/**
+ * Either placement's definition. `R` is the host services a local handler needs; worker
+ * definitions never run on the host, so they contribute none.
+ */
+export type EffectDefinition<
+  TInput = JsonValue,
+  R = Context.Service.Any,
+  E extends EventInput = EventInput,
+> = LocalEffectDefinition<TInput, R, E> | WorkerEffectDefinition<TInput, E>
+
+export function isLocalEffectDefinition(
+  definition: EffectDefinition,
+): definition is LocalEffectDefinition {
+  return definition.placement === 'local'
+}
+
+export function isWorkerEffectDefinition(
+  definition: EffectDefinition,
+): definition is WorkerEffectDefinition {
+  return definition.placement === 'worker'
 }
 
 function liftHandlerResult<R, E extends EventInput, HandlerError>(
@@ -377,9 +434,9 @@ function liftHandlerResult<R, E extends EventInput, HandlerError>(
 }
 
 function invokeHandler<R, E extends EventInput, HandlerError>(
-  handler: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>,
+  handler: (input: JsonValue, ctx: LocalEffectContext) => EffectHandlerResult<R, E, HandlerError>,
   input: JsonValue,
-  ctx: EffectContext,
+  ctx: LocalEffectContext,
 ): Effect.Effect<ReadonlyArray<E>, EffectHandlerError, R> {
   try {
     return liftHandlerResult(handler(input, ctx))
@@ -389,73 +446,111 @@ function invokeHandler<R, E extends EventInput, HandlerError>(
 }
 
 /**
- * Define an effect. With `execute`, a run's actor cell runs the handler at
- * most once while it is alive; if the cell dies mid-execution, the replacement
- * actor may re-run it (at-least-once across failover). Keep handlers
- * idempotent when they have external side effects.
- *
- * Omit `execute` to declare an effect that only an `EffectWorker` completes.
+ * `execute` is required for `placement: 'local'` and rejected for `placement: 'worker'`. A worker
+ * handler lives with the worker (`workerHandlers`), so the host bundle never imports its
+ * dependencies.
  */
-export function defineEffect<
-  TSchema extends SchemaInput,
-  R = never,
-  E extends EventInput = EventInput,
-  HandlerError = never,
->(def: {
-  type: string
-  input: TSchema
-  retry?: RetryPolicy
-  execution?: EffectExecution
-  deterministic?: boolean
-  execute?: (
-    input: InferDefinedSchema<TSchema>,
-    ctx: EffectContext,
-  ) => EffectHandlerResult<R, E, HandlerError>
-}): EffectDefinition<InferDefinedSchema<TSchema>, R, E>
+export type PlacementHandler<P extends EffectPlacement, THandler> = P extends 'local'
+  ? { readonly execute: THandler }
+  : {
+      readonly execute?: 'Worker effects have no execute; implement the handler with workerHandlers'
+    }
 
-export function defineEffect<
-  R = never,
-  E extends EventInput = EventInput,
-  HandlerError = never,
->(def: {
-  type: string
-  input?: undefined
-  retry?: RetryPolicy
-  execution?: EffectExecution
-  deterministic?: boolean
-  execute?: (input: JsonValue, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
-}): EffectDefinition<JsonValue, R, E>
+/** The definition type `defineEffect` / `m.effect` return for a given placement. */
+export type PlacedEffectDefinition<
+  P extends EffectPlacement,
+  TInput,
+  R,
+  E extends EventInput,
+> = P extends 'local' ? LocalEffectDefinition<TInput, R, E> : WorkerEffectDefinition<TInput, E>
 
-export function defineEffect<R, E extends EventInput, HandlerError>(def: {
-  type: string
-  input?: SchemaInput
-  retry?: RetryPolicy
-  execution?: EffectExecution
-  deterministic?: boolean
-  execute?: (input: any, ctx: EffectContext) => EffectHandlerResult<R, E, HandlerError>
-}): EffectDefinition<any, R, E> {
+interface EffectDefinitionInput<TPlacement extends EffectPlacement, TSchema> {
+  readonly type: string
+  readonly placement: TPlacement
+  readonly input?: TSchema
+  readonly retry?: RetryPolicy
+  readonly deterministic?: boolean
+}
+
+type LocalEffectInput<
+  R = any,
+  E extends EventInput = any,
+  HandlerError = any,
+> = EffectDefinitionInput<'local', SchemaInput | undefined> & {
+  readonly execute: (input: any, ctx: LocalEffectContext) => EffectHandlerResult<R, E, HandlerError>
+}
+
+type WorkerEffectInput = EffectDefinitionInput<'worker', SchemaInput | undefined> &
+  PlacementHandler<'worker', never>
+
+function defineLocalEffect<R, E extends EventInput, HandlerError>(
+  def: LocalEffectInput<R, E, HandlerError>,
+): LocalEffectDefinition<any, R, E> {
   const schema = def.input
   const handler = def.execute
-  const noOutput: ReadonlyArray<E> = []
 
   return {
     type: def.type,
     input: schema,
     retry: def.retry,
-    execution: def.execution,
-    hasHandler: handler !== undefined,
+    placement: 'local',
     deterministic: def.deterministic,
-    execute: (raw: JsonValue, ctx) =>
+    execute: (raw, ctx) =>
       Effect.gen(function* () {
         const input = schema ? yield* validateInputEffect(schema, raw) : raw
-
-        if (!handler) {
-          return noOutput
-        }
-
-        // invokeHandler turns a synchronous throw into EffectHandlerError.
         return yield* invokeHandler(handler, input, ctx)
       }),
+  }
+}
+
+function defineWorkerEffect(def: WorkerEffectInput): WorkerEffectDefinition<any> {
+  return {
+    type: def.type,
+    input: def.input,
+    retry: def.retry,
+    placement: 'worker',
+    deterministic: def.deterministic,
+  }
+}
+
+/**
+ * Low-level effect constructor without a module namespace. Inside a module, prefer the scoped
+ * `m.effect` / `scope.effect`, which also checks the type prefix and the catalog.
+ *
+ * `placement: 'local'` runs `execute` in the host actor cell with live `emit`.
+ * `placement: 'worker'` has no `execute`; implement it on the worker with `workerHandlers`.
+ */
+export function defineEffect<
+  const P extends EffectPlacement,
+  TSchema extends SchemaInput | undefined = undefined,
+  R = never,
+  E extends EventInput = EventInput,
+  HandlerError = never,
+>(
+  def: EffectDefinitionInput<P, TSchema> &
+    PlacementHandler<
+      P,
+      (
+        input: InferDefinedSchema<TSchema>,
+        ctx: LocalEffectContext,
+      ) => EffectHandlerResult<R, E, HandlerError>
+    >,
+): PlacedEffectDefinition<P, InferDefinedSchema<TSchema>, R, E>
+
+export function defineEffect(
+  def: LocalEffectInput | WorkerEffectInput,
+): EffectDefinition<any, any, any> {
+  switch (def.placement) {
+    case 'local':
+      return defineLocalEffect(def)
+
+    case 'worker':
+      return defineWorkerEffect(def)
+
+    default: {
+      const exhaustive: never = def
+      return exhaustive
+    }
   }
 }
 

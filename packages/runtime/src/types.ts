@@ -196,6 +196,8 @@ export interface RunOperationalStatus {
     readonly effectId: string
     readonly threadId: string
     readonly type: string
+    /** From the effect definition when registered; `undefined` for unknown types. */
+    readonly placement: 'local' | 'worker' | undefined
     readonly attempt: number
     readonly status: string
     readonly deadlineAt: number | null
@@ -208,6 +210,11 @@ export interface LoomsRuntime<
 > {
   readonly modules: TModules
   readonly registry: ComposedRegistry
+  /** Declared effect placements from the composed registry (`local` | `worker`). */
+  readonly effectPlacements: ReadonlyArray<{
+    readonly type: string
+    readonly placement: 'local' | 'worker'
+  }>
   startRun(
     args: StartRunArgs,
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>

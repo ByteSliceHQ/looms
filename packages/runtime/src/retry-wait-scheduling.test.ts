@@ -21,6 +21,7 @@ function flakyModule() {
 
   const flaky = defineEffect({
     type: 'flaky.call',
+    placement: 'local',
     retry: { maxAttempts: 5, backoffMs: 500 },
     execute: () => {
       attempts += 1
@@ -145,6 +146,7 @@ describe('wake loop while a workflow node waits to retry', () => {
 
     const recovering = defineEffect({
       type: 'recovering.call',
+      placement: 'local',
       retry: { maxAttempts: 3, backoffMs: 20 },
       execute: () => {
         attempts += 1

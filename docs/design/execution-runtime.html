@@ -1438,14 +1438,17 @@ type Events = EventsOf&lt;typeof runtime&gt;</code></pre>
 
           <pre><code>defineEffect({
   type: "stripe.charge",
+  placement: "local",
 
-  async execute(effect, ctx) {
+  async execute(input, ctx) {
     const charge = await stripe.charges.create(...)
 
-    return ctx.emit({
+    await ctx.emit({
       type: "stripe.charge.completed",
       chargeId: charge.id,
     })
+
+    return []
   },
 })</code></pre>
 

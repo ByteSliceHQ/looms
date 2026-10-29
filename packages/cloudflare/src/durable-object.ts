@@ -51,7 +51,7 @@ export interface LoomsDurableObjectConfig {
    */
   readonly launcher?: RunLauncher
   /**
-   * Dispatches `execution: 'worker'` effects out of this object (typically a
+   * Dispatches worker-placed effects out of this object (typically a
    * Cloudflare Queue producer via `cloudflareQueueWorker`). Without it, worker
    * effects cannot leave the Durable Object.
    */

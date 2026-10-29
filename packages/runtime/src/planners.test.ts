@@ -169,6 +169,7 @@ describe('worker effect planner', () => {
   test('plans due retries with stable attempts and dispatch deadlines', () => {
     const workerEffect = defineEffect({
       type: 'worker.send',
+      placement: 'worker',
       retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 500 },
     })
 
@@ -227,6 +228,7 @@ describe('worker effect planner', () => {
   test('replays the same attempt from dispatch_wait without re-queuing', () => {
     const workerEffect = defineEffect({
       type: 'worker.send',
+      placement: 'worker',
       retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 500 },
     })
 
@@ -287,14 +289,10 @@ describe('worker effect routing', () => {
       namespace: 'route',
       protocolVersion: '1.0.0',
       effects: {
-        local: defineEffect({ type: 'route.local', execute: () => [] }),
-        external: defineEffect({ type: 'route.external' }),
-        pinnedLocal: defineEffect({ type: 'route.pinned', execution: 'local', execute: () => [] }),
-        forcedWorker: defineEffect({
-          type: 'route.forced',
-          execution: 'worker',
-          execute: () => [],
-        }),
+        local: defineEffect({ type: 'route.local', placement: 'local', execute: () => [] }),
+        external: defineEffect({ type: 'route.external', placement: 'worker' }),
+        pinnedLocal: defineEffect({ type: 'route.pinned', placement: 'local', execute: () => [] }),
+        forcedWorker: defineEffect({ type: 'route.forced', placement: 'worker' }),
       },
     }),
   ])
@@ -323,28 +321,27 @@ describe('worker effect routing', () => {
 
   const worker: EffectWorker = { dispatch: () => undefined }
 
-  test('runs handlers locally and sends handler-less effects to the worker', () => {
+  test('runs local effects locally and sends worker-placed effects to the worker', () => {
     expect(route('route.local', worker)).toBe(false)
     expect(route('route.external', worker)).toBe(true)
     expect(route('route.external')).toBe(true)
   })
 
-  test('honors an explicit execution override over worker claims', () => {
+  test('routes by placement on the definition', () => {
     expect(route('route.pinned', { ...worker, handles: ['route.pinned'] })).toBe(false)
     expect(route('route.forced')).toBe(true)
   })
 
-  test('lets a worker claim effects that have a local handler when routing', () => {
-    // createRuntime requires execution: 'worker' for this overlap; routing still honors claims.
+  test('does not route local-placed effects to a worker that claims their type', () => {
     const byName = { ...worker, handles: ['route.local'] }
     const byPredicate = { ...worker, handles: (type: string) => type === 'route.local' }
 
-    expect(route('route.local', byName)).toBe(true)
-    expect(route('route.local', byPredicate)).toBe(true)
+    expect(route('route.local', byName)).toBe(false)
+    expect(route('route.local', byPredicate)).toBe(false)
 
     expect(
       route('route.local', { ...worker, canDispatch: (task) => task.type === 'route.local' }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('routes unregistered effects only to a worker that does not decline them', () => {
@@ -359,7 +356,7 @@ describe('worker effect routing', () => {
     expect(route('route.local', claiming, 'running')).toBe(false)
     expect(route('route.local', worker, 'dispatched')).toBe(true)
     expect(route('route.local', undefined, 'ambiguous')).toBe(true)
-    expect(route('route.local', claiming, 'retry_wait')).toBe(true)
+    expect(route('route.local', claiming, 'retry_wait')).toBe(false)
     expect(route('route.local', worker, 'retry_wait')).toBe(false)
   })
 

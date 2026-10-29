@@ -184,6 +184,7 @@ const payments = defineModule(
     effects: {
       charge: m.effect({
         type: 'payments.charge',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => [
           {
@@ -202,8 +203,16 @@ const payments = defineModule(
 
 const { charge } = payments.effects`}</CodeBlock>
       <p>
-        Retries, Effect Layers, and <code>ctx.emit</code> live in{' '}
-        <Link to="/docs/modules">Modules</Link>.
+        That example is a local effect (<code>placement: &apos;local&apos;</code>). Long-running or
+        off-host work sets <code>placement: &apos;worker&apos;</code> and leaves the handler off the
+        definition. The host and the consumer are separate programs. Both import the definition, and
+        the consumer binds the handler with <code>workerHandlers</code>, so the handler&apos;s
+        dependencies stay in the consumer program. Placement, retries, Effect Layers, and{' '}
+        <code>ctx.emit</code> are covered under{' '}
+        <Link to="/docs/modules" hash="effect-placement">
+          Modules
+        </Link>
+        .
       </p>
 
       <h2 id="reducers">

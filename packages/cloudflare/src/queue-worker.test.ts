@@ -45,9 +45,9 @@ interface SandboxState {
 }
 
 function sandboxModule(retry: RetryPolicy) {
-  const exec = defineEffect({ type: 'sandbox.exec', retry })
+  const exec = defineEffect({ type: 'sandbox.exec', placement: 'worker', retry })
 
-  return defineRuntimeModule({
+  const module = defineRuntimeModule({
     namespace: 'sandbox',
     protocolVersion: '1.0.0',
     effects: { exec },
@@ -63,6 +63,8 @@ function sandboxModule(retry: RetryPolicy) {
     },
     definitions: [definition],
   })
+
+  return { exec, module }
 }
 
 interface Harness {
@@ -91,10 +93,12 @@ function harness(
     },
   }
 
+  const { exec, module } = sandboxModule(options.retry ?? FAST)
+
   const looms = createLooms({
-    modules: [sandboxModule(options.retry ?? FAST)],
+    modules: [module],
     worker: cloudflareQueueWorker({
-      routes: [{ handles: ['sandbox.exec'], queue: producer }],
+      routes: [{ effects: [exec], queue: producer }],
       blobs: options.blobs,
     }),
     authorize: bearerAuth({ worker: WORKER_TOKEN }),
@@ -433,6 +437,7 @@ describe('workerHandlers', () => {
   test('validates input with the effect schema and shares EffectContext fields', async () => {
     const exec = defineEffect({
       type: 'sandbox.exec',
+      placement: 'worker',
       input: Schema.Struct({ cmd: Schema.String }),
       retry: FAST,
     })

@@ -20,6 +20,7 @@ export const payments = defineModule(
     effects: {
       charge: m.effect({
         type: 'payments.charge',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => [
           {

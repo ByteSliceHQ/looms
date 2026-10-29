@@ -158,7 +158,7 @@ describe('ActorCell', () => {
 
     const remote = defineEffect({
       type: 'actor.remote',
-      execution: 'worker',
+      placement: 'worker',
       retry: {
         maxAttempts: 2,
         backoffMs: 5,

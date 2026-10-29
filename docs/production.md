@@ -154,9 +154,8 @@ timeouts, and exhausted dispatch relays. Use `retryEffect` or
 
 Creating a runtime also fails when:
 
-- an effect has no local handler (or sets `execution: 'worker'`) and no `EffectWorker` is configured
-- a worker's `handles` list claims an effect that also has a local handler without an explicit
-  `execution: 'worker'` (or `execution: 'local'`) on the definition
+- an effect is declared with `placement: 'worker'` and no `EffectWorker` is configured
+- a worker's `handles` list (or predicate) claims an effect declared with `placement: 'local'`
 
 ### Cloudflare Queues transport
 
@@ -166,23 +165,35 @@ message past 100 KB is stored in `blobs` and sent as `inputRef`; without a blob
 store that dispatch fails. Secrets never go on the queue.
 
 ```ts
+import { defineEffect } from '@swirls/looms/core'
 import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
 
+const sandboxExec = defineEffect({
+  type: 'sandbox.exec',
+  placement: 'worker',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
 const worker = cloudflareQueueWorker({
-  routes: [{ handles: ['sandbox.exec'], queue: env.SANDBOX_QUEUE }],
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
   blobs: r2BlobStore(env.BLOBS),
 })
 
 createLooms({ modules, worker, maxInFlightWorkerEffects: 16 })
 ```
 
-A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is an
-`EffectContext`: secrets are loaded before the handler runs (`ctx.secrets`),
-`ctx.heartbeat(details)` reports progress, `ctx.emit` buffers events until
-completion, and `ctx.signal` aborts when the run is cancelled. Prefer
-`workerHandlers([[definition, handler]])` so input is validated with the
-effect's schema the same way local `execute` is. Throw a `QueueTaskError` with
-`nonRetryable` or `retryAfterMs` to control the retry.
+`sandboxExec` has no handler because this file is the host. The consumer is a
+separate program. It imports the same definition and binds the handler with
+`workerHandlers`, so the handler's dependencies stay in the consumer program.
+The definition holds the type, the input schema, and the retry policy.
+
+A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is a
+`WorkerEffectContext` (`placement: 'worker'`): secrets are loaded before the
+handler runs (`ctx.secrets`), `ctx.heartbeat(details)` reports progress,
+`ctx.emit` buffers events until completion (not a live stream), and `ctx.signal`
+aborts when the run is cancelled. Prefer `workerHandlers([[definition, handler]])`
+with **worker-placed** definitions so input is validated with the effect's schema.
+Throw a `QueueTaskError` with `nonRetryable` or `retryAfterMs` to control the retry.
 
 ```ts
 import { createLoomsClient } from '@swirls/looms/client'
@@ -226,8 +237,11 @@ process.once('SIGTERM', () => consumer.stop())
 ## Inspection and repair
 
 - `inspectRun(runId)` and `GET /runs/:runId/status` expose stream bounds, state,
-  outstanding effects, deadlines, attempts, and last errors.
-- `GET /runs/:runId/effects` is the focused worker view.
+  outstanding effects (with `placement`), deadlines, attempts, and last errors.
+- `GET /runs/:runId/effects` is the focused effect view; each entry includes
+  `placement` (`local` or `worker`).
+- `runtime.effectPlacements` and `GET /definitions/effect-placements` list every
+  registered effect type and where it runs.
 - `recoverDeadlines` and `POST /operations/deadlines/rescan` enumerate all runs
   and restore durable timer/effect scheduling after startup or repair.
 - Projector delivery exposes `inspect`, `requeue`, and `recover`. Requeue is the
@@ -330,8 +344,10 @@ type breaks in-flight attempts and recorded logs. Version the type instead:
   when the input schema, side effects, or completion events change.
 - Keep the old type and its handler until every outstanding attempt of that type
   has settled. New runs can route to the new type immediately.
-- A worker's `handles` list (or predicate) is how fleets version: run a v1 fleet
-  that claims only `payments.charge` beside a v2 fleet that claims
+- Declare each version with `placement: 'worker'` and list those definitions on
+  the queue route (`effects: [paymentsChargeV2]`). An `EffectWorker`'s `handles`
+  list or predicate still decides which types a fleet claims at dispatch: run a
+  v1 fleet that claims only `payments.charge` beside a v2 fleet that claims
   `payments.charge@v2`. Do not have two fleets claim the same type with
   incompatible behavior.
 - Recorded run logs stay valid across binary upgrades because fold is a pure

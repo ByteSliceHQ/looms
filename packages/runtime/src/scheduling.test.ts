@@ -407,9 +407,10 @@ describe('createLooms runtime', () => {
       effects: {
         'work.do': defineEffect({
           type: 'work.do',
+          placement: 'local',
           execute: (_input, ctx) => {
             executeCalls += 1
-            return [{ type: 'work.done', threadId: ctx.threadId, effectId: 'other' }]
+            return [{ type: 'work.done', payload: null, threadId: ctx.threadId, effectId: 'other' }]
           },
         }),
       },
@@ -470,6 +471,7 @@ describe('createLooms runtime', () => {
       effects: {
         'pingpong.step': defineEffect({
           type: 'pingpong.step',
+          placement: 'local',
           input: Schema.Struct({ count: Schema.Finite }),
           execute: (input) => {
             stepCalls += 1

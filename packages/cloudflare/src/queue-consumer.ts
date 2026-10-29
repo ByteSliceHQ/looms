@@ -4,13 +4,13 @@ import {
   resolveJson,
   validateInput,
   type BlobStore,
-  type EffectContext,
-  type EffectDefinition,
   type EventInput,
   type JsonValue,
   type WorkerCallback,
   type WorkerCallbackInput,
   type WorkerCallbackResult,
+  type WorkerEffectContext,
+  type WorkerEffectDefinition,
   type WorkerSecretsResult,
 } from '@looms/core'
 
@@ -33,31 +33,34 @@ export interface QueueTask extends Omit<QueueEffectMessage, 'v' | 'input' | 'inp
 
 export type QueueTaskHandler = (
   task: QueueTask,
-  ctx: EffectContext,
+  ctx: WorkerEffectContext,
 ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>
 
 type WorkerHandlerFn<TInput> = (
   input: TInput,
-  ctx: EffectContext,
+  ctx: WorkerEffectContext,
 ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>
 
-type WorkerHandlerBinding<TInput> = readonly [EffectDefinition<TInput>, WorkerHandlerFn<TInput>]
+type WorkerHandlerBinding<TInput> = readonly [
+  WorkerEffectDefinition<TInput>,
+  WorkerHandlerFn<TInput>,
+]
 
 /**
- * Build a `handlers` map from effect definitions. Input is validated with each definition's schema
- * before the typed handler runs, matching local `defineEffect` execute. Each entry keeps its own
- * `TInput` at the call site; the cast below is only at the validate boundary.
+ * Build a `handlers` map from **worker-placed** effect definitions. Input is validated with each
+ * definition's schema before the typed handler runs. Passing a local definition is a type error.
  */
 export function workerHandlers<
   const Entries extends ReadonlyArray<WorkerHandlerBinding<any>>,
 >(entries: {
   readonly [K in keyof Entries]: Entries[K] extends readonly [
-    EffectDefinition<infer TInput>,
+    WorkerEffectDefinition<infer TInput>,
     unknown,
   ]
     ? WorkerHandlerBinding<TInput>
     : Entries[K]
 }): Readonly<Record<string, QueueTaskHandler>> {
+  // SAFETY: keys are effect types; values are QueueTaskHandler wrappers around typed handlers.
   const handlers: Record<string, QueueTaskHandler> = Object.create(null)
 
   for (const [definition, handler] of entries) {
@@ -203,7 +206,8 @@ function runAttempt(
           (error) => new QueueTaskError({ message: error.message, nonRetryable: true }),
         ),
         Effect.flatMap((secrets) => {
-          const ctx: EffectContext = {
+          const ctx: WorkerEffectContext = {
+            placement: 'worker',
             effectId: task.effectId,
             runId: task.runId,
             threadId: task.threadId,

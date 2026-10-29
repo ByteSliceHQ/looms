@@ -1,6 +1,6 @@
-import { Data, Effect, Predicate, type Types } from 'effect'
+import { Data, Effect, type Types } from 'effect'
 
-import { claimJson, utf8JsonBytes, type BlobStore } from '@looms/core'
+import { claimJson, utf8JsonBytes, type BlobStore, type WorkerEffectDefinition } from '@looms/core'
 import type { EffectWorker, EffectWorkerTask } from '@looms/runtime'
 
 import type { QueueEffectMessage } from './queue-message'
@@ -13,13 +13,17 @@ export interface QueueProducer {
   send(message: QueueEffectMessage, options?: { readonly contentType?: 'json' }): Promise<void>
 }
 
+/**
+ * Route worker-placed effect definitions to a queue. Passing a local-placed definition is a
+ * type error — only {@link WorkerEffectDefinition} values are accepted.
+ */
 export interface QueueRoute {
-  readonly handles: ReadonlyArray<string> | ((type: string) => boolean)
+  readonly effects: ReadonlyArray<WorkerEffectDefinition>
   readonly queue: QueueProducer
 }
 
 export interface CloudflareQueueWorkerOptions {
-  /** The first route that handles an effect type gets its attempts. */
+  /** The first route that lists an effect type gets its attempts. */
   readonly routes: ReadonlyArray<QueueRoute>
   /** Holds an input that would push a message past `maxMessageBytes`. Without it, that dispatch fails. */
   readonly blobs?: BlobStore
@@ -39,9 +43,7 @@ export class QueueDispatchError extends Data.TaggedError('QueueDispatchError')<{
  */
 export function cloudflareQueueWorker(options: CloudflareQueueWorkerOptions): EffectWorker {
   const routeFor = (type: string) =>
-    options.routes.find((route) =>
-      Predicate.isFunction(route.handles) ? route.handles(type) : route.handles.includes(type),
-    )
+    options.routes.find((route) => route.effects.some((effect) => effect.type === type))
 
   return {
     dispatchSemantics: 'acknowledged',

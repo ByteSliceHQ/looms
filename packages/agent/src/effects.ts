@@ -125,6 +125,7 @@ function toolError(
 
 export const callLlmEffect = agentModule.effect({
   type: 'agent.callLLM',
+  placement: 'local',
   input: CallLlmInput,
   execute: (input, ctx) =>
     runCallLlm({
@@ -385,6 +386,7 @@ function runCallLlm(args: {
 
 export const executeToolEffect = agentModule.effect({
   type: 'agent.executeTool',
+  placement: 'local',
   input: ExecuteToolInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

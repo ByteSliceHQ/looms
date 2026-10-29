@@ -23,6 +23,7 @@ export {
   type WorkerCallbackInput,
   type WorkerCallbackResult,
 } from './runtime'
+export { listEffectPlacements } from './worker-effect-dispatch'
 export { createLooms, type Looms, type CreateLoomsOptions, type StartResult } from './looms'
 export { loadSubscriptionOpening, readSubscriptionBounds } from './subscription'
 export {

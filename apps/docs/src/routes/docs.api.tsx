@@ -139,24 +139,26 @@ try {
         Put authentication and authorization ahead of every route, including event streams. JSON
         requests use content-type: application/json.
       </p>
-      <CodeBlock lang="text">{`GET  /health                         → { ok: true }
-POST /runs                           → { runId, threadId, state }
-GET  /runs                           → { runIds } (embed only)
-GET  /runs/summaries                 → { runs }
-GET  /runs/:id                       → { runId, state }
-GET  /runs/:id/events                → { runId, events }
-POST /runs/:id/events                → { runId, state }
-GET  /runs/:id/threads               → { runId, threads }
-GET  /runs/:id/status                → run, deadline, and effect status
-GET  /runs/:id/effects               → { runId, effects }
-POST /runs/:id/effects/:effect/retry → operator-reviewed retry
-POST /runs/:id/wake                  → { runId, state, appended }
-POST /runs/:id/cancel                → { runId, state }
-POST /runs/:id/fork                  → { runId, threadId, state } (embed only)
-GET  /runs/:id/replay?seq=10          → { runId, step }
-GET  /runs/:id/projections/:name      → { runId, name, value }
-GET  /runs/:id/events?live=true       → SSE
-POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
+      <CodeBlock lang="text">{`GET  /health                            → { ok: true }
+GET  /definitions                       → definition catalog
+GET  /definitions/effect-placements     → { effects: [{ type, placement }] }
+POST /runs                              → { runId, threadId, state }
+GET  /runs                              → { runIds } (embed only)
+GET  /runs/summaries                    → { runs }
+GET  /runs/:id                          → { runId, state }
+GET  /runs/:id/events                   → { runId, events }
+POST /runs/:id/events                   → { runId, state }
+GET  /runs/:id/threads                  → { runId, threads }
+GET  /runs/:id/status                   → run, deadline, and effect status
+GET  /runs/:id/effects                  → { runId, effects } (includes placement)
+POST /runs/:id/effects/:effect/retry    → operator-reviewed retry
+POST /runs/:id/wake                     → { runId, state, appended }
+POST /runs/:id/cancel                   → { runId, state }
+POST /runs/:id/fork                     → { runId, threadId, state } (embed only)
+GET  /runs/:id/replay?seq=10             → { runId, step }
+GET  /runs/:id/projections/:name         → { runId, name, value }
+GET  /runs/:id/events?live=true          → SSE
+POST /operations/deadlines/rescan        → rebuild wake deadlines`}</CodeBlock>
       <p>
         POST /runs accepts kind, definitionName, input, and optionally runId and idempotencyKey.
         POST /runs/:id/events accepts an events array and optionally idempotencyKey. POST
@@ -206,8 +208,8 @@ POST /operations/deadlines/rescan     → rebuild wake deadlines`}</CodeBlock>
       <ul>
         <li>
           <code>@swirls/looms/core</code>: defineModule, defineKind, createKind, defineEventCatalog,
-          defineThread, defineEffect, defineProjection; invoke, spawn, wait, emit, complete, fail.
-          The bun-sqlite entry supplies Bun storage.
+          createModuleScope, defineThread, defineEffect, defineProjection; invoke, spawn, wait,
+          emit, complete, fail. The bun-sqlite entry supplies Bun storage.
         </li>
         <li>
           <code>@swirls/looms/runtime</code>: createLooms and lower-level runtime APIs.

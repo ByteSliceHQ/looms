@@ -24,6 +24,7 @@ const RelayInput = Schema.Struct({ depth: Schema.Finite })
 
 const launchNext = defineEffect({
   type: 'relay.launch',
+  placement: 'local',
   input: RelayInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

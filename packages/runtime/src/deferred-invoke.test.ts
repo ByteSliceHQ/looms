@@ -20,6 +20,7 @@ const catalog = defineEventCatalog('defer', {
 
 const tick = defineEffect({
   type: 'defer.tick',
+  placement: 'local',
   execute: (_input, ctx) => [{ type: 'defer.done', payload: {}, threadId: ctx.threadId }],
 })
 

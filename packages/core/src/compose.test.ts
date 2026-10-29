@@ -37,6 +37,7 @@ describe('composeModules', () => {
 
     const effect = defineEffect({
       type: 'demo.work',
+      placement: 'local',
       input: Schema.Struct({ n: Schema.Finite }),
       execute: () => [],
     })
@@ -97,6 +98,7 @@ describe('composeModules', () => {
 
     const effect = scoped.effect({
       type: 'scoped.doWork',
+      placement: 'local',
       execute: () => [],
     })
 

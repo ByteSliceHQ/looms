@@ -11,9 +11,7 @@ import {
   hasEntries,
   invoke,
   makeMemoryEventStore,
-  type EffectContext,
   type EventStore,
-  type JsonValue,
 } from '@looms/core'
 
 import { SecretContextConflictError, StartRunConflictError } from './errors'
@@ -22,24 +20,22 @@ import { authDenied, authAllowed, bearerAuth } from './server'
 
 const SECRET = 'super-secret-token'
 
-const observeContext = (_input: JsonValue, ctx: EffectContext) => [
-  {
-    type: 'context.observed',
-    payload: {
-      tenant: ctx.attributes.tenant ?? '',
-      hasSecret: ctx.secrets.token === SECRET,
-    },
-    threadId: ctx.threadId,
-  },
-]
-
-const seen = defineEffect({ type: 'context.seen', execute: observeContext })
-
-const seenOnWorker = defineEffect({
+const seen = defineEffect({
   type: 'context.seen',
-  execution: 'worker',
-  execute: observeContext,
+  placement: 'local',
+  execute: (_input, ctx) => [
+    {
+      type: 'context.observed',
+      payload: {
+        tenant: ctx.attributes.tenant ?? '',
+        hasSecret: ctx.secrets.token === SECRET,
+      },
+      threadId: ctx.threadId,
+    },
+  ],
 })
+
+const seenOnWorker = defineEffect({ type: 'context.seen', placement: 'worker' })
 
 const contextThread = defineThread({
   kind: 'context',
@@ -52,6 +48,7 @@ const context = { kind: 'context', name: 'context', version: 'v1' }
 
 const launchChild = defineEffect({
   type: 'context.launch',
+  placement: 'local',
   execute: (_input, ctx) =>
     Effect.gen(function* () {
       const launcher = yield* RunLauncherTag

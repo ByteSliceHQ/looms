@@ -66,6 +66,7 @@ export const payments = defineModule(
     effects: {
       charge: m.effect({
         type: 'payments.charge',
+        placement: 'local',
         input: ChargeInput,
         execute: (input, ctx) => {
           const chargeId = input.chargeId ?? ctx.effectId
