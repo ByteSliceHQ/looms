@@ -122,7 +122,11 @@ function Page() {
         A compatible snapshot bounds replay work; it is not a backup or a schema migration. Trimming
         events removes older audit and time-travel history and can prevent rebuilding new
         projections from the beginning. Define a retention and archive policy before enabling
-        trimAfterSnapshot.
+        trimAfterSnapshot. With a{' '}
+        <Link to="/docs/hosting-and-storage" hash="large-payloads-and-blob-stores">
+          blob store
+        </Link>
+        , trim also deletes bodies that no retained event or latest snapshot still references.
       </p>
       <p>
         Projectors run after local commit. Durable delivery stores a cursor per projector name and

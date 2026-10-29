@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { pageHead } from '../page-head'
 
@@ -27,9 +27,33 @@ function Page() {
         </a>
       </h2>
       <p>
-        Register the definition on its owning module. Register child definitions as well as roots.
-        Install the module implementing the kind. Check exact names and retain old definitions for
-        parked runs after deployments.
+        Register the definition on its owning module, or return it from a{' '}
+        <code>definitionResolver</code>. Register child definitions as well as roots. Install the
+        module implementing the kind. Check exact names and retain old definitions for parked runs
+        after deployments. See{' '}
+        <Link to="/docs/versioning" hash="load-definitions-dynamically">
+          load definitions dynamically
+        </Link>
+        .
+      </p>
+      <h2 id="event-or-snapshot-payload-too-large">
+        Event or snapshot payload too large
+        <a
+          className="heading-anchor"
+          href="#event-or-snapshot-payload-too-large"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        Built-in stores reject events over 1 MiB and snapshots over 8 MiB unless a blob store is
+        configured. Pass <code>blobStore</code> (or <code>blobs</code> on a Durable Object) so
+        large strings and oversized event payloads are stored by content hash. See{' '}
+        <Link to="/docs/hosting-and-storage" hash="large-payloads-and-blob-stores">
+          large payloads and blob stores
+        </Link>
+        .
       </p>
       <h2 id="a-gate-never-resumes">
         A gate never resumes

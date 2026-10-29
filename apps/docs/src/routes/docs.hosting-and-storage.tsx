@@ -140,6 +140,72 @@ Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(re
         startup. Maintain a run index and reopen runs at boot for unattended timer recovery. Durable
         Objects provide host-managed alarms.
       </p>
+      <h2 id="large-payloads-and-blob-stores">
+        Large payloads and blob stores
+        <a
+          className="heading-anchor"
+          href="#large-payloads-and-blob-stores"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
+      <p>
+        Built-in stores reject an event over 1 MiB and a snapshot over 8 MiB, measured as serialized
+        UTF-8, before storage is mutated. The errors are <code>EventPayloadTooLargeError</code> and{' '}
+        <code>SnapshotPayloadTooLargeError</code>. Pass <code>blobStore</code> to{' '}
+        <code>createLooms</code>, or <code>blobs</code> to <code>LoomsDurableObject</code> /{' '}
+        <code>durableObjectEventStore</code>, to keep larger JSON. On a local actor host, wrap the
+        store from <code>createStore</code> with <code>withBlobOffload</code> from{' '}
+        <code>@swirls/looms/core</code>.
+      </p>
+      <p>
+        Strings over 64 KiB are replaced with{' '}
+        <code>{'{ "$looms": "blob", sha256, bytes, mediaType: "application/json" }'}</code> before
+        those limits run. That object is reserved in stored JSON. If an event is still over 1 MiB,
+        its payload is stored as one blob. Bodies are SHA-256 content, so identical JSON is stored
+        once. <code>read</code>, live subscribers, folds, projections, and snapshot loads resolve
+        references, including references nested inside another blob. Objects and arrays stay inline
+        so snapshot state still decodes; a snapshot that is over 8 MiB after large strings are
+        removed is still rejected. Trim deletes a body when no retained event and no latest snapshot
+        in any run still needs it. Without a blob store, oversized events and snapshots are still
+        rejected.
+      </p>
+      <CodeBlock lang="ts">{`import { memoryBlobStore } from '@swirls/looms/core'
+import { createLooms, filesystemBlobStore } from '@swirls/looms/runtime'
+import {
+  LoomsDurableObject,
+  r2BlobStore,
+  type LoomsDurableObjectConfig,
+} from '@swirls/looms/cloudflare'
+
+createLooms({ modules, blobStore: memoryBlobStore() })
+
+createLooms({
+  modules,
+  store,
+  blobStore: filesystemBlobStore('./.looms/blobs'),
+})
+
+export class LoomsRun extends LoomsDurableObject<Env> {
+  override configure(env: Env): LoomsDurableObjectConfig {
+    return { modules, blobs: r2BlobStore(env.BLOBS) }
+  }
+}`}</CodeBlock>
+      <p>
+        <code>memoryBlobStore</code> is the in-memory implementation.{' '}
+        <code>filesystemBlobStore(directory)</code> is the Bun and Node implementation.{' '}
+        <code>r2BlobStore(bucket)</code> writes an R2 bucket under <code>looms/blobs/</code>. Every
+        run&apos;s Durable Object can share one bucket. Each run writes a marker per body it
+        references, so trimming one run checks only that body&apos;s markers, never other runs&apos;
+        logs. If a body is deleted while another run is referencing it, that run&apos;s append fails
+        and its retry uploads the body again. Back up the blob store with the event log.
+      </p>
+      <p>
+        <code>cloudflareQueueWorker</code> also takes <code>blobs</code>. An input that would push
+        the queue message past 100 KB is stored there and sent as <code>inputRef</code>; without a
+        blob store that dispatch fails.
+      </p>
       <h2 id="recovery">
         Snapshots, recovery, and retention
         <a className="heading-anchor" href="#recovery" aria-label="Link to this section">

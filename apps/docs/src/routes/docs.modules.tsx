@@ -168,9 +168,14 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       </p>
       <p>
         Initialization rejects duplicate kind/name registrations and definitions whose kind the
-        owning module does not implement. Starting or spawning an unregistered definition fails
-        explicitly. The callback form returns a finished module: only returned members are
-        installed, and they are exposed through its effects, projections, and threads properties.
+        owning module does not implement. Starting or spawning a definition that is neither
+        registered on a module nor returned by a <code>definitionResolver</code> fails before any
+        run events are written (
+        <Link to="/docs/versioning" hash="load-definitions-dynamically">
+          load definitions dynamically
+        </Link>
+        ). The callback form returns a finished module: only returned members are installed, and
+        they are exposed through its effects, projections, and threads properties.
       </p>
       <h2 id="talk-to-a-running-run">
         Talk to a running run
