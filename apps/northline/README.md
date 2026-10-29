@@ -47,20 +47,22 @@ The morning sweep is cron `0 13 * * 1-5` UTC on the fixed run `northline-morning
 
 `LoomsRun` is one object per run. A run object cannot list its siblings, so the board is a second object, `DeskBoard`. Opening a case inserts the row before the run starts, because the status projector can update that row before `start` returns. The projector writes `waiting` when an approval is requested, `running` when it is decided, and the terminal status when the run ends. A redelivered batch writes the same status. A digest or desk-chat run matches no row.
 
-Reads and writes on a run stay open. Worker callbacks require `LOOMS_WORKER_TOKEN`. Local dev sets `northline-dev-worker` in `wrangler.jsonc`. A deploy should replace that with `wrangler secret put LOOMS_WORKER_TOKEN`.
+Reads and writes on a run stay open. Worker callbacks require `LOOMS_WORKER_TOKEN`. Local dev uses `northline-dev-worker` from `wrangler.jsonc` until you provision.
 
 ## Postgres replica
 
 Each run's log lives in that run's Durable Object. When a database is configured, `LoomsRun` also attaches `postgresReplica`, so every event is copied into Postgres the desk owns. Delivery runs after the append commits. The case page reports how far that copy has got.
 
-Local dev uses `DATABASE_URL` in `apps/northline-worker/.dev.vars`. Production binds Hyperdrive as `NORTHLINE_DB` (prepared statements off, which Hyperdrive requires). Hyperdrive wins when both are set. Without either, the desk still runs and the case page says the copy is not attached.
+Local dev uses `DATABASE_URL` in `apps/northline-worker/.dev.vars`. Production binds Hyperdrive as `NORTHLINE_DB` (prepared statements off, and caching off, so the case page is not reading a stale copy). Hyperdrive wins when both are set. Without either, the desk still runs and the case page says the copy is not attached.
 
-The host uses `migrate: 'verify'`. Apply the SQL in `apps/northline-worker/migrations` before the first request:
+The host uses `migrate: 'verify'`. From `apps/northline-worker`, with `DATABASE_URL` set to a Postgres Hyperdrive can reach (PlanetScale Postgres created from the Cloudflare dashboard is the one billed on the Cloudflare account):
 
 ```sh
-looms replica migrate --database "$DATABASE_URL"
+bun run provision
 ```
 
-Generate again only when Looms ships a new replica migration. `bun test` in the worker fails if `migrations/` is behind `looms replica generate`.
+That creates the `northline-recovery` queue, creates or updates the `northline` Hyperdrive config, writes its id into `wrangler.jsonc`, applies `migrations/`, deploys the worker, and sets `LOOMS_WORKER_TOKEN`. It also writes `.dev.vars` for local dev. It does not set `OPENROUTER_API_KEY`, `TYPESAFE_AI_API_KEY`, or `LOOMS_EVALUATOR_MODEL`.
+
+Generate SQL again only when Looms ships a new replica migration. `bun test` in the worker fails if `migrations/` is behind `looms replica generate`.
 
 The floor desk is one shared conversation on the board object. A recovery the dispatcher opens stays on that conversation. A case on the board is the tracked recovery.

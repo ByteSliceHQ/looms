@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "wrangler dev --port 8791",
     "deploy": "wrangler deploy",
+    "provision": "bash scripts/provision.sh",
     "check-types": "bun x tsc -p tsconfig.json --noEmit",
     "test": "bun test src"
   },
