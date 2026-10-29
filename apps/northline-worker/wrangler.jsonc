@@ -1,0 +1,31 @@
+{
+  "name": "northline",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "LOOMS_RUN", "class_name": "LoomsRun" },
+      { "name": "DESK", "class_name": "DeskBoard" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LoomsRun", "DeskBoard"],
+    },
+  ],
+  "queues": {
+    "producers": [{ "binding": "RECOVERY_QUEUE", "queue": "northline-recovery" }],
+    "consumers": [{ "queue": "northline-recovery", "max_batch_size": 10, "max_retries": 3 }],
+  },
+  "triggers": {
+    "crons": ["0 13 * * 1-5"],
+  },
+  "vars": {
+    "LOOMS_WORKER_TOKEN": "northline-dev-worker",
+    "LOOMS_MODEL": "openai/gpt-4o-mini",
+  },
+  // `bun run provision` adds the NORTHLINE_DB Hyperdrive binding and sets LOOMS_WORKER_TOKEN.
+  // Local dev reads DATABASE_URL from .dev.vars until that binding exists.
+}

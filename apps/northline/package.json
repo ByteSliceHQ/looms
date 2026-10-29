@@ -1,0 +1,30 @@
+{
+  "name": "@looms/northline",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Northline exception desk: a Looms app for freight recoveries",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts",
+    "./views": "./src/views.ts",
+    "./http": "./src/http.ts",
+    "./catalog": "./src/catalog.ts",
+    "./recovery": "./src/modules/recovery/book.ts"
+  },
+  "scripts": {
+    "build": "bun x tsc -p tsconfig.json --noEmit",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@swirls/looms": "workspace:*",
+    "effect": "4.0.0-rc.112",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "7.0.2"
+  }
+}

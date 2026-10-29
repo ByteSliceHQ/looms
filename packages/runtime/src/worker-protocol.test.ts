@@ -10,6 +10,7 @@ import {
   failEffect,
   invoke,
   makeMemoryEventStore,
+  wait,
   type EventEnvelope,
   type EventInput,
   type RetryPolicy,
@@ -570,6 +571,71 @@ describe('durable external effect workers', () => {
     const after = await looms.getEvents(started.runId)
     expect(after.some((event) => event.type === 'runtime.effect.failed')).toBe(false)
     expect(after).toHaveLength(events.length)
+
+    await looms.stop()
+  })
+
+  test('a worker result satisfies a wait that was already registered', async () => {
+    const effect = defineEffect({
+      type: 'worker.finish',
+      placement: 'worker',
+      retry: { maxAttempts: 1 },
+    })
+
+    const definition = { kind: 'worker-test', name: 'wait-for-worker' }
+
+    const waiting = defineRuntimeModule({
+      namespace: 'worker-wait',
+      protocolVersion: '1.0.0',
+      effects: { effect },
+      threads: {
+        'worker-test': defineThread({
+          kind: 'worker-test',
+          initialState: () => ({ done: false }),
+          step: (state, event) => (event.type === 'worker.finished' ? { done: true } : state),
+          effects: (state) =>
+            state.done
+              ? [complete({ ok: true })]
+              : [
+                  invoke(effect, {}, 'finish'),
+                  wait({ waitId: 'finished', on: { type: 'worker.finished' } }),
+                ],
+        }),
+      },
+      definitions: [definition],
+    })
+
+    const looms = createLooms({
+      modules: [waiting],
+      worker: { dispatch: () => undefined },
+    })
+
+    const started = await looms.start(definition, {})
+    const identity = effectIdentity(await looms.getEvents(started.runId))
+
+    await looms.workerCallback(started.runId, {
+      kind: 'complete',
+      ...identity,
+      events: [{ type: 'worker.finished', payload: { ok: true } }],
+    })
+
+    const deadline = Date.now() + 1_000
+    let status = (await looms.getRun(started.runId)).status
+
+    while (status !== 'completed') {
+      if (Date.now() > deadline) {
+        throw new Error(`run stayed ${status}`)
+      }
+
+      await Bun.sleep(5)
+      status = (await looms.getRun(started.runId)).status
+    }
+
+    expect(
+      (await looms.getEvents(started.runId)).some(
+        (event) => event.type === 'runtime.wait.satisfied',
+      ),
+    ).toBe(true)
 
     await looms.stop()
   })
