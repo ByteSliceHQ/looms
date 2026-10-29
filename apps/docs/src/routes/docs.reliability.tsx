@@ -65,13 +65,18 @@ function Page() {
         Effect retry policies count total attempts: maxAttempts: 3 means one initial attempt and up
         to two retries. Attempt starts and retry deadlines are recorded before the runtime waits, so
         a restart preserves the retry budget and backoff. Configure start, heartbeat, and execution
-        timeouts for work delivered to external workers. Worker callbacks include the effect ID and
-        attempt number; stale callbacks cannot complete a newer attempt. Exhaustion records{' '}
-        <code>runtime.effect.failed</code>. A handler can stop that budget early with{' '}
-        <code>failEffect</code> and <code>nonRetryable: true</code>, or ask the next attempt to wait
-        at least <code>retryAfterMs</code> without shortening the policy backoff. A worker heartbeat
-        can carry <code>details</code>; the next dispatch of that effect includes the latest details
-        so the attempt can resume. The callback response is{' '}
+        timeouts for work delivered to external workers. Declare those effects with{' '}
+        <code>defineEffect.worker</code> (or <code>module.workerEffect</code>) and list the
+        definitions on the queue route. See{' '}
+        <Link to="/docs/modules" hash="effect-placement">
+          Effect placement
+        </Link>
+        . Worker callbacks include the effect ID and attempt number; stale callbacks cannot complete
+        a newer attempt. Exhaustion records <code>runtime.effect.failed</code>. A handler can stop
+        that budget early with <code>failEffect</code> and <code>nonRetryable: true</code>, or ask
+        the next attempt to wait at least <code>retryAfterMs</code> without shortening the policy
+        backoff. A worker heartbeat can carry <code>details</code>; the next dispatch of that effect
+        includes the latest details so the attempt can resume. The callback response is{' '}
         <code>{'{ status, cancelRequested }'}</code>, not the run state.{' '}
         <code>cancelRequested</code> tells an attempt that is already running to stop.
       </p>

@@ -174,14 +174,14 @@ Conventions that keep modules composable:
 
 ## Effect placement
 
-Every effect declares where it runs:
+Every effect declares where it runs when you define it:
 
-| Constructor                                                            | Runs in                                         | Handler                            | `emit`                                    |
-| ---------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------- | ----------------------------------------- |
-| `defineEffect.local({ …, execute })` / `module.effect({ …, execute })` | Host actor cell (e.g. Durable Object)           | `execute` on the definition        | Live — subscribers see events immediately |
-| `defineEffect.worker({ … })` / `module.workerEffect({ … })`            | External `EffectWorker` (e.g. Cloudflare Queue) | `workerHandlers([[def, handler]])` | Buffered until the attempt completes      |
+| Constructor                                                            | Runs in                                         | Handler                            | `emit`                                       |
+| ---------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------- | -------------------------------------------- |
+| `defineEffect.local({ …, execute })` / `module.effect({ …, execute })` | Host actor cell (e.g. Durable Object)           | `execute` on the definition        | Live — subscribers see events as they append |
+| `defineEffect.worker({ … })` / `module.workerEffect({ … })`            | External `EffectWorker` (e.g. Cloudflare Queue) | `workerHandlers([[def, handler]])` | Buffered until the attempt completes         |
 
-There is no inferred placement from “has `execute`” or string `handles` overlap. A worker route lists **definitions**, not type strings:
+Placement is a property of the definition. The host does not infer it from a missing `execute`, and queue routes do not take overlapping type-string `handles` lists. Pass the worker definitions into the route:
 
 ```ts
 const sandboxExec = defineEffect.worker({
@@ -194,9 +194,7 @@ cloudflareQueueWorker({
 })
 ```
 
-`onEffect` (middleware, with `next()`) only accepts local definitions. `onAdmit` accepts either. Operators can list declared placements via `runtime.effectPlacements` / `GET /definitions/effect-placements`, and `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`.
-
-A later `defineEffect.hybrid` may allow one definition to run in either place (tracked separately); until then, pick local or worker at define time.
+`onEffect` middleware accepts only local definitions. `onAdmit` accepts either. Operators can read the registry map from `runtime.effectPlacements` or `GET /definitions/effect-placements`. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`. Dual local/worker placement for one definition is a separate follow-up; pick local or worker at define time.
 
 ## Effect admission and middleware
 

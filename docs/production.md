@@ -231,8 +231,11 @@ process.once('SIGTERM', () => consumer.stop())
 ## Inspection and repair
 
 - `inspectRun(runId)` and `GET /runs/:runId/status` expose stream bounds, state,
-  outstanding effects, deadlines, attempts, and last errors.
-- `GET /runs/:runId/effects` is the focused worker view.
+  outstanding effects (with `placement`), deadlines, attempts, and last errors.
+- `GET /runs/:runId/effects` is the focused effect view; each entry includes
+  `placement` (`local` or `worker`).
+- `runtime.effectPlacements` and `GET /definitions/effect-placements` list every
+  registered effect type and where it runs.
 - `recoverDeadlines` and `POST /operations/deadlines/rescan` enumerate all runs
   and restore durable timer/effect scheduling after startup or repair.
 - Projector delivery exposes `inspect`, `requeue`, and `recover`. Requeue is the
@@ -335,8 +338,10 @@ type breaks in-flight attempts and recorded logs. Version the type instead:
   when the input schema, side effects, or completion events change.
 - Keep the old type and its handler until every outstanding attempt of that type
   has settled. New runs can route to the new type immediately.
-- A worker's `handles` list (or predicate) is how fleets version: run a v1 fleet
-  that claims only `payments.charge` beside a v2 fleet that claims
+- Declare each version with `defineEffect.worker` and list those definitions on
+  the queue route (`effects: [paymentsChargeV2]`). An `EffectWorker`'s `handles`
+  list or predicate still decides which types a fleet claims at dispatch: run a
+  v1 fleet that claims only `payments.charge` beside a v2 fleet that claims
   `payments.charge@v2`. Do not have two fleets claim the same type with
   incompatible behavior.
 - Recorded run logs stay valid across binary upgrades because fold is a pure

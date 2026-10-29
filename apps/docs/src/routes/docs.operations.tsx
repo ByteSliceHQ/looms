@@ -61,10 +61,12 @@ function Page() {
       </p>
       <p>
         <code>GET /runs/:id/status</code> returns thread, deadline, and effect execution status.
-        <code>GET /runs/:id/effects</code> narrows that view to durable effect attempts. Retry an
-        operator-reviewed effect with <code>POST /runs/:id/effects/:effectId/retry</code>; protect
-        mutation-capable operations with an <code>authorize</code> hook such as{' '}
-        <code>bearerAuth</code>.
+        <code>GET /runs/:id/effects</code> narrows that view to durable effect attempts; each entry
+        includes <code>placement</code> (<code>local</code> or <code>worker</code>). List the
+        registry map with <code>GET /definitions/effect-placements</code> or{' '}
+        <code>runtime.effectPlacements</code>. Retry an operator-reviewed effect with{' '}
+        <code>POST /runs/:id/effects/:effectId/retry</code>; protect mutation-capable operations
+        with an <code>authorize</code> hook such as <code>bearerAuth</code>.
       </p>
       <h2 id="cancellation-and-intervention">
         Cancellation and intervention

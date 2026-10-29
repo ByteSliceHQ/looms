@@ -272,8 +272,76 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link>.
       </p>
 
+      <h3 id="effect-placement">
+        Effect placement
+        <a className="heading-anchor" href="#effect-placement" aria-label="Link to this section">
+          #
+        </a>
+      </h3>
+      <p>Every effect declares where it runs when you define it:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Constructor</th>
+            <th>Runs in</th>
+            <th>Handler</th>
+            <th>
+              <code>emit</code>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>defineEffect.local</code> / <code>module.effect</code>
+            </td>
+            <td>Host actor cell (Durable Object, in-process host)</td>
+            <td>
+              <code>execute</code> on the definition
+            </td>
+            <td>Live — subscribers see events as they append</td>
+          </tr>
+          <tr>
+            <td>
+              <code>defineEffect.worker</code> / <code>module.workerEffect</code>
+            </td>
+            <td>
+              External <code>EffectWorker</code> (Cloudflare Queue, …)
+            </td>
+            <td>
+              <code>workerHandlers([[def, handler]])</code>
+            </td>
+            <td>Buffered until the attempt completes</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Placement is a property of the definition. The host does not infer it from a missing{' '}
+        <code>execute</code>, and queue routes do not take overlapping type-string{' '}
+        <code>handles</code> lists. Pass the worker definitions into the route:
+      </p>
+      <CodeBlock lang="ts">{`import { defineEffect } from '@swirls/looms/core'
+import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
+
+const sandboxExec = defineEffect.worker({
+  type: 'sandbox.exec',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
+cloudflareQueueWorker({
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
+})`}</CodeBlock>
+      <p>
+        <code>onEffect</code> middleware accepts only local definitions. <code>onAdmit</code>{' '}
+        accepts either. Operators can read the registry map from{' '}
+        <code>runtime.effectPlacements</code> or <code>GET /definitions/effect-placements</code>.{' '}
+        <code>inspectRun</code> and <code>GET /runs/:id/effects</code> include each outstanding
+        effect&apos;s <code>placement</code>. Dual local/worker placement for one definition is a
+        separate follow-up; pick local or worker at define time.
+      </p>
+
       <h3 id="anatomy-of-an-effect-handler">
-        Anatomy of an Effect Handler
+        Anatomy of a local effect handler
         <a
           className="heading-anchor"
           href="#anatomy-of-an-effect-handler"
@@ -283,13 +351,13 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         </a>
       </h3>
       <p>
-        Define effects within a module using <code>scope.effect</code> (or standalone with{' '}
-        <code>defineEffect.local</code> / <code>defineEffect.worker</code> from{' '}
-        <code>@swirls/looms/core</code>). Using <code>scope.effect</code> constrains the
-        effect&apos;s type name to your module&apos;s namespace and ensures that both the returned
-        events and any events passed to <code>ctx.emit</code> match your module&apos;s event
-        catalog. This handler excerpt assumes a configured server-side Stripe client and a payments
-        catalog containing the authorized event:
+        Local effects use <code>scope.effect</code> (or <code>defineEffect.local</code>). Scoped
+        builders keep the type under your module namespace and check returned events and{' '}
+        <code>ctx.emit</code> against the catalog. Worker effects use{' '}
+        <code>scope.workerEffect</code> / <code>defineEffect.worker</code> and implement the handler
+        with <code>workerHandlers</code> on the consumer. The Stripe excerpt below is a local
+        effect; it assumes a configured server-side Stripe client and a payments catalog that
+        includes the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@swirls/looms/core'
@@ -368,42 +436,44 @@ export const chargeCardEffect = paymentsScope.effect({
         </a>
       </h3>
       <p>
-        Every handler receives an <code>EffectContext</code> providing metadata and runtime tools:
+        Handlers receive <code>LocalEffectContext</code> or <code>WorkerEffectContext</code> (
+        <code>placement: &apos;local&apos; | &apos;worker&apos;</code>). Shared fields:
       </p>
       <ul>
         <li>
           <strong>
             <code>ctx.effectId</code>:
           </strong>{' '}
-          A unique, deterministic identifier for this effect invocation.{' '}
-          <em>
-            Always pass <code>ctx.effectId</code> as an idempotency key
-          </em>{' '}
-          when communicating with external APIs (Stripe, GitHub, payment gateways) or writing to
-          databases. If an actor cell crashes or fails over mid-execution, the replacement actor may
-          re-run the effect. Deduplication depends on the external service honoring the key, its
-          retention window, or your own durable deduplication mechanism.
+          Stable across retries for this invocation. Pass it as an idempotency key to external APIs
+          (Stripe, GitHub, payment gateways) or when writing to databases. If an actor cell crashes
+          mid-execution, the replacement may re-run the effect. Deduplication depends on the
+          external service honoring the key, its retention window, or your own durable store.
         </li>
         <li>
           <strong>
             <code>ctx.runId</code> &amp; <code>ctx.threadId</code>:
           </strong>{' '}
-          Identifiers of the enclosing run and calling thread.
+          Enclosing run and calling thread.
         </li>
         <li>
           <strong>
             <code>ctx.causingEventId</code>:
           </strong>{' '}
-          The sequence ID of the event that caused this effect to be requested, preserving the
-          causal provenance graph.
+          Sequence id of the event that requested this effect.
         </li>
         <li>
           <strong>
             <code>ctx.emit(event)</code>:
           </strong>{' '}
-          Stream intermediate events to the log while the handler is still executing.
+          On local effects, appends immediately so subscribers see intermediate progress. On worker
+          effects, buffers until the attempt completes — there is no live worker stream today.
         </li>
       </ul>
+      <p>
+        Worker handlers also get <code>ctx.secrets</code> (loaded before the handler runs),{' '}
+        <code>ctx.heartbeat(details)</code>, and <code>ctx.signal</code> for cancellation. Timeouts
+        and callback semantics are in <Link to="/docs/reliability">Reliability</Link>.
+      </p>
 
       <h3 id="three-execution-styles-sync-async-and-effect-ts">
         Three Execution Styles: Sync, Async, and Effect-TS
@@ -653,10 +723,10 @@ const billing = defineRuntimeModule({
       </p>
       <p>
         Modules may also declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
-        (in-process) effect dispatch only, including built-ins such as <code>agent.callLLM</code>.
-        Effects routed to an <code>EffectWorker</code> never see middleware — use{' '}
-        <code>admission</code> for shared gates, or wrap execution on the worker side. Prefer{' '}
-        <code>onEffect</code> when you only care about one local effect type.
+        effect dispatch only, including built-ins such as <code>agent.callLLM</code>.{' '}
+        <code>onEffect</code> is typed for local definitions, so attaching it to a worker effect is
+        a compile error. Use <code>admission</code> for shared gates, or wrap work in{' '}
+        <code>workerHandlers</code> on the consumer.
       </p>
       <p>
         For usage and billing totals, fold <code>agent.turn.usage</code> or use the agent

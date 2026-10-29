@@ -202,8 +202,14 @@ const payments = defineModule(
 
 const { charge } = payments.effects`}</CodeBlock>
       <p>
-        Retries, Effect Layers, and <code>ctx.emit</code> live in{' '}
-        <Link to="/docs/modules">Modules</Link>.
+        That example is a local effect (<code>m.effect</code> / <code>defineEffect.local</code>).
+        Long-running or off-host work uses <code>m.workerEffect</code> /{' '}
+        <code>defineEffect.worker</code> and a consumer via <code>workerHandlers</code>. Placement,
+        retries, Effect Layers, and <code>ctx.emit</code> are covered under{' '}
+        <Link to="/docs/modules" hash="effect-placement">
+          Modules
+        </Link>
+        .
       </p>
 
       <h2 id="reducers">
