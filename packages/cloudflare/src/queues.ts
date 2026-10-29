@@ -8,10 +8,10 @@ export {
   processQueueMessage,
   queueConsumer,
   QueueTaskError,
+  workerHandlers,
   type QueueBatchLike,
   type QueueConsumerOptions,
   type QueueTask,
-  type QueueTaskContext,
   type QueueTaskHandler,
   type WorkerCallbackClient,
 } from './queue-consumer'

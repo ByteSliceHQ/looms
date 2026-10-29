@@ -142,6 +142,12 @@ verify the destination's idempotency record, then use `retryEffect` or
 `POST /runs/:runId/effects/:effectId/retry`. Never blindly retry a non-idempotent
 effect.
 
+Creating a runtime also fails when:
+
+- an effect has no local handler (or sets `execution: 'worker'`) and no `EffectWorker` is configured
+- a worker's `handles` list claims an effect that also has a local handler without an explicit
+  `execution: 'worker'` (or `execution: 'local'`) on the definition
+
 ### Cloudflare Queues transport
 
 `cloudflareQueueWorker` sends each attempt to a Cloudflare Queue as JSON. Every
@@ -160,10 +166,13 @@ const worker = cloudflareQueueWorker({
 createLooms({ modules, worker, maxInFlightWorkerEffects: 16 })
 ```
 
-A consumer runs handlers of the form `(task, ctx) => events`. `ctx.heartbeat(details)`
-reports progress, `ctx.secrets()` reads the run's secret context through the
-authenticated callback, and `ctx.signal` aborts when the run is cancelled. Throw a
-`QueueTaskError` with `nonRetryable` or `retryAfterMs` to control the retry.
+A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is an
+`EffectContext`: secrets are loaded before the handler runs (`ctx.secrets`),
+`ctx.heartbeat(details)` reports progress, `ctx.emit` buffers events until
+completion, and `ctx.signal` aborts when the run is cancelled. Prefer
+`workerHandlers([[definition, handler]])` so input is validated with the
+effect's schema the same way local `execute` is. Throw a `QueueTaskError` with
+`nonRetryable` or `retryAfterMs` to control the retry.
 
 ```ts
 import { createLoomsClient } from '@swirls/looms/client'
@@ -171,10 +180,11 @@ import {
   cloudflareQueuePullSource,
   createQueuePullConsumer,
   queueConsumer,
+  workerHandlers,
 } from '@swirls/looms/cloudflare'
 
 const callbacks = createLoomsClient({ baseUrl, workerCallbackToken })
-const handlers = { 'sandbox.exec': runSandbox }
+const handlers = workerHandlers([[sandboxExec, runSandbox]])
 
 // In a Worker: export default { queue: queueConsumer({ callbacks, handlers, blobs }) }
 

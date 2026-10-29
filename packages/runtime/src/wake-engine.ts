@@ -21,6 +21,7 @@ import {
   planDeadlineTransitions,
   planTerminalCancellationTransitions,
 } from './deadline-transition-planner'
+import { admitOrFailAttempt } from './effect-admission'
 import {
   DuplicateEffectDispatchError,
   MaxWakeIterationsError,
@@ -306,6 +307,40 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
             if (workerPlans.length > 0) {
               for (const workerPlan of workerPlans) {
+                const admission = yield* admitOrFailAttempt({
+                  registry,
+                  item: workerPlan.item,
+                  runId,
+                  attempt: workerPlan.attempt,
+                  now,
+                  attributes: state.attributes ?? {},
+                  secrets,
+                  trace: state.startIdentity?.trace ?? null,
+                  retry: workerPlan.retry,
+                })
+
+                if (admission._tag === 'reject') {
+                  if (admission.observation) {
+                    observe(admission.observation)
+                  }
+
+                  const failureAppend = yield* appendObserved(
+                    store,
+                    runId,
+                    stripSeq([admission.event]),
+                  )
+
+                  cursor = yield* applyAppend(
+                    store,
+                    runId,
+                    cursor,
+                    stripSeq([admission.event]),
+                    failureAppend,
+                  )
+
+                  continue
+                }
+
                 if (workerPlan.queuedEvent) {
                   const queuedAppend = yield* appendObserved(
                     store,

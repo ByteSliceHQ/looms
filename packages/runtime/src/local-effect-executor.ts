@@ -20,6 +20,7 @@ import {
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
+import { admitOrFailAttempt } from './effect-admission'
 import { RuntimeExecutionError } from './errors'
 import {
   createEffectFailedEvent,
@@ -204,15 +205,38 @@ export function executeLocalEffects(
               }),
             )
 
+          const retry = registry.effects.get(item.effect.type)?.retry
+          const launched: EventEnvelope[] = []
+          const attemptNumber = input.attempts.get(item.effectId) ?? 1
+
+          const admission = yield* admitOrFailAttempt({
+            registry,
+            item,
+            runId: input.runId,
+            attempt: attemptNumber,
+            now: input.now,
+            attributes: input.context.attributes,
+            secrets: input.context.secrets,
+            trace: input.context.trace,
+            retry,
+          })
+
+          if (admission._tag === 'reject') {
+            if (admission.observation) {
+              observe(admission.observation)
+            }
+
+            produced.push(admission.event)
+            failedEffectId = item.effectId
+            continue
+          }
+
           const controller = makeAbortController()
 
           executionContext.activeEffects.set(item.effectId, {
             controller,
             threadId: item.threadId,
           })
-
-          const retry = registry.effects.get(item.effect.type)?.retry
-          const launched: EventEnvelope[] = []
 
           const dispatched = dispatchEffect(
             registry,
@@ -229,6 +253,7 @@ export function executeLocalEffects(
               secrets: input.context.secrets,
               trace: input.context.trace,
               signal: controller.signal,
+              heartbeat: () => Promise.resolve(),
               emit: appendLive,
             },
           ).pipe(
@@ -262,7 +287,6 @@ export function executeLocalEffects(
 
           if (settled._tag === 'timed-out') {
             controller.abort(new RuntimeExecutionError('start-to-close timeout'))
-            const attemptNumber = input.attempts.get(item.effectId) ?? 1
 
             observe({
               type: 'effect.timeout',

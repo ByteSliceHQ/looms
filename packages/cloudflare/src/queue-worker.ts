@@ -82,6 +82,12 @@ function queueMessage(
     effectId: task.effectId,
     attempt: task.attempt,
     type: task.type,
+    threadId: task.threadId,
+    causingEventId: task.causingEventId,
+  }
+
+  if (task.attributes !== undefined) {
+    message.attributes = task.attributes
   }
 
   if (task.details !== undefined) {

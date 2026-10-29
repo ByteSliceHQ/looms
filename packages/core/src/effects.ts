@@ -231,10 +231,22 @@ export interface EffectContext {
   readonly signal: AbortSignal
   /** Labels safe for every reader of the run. */
   readonly attributes: RunAttributes
-  /** Bearer material for this run. Never copy it into an emitted event. */
+  /**
+   * Bearer material for this run. Never copy it into an emitted event.
+   * On a durable worker transport this is loaded before the handler runs (same shape as local).
+   */
   readonly secrets: SecretContext
   /** The W3C trace context of the caller that started the run, to parent spans the handler starts. */
   readonly trace: TraceContext | null
+  /**
+   * Report progress. On a worker this extends the heartbeat deadline; locally it is a no-op that
+   * still resolves so one handler can call it on either path.
+   */
+  heartbeat(details?: JsonValue): Promise<void>
+  /**
+   * Emit an event from the attempt. Locally it is appended live. On a worker it is buffered and
+   * included with the attempt's completion events (not visible to subscribers until complete).
+   */
   emit(event: EventInput): Promise<void>
 }
 
@@ -247,6 +259,7 @@ export interface ScopedEffectContext<E extends EventInput = EventInput> {
   readonly attributes: RunAttributes
   readonly secrets: SecretContext
   readonly trace: TraceContext | null
+  heartbeat(details?: JsonValue): Promise<void>
   emit(event: E): Promise<void>
 }
 

@@ -43,7 +43,7 @@ const observe = defineEffect({
   },
 })
 
-const remote = defineEffect({ type: 'traced.remote', execute: () => [] })
+const remote = defineEffect({ type: 'traced.remote', execution: 'worker', execute: () => [] })
 
 const launch = defineEffect({
   type: 'traced.launch',

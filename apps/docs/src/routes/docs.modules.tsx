@@ -617,52 +617,53 @@ effects(state, ctx) {
 }`}</CodeBlock>
 
       <h2 id="effect-middleware">
-        Effect middleware
+        Effect admission and middleware
         <a className="heading-anchor" href="#effect-middleware" aria-label="Link to this section">
           #
         </a>
       </h2>
       <p>
-        Modules may declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
-        (in-process) effect dispatch. They run for every effect the host executes in the actor cell,
-        including built-in ones such as <code>agent.callLLM</code>. Effects routed to an{' '}
-        <code>EffectWorker</code> never see middleware — put gates that must apply there on the
-        worker side, or keep the effect local.
+        Modules may declare <code>admission</code>: hooks that run in the host{' '}
+        <strong>before every local attempt and before every worker dispatch</strong>. Use them for
+        gates that must cover both paths — tenant credit checks, feature flags, allowlists. Prefer{' '}
+        <code>onAdmit</code> for one effect type, and <code>failEffect</code> to reject the attempt:
       </p>
-      <p>
-        Use middleware for host concerns that are not part of a domain definition: audit logs,
-        tenant credit checks, feature flags. Prefer <code>onEffect</code> when you only care about
-        one effect type, and <code>failEffect</code> when the attempt should fail under the retry
-        policy:
-      </p>
-      <CodeBlock lang="ts">{`import { callLlmEffect } from '@swirls/looms/agent'
-import { defineRuntimeModule, failEffect, onEffect } from '@swirls/looms/core'
+      <CodeBlock lang="ts">{`import { Effect } from 'effect'
+import { callLlmEffect } from '@swirls/looms/agent'
+import { defineRuntimeModule, failEffect, onAdmit } from '@swirls/looms/core'
 
 const billing = defineRuntimeModule({
   namespace: 'billing',
   protocolVersion: '1.0.0',
-  middleware: [
-    onEffect(callLlmEffect, (_input, ctx, next) => {
+  admission: [
+    onAdmit(callLlmEffect, (_input, ctx) => {
       if (!hasCredits(ctx.attributes.orgId)) {
         return failEffect({ error: 'credits exhausted', nonRetryable: true })
       }
 
-      return next()
+      return Effect.void
     }),
   ],
 })`}</CodeBlock>
       <p>
-        <code>failEffect</code> from middleware becomes <code>runtime.effect.failed</code> the same
-        way a handler failure does. Set <code>nonRetryable: true</code> to end the attempt even when
-        a retry policy remains, or <code>retryAfterMs</code> to delay the next try.
+        <code>failEffect</code> from admission becomes <code>runtime.effect.failed</code> the same
+        way a handler failure does. A rejected worker admission never queues or dispatches the
+        attempt.
+      </p>
+      <p>
+        Modules may also declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
+        (in-process) effect dispatch only, including built-ins such as <code>agent.callLLM</code>.
+        Effects routed to an <code>EffectWorker</code> never see middleware — use{' '}
+        <code>admission</code> for shared gates, or wrap execution on the worker side. Prefer{' '}
+        <code>onEffect</code> when you only care about one local effect type.
       </p>
       <p>
         For usage and billing totals, fold <code>agent.turn.usage</code> or use the agent
         module&apos;s <code>tokenUsage</code> projection.
       </p>
       <p>
-        Install middleware by composing a module that declares it — a module may ship middleware
-        alone, with no threads or effects of its own.
+        Install admission or middleware by composing a module that declares them — a module may ship
+        either alone, with no threads or effects of its own.
       </p>
 
       <h2 id="file-layout">

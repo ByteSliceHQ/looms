@@ -13,6 +13,8 @@ const ctx: EffectContext = {
   attributes: {},
   secrets: {},
   signal: new AbortController().signal,
+  trace: null,
+  heartbeat: async () => undefined,
   emit: async () => undefined,
 }
 

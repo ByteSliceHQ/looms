@@ -1,5 +1,14 @@
 # @swirls/looms
 
+## Unreleased
+
+### Minor Changes
+
+- Effect admission hooks (`admission` / `onAdmit`) run in the host before every local attempt and before every worker dispatch, so credit checks and feature flags cover both paths. `failEffect` from admission becomes `runtime.effect.failed`; a rejected worker admission never queues. Execution middleware remains local-only.
+- `onAdmit` and `onEffect` decode the input with the definition's schema before the hook runs, so hooks see defaults and transforms. An input that fails to decode fails the attempt.
+- Worker and local handlers share `EffectContext`: `heartbeat`, buffered `emit` on workers, and sync `secrets` (loaded before the queue handler runs). Queue tasks carry `threadId`, `causingEventId`, and `attributes`. `workerHandlers([[definition, handler]])` validates input with the effect schema.
+- Creating a runtime fails when handler-less / `execution: 'worker'` effects have no worker, or when a worker's `handles` claims an effect that also has a local handler without an explicit `execution` pin.
+
 ## 0.6.1
 
 ### Patch Changes

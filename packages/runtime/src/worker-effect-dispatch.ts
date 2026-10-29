@@ -161,6 +161,7 @@ export function planWorkerEffects(input: {
       task: workerTask(input.runId, item, attempt, {
         details: existing?.heartbeatDetails,
         secrets: input.secrets,
+        attributes: input.state.attributes,
         trace: input.state.startIdentity?.trace,
         retry,
         scheduleToStartAt: scheduleToStartDeadlineAt,
@@ -306,16 +307,72 @@ export function assertWorkerDeadlines(
   }
 }
 
-function claimsType(worker: EffectWorker, definition: EffectDefinition): boolean {
+/**
+ * Handler-less effects (and `execution: 'worker'`) need a configured `EffectWorker`. Without one
+ * they would park as ambiguous on every attempt.
+ */
+export function assertWorkerConfigured(
+  registry: ComposedRegistry,
+  worker: EffectWorker | undefined,
+): void {
+  if (worker) {
+    return
+  }
+
+  const needingWorker = [...registry.effects.values()]
+    .filter(
+      (definition) =>
+        definition.execution === 'worker' ||
+        (!definition.hasHandler && definition.execution !== 'local'),
+    )
+    .map((definition) => definition.type)
+
+  if (needingWorker.length > 0) {
+    throw new Error(
+      `Effects require an EffectWorker but none is configured: ${needingWorker.join(', ')}`,
+    )
+  }
+}
+
+/**
+ * A worker that claims an effect which also has a local handler must set `execution: 'worker'`
+ * on the definition so routing is explicit.
+ */
+export function assertWorkerClaimsExplicit(
+  registry: ComposedRegistry,
+  worker: EffectWorker | undefined,
+): void {
+  if (!worker) {
+    return
+  }
+
+  const ambiguous = [...registry.effects.values()]
+    .filter(
+      (definition) =>
+        definition.hasHandler &&
+        definition.execution !== 'worker' &&
+        definition.execution !== 'local' &&
+        workerHandlesType(worker, definition.type),
+    )
+    .map((definition) => definition.type)
+
+  if (ambiguous.length > 0) {
+    throw new Error(
+      `Worker claims effects that also have local handlers; set execution: 'worker' (or 'local') explicitly: ${ambiguous.join(', ')}`,
+    )
+  }
+}
+
+export function claimsType(worker: EffectWorker, definition: EffectDefinition): boolean {
   if (definition.execution) {
     return definition.execution === 'worker'
   }
 
+  return workerHandlesType(worker, definition.type) || !definition.hasHandler
+}
+
+function workerHandlesType(worker: EffectWorker, type: string): boolean {
   const { handles } = worker
 
-  const handled = Predicate.isFunction(handles)
-    ? handles(definition.type)
-    : (handles?.includes(definition.type) ?? false)
-
-  return handled || !definition.hasHandler
+  return Predicate.isFunction(handles) ? handles(type) : (handles?.includes(type) ?? false)
 }

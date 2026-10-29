@@ -25,6 +25,7 @@ import type { RunLauncherTag } from './launcher'
 import {
   type AnyRuntimeModule,
   type DefinitionHost,
+  type EffectAdmission,
   type EffectMiddleware,
   type RuntimeModule,
   type DefinitionRef,
@@ -255,6 +256,7 @@ export function defineModule<
     readonly projections?: PR
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
+    readonly admission?: readonly EffectAdmission[]
     readonly interruptsOnSignal?: SignalInterruptRule
     readonly bindHost?: (host: DefinitionHost) => void
   } & ModuleServicesConfig<EffectRequirementsOf<FX>>,
@@ -300,6 +302,10 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
 
   if (members.middleware) {
     module.middleware = members.middleware
+  }
+
+  if (members.admission) {
+    module.admission = members.admission
   }
 
   if (members.services) {

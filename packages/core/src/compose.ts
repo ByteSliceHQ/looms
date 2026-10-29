@@ -6,6 +6,7 @@ import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
 import type {
   AnyRuntimeModule,
+  EffectAdmission,
   EffectMiddleware,
   RuntimeModule,
   RegisteredDefinition,
@@ -32,6 +33,7 @@ export interface ComposedRegistry extends FoldRegistry {
   readonly projections: ReadonlyMap<string, ProjectionDefinition>
   readonly catalogs: readonly EventCatalog[]
   readonly middleware: readonly EffectMiddleware[]
+  readonly admission: readonly EffectAdmission[]
   readonly interruptRules: readonly SignalInterruptRule[]
 }
 
@@ -43,6 +45,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
   const effects = new Map<string, EffectDefinition>()
   const projections = new Map<string, ProjectionDefinition>()
   const middleware: EffectMiddleware[] = []
+  const admission: EffectAdmission[] = []
   const interruptRules: SignalInterruptRule[] = []
   const catalogs: EventCatalog[] = [protocolCatalog]
 
@@ -131,6 +134,10 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
       middleware.push(...module.middleware)
     }
 
+    if (module.admission) {
+      admission.push(...module.admission)
+    }
+
     if (module.interruptsOnSignal) {
       interruptRules.push(module.interruptsOnSignal)
     }
@@ -154,6 +161,7 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     projections,
     catalogs,
     middleware,
+    admission,
     interruptRules,
   }
 }

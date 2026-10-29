@@ -69,7 +69,7 @@ When the model call fails because the prompt exceeded the context window, Looms 
 
 ### Gates and usage
 
-Product-specific gates such as credit checks belong in **effect middleware**. Use `onEffect(callLlmEffect, …)` with `failEffect({ error, nonRetryable: true })` before the model call runs; see [Modules](./modules.md#effect-middleware).
+Product-specific gates such as credit checks belong in **effect admission** (covers local and worker paths). Use `onAdmit(callLlmEffect, …)` with `failEffect({ error, nonRetryable: true })` before the attempt runs; see [Modules](./modules.md#effect-middleware).
 
 Every model call that reports usage records `agent.turn.usage`. Fold that event, or use the built-in `tokenUsage` projection, for durable billing.
 

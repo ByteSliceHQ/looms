@@ -210,6 +210,8 @@ describe('worker effect planner', () => {
       attempt: 2,
       type: 'worker.send',
       input: { message: 'hello' },
+      threadId: 'thread_1',
+      causingEventId: 'event_4',
       deadlines: { scheduleToStartAt: 1_500 },
     })
 
@@ -280,7 +282,8 @@ describe('worker effect routing', () => {
     expect(route('route.forced')).toBe(true)
   })
 
-  test('lets a worker claim effects that have a local handler', () => {
+  test('lets a worker claim effects that have a local handler when routing', () => {
+    // createRuntime requires execution: 'worker' for this overlap; routing still honors claims.
     const byName = { ...worker, handles: ['route.local'] }
     const byPredicate = { ...worker, handles: (type: string) => type === 'route.local' }
 

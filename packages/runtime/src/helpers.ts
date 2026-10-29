@@ -16,6 +16,7 @@ import {
   hasEntries,
   type AnyRuntimeModule,
   type AppendableEvent,
+  type EffectFailedPayload,
   type EventCatalog,
   type EventEnvelope,
   type EventInput,
@@ -44,6 +45,7 @@ export interface WorkerTaskExtras {
   readonly details?: JsonValue | null
   readonly secrets?: SecretContext
   readonly trace?: TraceContext | null
+  readonly attributes?: { readonly [key: string]: string }
   readonly retry?: RetryPolicy
   readonly scheduleToStartAt?: number | null
 }
@@ -60,6 +62,12 @@ export function workerTask(
     attempt,
     type: item.effect.type,
     input: 'input' in item.effect ? item.effect.input : null,
+    threadId: item.threadId,
+    causingEventId: item.causingEventId,
+  }
+
+  if (extras.attributes && hasEntries(extras.attributes)) {
+    task.attributes = extras.attributes
   }
 
   if (extras.details != null) {
@@ -432,13 +440,20 @@ export function createEffectFailedEvent(
   runId: string,
   item: { effectId: string; causingEventId: string; threadId: string },
   error: string,
+  options: { readonly nonRetryable?: boolean } = {},
 ): EventEnvelope {
+  const payload: Types.Mutable<EffectFailedPayload> = {
+    effectId: item.effectId,
+    error,
+  }
+
+  if (options.nonRetryable) {
+    payload.nonRetryable = true
+  }
+
   return createEvent(runId, {
     type: 'runtime.effect.failed',
-    payload: {
-      effectId: item.effectId,
-      error,
-    },
+    payload,
     threadId: item.threadId,
     effectId: item.effectId,
     causationId: item.causingEventId,

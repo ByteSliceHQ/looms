@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 
 import { createLoomsClient } from '@looms/client'
 import {
@@ -18,7 +18,12 @@ import {
 import { bearerAuth, createLooms, type Looms } from '@looms/runtime'
 
 import { createMemoryQueue, type MemoryQueue } from './memory-queue'
-import { queueConsumer, QueueTaskError, type QueueTaskHandler } from './queue-consumer'
+import {
+  queueConsumer,
+  QueueTaskError,
+  workerHandlers,
+  type QueueTaskHandler,
+} from './queue-consumer'
 import type { QueueEffectMessage } from './queue-message'
 import { cloudflareQueuePullSource, createQueuePullConsumer } from './queue-pull'
 import { cloudflareQueueWorker, type QueueProducer } from './queue-worker'
@@ -146,7 +151,7 @@ describe('Cloudflare Queues effect transport', () => {
       callbacks,
       handlers: {
         'sandbox.exec': async (task, ctx) => {
-          secret = (await ctx.secrets()).token
+          secret = ctx.secrets.token
 
           return done(task, ctx)
         },
@@ -423,6 +428,71 @@ describe('Cloudflare Queues effect transport', () => {
     await looms.stop()
   })
 })
+
+describe('workerHandlers', () => {
+  test('validates input with the effect schema and shares EffectContext fields', async () => {
+    const exec = defineEffect({
+      type: 'sandbox.exec',
+      input: Schema.Struct({ cmd: Schema.String }),
+      retry: FAST,
+    })
+
+    const handlers = workerHandlers([
+      [
+        exec,
+        (input, ctx) => [
+          {
+            type: 'sandbox.done',
+            payload: {
+              cmd: input.cmd,
+              effectId: ctx.effectId,
+              tenant: ctx.attributes.tenant ?? '',
+              hasSecret: ctx.secrets.token === SECRET,
+            },
+          },
+        ],
+      ],
+    ])
+
+    const { looms, queue, callbacks } = harness()
+
+    const started = await looms.start(
+      definition,
+      { cmd: 'echo' },
+      {
+        attributes: { tenant: 'acme' },
+        secrets: { token: SECRET },
+      },
+    )
+
+    await queueConsumer({ callbacks, handlers })(await Effect.runPromise(queue.batch()))
+
+    await waitFor(async () => (await status(looms, started.runId)) === 'completed')
+
+    const events = await looms.getEvents(started.runId)
+    const finished = events.find((event) => event.type === 'sandbox.done')
+
+    expect(finished?.payload).toMatchObject({
+      cmd: 'echo',
+      tenant: 'acme',
+      hasSecret: true,
+    })
+
+    expect(sentHasEffectId(finished?.payload)).toBe(true)
+
+    await looms.stop()
+  })
+})
+
+function sentHasEffectId(payload: JsonValue | undefined): boolean {
+  if (payload === null || !Predicate.isReadonlyObject(payload) || Array.isArray(payload)) {
+    return false
+  }
+
+  const effectId = payload.effectId
+
+  return Predicate.isString(effectId) && effectId.length > 0
+}
 
 describe('cloudflareQueuePullSource', () => {
   test('pulls and acks through the Cloudflare Queues HTTP API', async () => {
