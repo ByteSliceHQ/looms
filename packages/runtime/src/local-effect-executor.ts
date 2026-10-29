@@ -20,7 +20,7 @@ import {
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
-import { runEffectAdmission } from './effect-admission'
+import { admitOrFailAttempt } from './effect-admission'
 import { RuntimeExecutionError } from './errors'
 import {
   createEffectFailedEvent,
@@ -205,52 +205,38 @@ export function executeLocalEffects(
               }),
             )
 
+          const retry = registry.effects.get(item.effect.type)?.retry
+          const launched: EventEnvelope[] = []
+          const attemptNumber = input.attempts.get(item.effectId) ?? 1
+
+          const admission = yield* admitOrFailAttempt({
+            registry,
+            item,
+            runId: input.runId,
+            attempt: attemptNumber,
+            now: input.now,
+            attributes: input.context.attributes,
+            secrets: input.context.secrets,
+            trace: input.context.trace,
+            retry,
+          })
+
+          if (admission._tag === 'reject') {
+            if (admission.observation) {
+              observe(admission.observation)
+            }
+
+            produced.push(admission.event)
+            failedEffectId = item.effectId
+            continue
+          }
+
           const controller = makeAbortController()
 
           executionContext.activeEffects.set(item.effectId, {
             controller,
             threadId: item.threadId,
           })
-
-          const retry = registry.effects.get(item.effect.type)?.retry
-          const launched: EventEnvelope[] = []
-          const attemptNumber = input.attempts.get(item.effectId) ?? 1
-
-          const admission = yield* runEffectAdmission(registry, item, {
-            runId: input.runId,
-            attributes: input.context.attributes,
-            secrets: input.context.secrets,
-            trace: input.context.trace,
-          })
-
-          if (admission._tag === 'reject') {
-            const failure = planAttemptFailure({
-              runId: input.runId,
-              item,
-              attempt: attemptNumber,
-              error: admission.error,
-              now: input.now,
-              retry,
-              origin: { type: 'system' },
-              nonRetryable: admission.nonRetryable,
-              retryAfterMs: admission.retryAfterMs,
-            })
-
-            if (failure.retrying) {
-              observe({
-                type: 'effect.retry',
-                runId: input.runId,
-                at: input.now,
-                effectId: item.effectId,
-                attempt: attemptNumber,
-                detail: admission.error,
-              })
-            }
-
-            produced.push(failure.event)
-            failedEffectId = item.effectId
-            continue
-          }
 
           const dispatched = dispatchEffect(
             registry,

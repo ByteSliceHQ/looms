@@ -32,11 +32,10 @@ import {
   synthesizedThreadFailed,
   waitSatisfiedEvents,
 } from './helpers'
-import { runEffectAdmission } from './effect-admission'
+import { admitOrFailAttempt } from './effect-admission'
 import { executeLocalEffects } from './local-effect-executor'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
-import { planAttemptFailure } from './retry-policy'
 import type { RunExecutionContexts, WakeCompletion } from './run-execution-context'
 import type { LoomsRuntime, EffectWorker } from './types'
 import type { WakeScheduler } from './wake-scheduler'
@@ -308,48 +307,34 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
             if (workerPlans.length > 0) {
               for (const workerPlan of workerPlans) {
-                const admission = yield* runEffectAdmission(registry, workerPlan.item, {
+                const admission = yield* admitOrFailAttempt({
+                  registry,
+                  item: workerPlan.item,
                   runId,
+                  attempt: workerPlan.attempt,
+                  now,
                   attributes: state.attributes ?? {},
                   secrets,
                   trace: state.startIdentity?.trace ?? null,
+                  retry: workerPlan.retry,
                 })
 
                 if (admission._tag === 'reject') {
-                  const failure = planAttemptFailure({
-                    runId,
-                    item: workerPlan.item,
-                    attempt: workerPlan.attempt,
-                    error: admission.error,
-                    now,
-                    retry: workerPlan.retry,
-                    origin: { type: 'system' },
-                    nonRetryable: admission.nonRetryable,
-                    retryAfterMs: admission.retryAfterMs,
-                  })
-
-                  if (failure.retrying) {
-                    observe({
-                      type: 'effect.retry',
-                      runId,
-                      at: now,
-                      effectId: workerPlan.item.effectId,
-                      attempt: workerPlan.attempt,
-                      detail: admission.error,
-                    })
+                  if (admission.observation) {
+                    observe(admission.observation)
                   }
 
                   const failureAppend = yield* appendObserved(
                     store,
                     runId,
-                    stripSeq([failure.event]),
+                    stripSeq([admission.event]),
                   )
 
                   cursor = yield* applyAppend(
                     store,
                     runId,
                     cursor,
-                    stripSeq([failure.event]),
+                    stripSeq([admission.event]),
                     failureAppend,
                   )
 

@@ -31,44 +31,49 @@ export interface QueueTask extends Omit<QueueEffectMessage, 'v' | 'input' | 'inp
   readonly input: JsonValue
 }
 
-/**
- * Context passed to a queue handler. Matches {@link EffectContext} so the same function can run
- * locally (via `defineEffect.execute`) or on a worker. `emit` buffers until completion; secrets are
- * loaded before the handler runs.
- */
-export type QueueTaskContext = EffectContext
-
 export type QueueTaskHandler = (
   task: QueueTask,
-  ctx: QueueTaskContext,
+  ctx: EffectContext,
 ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>
 
-type WorkerHandlerEntry<TInput> = readonly [
-  EffectDefinition<TInput>,
-  (
-    input: TInput,
-    ctx: EffectContext,
-  ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>,
-]
+type WorkerHandlerFn<TInput> = (
+  input: TInput,
+  ctx: EffectContext,
+) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>
+
+type WorkerHandlerBinding<TInput> = readonly [EffectDefinition<TInput>, WorkerHandlerFn<TInput>]
 
 /**
  * Build a `handlers` map from effect definitions. Input is validated with each definition's schema
- * before the typed handler runs, matching local `defineEffect` execute.
+ * before the typed handler runs, matching local `defineEffect` execute. Each entry keeps its own
+ * `TInput` at the call site; the cast below is only at the validate boundary.
  */
-export function workerHandlers(
-  entries: ReadonlyArray<WorkerHandlerEntry<any>>,
+export function workerHandlers<
+  const Entries extends ReadonlyArray<WorkerHandlerBinding<any>>,
+>(
+  entries: {
+    readonly [K in keyof Entries]: Entries[K] extends readonly [
+      EffectDefinition<infer TInput>,
+      unknown,
+    ]
+      ? WorkerHandlerBinding<TInput>
+      : Entries[K]
+  },
 ): Readonly<Record<string, QueueTaskHandler>> {
   const handlers: { [type: string]: QueueTaskHandler } = {}
 
   for (const [definition, handler] of entries) {
     handlers[definition.type] = async (task, ctx) => {
-      const input = definition.input
-        ? await validateInput(definition.input, task.input)
-        : task.input
+      if (definition.input) {
+        const input = await validateInput(definition.input, task.input)
+        // SAFETY: validateInput returns InferSchemaOutput for the definition's schema; TInput is that type.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        return handler(input as never, ctx)
+      }
 
-      // SAFETY: validateInput returns InferSchemaOutput for the definition's schema.
+      // SAFETY: definitions without an input schema take JsonValue, matching EffectDefinition's default TInput.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      return handler(input as never, ctx)
+      return handler(task.input as never, ctx)
     }
   }
 
@@ -201,11 +206,11 @@ function runAttempt(
           (error) => new QueueTaskError({ message: error.message, nonRetryable: true }),
         ),
         Effect.flatMap((secrets) => {
-          const ctx: QueueTaskContext = {
+          const ctx: EffectContext = {
             effectId: task.effectId,
             runId: task.runId,
-            threadId: task.threadId ?? '',
-            causingEventId: task.causingEventId ?? '',
+            threadId: task.threadId,
+            causingEventId: task.causingEventId,
             signal: controller.signal,
             attributes: task.attributes ?? {},
             secrets,
