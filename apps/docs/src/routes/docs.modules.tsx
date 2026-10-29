@@ -651,11 +651,11 @@ const billing = defineRuntimeModule({
         attempt.
       </p>
       <p>
-        Modules may also declare <code>middleware</code>: functions that wrap{' '}
-        <strong>local</strong> (in-process) effect dispatch only, including built-ins such as{' '}
-        <code>agent.callLLM</code>. Effects routed to an <code>EffectWorker</code> never see
-        middleware — use <code>admission</code> for shared gates, or wrap execution on the worker
-        side. Prefer <code>onEffect</code> when you only care about one local effect type.
+        Modules may also declare <code>middleware</code>: functions that wrap <strong>local</strong>{' '}
+        (in-process) effect dispatch only, including built-ins such as <code>agent.callLLM</code>.
+        Effects routed to an <code>EffectWorker</code> never see middleware — use{' '}
+        <code>admission</code> for shared gates, or wrap execution on the worker side. Prefer{' '}
+        <code>onEffect</code> when you only care about one local effect type.
       </p>
       <p>
         For usage and billing totals, fold <code>agent.turn.usage</code> or use the agent

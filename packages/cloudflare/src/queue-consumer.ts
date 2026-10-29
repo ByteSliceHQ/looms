@@ -50,16 +50,14 @@ type WorkerHandlerBinding<TInput> = readonly [EffectDefinition<TInput>, WorkerHa
  */
 export function workerHandlers<
   const Entries extends ReadonlyArray<WorkerHandlerBinding<any>>,
->(
-  entries: {
-    readonly [K in keyof Entries]: Entries[K] extends readonly [
-      EffectDefinition<infer TInput>,
-      unknown,
-    ]
-      ? WorkerHandlerBinding<TInput>
-      : Entries[K]
-  },
-): Readonly<Record<string, QueueTaskHandler>> {
+>(entries: {
+  readonly [K in keyof Entries]: Entries[K] extends readonly [
+    EffectDefinition<infer TInput>,
+    unknown,
+  ]
+    ? WorkerHandlerBinding<TInput>
+    : Entries[K]
+}): Readonly<Record<string, QueueTaskHandler>> {
   const handlers: { [type: string]: QueueTaskHandler } = {}
 
   for (const [definition, handler] of entries) {

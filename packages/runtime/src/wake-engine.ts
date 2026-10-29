@@ -21,6 +21,7 @@ import {
   planDeadlineTransitions,
   planTerminalCancellationTransitions,
 } from './deadline-transition-planner'
+import { admitOrFailAttempt } from './effect-admission'
 import {
   DuplicateEffectDispatchError,
   MaxWakeIterationsError,
@@ -32,7 +33,6 @@ import {
   synthesizedThreadFailed,
   waitSatisfiedEvents,
 } from './helpers'
-import { admitOrFailAttempt } from './effect-admission'
 import { executeLocalEffects } from './local-effect-executor'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'

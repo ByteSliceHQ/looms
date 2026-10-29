@@ -725,9 +725,7 @@ describe('createLooms runtime', () => {
           protocolVersion: '1.0.0',
           effects: { work },
           admission: [
-            onAdmit(work, (_input, _ctx) =>
-              failEffect({ error: 'flag off', nonRetryable: true }),
-            ),
+            onAdmit(work, (_input, _ctx) => failEffect({ error: 'flag off', nonRetryable: true })),
           ],
           threads: {
             gate: defineThread({
