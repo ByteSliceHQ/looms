@@ -63,6 +63,11 @@ export interface EffectExecutionRecord {
   /** Progress reported by the latest heartbeat. Survives retries so the next attempt can resume. */
   heartbeatDetails: JsonValue | null
   lastError: string | null
+  /**
+   * How many times the host deferred an unacknowledged worker.dispatch for this attempt.
+   * Used for outbox backoff; ignored for local and acknowledged-worker paths.
+   */
+  dispatchTry: number
 }
 
 export interface RunStartIdentity {
@@ -218,6 +223,7 @@ export const RunStateSchema = Schema.Struct({
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       lastError: Schema.NullOr(Schema.String),
+      dispatchTry: Schema.Finite.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
   completedEffectIds: Schema.Array(Schema.String).pipe(

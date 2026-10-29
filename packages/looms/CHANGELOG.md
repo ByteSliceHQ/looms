@@ -8,6 +8,7 @@
 - `onAdmit` and `onEffect` decode the input with the definition's schema before the hook runs, so hooks see defaults and transforms. An input that fails to decode fails the attempt.
 - Worker and local handlers share `EffectContext`: `heartbeat`, buffered `emit` on workers, and sync `secrets` (loaded before the queue handler runs). Queue tasks carry `threadId`, `causingEventId`, and `attributes`. `workerHandlers([[definition, handler]])` validates input with the effect schema.
 - Creating a runtime fails when handler-less / `execution: 'worker'` effects have no worker, or when a worker's `handles` claims an effect that also has a local handler without an explicit `execution` pin.
+- Unacknowledged worker dispatch failures no longer park as `ambiguous` on the first push. The attempt stays `queued`, records `runtime.effect.dispatch.deferred`, and the wake engine retries the dispatch (outbox relay). `ambiguous` remains for missing workers, cancellation timeouts, and exhausted relays. Acknowledged transports (Cloudflare Queues) are unchanged. `retryEffect` can also target a queued attempt that has a lastError.
 
 ## 0.6.1
 

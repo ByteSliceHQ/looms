@@ -69,6 +69,7 @@ describe('deadline transition planner', () => {
           lastHeartbeatAt: null,
           heartbeatDetails: null,
           lastError: null,
+          dispatchTry: 0,
         },
       },
     })
@@ -102,6 +103,7 @@ describe('deadline transition planner', () => {
           lastHeartbeatAt: null,
           heartbeatDetails: null,
           lastError: null,
+          dispatchTry: 0,
         },
         future: {
           effectId: 'future',
@@ -112,6 +114,7 @@ describe('deadline transition planner', () => {
           lastHeartbeatAt: null,
           heartbeatDetails: null,
           lastError: null,
+          dispatchTry: 0,
         },
       },
     })
@@ -152,6 +155,7 @@ describe('deadline transition planner', () => {
             lastHeartbeatAt: null,
             heartbeatDetails: null,
             lastError: 'failed',
+            dispatchTry: 0,
           },
         },
       }),
@@ -196,6 +200,7 @@ describe('worker effect planner', () => {
           lastHeartbeatAt: null,
           heartbeatDetails: null,
           lastError: 'temporary',
+          dispatchTry: 0,
         },
       },
     })
@@ -263,6 +268,7 @@ describe('worker effect routing', () => {
             lastHeartbeatAt: null,
             heartbeatDetails: null,
             lastError: null,
+            dispatchTry: 0,
           }
         : undefined,
       registry,

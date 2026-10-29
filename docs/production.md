@@ -136,11 +136,19 @@ Callbacks include the same `effectId` and `attempt`. Stale callbacks are ignored
 A worker with `dispatchSemantics: 'acknowledged'` promises that a rejected
 `dispatch` sent nothing, so the attempt fails under the retry policy. Because its
 transport can still lose a message it accepted, creating a runtime fails unless
-every effect that worker claims sets `retry.scheduleToStartTimeoutMs`. For other
-workers, a dispatch transport failure is recorded as `ambiguous`: an operator must first
-verify the destination's idempotency record, then use `retryEffect` or
-`POST /runs/:runId/effects/:effectId/retry`. Never blindly retry a non-idempotent
-effect.
+every effect that worker claims sets `retry.scheduleToStartTimeoutMs`.
+
+For **unacknowledged** workers, a rejected `dispatch` does not park as ambiguous.
+The attempt stays `queued` and the host records `runtime.effect.dispatch.deferred`,
+then retries the push on later wakes (outbox relay). Workers must treat
+`(runId, effectId, attempt)` as idempotent. After many deferred tries the host
+parks as `ambiguous` for an operator. Prefer `dispatchSemantics: 'acknowledged'`
+(Cloudflare Queues) when the transport can promise a reject sent nothing.
+
+`ambiguous` remains for misconfiguration (no worker), cancellation acknowledgement
+timeouts, and exhausted dispatch relays. Use `retryEffect` or
+`POST /runs/:runId/effects/:effectId/retry` after verifying the destination.
+Never blindly retry a non-idempotent effect.
 
 Creating a runtime also fails when:
 

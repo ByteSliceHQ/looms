@@ -128,11 +128,11 @@ describe('durable external effect workers', () => {
     )
   })
 
-  test('recovers a rejected dispatch through the schedule-to-start timeout', async () => {
+  test('retries a rejected unacknowledged dispatch through the outbox relay', async () => {
     let calls = 0
 
     const looms = createLooms({
-      modules: [workerModule({ maxAttempts: 2, backoffMs: 1, scheduleToStartTimeoutMs: 5 })],
+      modules: [workerModule({ maxAttempts: 2, backoffMs: 1 })],
       worker: {
         dispatch: () => {
           calls += 1
@@ -142,15 +142,16 @@ describe('durable external effect workers', () => {
     })
 
     const started = await looms.start(workerDefinition, {})
-    await Bun.sleep(10)
-    await looms.wake(started.runId)
-    await Bun.sleep(5)
-    await looms.wake(started.runId)
-
     const events = await looms.getEvents(started.runId)
+    const types = events.map((event) => event.type)
 
     expect(calls).toBe(2)
-    expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(false)
+    expect(types).toContain('runtime.effect.dispatch.deferred')
+    expect(types).toContain('runtime.effect.dispatched')
+    expect(types.indexOf('runtime.effect.dispatch.deferred')).toBeLessThan(
+      types.indexOf('runtime.effect.dispatched'),
+    )
+    expect(types).not.toContain('runtime.effect.ambiguous')
     await looms.stop()
   })
 

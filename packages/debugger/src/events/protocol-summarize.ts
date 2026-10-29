@@ -106,6 +106,8 @@ export function summarizeProtocolEvent(event: DebuggerEvent): EventSummary | und
       return { title: 'effect timed out', detail: jsonText(payload.timeout) }
     case 'runtime.effect.ambiguous':
       return { title: 'effect outcome ambiguous', detail: jsonText(payload.error) }
+    case 'runtime.effect.dispatch.deferred':
+      return { title: 'effect dispatch deferred', detail: jsonText(payload.error) }
     case 'runtime.effect.retry.scheduled':
       return { title: 'effect retry scheduled', detail: jsonText(payload.error) }
     case 'runtime.snapshot.taken':
