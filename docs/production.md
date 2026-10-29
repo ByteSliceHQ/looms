@@ -240,8 +240,9 @@ process.once('SIGTERM', () => consumer.stop())
   outstanding effects (with `placement`), deadlines, attempts, and last errors.
 - `GET /runs/:runId/effects` is the focused effect view; each entry includes
   `placement` (`local` or `worker`).
-- `runtime.effectPlacements` and `GET /definitions/effect-placements` list every
-  registered effect type and where it runs.
+- `GET /definitions/effects` lists every registered effect: type, `placement`, retry
+  policy, and input schema when the effect declares one.
+- `runtime.effectPlacements` is the in-process placement map (`local` or `worker`).
 - `recoverDeadlines` and `POST /operations/deadlines/rescan` enumerate all runs
   and restore durable timer/effect scheduling after startup or repair.
 - Projector delivery exposes `inspect`, `requeue`, and `recover`. Requeue is the

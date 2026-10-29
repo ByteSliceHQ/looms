@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { publishDefinition, type DefinitionCatalog } from '@looms/core'
+import { publishDefinition, publishEffects, type DefinitionCatalog } from '@looms/core'
 
 import type { RouteOptions } from '../http'
 import { route, type Route } from '../route-table'
@@ -23,10 +23,13 @@ export function definitionRoutes({ runtime }: RouteOptions): readonly Route[] {
     }),
     route({
       method: 'GET',
-      path: '/definitions/effect-placements',
-      name: 'definitions.effectPlacements',
+      path: '/definitions/effects',
+      name: 'definitions.effects',
       access: 'read',
-      handle: () => Effect.succeed(Response.json({ effects: runtime.effectPlacements })),
+      handle: () =>
+        Effect.succeed(
+          Response.json({ effects: publishEffects(runtime.registry.effects.values()) }),
+        ),
     }),
   ]
 }

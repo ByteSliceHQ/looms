@@ -4,8 +4,10 @@ import { Effect, Schema } from 'effect'
 
 import {
   DefinitionCatalogSchema,
+  defineEffect,
   defineEventCatalog,
   defineModule,
+  EffectCatalogSchema,
   RunSummariesSchema,
   wait,
 } from '@looms/core'
@@ -476,17 +478,39 @@ describe('server routing', () => {
     await looms.stop()
   })
 
-  test('GET /definitions/effect-placements lists declared effect placements', async () => {
-    const looms = createLooms({ modules: [] })
-    const { runtime } = await looms.ready()
+  test('GET /definitions/effects lists declared effects', async () => {
+    const charge = defineEffect({
+      type: 'billing.charge',
+      placement: 'local',
+      deterministic: true,
+      input: Schema.Struct({ amount: Schema.Finite }),
+      retry: { maxAttempts: 3, backoffMs: 100 },
+      execute: () => [],
+    })
 
-    const response = await looms.fetch(
-      new Request('http://looms.test/definitions/effect-placements'),
-    )
+    const looms = createLooms({
+      modules: [
+        defineModule({ namespace: 'billing', protocolVersion: '1.0.0' }, () => ({
+          effects: { charge },
+        })),
+      ],
+    })
+
+    const response = await looms.fetch(new Request('http://looms.test/definitions/effects'))
+    const body = Schema.decodeUnknownSync(EffectCatalogSchema)(await response?.json())
+    const published = body.effects.find((effect) => effect.type === 'billing.charge')
 
     expect(response?.status).toBe(200)
-    expect(await response?.json()).toEqual({ effects: runtime.effectPlacements })
-    expect(runtime.effectPlacements.every((entry) => entry.placement === 'local')).toBe(true)
+
+    expect(published).toMatchObject({
+      type: 'billing.charge',
+      placement: 'local',
+      deterministic: true,
+      retry: { maxAttempts: 3, backoffMs: 100 },
+    })
+
+    expect(published?.inputSchema).toMatchObject({ type: 'object' })
+
     await looms.stop()
   })
 

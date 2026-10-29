@@ -1,8 +1,43 @@
 import { describe, expect, test } from 'bun:test'
 
-import { resolveRunTarget, runIdFromRequest } from './routing'
+import { Schema } from 'effect'
+
+import { defineModule, EffectCatalogSchema } from '@looms/core'
+
+import { definitionsResponse, resolveRunTarget, runIdFromRequest } from './routing'
 
 describe('routing', () => {
+  test('definitionsResponse answers effect catalogs without a run', async () => {
+    const modules = [
+      defineModule({ namespace: 'billing', protocolVersion: '1.0.0' }, (scope) => ({
+        effects: {
+          capture: scope.effect({
+            type: 'billing.capture',
+            placement: 'worker',
+            retry: { maxAttempts: 2, startToCloseTimeoutMs: 5_000 },
+          }),
+        },
+      })),
+    ]
+
+    const response = definitionsResponse(
+      new Request('http://localhost/definitions/effects'),
+      modules,
+    )
+
+    const body = Schema.decodeUnknownSync(EffectCatalogSchema)(await response?.json())
+
+    expect(response?.status).toBe(200)
+
+    expect(body.effects).toContainEqual({
+      type: 'billing.capture',
+      placement: 'worker',
+      retry: { maxAttempts: 2, startToCloseTimeoutMs: 5_000 },
+    })
+
+    expect(definitionsResponse(new Request('http://localhost/runs'), modules)).toBeNull()
+  })
+
   test('runIdFromRequest extracts runId from various paths', () => {
     expect(runIdFromRequest(new Request('http://localhost:8787/runs/run_abc123'))).toBe(
       'run_abc123',
