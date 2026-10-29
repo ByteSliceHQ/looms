@@ -146,14 +146,15 @@ function planWorkerCallback(input: {
   switch (callback.kind) {
     case 'started': {
       return Effect.succeed(
-        item && execution.status === 'dispatched'
+        item && (execution.status === 'dispatched' || execution.status === 'dispatch_wait')
           ? accepted([workerStartedEvent(runId, item, callback.attempt, retry, now)])
           : STALE,
       )
     }
 
     case 'heartbeat': {
-      const implicitStart = execution.status === 'dispatched'
+      const implicitStart =
+        execution.status === 'dispatched' || execution.status === 'dispatch_wait'
 
       if (
         !item ||

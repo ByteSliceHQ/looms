@@ -47,6 +47,7 @@ export interface EffectExecutionRecord {
   attempt: number
   status:
     | 'queued'
+    | 'dispatch_wait'
     | 'dispatched'
     | 'started'
     | 'heartbeat'
@@ -63,6 +64,11 @@ export interface EffectExecutionRecord {
   /** Progress reported by the latest heartbeat. Survives retries so the next attempt can resume. */
   heartbeatDetails: JsonValue | null
   lastError: string | null
+  /**
+   * How many times the host deferred an unacknowledged worker.dispatch for this attempt.
+   * Used for outbox backoff; ignored for local and acknowledged-worker paths.
+   */
+  dispatchTry: number
 }
 
 export interface RunStartIdentity {
@@ -195,6 +201,7 @@ export const RunStateSchema = Schema.Struct({
       attempt: Schema.Finite,
       status: Schema.Union([
         Schema.Literal('queued'),
+        Schema.Literal('dispatch_wait'),
         Schema.Literal('dispatched'),
         Schema.Literal('started'),
         Schema.Literal('heartbeat'),
@@ -218,6 +225,7 @@ export const RunStateSchema = Schema.Struct({
         Schema.withDecodingDefaultKey(Effect.succeed(null)),
       ),
       lastError: Schema.NullOr(Schema.String),
+      dispatchTry: Schema.Finite.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
     }),
   ).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
   completedEffectIds: Schema.Array(Schema.String).pipe(

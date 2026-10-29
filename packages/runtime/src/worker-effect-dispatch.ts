@@ -16,8 +16,18 @@ import {
 
 import { RuntimeExecutionError } from './errors'
 import { workerTask } from './helpers'
-import { planAttemptFailure } from './retry-policy'
+import { planAttemptFailure, retryBackoff } from './retry-policy'
 import type { EffectWorker, EffectWorkerTask } from './types'
+
+/** Caps how many times one attempt's unacknowledged dispatch can be deferred before parking as ambiguous. */
+export const DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS = 32
+
+const DISPATCH_BACKOFF: RetryPolicy = {
+  maxAttempts: DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS,
+  backoffMs: 100,
+  maxBackoffMs: 30_000,
+  backoffMultiplier: 2,
+}
 
 export interface WorkerEffectDispatchPlan {
   readonly item: OutstandingEffect
@@ -26,6 +36,8 @@ export interface WorkerEffectDispatchPlan {
   readonly task: EffectWorkerTask
   readonly retry: RetryPolicy | undefined
   readonly scheduleToStartDeadlineAt: number | null
+  /** Next outbox dispatch try for this attempt (1 on first push). */
+  readonly dispatchTry: number
 }
 
 function workerClaims(
@@ -48,12 +60,18 @@ function workerClaims(
 
 const WORKER_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
   'queued',
+  'dispatch_wait',
   'dispatched',
   'started',
   'heartbeat',
   'cancel_requested',
   'timed_out',
   'ambiguous',
+])
+
+const SAME_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
+  'queued',
+  'dispatch_wait',
 ])
 
 /**
@@ -127,6 +145,9 @@ export function planWorkerEffects(input: {
     return (
       !execution ||
       execution.status === 'queued' ||
+      (execution.status === 'dispatch_wait' &&
+        execution.nextAttemptAt !== null &&
+        execution.nextAttemptAt <= input.now + 5) ||
       (execution.status === 'retry_wait' &&
         execution.nextAttemptAt !== null &&
         execution.nextAttemptAt <= input.now + 5)
@@ -135,8 +156,9 @@ export function planWorkerEffects(input: {
 
   return withinInFlightLimit(input, workerItems, due).map((item) => {
     const existing = input.state.effectExecutions[item.effectId]
+    const sameAttempt = existing !== undefined && SAME_ATTEMPT_STATUSES.has(existing.status)
 
-    const attempt = existing?.status === 'queued' ? existing.attempt : (existing?.attempt ?? 0) + 1
+    const attempt = sameAttempt ? existing.attempt : (existing?.attempt ?? 0) + 1
 
     const retry = input.registry.effects.get(item.effect.type)?.retry
 
@@ -148,16 +170,16 @@ export function planWorkerEffects(input: {
       item,
       attempt,
       retry,
-      queuedEvent:
-        existing?.status === 'queued'
-          ? undefined
-          : createEvent(input.runId, {
-              type: 'runtime.effect.queued',
-              payload: { effectId: item.effectId, attempt, deadlineAt: null },
-              threadId: item.threadId,
-              causationId: item.causingEventId,
-              origin: { type: 'system' },
-            }),
+      dispatchTry: sameAttempt ? existing.dispatchTry + 1 : 1,
+      queuedEvent: sameAttempt
+        ? undefined
+        : createEvent(input.runId, {
+            type: 'runtime.effect.queued',
+            payload: { effectId: item.effectId, attempt, deadlineAt: null },
+            threadId: item.threadId,
+            causationId: item.causingEventId,
+            origin: { type: 'system' },
+          }),
       task: workerTask(input.runId, item, attempt, {
         details: existing?.heartbeatDetails,
         secrets: input.secrets,
@@ -199,16 +221,22 @@ function withinInFlightLimit(
 }
 
 /**
- * Hand a planned attempt to the worker. When an unacknowledged dispatch rejects, the task may still
- * have reached the worker, so with a schedule-to-start deadline it is recorded as dispatched and
- * recovered by that timeout; without one it is parked as ambiguous for an operator. An acknowledged
- * rejection means nothing was sent, so the attempt fails under the retry policy.
+ * Hand a planned attempt to the worker.
+ *
+ * - **acknowledged** reject: nothing was sent → fail under the retry policy.
+ * - **unacknowledged** reject: enter `dispatch_wait` (`runtime.effect.dispatch.deferred`) and the
+ *   wake engine retries later with dedicated outbox backoff. After
+ *   {@link DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS} tries, park as ambiguous for an operator.
+ *   Workers must treat `(runId, effectId, attempt)` as idempotent — a rejected push may still have
+ *   arrived, so a later `started` from `dispatch_wait` is accepted.
+ * - Missing worker: ambiguous (misconfiguration).
  */
 export function dispatchWorkerEffect(
   runId: string,
   plan: WorkerEffectDispatchPlan,
   worker: EffectWorker | undefined,
   now: number,
+  options: { readonly maxDispatchDeferrals?: number } = {},
 ): Effect.Effect<EventEnvelope> {
   const dispatched = createEvent(runId, {
     type: 'runtime.effect.dispatched',
@@ -256,9 +284,27 @@ export function dispatchWorkerEffect(
           }).event
         }
 
-        return plan.scheduleToStartDeadlineAt === null
-          ? ambiguous(`worker dispatch outcome is ambiguous: ${error.message}`)
-          : dispatched
+        const maxDeferrals = options.maxDispatchDeferrals ?? DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS
+
+        if (plan.dispatchTry >= maxDeferrals) {
+          return ambiguous(
+            `worker dispatch relay exhausted after ${plan.dispatchTry} tries: ${error.message}`,
+          )
+        }
+
+        return createEvent(runId, {
+          type: 'runtime.effect.dispatch.deferred',
+          payload: {
+            effectId: plan.item.effectId,
+            attempt: plan.attempt,
+            retryAt: now + retryBackoff(DISPATCH_BACKOFF, plan.dispatchTry),
+            error: `worker dispatch deferred: ${error.message}`,
+            try: plan.dispatchTry,
+          },
+          threadId: plan.item.threadId,
+          causationId: plan.item.causingEventId,
+          origin: { type: 'system' },
+        })
       },
       onSuccess: () => dispatched,
     }),

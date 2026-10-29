@@ -144,11 +144,13 @@ export interface EffectWorker {
   cancel?(task: EffectWorkerTask): void | Promise<void>
   /**
    * What a rejected `dispatch` means. With `'unacknowledged'` (the default) the task may still have
-   * arrived, so the attempt waits for its schedule-to-start timeout or an operator. With
-   * `'acknowledged'` a rejection means the transport refused it, so the attempt fails under the
-   * retry policy. A transport can still lose an accepted message, so every effect such a worker
-   * claims must set `retry.scheduleToStartTimeoutMs`, and either `startToCloseTimeoutMs` or
-   * `heartbeatTimeoutMs` so a lost terminal callback cannot leave the attempt running forever.
+   * arrived, so the attempt enters `dispatch_wait` and the host relays the same attempt later
+   * (outbox); workers must treat `(runId, effectId, attempt)` as idempotent. Exhausted relays park
+   * as ambiguous for an operator. With `'acknowledged'` a rejection means the transport refused it,
+   * so the attempt fails under the retry policy. A transport can still lose an accepted message, so
+   * every effect such a worker claims must set `retry.scheduleToStartTimeoutMs`, and either
+   * `startToCloseTimeoutMs` or `heartbeatTimeoutMs` so a lost terminal callback cannot leave the
+   * attempt running forever.
    */
   readonly dispatchSemantics?: 'unacknowledged' | 'acknowledged'
 }

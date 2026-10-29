@@ -167,6 +167,17 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     attempt: Schema.Finite,
     error: Schema.String,
   }),
+  /**
+   * Unacknowledged worker.dispatch rejected. The attempt enters `dispatch_wait` (same attempt,
+   * outbox backoff) until the host relays again or parks as ambiguous.
+   */
+  'effect.dispatch.deferred': Schema.Struct({
+    effectId: Schema.String,
+    attempt: Schema.Finite,
+    retryAt: Schema.Finite,
+    error: Schema.String,
+    try: Schema.Finite,
+  }),
   'effect.retry.scheduled': Schema.Struct({
     effectId: Schema.String,
     attempt: Schema.Finite,
@@ -215,6 +226,7 @@ export const PROTOCOL_TYPES = [
   'runtime.effect.completed',
   'runtime.effect.timed_out',
   'runtime.effect.ambiguous',
+  'runtime.effect.dispatch.deferred',
   'runtime.effect.retry.scheduled',
   'runtime.snapshot.taken',
   'runtime.signal.received',

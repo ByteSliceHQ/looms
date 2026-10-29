@@ -602,7 +602,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               if (
                 execution.status !== 'ambiguous' &&
                 execution.status !== 'timed_out' &&
-                execution.status !== 'cancel_requested'
+                execution.status !== 'cancel_requested' &&
+                execution.status !== 'dispatch_wait'
               ) {
                 return yield* new RuntimeExecutionError(
                   `Effect "${effectId}" cannot be retried from status "${execution.status}"`,

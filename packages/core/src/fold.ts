@@ -323,6 +323,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             lastHeartbeatAt: null,
             heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: null,
+            dispatchTry: 0,
           },
         },
       }
@@ -386,6 +387,44 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
                 : null,
             heartbeatDetails: nextHeartbeatDetails(state, effectId, event, payload),
             lastError: readString(payload, 'error') ?? null,
+            dispatchTry: sameAttempt ? previous.dispatchTry : 0,
+          },
+        },
+      }
+    }
+
+    case 'runtime.effect.dispatch.deferred': {
+      const effectId = readString(payload, 'effectId')
+      const attempt = payload.attempt
+      const retryAt = payload.retryAt
+      const dispatchTry = payload.try
+
+      if (
+        !effectId ||
+        !Predicate.isNumber(attempt) ||
+        !Predicate.isNumber(retryAt) ||
+        !Predicate.isNumber(dispatchTry)
+      ) {
+        return state
+      }
+
+      const previous = state.effectExecutions[effectId]
+
+      return {
+        ...state,
+        effectExecutions: {
+          ...state.effectExecutions,
+          [effectId]: {
+            effectId,
+            attempt,
+            status: 'dispatch_wait',
+            nextAttemptAt: retryAt,
+            deadlineAt: retryAt,
+            startedAt: null,
+            lastHeartbeatAt: null,
+            heartbeatDetails: previous?.heartbeatDetails ?? null,
+            lastError: readString(payload, 'error') ?? 'worker dispatch deferred',
+            dispatchTry,
           },
         },
       }
@@ -419,6 +458,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
             lastHeartbeatAt: null,
             heartbeatDetails: priorHeartbeatDetails(state, effectId),
             lastError: readString(payload, 'error') ?? 'effect failed',
+            dispatchTry: 0,
           },
         },
       }

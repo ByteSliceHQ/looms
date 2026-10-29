@@ -81,7 +81,7 @@ function planCancellation(input: {
       continue
     }
 
-    if (execution.status === 'retry_wait') {
+    if (execution.status === 'retry_wait' || execution.status === 'dispatch_wait') {
       effectEvents.push(
         createEvent(runId, {
           type: 'runtime.effect.cancelled',
