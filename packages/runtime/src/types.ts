@@ -108,6 +108,12 @@ export interface EffectWorkerTask {
   readonly attempt: number
   readonly type: string
   readonly input: JsonValue
+  /** Thread that requested the effect, so a worker handler can build an {@link EffectContext}. */
+  readonly threadId?: string
+  /** Event that caused the outstanding effect. */
+  readonly causingEventId?: string
+  /** Immutable run labels; safe to put on a durable queue message. */
+  readonly attributes?: RunAttributes
   /** Progress from the previous attempt's last heartbeat, when it reported any. */
   readonly details?: JsonValue
   /** The run's W3C trace context, for parenting the worker's spans. */

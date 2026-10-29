@@ -2,10 +2,12 @@ import { Data, Effect } from 'effect'
 
 import {
   resolveJson,
+  validateInput,
   type BlobStore,
+  type EffectContext,
+  type EffectDefinition,
   type EventInput,
   type JsonValue,
-  type SecretContext,
   type WorkerCallback,
   type WorkerCallbackInput,
   type WorkerCallbackResult,
@@ -29,19 +31,49 @@ export interface QueueTask extends Omit<QueueEffectMessage, 'v' | 'input' | 'inp
   readonly input: JsonValue
 }
 
-export interface QueueTaskContext {
-  /** Aborts once Looms asks the attempt to stop or no longer counts it as running. */
-  readonly signal: AbortSignal
-  /** Report progress. A later attempt receives the last `details` as `task.details`. */
-  heartbeat(details?: JsonValue): Promise<void>
-  /** The run's secret context. Rejects once the attempt is no longer running. */
-  secrets(): Promise<SecretContext>
-}
+/**
+ * Context passed to a queue handler. Matches {@link EffectContext} so the same function can run
+ * locally (via `defineEffect.execute`) or on a worker. `emit` buffers until completion; secrets are
+ * loaded before the handler runs.
+ */
+export type QueueTaskContext = EffectContext
 
 export type QueueTaskHandler = (
   task: QueueTask,
   ctx: QueueTaskContext,
 ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>
+
+type WorkerHandlerEntry<TInput> = readonly [
+  EffectDefinition<TInput>,
+  (
+    input: TInput,
+    ctx: EffectContext,
+  ) => Promise<ReadonlyArray<EventInput>> | ReadonlyArray<EventInput>,
+]
+
+/**
+ * Build a `handlers` map from effect definitions. Input is validated with each definition's schema
+ * before the typed handler runs, matching local `defineEffect` execute.
+ */
+export function workerHandlers(
+  entries: ReadonlyArray<WorkerHandlerEntry<any>>,
+): Readonly<Record<string, QueueTaskHandler>> {
+  const handlers: { [type: string]: QueueTaskHandler } = {}
+
+  for (const [definition, handler] of entries) {
+    handlers[definition.type] = async (task, ctx) => {
+      const input = definition.input
+        ? await validateInput(definition.input, task.input)
+        : task.input
+
+      // SAFETY: validateInput returns InferSchemaOutput for the definition's schema.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      return handler(input as never, ctx)
+    }
+  }
+
+  return handlers
+}
 
 /** Throw from a handler to control how Looms treats the failed attempt. */
 export class QueueTaskError extends Data.TaggedError('QueueTaskError')<{
@@ -147,55 +179,74 @@ function runAttempt(
     return send(4)
   }
 
-  const ctx: QueueTaskContext = {
-    signal: controller.signal,
-    heartbeat: (details) =>
-      Effect.runPromise(
-        callback(() =>
-          options.callbacks.workerCallback(
-            task.runId,
-            details === undefined
-              ? { ...attempt, kind: 'heartbeat' }
-              : { ...attempt, kind: 'heartbeat', details },
-          ),
-        ).pipe(
-          Effect.map((result) => {
-            if (result.status !== 'accepted' || result.cancelRequested) {
-              controller.abort()
-            }
-          }),
-        ),
-      ),
-    secrets: () =>
-      Effect.runPromise(
-        callback(() => options.callbacks.workerSecrets(task.runId, attempt)).pipe(
-          Effect.flatMap((result) => {
-            if (result.status === 'accepted') {
-              return Effect.succeed(result.secrets)
-            }
+  const emitted: EventInput[] = []
 
-            controller.abort()
+  const loadSecrets = () =>
+    callback(() => options.callbacks.workerSecrets(task.runId, attempt)).pipe(
+      Effect.flatMap((result) => {
+        if (result.status === 'accepted') {
+          return Effect.succeed(result.secrets)
+        }
 
-            return Effect.fail(new CallbackError({ message: `the attempt is ${result.status}` }))
-          }),
-        ),
-      ),
-  }
+        controller.abort()
+
+        return Effect.fail(new CallbackError({ message: `the attempt is ${result.status}` }))
+      }),
+    )
 
   return taskInput(task, options.blobs).pipe(
     Effect.flatMap((input) =>
-      Effect.tryPromise({
-        try: () => Promise.resolve(handler({ ...taskFields(task), input }, ctx)),
-        catch: (cause) =>
-          cause instanceof QueueTaskError
-            ? cause
-            : new QueueTaskError({
-                message: cause instanceof Error ? cause.message : String(cause),
-              }),
-      }),
+      loadSecrets().pipe(
+        Effect.mapError(
+          (error) => new QueueTaskError({ message: error.message, nonRetryable: true }),
+        ),
+        Effect.flatMap((secrets) => {
+          const ctx: QueueTaskContext = {
+            effectId: task.effectId,
+            runId: task.runId,
+            threadId: task.threadId ?? '',
+            causingEventId: task.causingEventId ?? '',
+            signal: controller.signal,
+            attributes: task.attributes ?? {},
+            secrets,
+            trace: task.trace ?? null,
+            heartbeat: (details) =>
+              Effect.runPromise(
+                callback(() =>
+                  options.callbacks.workerCallback(
+                    task.runId,
+                    details === undefined
+                      ? { ...attempt, kind: 'heartbeat' }
+                      : { ...attempt, kind: 'heartbeat', details },
+                  ),
+                ).pipe(
+                  Effect.map((result) => {
+                    if (result.status !== 'accepted' || result.cancelRequested) {
+                      controller.abort()
+                    }
+                  }),
+                ),
+              ),
+            emit: async (event) => {
+              emitted.push(event)
+            },
+          }
+
+          return Effect.tryPromise({
+            try: () => Promise.resolve(handler({ ...taskFields(task), input }, ctx)),
+            catch: (cause) =>
+              cause instanceof QueueTaskError
+                ? cause
+                : new QueueTaskError({
+                    message: cause instanceof Error ? cause.message : String(cause),
+                  }),
+          })
+        }),
+      ),
     ),
     Effect.matchEffect({
-      onSuccess: (events) => report({ ...attempt, kind: 'complete', events }),
+      onSuccess: (events) =>
+        report({ ...attempt, kind: 'complete', events: [...emitted, ...events] }),
       onFailure: (error) =>
         report(
           controller.signal.aborted

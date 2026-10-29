@@ -64,7 +64,11 @@ import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
 import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
 import { createWorkerCallbacks } from './worker-callbacks'
-import { assertWorkerDeadlines } from './worker-effect-dispatch'
+import {
+  assertWorkerClaimsExplicit,
+  assertWorkerConfigured,
+  assertWorkerDeadlines,
+} from './worker-effect-dispatch'
 
 export type { RegisteredDefinition } from '@looms/core'
 export type { WakeScheduler } from './wake-scheduler'
@@ -201,6 +205,8 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
   const registry = composeModules(options.modules)
 
+  assertWorkerConfigured(registry, options.worker)
+  assertWorkerClaimsExplicit(registry, options.worker)
   assertWorkerDeadlines(registry, options.worker)
 
   const staticResolver = staticDefinitionResolver(

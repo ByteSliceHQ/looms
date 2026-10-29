@@ -8,6 +8,7 @@ export {
   processQueueMessage,
   queueConsumer,
   QueueTaskError,
+  workerHandlers,
   type QueueBatchLike,
   type QueueConsumerOptions,
   type QueueTask,

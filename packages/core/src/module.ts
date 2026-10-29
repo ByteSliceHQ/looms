@@ -1,4 +1,4 @@
-import type { Context, Effect, Layer } from 'effect'
+import { Effect, type Context, type Layer } from 'effect'
 
 import type { EventCatalog } from './catalog'
 import type { DefinitionResolver } from './definition-resolver'
@@ -10,8 +10,10 @@ import {
 } from './effects'
 import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
+import type { RunAttributes, SecretContext } from './run-context'
 import type { InferDefinedSchema, SchemaInput } from './schema'
 import type { ThreadDefinition } from './thread'
+import type { TraceContext } from './trace'
 import type { JsonValue } from './types'
 
 export { DEFAULT_DEFINITION_VERSION, definitionKey } from './definition-version'
@@ -35,7 +37,8 @@ export type OnEffectNext = () => Effect.Effect<ReadonlyArray<EventInput>, Error>
  * decoded input type and must call `next()` to continue (or `failEffect` to reject the attempt).
  *
  * Middleware wraps local (in-process) effect dispatch only. Effects routed to an `EffectWorker`
- * never see it.
+ * never see it. Prefer {@link EffectAdmission} / {@link onAdmit} for gates that must apply on
+ * both local and worker paths (credits, feature flags, tenant checks).
  */
 export function onEffect<TInput>(
   definition: EffectDefinition<TInput>,
@@ -53,6 +56,48 @@ export function onEffect<TInput>(
     // SAFETY: matched definition's phantom TInput is the schema type handlers receive after validation.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return handler(effect.input as TInput, ctx, () => next(effect, ctx))
+  }
+}
+
+/**
+ * Identity of an effect attempt before it runs locally or is dispatched to a worker.
+ * Admission hooks see this on both paths; they cannot call `emit` or `heartbeat`.
+ */
+export interface EffectAdmissionContext {
+  readonly effectId: string
+  readonly runId: string
+  readonly threadId: string
+  readonly causingEventId: string
+  readonly attributes: RunAttributes
+  readonly secrets: SecretContext
+  readonly trace: TraceContext | null
+}
+
+/**
+ * Runs in the host before a local attempt starts and before a worker attempt is queued.
+ * Fail with `failEffect` to reject the attempt under the retry policy on either path.
+ */
+export type EffectAdmission = (
+  effect: RuntimeEffect,
+  ctx: EffectAdmissionContext,
+) => Effect.Effect<void, Error>
+
+/**
+ * Admission that runs only for one effect definition. Prefer this over middleware when the gate
+ * must apply to worker-routed effects as well as local ones.
+ */
+export function onAdmit<TInput>(
+  definition: EffectDefinition<TInput>,
+  handler: (input: TInput, ctx: EffectAdmissionContext) => Effect.Effect<void, Error>,
+): EffectAdmission {
+  return (effect, ctx) => {
+    if (isPrimitiveEffect(effect) || effect.type !== definition.type) {
+      return Effect.void
+    }
+
+    // SAFETY: matched definition's phantom TInput is the schema type handlers receive after validation.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return handler(effect.input as TInput, ctx)
   }
 }
 
@@ -124,6 +169,11 @@ export interface RuntimeModule<
   readonly definitions?: readonly DefinitionRef[]
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
+  /**
+   * Gates that run in the host before every local attempt and before every worker dispatch.
+   * Prefer this over middleware for credits, flags, and tenant checks that must cover worker effects.
+   */
+  readonly admission?: readonly EffectAdmission[]
   readonly interruptsOnSignal?: SignalInterruptRule
   /** Host-side services this module's effect handlers need (an LLM, a definition lookup, a DB pool). */
   readonly services?: () => Layer.Layer<TServices>

@@ -34,6 +34,12 @@ const seen = defineEffect({
   ],
 })
 
+const seenOnWorker = defineEffect({
+  type: 'context.seen',
+  execution: 'worker',
+  execute: seen.execute,
+})
+
 const contextThread = defineThread({
   kind: 'context',
   initialState: () => ({ done: false }),
@@ -86,6 +92,21 @@ const contextModule = defineRuntimeModule({
   ],
 })
 
+const workerContextThread = defineThread({
+  kind: 'context',
+  initialState: () => ({ done: false }),
+  step: (state, event) => (event.type === 'context.observed' ? { ...state, done: true } : state),
+  effects: (state) => (state.done ? [complete({ ok: true })] : [invoke(seenOnWorker, {}, 'see')]),
+})
+
+const workerContextModule = defineRuntimeModule({
+  namespace: 'context',
+  protocolVersion: '1.0.0',
+  threads: { context: workerContextThread },
+  effects: { seen: seenOnWorker },
+  definitions: [{ kind: 'context', name: 'context', version: 'v1' }],
+})
+
 function containsSecret(encoded: string): boolean {
   return encoded.includes(SECRET)
 }
@@ -95,7 +116,7 @@ describe('run attributes and secret context', () => {
     const dispatched: Array<{ secrets?: { token?: string } }> = []
 
     const looms = createLooms({
-      modules: [contextModule],
+      modules: [workerContextModule],
       worker: { handles: ['context.seen'], dispatch: (task) => dispatched.push(task) },
     })
 
@@ -137,7 +158,7 @@ describe('run attributes and secret context', () => {
 
   test('a worker reads the secret context only while its attempt is running', async () => {
     const looms = createLooms({
-      modules: [contextModule],
+      modules: [workerContextModule],
       worker: { handles: ['context.seen'], dispatch: () => undefined },
       authorize: bearerAuth({ worker: 'worker-token' }),
     })

@@ -50,7 +50,12 @@ export function planAttemptFailure(input: {
   const { runId, item, attempt, error, retry } = input
 
   if (input.nonRetryable || !retry || attempt >= retry.maxAttempts) {
-    return { event: createEffectFailedEvent(runId, item, error), retrying: false }
+    return {
+      event: createEffectFailedEvent(runId, item, error, {
+        nonRetryable: input.nonRetryable === true,
+      }),
+      retrying: false,
+    }
   }
 
   return {

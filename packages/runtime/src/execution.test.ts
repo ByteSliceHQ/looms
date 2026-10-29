@@ -10,6 +10,7 @@ import {
   failEffect,
   invoke,
   makeMemoryEventStore,
+  onAdmit,
   onEffect,
   wait,
   type EventStore,
@@ -665,6 +666,104 @@ describe('createLooms runtime', () => {
     })
 
     expect(seen).toEqual(['llm:1'])
+  })
+
+  test('admission failEffect rejects a local attempt under the retry policy', async () => {
+    const bot = defineAgent({
+      name: 'admitted',
+      instructions: 'echo',
+      runTurn: () => ({
+        message: { role: 'assistant', content: 'should not run' },
+        done: true,
+      }),
+    })
+
+    const looms = createLooms({
+      modules: [
+        agent({ definitions: [bot] }),
+        defineRuntimeModule({
+          namespace: 'billing',
+          protocolVersion: '1.0.0',
+          admission: [
+            onAdmit(callLlmEffect, (_input, _ctx) =>
+              failEffect({ error: 'credits exhausted', nonRetryable: true }),
+            ),
+          ],
+        }),
+      ],
+    })
+
+    const { runId } = await looms.start(bot, 'hi', { attributes: { orgId: 'org_1' } })
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.run.completed')
+    })
+
+    const events = await looms.getEvents(runId)
+    const failed = events.find((e) => e.type === 'runtime.effect.failed')
+
+    expect(failed?.payload).toMatchObject({
+      error: 'credits exhausted',
+      nonRetryable: true,
+    })
+    expect(events.some((e) => e.type === 'agent.message')).toBe(false)
+  })
+
+  test('admission rejects a worker dispatch before it is queued', async () => {
+    const dispatched: string[] = []
+    const work = defineEffect({
+      type: 'gate.work',
+      execution: 'worker',
+      retry: { maxAttempts: 1, scheduleToStartTimeoutMs: 60_000, startToCloseTimeoutMs: 60_000 },
+    })
+
+    const looms = createLooms({
+      modules: [
+        defineRuntimeModule({
+          namespace: 'gate',
+          protocolVersion: '1.0.0',
+          effects: { work },
+          admission: [
+            onAdmit(work, (_input, _ctx) =>
+              failEffect({ error: 'flag off', nonRetryable: true }),
+            ),
+          ],
+          threads: {
+            gate: defineThread({
+              kind: 'gate',
+              initialState: () => ({ done: false }),
+              step: (state) => state,
+              effects: () => [invoke(work, {}, 'work')],
+            }),
+          },
+          definitions: [{ kind: 'gate', name: 'gate', version: 'v1' }],
+        }),
+      ],
+      worker: {
+        handles: ['gate.work'],
+        dispatch: (task) => {
+          dispatched.push(task.type)
+        },
+      },
+    })
+
+    const { runId } = await looms.start({ kind: 'gate', name: 'gate', version: 'v1' }, null)
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.effect.failed')
+    })
+
+    const events = await looms.getEvents(runId)
+
+    expect(dispatched).toEqual([])
+    expect(events.some((e) => e.type === 'runtime.effect.queued')).toBe(false)
+    expect(events.find((e) => e.type === 'runtime.effect.failed')?.payload).toMatchObject({
+      error: 'flag off',
+      nonRetryable: true,
+    })
+    await looms.stop()
   })
 
   test('retries transient effect failures according to retry policy', async () => {

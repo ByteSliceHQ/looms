@@ -2,9 +2,11 @@ import { Option, Schema } from 'effect'
 
 import {
   isBlobRef,
+  RunAttributesSchema,
   TraceContextSchema,
   type BlobRef,
   type JsonValue,
+  type RunAttributes,
   type TraceContext,
 } from '@looms/core'
 import type { EffectWorkerDeadlines } from '@looms/runtime'
@@ -17,6 +19,9 @@ const QueueEffectMessageSchema = Schema.Struct({
   type: Schema.String,
   input: Schema.optional(Schema.Json),
   inputRef: Schema.optional(Schema.Json),
+  threadId: Schema.optional(Schema.String),
+  causingEventId: Schema.optional(Schema.String),
+  attributes: Schema.optional(RunAttributesSchema),
   details: Schema.optional(Schema.Json),
   trace: Schema.optional(TraceContextSchema),
   deadlines: Schema.optional(
@@ -43,6 +48,9 @@ export interface QueueEffectMessage {
   readonly input?: JsonValue
   /** Set instead of `input` when the input would push the message over the queue's size limit. */
   readonly inputRef?: BlobRef
+  readonly threadId?: string
+  readonly causingEventId?: string
+  readonly attributes?: RunAttributes
   /** Progress from the previous attempt's last heartbeat. */
   readonly details?: JsonValue
   readonly trace?: TraceContext

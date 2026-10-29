@@ -172,36 +172,39 @@ Conventions that keep modules composable:
 - Put each module slot in its own file once the module is more than a sketch
 - Pass `input` or `shape` (a Standard Schema or Effect Schema) to `define*` and let types infer — do not pass generics
 
-## Effect middleware
+## Effect admission and middleware
 
-Modules may declare `middleware`: functions that wrap **local** (in-process) effect dispatch. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. Effects routed to an `EffectWorker` (Cloudflare Queues, HTTP workers, and similar) never see middleware — put gates that must apply there on the worker side, or keep the effect local.
-
-Use middleware for host concerns that are not part of a domain definition: audit logs, tenant credit checks, feature flags. Prefer `onEffect` when you only care about one effect type, and `failEffect` when the attempt should fail under the retry policy:
+Modules may declare **`admission`**: hooks that run in the host **before every local attempt and before every worker dispatch**. Use them for gates that must cover both paths — tenant credit checks, feature flags, allowlists. Prefer `onAdmit` for one effect type, and `failEffect` to reject the attempt under the retry policy:
 
 ```ts
+import { Effect } from 'effect'
 import { callLlmEffect } from '@swirls/looms/agent'
-import { defineRuntimeModule, failEffect, onEffect } from '@swirls/looms/core'
+import { defineRuntimeModule, failEffect, onAdmit } from '@swirls/looms/core'
 
 const billing = defineRuntimeModule({
   namespace: 'billing',
   protocolVersion: '1.0.0',
-  middleware: [
-    onEffect(callLlmEffect, (_input, ctx, next) => {
+  admission: [
+    onAdmit(callLlmEffect, (_input, ctx) => {
       if (!hasCredits(ctx.attributes.orgId)) {
         return failEffect({ error: 'credits exhausted', nonRetryable: true })
       }
 
-      return next()
+      return Effect.void
     }),
   ],
 })
 ```
 
-`failEffect` from middleware becomes `runtime.effect.failed` the same way a handler failure does. Set `nonRetryable: true` to end the attempt even when a retry policy remains, or `retryAfterMs` to delay the next try.
+`failEffect` from admission becomes `runtime.effect.failed` the same way a handler failure does. A rejected worker admission never queues or dispatches the attempt.
+
+Modules may also declare **`middleware`**: functions that wrap **local** (in-process) effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. Effects routed to an `EffectWorker` never see middleware — use `admission` for shared gates, or put execution-time wraps on the worker side (`workerHandlers` / consumer code).
+
+Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes). Prefer `onEffect` when you only care about one effect type.
 
 For usage and billing totals, fold `agent.turn.usage` or use the agent module's `tokenUsage` projection.
 
-Install middleware by composing a module that declares it — a module may ship middleware alone, with no threads or effects of its own.
+Install admission or middleware by composing a module that declares them — a module may ship either alone, with no threads or effects of its own.
 
 ## Testing
 

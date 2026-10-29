@@ -100,7 +100,7 @@ describe('durable external effect workers', () => {
     await looms.stop()
   })
 
-  test('runs a local handler in process unless the worker claims its type', async () => {
+  test('runs a local handler in process when the worker does not claim its type', async () => {
     const dispatched: EffectWorkerTask[] = []
 
     const inProcess = createLooms({
@@ -111,26 +111,21 @@ describe('durable external effect workers', () => {
     expect((await inProcess.start(workerDefinition, {})).state.status).toBe('completed')
     expect(dispatched).toHaveLength(0)
     await inProcess.stop()
-
-    const claimed = createLooms({
-      modules: [workerModule({ maxAttempts: 1 }, local)],
-      worker: { handles: ['worker.do'], dispatch: (task) => dispatched.push(task) },
-    })
-
-    expect((await claimed.start(workerDefinition, {})).state.status).toBe('running')
-    expect(dispatched.map((task) => task.type)).toEqual(['worker.do'])
-    await claimed.stop()
   })
 
-  test('marks a handler-less effect ambiguous when no worker is configured', async () => {
-    const looms = createLooms({ modules: [workerModule({ maxAttempts: 1 })] })
+  test('a worker claim of a local handler requires execution: worker', () => {
+    expect(() =>
+      createRuntime({
+        modules: [workerModule({ maxAttempts: 1 }, local)],
+        worker: { handles: ['worker.do'], dispatch: () => undefined },
+      }),
+    ).toThrow("execution: 'worker'")
+  })
 
-    const started = await looms.start(workerDefinition, {})
-    const events = await looms.getEvents(started.runId)
-
-    expect(events.some((event) => event.type === 'runtime.effect.ambiguous')).toBe(true)
-    expect(events.some((event) => event.type === 'runtime.effect.failed')).toBe(false)
-    await looms.stop()
+  test('fails to create a runtime when handler-less effects have no worker', () => {
+    expect(() => createRuntime({ modules: [workerModule({ maxAttempts: 1 })] })).toThrow(
+      'Effects require an EffectWorker',
+    )
   })
 
   test('recovers a rejected dispatch through the schedule-to-start timeout', async () => {
