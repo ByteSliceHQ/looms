@@ -54,7 +54,12 @@ try {
         snapshotEvery defaults to 200 durable events; zero disables mid-wake snapshots, while
         parking still snapshots. runCacheSize defaults to zero. maxWakeIterations defaults to 100
         and bounds a wake cycle, not application cost. The default scheduler uses process-local
-        timers. trimAfterSnapshot is opt-in and can remove historical replay data.
+        timers. trimAfterSnapshot is opt-in and can remove historical replay data. Events over 1 MiB
+        and snapshots over 8 MiB need a <code>blobStore</code> (
+        <Link to="/docs/hosting-and-storage" hash="large-payloads-and-blob-stores">
+          large payloads and blob stores
+        </Link>
+        ).
       </p>
       <h2 id="methods">
         Embed methods and return types
@@ -77,8 +82,12 @@ try {
       </p>
       <p>
         Use a stable runId and idempotencyKey when retrying creation of the same logical run.
-        Generating a new runId on every retry creates a different run. Register all definitions
-        before starting or spawning them.
+        Generating a new runId on every retry creates a different run. Definitions come from module
+        registration or a <code>definitionResolver</code> (
+        <Link to="/docs/versioning" hash="load-definitions-dynamically">
+          load definitions dynamically
+        </Link>
+        ).
       </p>
       <h3 id="signal">
         signal, wake, and cancel

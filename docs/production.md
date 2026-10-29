@@ -329,7 +329,11 @@ Pass `definitionResolver` to `createLooms`, `createRuntime`, an actor host, or
 `LoomsDurableObjectConfig` when a definition is not in the module's static list.
 `resolve(kind, name, version)` returns the full definition object, or `undefined`
 when that version does not exist. Registered module definitions are checked
-first. Results, including misses, stay in an LRU cache.
+first. Results, including misses, stay in an LRU cache. A fetch failure is
+`DefinitionResolveError` and is not cached. `staticDefinitionResolver`,
+`chainDefinitionResolvers`, and `cachedDefinitionResolver` are in
+`@swirls/looms/core`; the host already chains the static list and an LRU in
+front of your option.
 
 Start, spawn, and launch resolve before they write `runtime.thread.started`.
 A miss fails the start with `UnknownDefinitionError` and writes no events. The
@@ -337,6 +341,8 @@ accepted version is pinned on `runtime.run.started` and `runtime.thread.started`
 Before a wake replays a log, those pinned identities are resolved again so fold
 can read them synchronously. An unknown workflow version fails that thread.
 Evaluator definitions include `version`, which defaults to `v1`.
+`GET /definitions` lists module-registered definitions only; it does not
+enumerate a dynamic catalog.
 
 ## Production configuration
 

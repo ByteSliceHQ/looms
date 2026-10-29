@@ -159,9 +159,15 @@ function Page() {
       </h2>
       <p>
         Choose a backup strategy for the host's SQLite and snapshot data and practice restoration.
-        Set retention based on recovery, audit, and privacy requirements. Replication to a lake is
-        not automatically a verified backup; confirm completeness and a restore procedure. Trimming
-        old events changes the history available to replay and new projections.
+        Include any{' '}
+        <Link to="/docs/hosting-and-storage" hash="large-payloads-and-blob-stores">
+          blob store
+        </Link>{' '}
+        (filesystem directory or R2 bucket) in the same drill; event rows may hold references rather
+        than the full payload. Set retention based on recovery, audit, and privacy requirements.
+        Replication to a lake is not automatically a verified backup; confirm completeness and a
+        restore procedure. Trimming old events changes the history available to replay and new
+        projections, and drops unreferenced blob bodies.
       </p>
       <h2 id="debugger">
         Debugger
