@@ -16,6 +16,7 @@ import {
   hasEntries,
   type AnyRuntimeModule,
   type AppendableEvent,
+  type EffectFailedPayload,
   type EventCatalog,
   type EventEnvelope,
   type EventInput,
@@ -441,7 +442,7 @@ export function createEffectFailedEvent(
   error: string,
   options: { readonly nonRetryable?: boolean } = {},
 ): EventEnvelope {
-  const payload: { effectId: string; error: string; nonRetryable?: boolean } = {
+  const payload: Types.Mutable<EffectFailedPayload> = {
     effectId: item.effectId,
     error,
   }

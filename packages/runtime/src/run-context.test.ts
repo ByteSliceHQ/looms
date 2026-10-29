@@ -11,7 +11,9 @@ import {
   hasEntries,
   invoke,
   makeMemoryEventStore,
+  type EffectContext,
   type EventStore,
+  type JsonValue,
 } from '@looms/core'
 
 import { SecretContextConflictError, StartRunConflictError } from './errors'
@@ -20,24 +22,23 @@ import { authDenied, authAllowed, bearerAuth } from './server'
 
 const SECRET = 'super-secret-token'
 
-const seen = defineEffect({
-  type: 'context.seen',
-  execute: (_input, ctx) => [
-    {
-      type: 'context.observed',
-      payload: {
-        tenant: ctx.attributes.tenant ?? '',
-        hasSecret: ctx.secrets.token === SECRET,
-      },
-      threadId: ctx.threadId,
+const observeContext = (_input: JsonValue, ctx: EffectContext) => [
+  {
+    type: 'context.observed',
+    payload: {
+      tenant: ctx.attributes.tenant ?? '',
+      hasSecret: ctx.secrets.token === SECRET,
     },
-  ],
-})
+    threadId: ctx.threadId,
+  },
+]
+
+const seen = defineEffect({ type: 'context.seen', execute: observeContext })
 
 const seenOnWorker = defineEffect({
   type: 'context.seen',
   execution: 'worker',
-  execute: seen.execute,
+  execute: observeContext,
 })
 
 const contextThread = defineThread({

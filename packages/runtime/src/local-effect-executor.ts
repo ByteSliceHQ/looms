@@ -253,7 +253,7 @@ export function executeLocalEffects(
               secrets: input.context.secrets,
               trace: input.context.trace,
               signal: controller.signal,
-              heartbeat: async () => undefined,
+              heartbeat: () => Promise.resolve(),
               emit: appendLive,
             },
           ).pipe(

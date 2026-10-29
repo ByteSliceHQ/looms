@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 
 import { createLoomsClient } from '@looms/client'
 import {
@@ -455,6 +455,7 @@ describe('workerHandlers', () => {
     ])
 
     const { looms, queue, callbacks } = harness()
+
     const started = await looms.start(
       definition,
       { cmd: 'echo' },
@@ -476,6 +477,7 @@ describe('workerHandlers', () => {
       tenant: 'acme',
       hasSecret: true,
     })
+
     expect(sentHasEffectId(finished?.payload)).toBe(true)
 
     await looms.stop()
@@ -483,13 +485,13 @@ describe('workerHandlers', () => {
 })
 
 function sentHasEffectId(payload: JsonValue | undefined): boolean {
-  return (
-    payload !== null &&
-    typeof payload === 'object' &&
-    !Array.isArray(payload) &&
-    typeof payload.effectId === 'string' &&
-    payload.effectId.length > 0
-  )
+  if (payload === null || !Predicate.isReadonlyObject(payload) || Array.isArray(payload)) {
+    return false
+  }
+
+  const effectId = payload.effectId
+
+  return Predicate.isString(effectId) && effectId.length > 0
 }
 
 describe('cloudflareQueuePullSource', () => {

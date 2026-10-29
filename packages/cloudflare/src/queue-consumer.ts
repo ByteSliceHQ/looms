@@ -58,20 +58,19 @@ export function workerHandlers<
     ? WorkerHandlerBinding<TInput>
     : Entries[K]
 }): Readonly<Record<string, QueueTaskHandler>> {
-  const handlers: { [type: string]: QueueTaskHandler } = {}
+  const handlers: Record<string, QueueTaskHandler> = Object.create(null)
 
   for (const [definition, handler] of entries) {
-    handlers[definition.type] = async (task, ctx) => {
+    handlers[definition.type] = (task, ctx) => {
       if (definition.input) {
-        const input = await validateInput(definition.input, task.input)
-        // SAFETY: validateInput returns InferSchemaOutput for the definition's schema; TInput is that type.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        return handler(input as never, ctx)
+        return validateInput(definition.input, task.input).then((input) => {
+          // SAFETY: validateInput returns InferSchemaOutput for the definition's schema; TInput is that type.
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          return handler(input as never, ctx)
+        })
       }
 
-      // SAFETY: definitions without an input schema take JsonValue, matching EffectDefinition's default TInput.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      return handler(task.input as never, ctx)
+      return Promise.resolve(handler(task.input, ctx))
     }
   }
 
@@ -230,8 +229,9 @@ function runAttempt(
                   }),
                 ),
               ),
-            emit: async (event) => {
+            emit: (event) => {
               emitted.push(event)
+              return Promise.resolve()
             },
           }
 
