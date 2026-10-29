@@ -347,6 +347,7 @@ export type EffectHandlerResult<
 > = ReadonlyArray<E> | Promise<ReadonlyArray<E>> | Effect.Effect<ReadonlyArray<E>, HandlerError, R>
 
 declare const effectInputType: unique symbol
+declare const effectEventType: unique symbol
 
 /** Where an effect attempt runs. Declared with `placement` on `m.effect` / {@link defineEffect}. */
 export type EffectPlacement = 'local' | 'worker'
@@ -375,7 +376,6 @@ export interface LocalEffectDefinition<
   E extends EventInput = EventInput,
 > extends EffectDefinitionFields<TInput> {
   readonly placement: 'local'
-  readonly hasHandler: true
   execute(
     input: JsonValue,
     ctx: LocalEffectContext,
@@ -384,29 +384,25 @@ export interface LocalEffectDefinition<
 
 /**
  * An effect that only an external effect worker completes. Declare it with `placement: 'worker'`
- * and implement the handler via `workerHandlers` (or an equivalent consumer).
+ * and implement the handler via `workerHandlers` (or an equivalent consumer). The host never runs it.
  */
 export interface WorkerEffectDefinition<
   TInput = JsonValue,
-  R = Context.Service.Any,
   E extends EventInput = EventInput,
 > extends EffectDefinitionFields<TInput> {
   readonly placement: 'worker'
-  readonly hasHandler: false
-  /**
-   * Never invoked by the host for worker placement. Kept so catalogs stay uniform; always yields `[]`.
-   */
-  execute(
-    input: JsonValue,
-    ctx: LocalEffectContext,
-  ): Effect.Effect<ReadonlyArray<E>, InvalidInputError | EffectHandlerError, R>
+  readonly [effectEventType]?: E
 }
 
+/**
+ * Either placement's definition. `R` is the host services a local handler needs; worker
+ * definitions never run on the host, so they contribute none.
+ */
 export type EffectDefinition<
   TInput = JsonValue,
   R = Context.Service.Any,
   E extends EventInput = EventInput,
-> = LocalEffectDefinition<TInput, R, E> | WorkerEffectDefinition<TInput, R, E>
+> = LocalEffectDefinition<TInput, R, E> | WorkerEffectDefinition<TInput, E>
 
 export function isLocalEffectDefinition(
   definition: EffectDefinition,
@@ -449,17 +445,6 @@ function invokeHandler<R, E extends EventInput, HandlerError>(
   }
 }
 
-function validateThen<R, E extends EventInput>(
-  schema: SchemaInput | undefined,
-  raw: JsonValue,
-  run: (input: JsonValue) => Effect.Effect<ReadonlyArray<E>, EffectHandlerError, R>,
-): Effect.Effect<ReadonlyArray<E>, InvalidInputError | EffectHandlerError, R> {
-  return Effect.gen(function* () {
-    const input = schema ? yield* validateInputEffect(schema, raw) : raw
-    return yield* run(input)
-  })
-}
-
 /**
  * `execute` is required for `placement: 'local'` and rejected for `placement: 'worker'`. A worker
  * handler lives with the worker (`workerHandlers`), so the host bundle never imports its
@@ -477,9 +462,7 @@ export type PlacedEffectDefinition<
   TInput,
   R,
   E extends EventInput,
-> = P extends 'local'
-  ? LocalEffectDefinition<TInput, R, E>
-  : WorkerEffectDefinition<TInput, never, E>
+> = P extends 'local' ? LocalEffectDefinition<TInput, R, E> : WorkerEffectDefinition<TInput, E>
 
 interface EffectDefinitionInput<TPlacement extends EffectPlacement, TSchema> {
   readonly type: string
@@ -511,24 +494,22 @@ function defineLocalEffect<R, E extends EventInput, HandlerError>(
     input: schema,
     retry: def.retry,
     placement: 'local',
-    hasHandler: true,
     deterministic: def.deterministic,
-    execute: (raw, ctx) => validateThen(schema, raw, (input) => invokeHandler(handler, input, ctx)),
+    execute: (raw, ctx) =>
+      Effect.gen(function* () {
+        const input = schema ? yield* validateInputEffect(schema, raw) : raw
+        return yield* invokeHandler(handler, input, ctx)
+      }),
   }
 }
 
 function defineWorkerEffect(def: WorkerEffectInput): WorkerEffectDefinition<any> {
-  const schema = def.input
-  const noOutput: ReadonlyArray<EventInput> = []
-
   return {
     type: def.type,
-    input: schema,
+    input: def.input,
     retry: def.retry,
     placement: 'worker',
-    hasHandler: false,
     deterministic: def.deterministic,
-    execute: (raw, _ctx) => validateThen(schema, raw, () => Effect.succeed(noOutput)),
   }
 }
 

@@ -85,7 +85,7 @@ interface WorkerCallbackRequestBody {
 }
 
 describe('durable external effect workers', () => {
-  test('dispatches a handler-less effect to the worker', async () => {
+  test('dispatches a worker-placed effect to the worker', async () => {
     const dispatched: EffectWorkerTask[] = []
 
     const looms = createLooms({
@@ -121,7 +121,7 @@ describe('durable external effect workers', () => {
     ).toThrow("placement: 'worker'")
   })
 
-  test('fails to create a runtime when handler-less effects have no worker', () => {
+  test('fails to create a runtime when worker-placed effects have no worker', () => {
     expect(() => createRuntime({ modules: [workerModule({ maxAttempts: 1 })] })).toThrow(
       'Effects require an EffectWorker',
     )

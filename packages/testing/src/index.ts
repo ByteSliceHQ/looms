@@ -1,4 +1,4 @@
-import { Effect, Predicate } from 'effect'
+import { Effect } from 'effect'
 
 import {
   composeModules,
@@ -16,36 +16,6 @@ import {
 import { createRuntime, type LoomsRuntime } from '@looms/runtime'
 
 import { assertReplayDeterministicEvents } from './replay-corpus'
-
-type NamedEffect = {
-  readonly type: string
-  readonly hasExecute: boolean
-}
-
-type EffectBag = {
-  readonly [name: string]: {
-    readonly type: string
-  }
-}
-
-function namedEffects(effects: EffectBag): NamedEffect[] {
-  const listed: NamedEffect[] = []
-
-  for (const key of Object.keys(effects)) {
-    const value = effects[key]
-
-    if (!value || !Predicate.isString(value.type)) {
-      continue
-    }
-
-    listed.push({
-      type: value.type,
-      hasExecute: 'execute' in value,
-    })
-  }
-
-  return listed
-}
 
 export interface TestRuntime {
   readonly runtime: LoomsRuntime
@@ -99,15 +69,20 @@ export function moduleConformance(module: AnyRuntimeModule): string[] {
     errors.push(`catalog namespace ${module.events.namespace} !== module ${module.namespace}`)
   }
 
-  if (module.effects) {
-    for (const effect of namedEffects(module.effects)) {
-      if (!effect.type.startsWith(`${module.namespace}.`)) {
-        errors.push(`effect ${effect.type} is not namespaced under ${module.namespace}`)
-      }
+  for (const effect of Object.values(module.effects ?? {})) {
+    const { type, placement } = effect
+    const hasExecute = 'execute' in effect
 
-      if (!effect.hasExecute) {
-        errors.push(`effect ${effect.type} is missing execute`)
-      }
+    if (!type.startsWith(`${module.namespace}.`)) {
+      errors.push(`effect ${type} is not namespaced under ${module.namespace}`)
+    }
+
+    if (placement === 'local' && !hasExecute) {
+      errors.push(`local effect ${type} is missing execute`)
+    }
+
+    if (placement === 'worker' && hasExecute) {
+      errors.push(`worker effect ${type} must not define execute`)
     }
   }
 

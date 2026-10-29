@@ -321,7 +321,7 @@ describe('worker effect routing', () => {
 
   const worker: EffectWorker = { dispatch: () => undefined }
 
-  test('runs handlers locally and sends handler-less effects to the worker', () => {
+  test('runs local effects locally and sends worker-placed effects to the worker', () => {
     expect(route('route.local', worker)).toBe(false)
     expect(route('route.external', worker)).toBe(true)
     expect(route('route.external')).toBe(true)

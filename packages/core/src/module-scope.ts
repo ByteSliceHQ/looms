@@ -16,6 +16,7 @@ import {
   type EffectHandlerResult,
   type EffectPlacement,
   type EmitEffect,
+  type LocalEffectDefinition,
   type PlacedEffectDefinition,
   type PlacementHandler,
   type RetryPolicy,
@@ -69,7 +70,9 @@ export type EffectRequirementsOf<TEffects> = TEffects extends {
 }
   ? Exclude<
       {
-        [K in keyof TEffects]: TEffects[K] extends EffectDefinition<any, infer R, any> ? R : never
+        [K in keyof TEffects]: TEffects[K] extends LocalEffectDefinition<any, infer R, any>
+          ? R
+          : never
       }[keyof TEffects],
       RunLauncherTag
     >

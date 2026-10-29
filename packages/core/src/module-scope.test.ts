@@ -395,10 +395,43 @@ describe('defineModule scope', () => {
       ],
     })
 
-    const built = defineModule(ordersModule, () => ({ effects: { create } }))
+    const fulfil = ordersModule.effect({
+      type: 'orders.fulfil',
+      placement: 'worker',
+      input: Schema.Struct({ orderId: Schema.String }),
+    })
+
+    const built = defineModule(ordersModule, () => ({ effects: { create, fulfil } }))
     const same: typeof create = built.effects.create
+    const sameWorker: typeof fulfil = built.effects.fulfil
 
     expect(same.type).toBe('orders.createSeparate')
+    expect(sameWorker.placement).toBe('worker')
+  })
+
+  test('worker effects need no host services and still respect the catalog', () => {
+    const shippingScope = createModuleScope({
+      namespace: 'shipping',
+      protocolVersion: '1.0.0',
+      events: shippingCatalog,
+    })
+
+    const label = shippingScope.effect({ type: 'shipping.label', placement: 'worker' })
+
+    const shipping = defineModule(shippingScope, () => ({ effects: { label } }))
+
+    expect(shipping.effects.label.placement).toBe('worker')
+
+    const billingScope = createModuleScope({
+      namespace: 'billing',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('billing', { invoiced: payload<{ invoiceId: string }>() }),
+    })
+
+    defineModule(billingScope, () => ({
+      // @ts-expect-error shipping events are not in the billing catalog
+      effects: { label },
+    }))
   })
 
   test('defineModule rejects effects built outside the module catalog', () => {

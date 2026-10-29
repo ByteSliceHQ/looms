@@ -3,6 +3,8 @@ import { Effect, Predicate } from 'effect'
 
 import {
   asJson,
+  EffectFailure,
+  isLocalEffectDefinition,
   isPrimitiveEffect,
   isWaitOnTimer,
   readEffectFailure,
@@ -152,11 +154,24 @@ export function dispatchEffect(
       }
     }
 
-    const handler = registry.effects.get(eff.type)
+    const definition = registry.effects.get(eff.type)
 
-    if (!handler) {
+    if (!definition) {
       return Effect.succeed([
         failedAttempt(effCtx.effectId, currentThreadId, `No handler for ${eff.type}`),
+      ])
+    }
+
+    if (!isLocalEffectDefinition(definition)) {
+      return Effect.succeed([
+        failedAttempt(
+          effCtx.effectId,
+          currentThreadId,
+          new EffectFailure({
+            error: `${eff.type} is worker-placed; the host cannot run it`,
+            nonRetryable: true,
+          }),
+        ),
       ])
     }
 
@@ -165,7 +180,7 @@ export function dispatchEffect(
     const execution: Effect.Effect<ReadonlyArray<EventInput>, Error> = Effect.gen(function* () {
       const serviceContext = yield* services.contextEffect
 
-      return yield* handler
+      return yield* definition
         .execute(input, effCtx)
         .pipe(Effect.provideService(RunLauncherTag, launcher), Effect.provide(serviceContext))
     })

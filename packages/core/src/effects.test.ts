@@ -80,34 +80,31 @@ describe('defineEffect', () => {
     expect(events).toEqual([{ type: 'demo.charged', payload: { amount: 99 } }])
   })
 
-  test('marks definitions with a handler', () => {
-    const effect = defineEffect({ type: 'demo.ping', placement: 'local', execute: () => [] })
-
-    expect(effect.hasHandler).toBe(true)
-    expect(effect.placement).toBe('local')
-  })
-
-  test('declares a handler-less effect that still validates input', async () => {
-    const effect = defineEffect({
-      type: 'demo.transcode',
-      placement: 'worker',
-      input: Schema.Struct({ url: Schema.String }),
-      retry: { maxAttempts: 3 },
-    })
-
-    expect(effect.hasHandler).toBe(false)
-    expect(effect.retry).toEqual({ maxAttempts: 3 })
-
-    const events = await Effect.runPromise(effect.execute({ url: 'https://example.com' }, ctx))
-    expect(events).toEqual([])
-
-    expect(Effect.runPromise(effect.execute({ url: 1 }, ctx))).rejects.toThrow('url')
-  })
-
   test('marks local placement from the placement field', () => {
     const effect = defineEffect({ type: 'demo.local', placement: 'local', execute: () => [] })
 
     expect(effect.placement).toBe('local')
+  })
+
+  test('a worker definition carries its schema and retry but no host handler', () => {
+    const input = Schema.Struct({ url: Schema.String })
+
+    const effect = defineEffect({
+      type: 'demo.transcode',
+      placement: 'worker',
+      input,
+      retry: { maxAttempts: 3 },
+    })
+
+    expect(effect).toEqual({
+      type: 'demo.transcode',
+      placement: 'worker',
+      input,
+      retry: { maxAttempts: 3 },
+      deterministic: undefined,
+    })
+
+    expect('execute' in effect).toBe(false)
   })
 
   test('validateInputEffect returns typed InvalidInputError with issues catchable by catchTag', async () => {

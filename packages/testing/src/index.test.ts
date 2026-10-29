@@ -46,6 +46,33 @@ describe('moduleConformance', () => {
 
     expect(moduleConformance(broken).some((msg) => msg.includes('catalog namespace'))).toBe(true)
   })
+
+  test('accepts local and worker effects in their placement shape', () => {
+    const mixed = defineRuntimeModule({
+      namespace: 'sample',
+      protocolVersion: '1.0.0',
+      effects: {
+        ping: defineEffect({ type: 'sample.ping', placement: 'local', execute: () => [] }),
+        render: defineEffect({ type: 'sample.render', placement: 'worker' }),
+      },
+    })
+
+    expect(moduleConformance(mixed)).toEqual([])
+  })
+
+  test('flags a worker effect that carries a host handler', () => {
+    const render = defineEffect({ type: 'sample.render', placement: 'worker' })
+
+    const broken = defineRuntimeModule({
+      namespace: 'sample',
+      protocolVersion: '1.0.0',
+      effects: { render: { ...render, execute: () => Effect.succeed([]) } },
+    })
+
+    expect(moduleConformance(broken)).toEqual([
+      'worker effect sample.render must not define execute',
+    ])
+  })
 })
 
 describe('createTestRuntime', () => {
