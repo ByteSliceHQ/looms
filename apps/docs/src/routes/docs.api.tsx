@@ -141,7 +141,7 @@ try {
       </p>
       <CodeBlock lang="text">{`GET  /health                            → { ok: true }
 GET  /definitions                       → definition catalog
-GET  /definitions/effect-placements     → { effects: [{ type, placement }] }
+GET  /definitions/effects               → { effects: [{ type, placement, retry, inputSchema }] }
 POST /runs                              → { runId, threadId, state }
 GET  /runs                              → { runIds } (embed only)
 GET  /runs/summaries                    → { runs }
