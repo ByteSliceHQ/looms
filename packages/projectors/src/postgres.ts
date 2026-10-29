@@ -64,10 +64,7 @@ function actorFromRow(row: PostgresActorRow): ActorIndexRow {
   }
 }
 
-type SqlTag = (
-  strings: TemplateStringsArray,
-  ...values: readonly any[]
-) => PromiseLike<void>
+type SqlTag = (strings: TemplateStringsArray, ...values: readonly any[]) => PromiseLike<void>
 
 function applyOp(sql: SqlTag, op: IndexOp): PromiseLike<void> {
   const date = DateTime.toDateUtc(DateTime.makeUnsafe(op.updatedAt))

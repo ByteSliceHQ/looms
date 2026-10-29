@@ -359,9 +359,9 @@ describe('postgres replica', () => {
     await copy.project([missing, later])
     expect(await copy.position(runId)).toBe(3)
 
-    expect((await Effect.runPromise(copy.eventStore().read(runId))).map((event) => event.seq)).toEqual([
-      1, 2, 3,
-    ])
+    expect(
+      (await Effect.runPromise(copy.eventStore().read(runId))).map((event) => event.seq),
+    ).toEqual([1, 2, 3])
   })
 
   test('catches up through position when the saved cursor is ahead of the copy', async () => {
@@ -409,9 +409,9 @@ describe('postgres replica', () => {
     await Effect.runPromise(delivery.deliver(runId))
     expect(await copy.position(runId)).toBe(4)
 
-    expect((await Effect.runPromise(copy.eventStore().read(runId))).map((event) => event.seq)).toEqual([
-      1, 2, 3, 4,
-    ])
+    expect(
+      (await Effect.runPromise(copy.eventStore().read(runId))).map((event) => event.seq),
+    ).toEqual([1, 2, 3, 4])
   })
 
   test('purge drops the event copy and later deliveries stay dropped', async () => {

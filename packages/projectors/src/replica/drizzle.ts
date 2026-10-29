@@ -1,5 +1,5 @@
-import type { BuildColumns } from 'drizzle-orm/column-builder'
 import { sql } from 'drizzle-orm'
+import type { BuildColumns } from 'drizzle-orm/column-builder'
 import {
   bigint,
   boolean,
@@ -117,20 +117,16 @@ export function loomsReplicaTables<Extra extends RunIndexExtras = Record<never, 
 ) {
   const columns = {
     ...loomsRunIndexColumns(),
-    ...(options?.runIndex),
+    ...options?.runIndex,
   }
 
-  const loomsRunIndex = pgTable(
-    'looms_run_index',
-    columns,
-    (table) => [
-      index('looms_run_index_tenant').on(table.tenant),
-      index('looms_run_index_project').on(table.project),
-      index('looms_run_index_org').on(table.org),
-      index('looms_run_index_parent').on(table.parentRunId),
-      index('looms_run_index_status').on(table.status),
-    ],
-  )
+  const loomsRunIndex = pgTable('looms_run_index', columns, (table) => [
+    index('looms_run_index_tenant').on(table.tenant),
+    index('looms_run_index_project').on(table.project),
+    index('looms_run_index_org').on(table.org),
+    index('looms_run_index_parent').on(table.parentRunId),
+    index('looms_run_index_status').on(table.status),
+  ])
 
   // SAFETY: BuildColumns maps the same builder object, including host columns, to Postgres columns.
   const runIndex: RunIndexTable<Extra> = loomsRunIndex as RunIndexTable<Extra>

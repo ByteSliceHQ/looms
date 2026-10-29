@@ -1,7 +1,7 @@
+import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'bun:test'
 
 import { Predicate } from 'effect'
 
@@ -27,7 +27,9 @@ async function tempDir(): Promise<string> {
 
 describe('replica migration generate', () => {
   afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+    await Promise.all(
+      directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+    )
   })
 
   test('the migration list records its own id and only touches looms tables', () => {
@@ -70,9 +72,7 @@ describe('replica migration generate', () => {
 
     const journal = journalEntries(await readFile(join(out, 'meta', '_journal.json'), 'utf8'))
 
-    expect(journal).toEqual([
-      expect.objectContaining({ idx: 0, tag: '0086_looms_0001_replica' }),
-    ])
+    expect(journal).toEqual([expect.objectContaining({ idx: 0, tag: '0086_looms_0001_replica' })])
 
     const second = await generateReplicaMigrations({ out, journal: 'drizzle' })
     expect(second).toEqual({ written: [], pending: [] })

@@ -142,9 +142,9 @@ const freshness = await replica.status(runId)
         <code>rebuild(source)</code> copies each run from an event store into Postgres. Purged runs
         are left alone. A projector cursor that has moved past the copy is rewound once to{' '}
         <code>position(runId)</code>, which is <code>replicated_seq</code>. A purged run returns{' '}
-        <code>null</code>, so delivery does not rewind it. Runs that finished
-        before the replica was attached are not listed by an actor host; backfilling those needs a
-        list of run ids from your application.
+        <code>null</code>, so delivery does not rewind it. Runs that finished before the replica was
+        attached are not listed by an actor host; backfilling those needs a list of run ids from
+        your application.
       </p>
       <p>
         Projections that are not a full copy still use the{' '}

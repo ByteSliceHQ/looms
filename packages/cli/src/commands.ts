@@ -285,9 +285,7 @@ const databaseFlag = Flag.string('database').pipe(
 const generate = Command.make(
   'generate',
   {
-    out: Flag.string('out').pipe(
-      Flag.withDescription('Directory of SQL migrations to write into'),
-    ),
+    out: Flag.string('out').pipe(Flag.withDescription('Directory of SQL migrations to write into')),
     journal: Flag.optional(
       Flag.string('journal').pipe(
         Flag.withDescription('Also update a migration journal. Only `drizzle` is supported'),

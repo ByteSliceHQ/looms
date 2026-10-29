@@ -134,10 +134,7 @@ function normalizeError(cause: unknown): ProjectorDeliveryError {
   })
 }
 
-function idleStatus(
-  status: ProjectorDeliveryStatus,
-  cursor: number,
-): ProjectorDeliveryStatus {
+function idleStatus(status: ProjectorDeliveryStatus, cursor: number): ProjectorDeliveryStatus {
   return {
     ...status,
     cursor,

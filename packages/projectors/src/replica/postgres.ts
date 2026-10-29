@@ -166,7 +166,11 @@ function groups(events: readonly EventEnvelope[]): Map<string, EventEnvelope[]> 
 }
 
 /** Sequence through which `events` extends `replicatedSeq` with no hole. Redelivered seqs are ignored. */
-function contiguousSeq(runId: string, replicatedSeq: number, events: readonly EventEnvelope[]): number {
+function contiguousSeq(
+  runId: string,
+  replicatedSeq: number,
+  events: readonly EventEnvelope[],
+): number {
   let cursor = replicatedSeq
 
   for (const event of events) {
@@ -399,7 +403,9 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
     bounds: (runId) =>
       Effect.tryPromise({
         try: async () => {
-          const [row] = await sql<{ replicated_seq: string | number; head: string | number | null }[]>`
+          const [row] = await sql<
+            { replicated_seq: string | number; head: string | number | null }[]
+          >`
             SELECT replicated_seq,
                    (SELECT MIN(seq) FROM looms_run_events event WHERE event.run_id = run.run_id) AS head
             FROM looms_run_index run
