@@ -18,8 +18,9 @@ const catalog = defineEventCatalog('defer', {
   done: Schema.Struct({}),
 })
 
-const tick = defineEffect.local({
+const tick = defineEffect({
   type: 'defer.tick',
+  placement: 'local',
   execute: (_input, ctx) => [{ type: 'defer.done', payload: {}, threadId: ctx.threadId }],
 })
 

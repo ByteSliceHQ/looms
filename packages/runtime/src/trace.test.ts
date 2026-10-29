@@ -35,18 +35,20 @@ const catalog = defineEventCatalog('traced', {
 
 const seen = new Map<string, TraceContext | null>()
 
-const observe = defineEffect.local({
+const observe = defineEffect({
   type: 'traced.observe',
+  placement: 'local',
   execute: (_input, ctx) => {
     seen.set(ctx.runId, ctx.trace)
     return [{ type: 'traced.observed', payload: {}, threadId: ctx.threadId }]
   },
 })
 
-const remote = defineEffect.worker({ type: 'traced.remote' })
+const remote = defineEffect({ type: 'traced.remote', placement: 'worker' })
 
-const launch = defineEffect.local({
+const launch = defineEffect({
   type: 'traced.launch',
+  placement: 'local',
   input: TracedInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

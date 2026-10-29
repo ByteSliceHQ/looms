@@ -44,12 +44,13 @@ export function corpusModule(options?: {
   } as const
 
   const charge = options?.charge
-    ? defineEffect.local({
+    ? defineEffect({
         type: corpusChargeV1,
+        placement: 'local',
         retry: chargeRetry,
         execute: options.charge,
       })
-    : defineEffect.worker({ type: corpusChargeV1, retry: chargeRetry })
+    : defineEffect({ type: corpusChargeV1, placement: 'worker', retry: chargeRetry })
 
   const chargeV2Retry = {
     maxAttempts: 1,
@@ -58,12 +59,13 @@ export function corpusModule(options?: {
   } as const
 
   const chargeV2 = options?.charge
-    ? defineEffect.local({
+    ? defineEffect({
         type: corpusChargeV2,
+        placement: 'local',
         retry: chargeV2Retry,
         execute: options.charge,
       })
-    : defineEffect.worker({ type: corpusChargeV2, retry: chargeV2Retry })
+    : defineEffect({ type: corpusChargeV2, placement: 'worker', retry: chargeV2Retry })
 
   return defineRuntimeModule({
     namespace: 'corpus',

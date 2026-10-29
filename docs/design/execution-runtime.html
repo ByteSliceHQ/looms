@@ -1436,8 +1436,9 @@ type Events = EventsOf&lt;typeof runtime&gt;</code></pre>
             of.
           </p>
 
-          <pre><code>defineEffect.local({
+          <pre><code>defineEffect({
   type: "stripe.charge",
+  placement: "local",
 
   async execute(input, ctx) {
     const charge = await stripe.charges.create(...)

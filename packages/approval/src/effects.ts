@@ -3,6 +3,7 @@ import { approvalModule } from './scope'
 
 export const requestApprovalEffect = approvalModule.effect({
   type: 'approval.request',
+  placement: 'local',
   input: ApprovalRequestedPayloadSchema,
   execute: (input, ctx) => [
     {

@@ -405,11 +405,12 @@ describe('createLooms runtime', () => {
       namespace: 'work',
       protocolVersion: '1.0.0',
       effects: {
-        'work.do': defineEffect.local({
+        'work.do': defineEffect({
           type: 'work.do',
+          placement: 'local',
           execute: (_input, ctx) => {
             executeCalls += 1
-            return [{ type: 'work.done', threadId: ctx.threadId, effectId: 'other' }]
+            return [{ type: 'work.done', payload: null, threadId: ctx.threadId, effectId: 'other' }]
           },
         }),
       },
@@ -468,8 +469,9 @@ describe('createLooms runtime', () => {
       namespace: 'pingpong',
       protocolVersion: '1.0.0',
       effects: {
-        'pingpong.step': defineEffect.local({
+        'pingpong.step': defineEffect({
           type: 'pingpong.step',
+          placement: 'local',
           input: Schema.Struct({ count: Schema.Finite }),
           execute: (input) => {
             stepCalls += 1

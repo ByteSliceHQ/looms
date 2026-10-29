@@ -278,11 +278,16 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
           #
         </a>
       </h3>
-      <p>Every effect declares where it runs when you define it:</p>
+      <p>
+        Every effect sets <code>placement</code> when you define it, and the field changes what the
+        definition accepts:
+      </p>
       <table>
         <thead>
           <tr>
-            <th>Constructor</th>
+            <th>
+              <code>placement</code>
+            </th>
             <th>Runs in</th>
             <th>Handler</th>
             <th>
@@ -293,38 +298,40 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <tbody>
           <tr>
             <td>
-              <code>defineEffect.local</code> / <code>module.effect</code>
+              <code>&apos;local&apos;</code>
             </td>
             <td>Host actor cell (Durable Object, in-process host)</td>
             <td>
-              <code>execute</code> on the definition
+              <code>execute</code> on the definition (required)
             </td>
             <td>Live — subscribers see events as they append</td>
           </tr>
           <tr>
             <td>
-              <code>defineEffect.worker</code> / <code>module.workerEffect</code>
+              <code>&apos;worker&apos;</code>
             </td>
             <td>
               External <code>EffectWorker</code> (Cloudflare Queue, …)
             </td>
             <td>
-              <code>workerHandlers([[def, handler]])</code>
+              <code>workerHandlers([[def, handler]])</code>; no <code>execute</code>
             </td>
             <td>Buffered until the attempt completes</td>
           </tr>
         </tbody>
       </table>
       <p>
-        Placement is a property of the definition. The host does not infer it from a missing{' '}
+        A local effect without <code>execute</code>, a worker effect with one, or an effect with no{' '}
+        <code>placement</code> fails to compile. The host does not infer placement from a missing{' '}
         <code>execute</code>, and queue routes do not take overlapping type-string{' '}
         <code>handles</code> lists. Pass the worker definitions into the route:
       </p>
-      <CodeBlock lang="ts">{`import { defineEffect } from '@swirls/looms/core'
-import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
+      <CodeBlock lang="ts">{`import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
+import { sandboxScope } from './scope'
 
-const sandboxExec = defineEffect.worker({
+const sandboxExec = sandboxScope.effect({
   type: 'sandbox.exec',
+  placement: 'worker',
   retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
 })
 
@@ -351,13 +358,14 @@ cloudflareQueueWorker({
         </a>
       </h3>
       <p>
-        Local effects use <code>scope.effect</code> (or <code>defineEffect.local</code>). Scoped
-        builders keep the type under your module namespace and check returned events and{' '}
-        <code>ctx.emit</code> against the catalog. Worker effects use{' '}
-        <code>scope.workerEffect</code> / <code>defineEffect.worker</code> and implement the handler
-        with <code>workerHandlers</code> on the consumer. The Stripe excerpt below is a local
-        effect; it assumes a configured server-side Stripe client and a payments catalog that
-        includes the authorized event:
+        Define effects with <code>m.effect</code> inside <code>defineModule</code>, or with{' '}
+        <code>scope.effect</code> from a shared scope when the effect lives in its own file. Both
+        keep the type under your module namespace and check returned events and{' '}
+        <code>ctx.emit</code> against the catalog. Worker effects set{' '}
+        <code>placement: &apos;worker&apos;</code> and implement the handler with{' '}
+        <code>workerHandlers</code> on the consumer. The Stripe excerpt below is a local effect; it
+        assumes a configured server-side Stripe client and a payments catalog that includes the
+        authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@swirls/looms/core'
@@ -378,6 +386,7 @@ const ChargeCardInput = z.object({
 
 export const chargeCardEffect = paymentsScope.effect({
   type: 'payments.chargeCard',
+  placement: 'local',
   input: ChargeCardInput,
   retry: {
     maxAttempts: 3,
@@ -562,6 +571,7 @@ export function payments(db: DatabaseService) {
     effects: {
       recordInDb: m.effect({
         type: 'payments.recordInDb',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => Effect.gen(function* () {
           const database = yield* DatabaseTag
@@ -592,6 +602,7 @@ export function payments(db: DatabaseService) {
       </p>
       <CodeBlock lang="ts">{`const downloadAndProcessEffect = m.effect({
   type: 'payments.downloadBatch',
+  placement: 'local',
   input: z.object({ batchUrl: z.string() }),
   execute: async (input, ctx) => {
     // Stream progress events as chunks arrive:
@@ -626,6 +637,7 @@ export function payments(db: DatabaseService) {
       </p>
       <CodeBlock lang="ts">{`export const callGatewayEffect = paymentsScope.effect({
   type: 'payments.callGateway',
+  placement: 'local',
   retry: {
     maxAttempts: 4,     // Four total attempts, including the first
     backoffMs: 200,     // Initial backoff
@@ -757,10 +769,80 @@ const billing = defineRuntimeModule({
   module.ts        # defineModule(options, setup) assembly
   index.ts         # public re-exports`}</CodeBlock>
       <p>
-        Small modules can stay in one callback. For larger modules, export a shared
+        Small modules can stay in one callback. For larger modules, export a shared{' '}
         <code>createModuleScope(options)</code> from <code>scope.ts</code>, author members across
-        files, and return them from <code>defineModule(options, setup)</code>. Only the finished
+        files, and return them from <code>defineModule(scope, setup)</code>. Only the finished
         module is passed to the host.
+      </p>
+
+      <h3 id="effects-in-their-own-file">
+        Effects in their own file
+        <a
+          className="heading-anchor"
+          href="#effects-in-their-own-file"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
+      <p>
+        <code>scope.effect</code> takes the same fields as <code>m.effect</code> and checks them
+        against the same catalog, so an effect can live in <code>effects.ts</code> and keep its
+        types:
+      </p>
+      <CodeBlock lang="ts">{`// events.ts
+import { defineEventCatalog } from '@swirls/looms/core'
+import { z } from 'zod'
+
+export const paymentsEvents = defineEventCatalog('payments', {
+  recorded: z.object({ chargeId: z.string(), amount: z.number() }),
+})
+
+// scope.ts
+import { createModuleScope } from '@swirls/looms/core'
+import { paymentsEvents } from './events'
+
+export const paymentsScope = createModuleScope({
+  namespace: 'payments',
+  protocolVersion: '1.0.0',
+  events: paymentsEvents,
+})
+
+// effects.ts
+import { z } from 'zod'
+import { paymentsScope } from './scope'
+
+export const recordPaymentEffect = paymentsScope.effect({
+  type: 'payments.record',
+  placement: 'local',
+  input: z.object({ amount: z.number() }),
+  execute: (input, ctx) => [
+    { type: 'payments.recorded', payload: { chargeId: ctx.effectId, amount: input.amount } },
+  ],
+})
+
+// module.ts
+import { defineModule } from '@swirls/looms/core'
+import { recordPaymentEffect } from './effects'
+import { paymentsScope } from './scope'
+
+export const payments = defineModule(paymentsScope, () => ({
+  effects: { recordPayment: recordPaymentEffect },
+}))`}</CodeBlock>
+      <p>
+        <code>payments.effects.recordPayment</code> has the same type as{' '}
+        <code>recordPaymentEffect</code>, so{' '}
+        <code>invoke(payments.effects.recordPayment, {'{ amount: 40 }'})</code> still checks its
+        input. <code>defineModule</code> rejects an effect whose events fall outside the
+        module&apos;s catalog and <code>observes</code>. That covers effects built with another
+        module&apos;s scope and unscoped <code>defineEffect</code> handlers that return untyped
+        events.
+      </p>
+      <p>
+        <code>defineEffect</code> is the unscoped primitive under <code>m.effect</code> and{' '}
+        <code>scope.effect</code>. It takes the same <code>placement</code> field, but it has no
+        catalog, so returned events are only checked against <code>EventInput</code>. Use it for
+        effects that emit nothing or belong to no module.
       </p>
 
       <h2 id="module-composition-principles">

@@ -5,7 +5,7 @@ import { Effect, Schema } from 'effect'
 import {
   RunLauncherTag,
   complete,
-  defineEffect,
+  createModuleScope,
   defineEventCatalog,
   defineModule,
   defineThread,
@@ -270,8 +270,15 @@ describe('schedule module', () => {
       done: Schema.Struct({ ok: Schema.Boolean }),
     })
 
-    const launchTwice = defineEffect.local({
+    const probeScope = createModuleScope({
+      namespace: 'probe',
+      protocolVersion: '1.0.0',
+      events: probeCatalog,
+    })
+
+    const launchTwice = probeScope.effect({
       type: 'probe.launch',
+      placement: 'local',
       execute: (_input, ctx) =>
         Effect.gen(function* () {
           const launcher = yield* RunLauncherTag
@@ -290,7 +297,7 @@ describe('schedule module', () => {
             input: { n: 2 },
           })
 
-          return [{ type: 'probe.done', payload: { ok: true }, threadId: ctx.threadId }]
+          return [{ type: 'probe.done' as const, payload: { ok: true }, threadId: ctx.threadId }]
         }),
     })
 
@@ -302,18 +309,11 @@ describe('schedule module', () => {
         state.done ? [complete({ ok: true })] : [invoke(launchTwice, null, 'launch')],
     })
 
-    const probe = defineModule(
-      {
-        namespace: 'probe',
-        protocolVersion: '1.0.0',
-        events: probeCatalog,
-      },
-      () => ({
-        threads: { probe: probeThread },
-        effects: { launch: launchTwice },
-        definitions: [{ kind: 'probe', name: 'probe', version: 'v1' }],
-      }),
-    )
+    const probe = defineModule(probeScope, () => ({
+      threads: { probe: probeThread },
+      effects: { launch: launchTwice },
+      definitions: [{ kind: 'probe', name: 'probe', version: 'v1' }],
+    }))
 
     const looms = createLooms({
       modules: [workflow({ definitions: [job] }), probe],

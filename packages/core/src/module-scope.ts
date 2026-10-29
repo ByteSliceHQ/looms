@@ -14,12 +14,13 @@ import {
   defineEffect,
   type EffectDefinition,
   type EffectHandlerResult,
+  type EffectPlacement,
   type EmitEffect,
-  type LocalEffectDefinition,
+  type PlacedEffectDefinition,
+  type PlacementHandler,
   type RetryPolicy,
   type RuntimeEffect,
   type ScopedLocalEffectContext,
-  type WorkerEffectDefinition,
 } from './effects'
 import type { EventEnvelope, EventInput } from './envelope'
 import type { RunLauncherTag } from './launcher'
@@ -73,6 +74,18 @@ export type EffectRequirementsOf<TEffects> = TEffects extends {
       RunLauncherTag
     >
   : never
+
+type EffectEventsOf<T> = T extends EffectDefinition<any, any, infer Ev> ? Ev : never
+
+/**
+ * Marks each effect whose events fall outside the module's catalogs, such as one built with
+ * another module's scope or the unscoped `defineEffect`.
+ */
+export type ForeignEffectsCheck<FX, TAllowed> = {
+  readonly [
+    K in keyof FX as [EffectEventsOf<FX[K]>] extends [TAllowed] ? never : K
+  ]: 'Effect events are outside this module catalog; build it with this module scope'
+}
 
 export type ModuleServicesConfig<TR> = [TR] extends [never]
   ? { readonly services?: () => Layer.Layer<any> }
@@ -132,35 +145,31 @@ export interface ModuleScope<
   }): ProjectionDefinition<InferSchemaOutput<TShape>>
 
   /**
-   * Declare a local effect for this module. Runs in the host actor cell with live `emit`.
-   * Prefer this over {@link defineEffect.local} so the type is scoped to the module namespace.
+   * Declare an effect for this module. `placement: 'local'` runs `execute` in the host actor cell
+   * with live `emit`. `placement: 'worker'` has no `execute`; implement it on the worker with
+   * `workerHandlers`. The type must start with the module namespace.
    */
   effect<
+    const P extends EffectPlacement,
     TSchema extends SchemaInput | undefined = undefined,
     TInput = InferDefinedSchema<TSchema>,
     R = never,
     HandlerError = never,
-  >(def: {
-    type: `${TNamespace}.${string}`
-    input?: TSchema
-    retry?: RetryPolicy
-    deterministic?: boolean
-    execute: (
-      input: TInput,
-      ctx: ScopedLocalEffectContext<EventInputOf<U>>,
-    ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
-  }): NoInfer<LocalEffectDefinition<TInput, R, EventInputOf<U>>>
-
-  /**
-   * Declare a worker-placed effect for this module. The host only dispatches it; implement the
-   * handler with `workerHandlers` (or an equivalent consumer).
-   */
-  workerEffect<TSchema extends SchemaInput | undefined = undefined>(def: {
-    type: `${TNamespace}.${string}`
-    input?: TSchema
-    retry?: RetryPolicy
-    deterministic?: boolean
-  }): NoInfer<WorkerEffectDefinition<InferDefinedSchema<TSchema>>>
+  >(
+    def: {
+      type: `${TNamespace}.${string}`
+      placement: P
+      input?: TSchema
+      retry?: RetryPolicy
+      deterministic?: boolean
+    } & PlacementHandler<
+      P,
+      (
+        input: TInput,
+        ctx: ScopedLocalEffectContext<EventInputOf<U>>,
+      ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
+    >,
+  ): NoInfer<PlacedEffectDefinition<P, TInput, R, EventInputOf<U>>>
 
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
@@ -221,11 +230,7 @@ export function createModuleScope<
     },
 
     effect(def: any): any {
-      return defineEffect.local(def)
-    },
-
-    workerEffect(def: any): any {
-      return defineEffect.worker(def)
+      return defineEffect(def)
     },
 
     input(key: any, payload: any, meta?: any): any {
@@ -270,7 +275,8 @@ export function defineModule<
 >(
   options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
   setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
-    readonly effects?: FX
+    readonly effects?: FX &
+      ForeignEffectsCheck<FX, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly threads?: TH
     readonly projections?: PR
     readonly definitions?: readonly DefinitionRef[]

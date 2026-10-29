@@ -66,8 +66,7 @@ function Page() {
         to two retries. Attempt starts and retry deadlines are recorded before the runtime waits, so
         a restart preserves the retry budget and backoff. Configure start, heartbeat, and execution
         timeouts for work delivered to external workers. Declare those effects with{' '}
-        <code>defineEffect.worker</code> (or <code>module.workerEffect</code>) and list the
-        definitions on the queue route. See{' '}
+        <code>placement: &apos;worker&apos;</code> and list the definitions on the queue route. See{' '}
         <Link to="/docs/modules" hash="effect-placement">
           Effect placement
         </Link>

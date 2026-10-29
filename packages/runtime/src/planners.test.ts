@@ -167,8 +167,9 @@ describe('deadline transition planner', () => {
 
 describe('worker effect planner', () => {
   test('plans due retries with stable attempts and dispatch deadlines', () => {
-    const workerEffect = defineEffect.worker({
+    const workerEffect = defineEffect({
       type: 'worker.send',
+      placement: 'worker',
       retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 500 },
     })
 
@@ -225,8 +226,9 @@ describe('worker effect planner', () => {
   })
 
   test('replays the same attempt from dispatch_wait without re-queuing', () => {
-    const workerEffect = defineEffect.worker({
+    const workerEffect = defineEffect({
       type: 'worker.send',
+      placement: 'worker',
       retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 500 },
     })
 
@@ -287,10 +289,10 @@ describe('worker effect routing', () => {
       namespace: 'route',
       protocolVersion: '1.0.0',
       effects: {
-        local: defineEffect.local({ type: 'route.local', execute: () => [] }),
-        external: defineEffect.worker({ type: 'route.external' }),
-        pinnedLocal: defineEffect.local({ type: 'route.pinned', execute: () => [] }),
-        forcedWorker: defineEffect.worker({ type: 'route.forced' }),
+        local: defineEffect({ type: 'route.local', placement: 'local', execute: () => [] }),
+        external: defineEffect({ type: 'route.external', placement: 'worker' }),
+        pinnedLocal: defineEffect({ type: 'route.pinned', placement: 'local', execute: () => [] }),
+        forcedWorker: defineEffect({ type: 'route.forced', placement: 'worker' }),
       },
     }),
   ])

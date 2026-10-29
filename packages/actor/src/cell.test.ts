@@ -156,8 +156,9 @@ describe('ActorCell', () => {
     const runId = 'run_worker_cell'
     const dispatched: EffectWorkerTask[] = []
 
-    const remote = defineEffect.worker({
+    const remote = defineEffect({
       type: 'actor.remote',
+      placement: 'worker',
       retry: {
         maxAttempts: 2,
         backoffMs: 5,

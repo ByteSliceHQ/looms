@@ -21,8 +21,9 @@ const ctx: EffectContext = {
 
 describe('defineEffect', () => {
   test('accepts a synchronous handler', async () => {
-    const effect = defineEffect.local({
+    const effect = defineEffect({
       type: 'demo.ping',
+      placement: 'local',
       execute: (_input, handlerCtx) => [
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
       ],
@@ -33,8 +34,9 @@ describe('defineEffect', () => {
   })
 
   test('accepts a promise handler', async () => {
-    const effect = defineEffect.local({
+    const effect = defineEffect({
       type: 'demo.ping',
+      placement: 'local',
       execute: async (_input, handlerCtx) => [
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
       ],
@@ -45,8 +47,9 @@ describe('defineEffect', () => {
   })
 
   test('preserves validateInput error messages', async () => {
-    const effect = defineEffect.local({
+    const effect = defineEffect({
       type: 'demo.charge',
+      placement: 'local',
       input: Schema.Struct({ amount: Schema.Finite }),
       execute: () => [],
     })
@@ -54,8 +57,6 @@ describe('defineEffect', () => {
     let message = ''
 
     try {
-      // SAFETY: Explicitly passing invalid input to verify runtime validation failure message.
-      // @ts-expect-error deliberately passing invalid input to test schema rejection
       await Effect.runPromise(effect.execute({}, ctx))
     } catch (err) {
       message = err instanceof Error ? err.message : String(err)
@@ -66,8 +67,9 @@ describe('defineEffect', () => {
   })
 
   test('infers input type from input schema', async () => {
-    const effect = defineEffect.local({
+    const effect = defineEffect({
       type: 'demo.charge',
+      placement: 'local',
       input: Schema.Struct({ amount: Schema.Finite }),
       execute: (input) => [{ type: 'demo.charged', payload: { amount: input.amount } }],
     })
@@ -79,15 +81,16 @@ describe('defineEffect', () => {
   })
 
   test('marks definitions with a handler', () => {
-    const effect = defineEffect.local({ type: 'demo.ping', execute: () => [] })
+    const effect = defineEffect({ type: 'demo.ping', placement: 'local', execute: () => [] })
 
     expect(effect.hasHandler).toBe(true)
     expect(effect.placement).toBe('local')
   })
 
   test('declares a handler-less effect that still validates input', async () => {
-    const effect = defineEffect.worker({
+    const effect = defineEffect({
       type: 'demo.transcode',
+      placement: 'worker',
       input: Schema.Struct({ url: Schema.String }),
       retry: { maxAttempts: 3 },
     })
@@ -98,12 +101,11 @@ describe('defineEffect', () => {
     const events = await Effect.runPromise(effect.execute({ url: 'https://example.com' }, ctx))
     expect(events).toEqual([])
 
-    // @ts-expect-error deliberately passing invalid input to test schema rejection
     expect(Effect.runPromise(effect.execute({ url: 1 }, ctx))).rejects.toThrow('url')
   })
 
-  test('marks local placement on defineEffect.local', () => {
-    const effect = defineEffect.local({ type: 'demo.local', execute: () => [] })
+  test('marks local placement from the placement field', () => {
+    const effect = defineEffect({ type: 'demo.local', placement: 'local', execute: () => [] })
 
     expect(effect.placement).toBe('local')
   })
@@ -112,8 +114,6 @@ describe('defineEffect', () => {
     const schema = Schema.Struct({ name: Schema.String, age: Schema.Finite })
 
     const result = await Effect.runPromise(
-      // SAFETY: invalid age is a fixture that must fail schema validation.
-      // @ts-expect-error deliberately passing invalid age type to test schema rejection
       validateInputEffect(schema, { name: 'Alice', age: 'invalid' }).pipe(
         Effect.map(() => 'valid'),
         Effect.catchTag('InvalidInputError', (err) =>

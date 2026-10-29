@@ -184,6 +184,7 @@ const payments = defineModule(
     effects: {
       charge: m.effect({
         type: 'payments.charge',
+        placement: 'local',
         input: z.object({ amount: z.number() }),
         execute: (input, ctx) => [
           {
@@ -202,10 +203,10 @@ const payments = defineModule(
 
 const { charge } = payments.effects`}</CodeBlock>
       <p>
-        That example is a local effect (<code>m.effect</code> / <code>defineEffect.local</code>).
-        Long-running or off-host work uses <code>m.workerEffect</code> /{' '}
-        <code>defineEffect.worker</code> and a consumer via <code>workerHandlers</code>. Placement,
-        retries, Effect Layers, and <code>ctx.emit</code> are covered under{' '}
+        That example is a local effect (<code>placement: &apos;local&apos;</code>). Long-running or
+        off-host work sets <code>placement: &apos;worker&apos;</code>, drops <code>execute</code>,
+        and runs on a consumer via <code>workerHandlers</code>. Placement, retries, Effect Layers,
+        and <code>ctx.emit</code> are covered under{' '}
         <Link to="/docs/modules" hash="effect-placement">
           Modules
         </Link>

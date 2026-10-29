@@ -388,8 +388,8 @@ export function assertWorkerConfigured(
 }
 
 /**
- * A worker must not claim a local-placed effect. Use {@link defineEffect.worker} (or a hybrid
- * when that lands) instead of overlapping `handles` with a local definition.
+ * A worker must not claim a local-placed effect. Declare the effect with `placement: 'worker'` (or a
+ * hybrid when that lands) instead of overlapping `handles` with a local definition.
  */
 export function assertWorkerClaimsExplicit(
   registry: ComposedRegistry,
@@ -408,7 +408,7 @@ export function assertWorkerClaimsExplicit(
 
   if (claimedLocal.length > 0) {
     throw new Error(
-      `Worker claims local-placed effects; use defineEffect.worker (or drop the claim): ${claimedLocal.join(', ')} (registry: ${formatEffectPlacements(registry)})`,
+      `Worker claims local-placed effects; declare them with placement: 'worker' (or drop the claim): ${claimedLocal.join(', ')} (registry: ${formatEffectPlacements(registry)})`,
     )
   }
 }

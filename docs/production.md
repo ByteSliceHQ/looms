@@ -154,8 +154,8 @@ timeouts, and exhausted dispatch relays. Use `retryEffect` or
 
 Creating a runtime also fails when:
 
-- an effect is declared with `defineEffect.worker` and no `EffectWorker` is configured
-- a worker's `handles` list (or predicate) claims an effect declared with `defineEffect.local`
+- an effect is declared with `placement: 'worker'` and no `EffectWorker` is configured
+- a worker's `handles` list (or predicate) claims an effect declared with `placement: 'local'`
 
 ### Cloudflare Queues transport
 
@@ -168,8 +168,9 @@ store that dispatch fails. Secrets never go on the queue.
 import { defineEffect } from '@swirls/looms/core'
 import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
 
-const sandboxExec = defineEffect.worker({
+const sandboxExec = defineEffect({
   type: 'sandbox.exec',
+  placement: 'worker',
   retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
 })
 
@@ -338,7 +339,7 @@ type breaks in-flight attempts and recorded logs. Version the type instead:
   when the input schema, side effects, or completion events change.
 - Keep the old type and its handler until every outstanding attempt of that type
   has settled. New runs can route to the new type immediately.
-- Declare each version with `defineEffect.worker` and list those definitions on
+- Declare each version with `placement: 'worker'` and list those definitions on
   the queue route (`effects: [paymentsChargeV2]`). An `EffectWorker`'s `handles`
   list or predicate still decides which types a fleet claims at dispatch: run a
   v1 fleet that claims only `payments.charge` beside a v2 fleet that claims

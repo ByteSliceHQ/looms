@@ -59,6 +59,7 @@ class ScheduleEffectError extends Data.TaggedError('ScheduleEffectError')<{
 
 export const planEffect = scheduleModule.effect({
   type: 'schedule.plan',
+  placement: 'local',
   input: PlanInputSchema,
   retry: RETRY,
   execute: (input, ctx) =>
@@ -78,6 +79,7 @@ export const planEffect = scheduleModule.effect({
 
 export const fireEffect = scheduleModule.effect({
   type: 'schedule.fire',
+  placement: 'local',
   input: FireInputSchema,
   retry: RETRY,
   execute: (input, ctx) =>

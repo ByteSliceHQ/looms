@@ -20,8 +20,9 @@ import { authDenied, authAllowed, bearerAuth } from './server'
 
 const SECRET = 'super-secret-token'
 
-const seen = defineEffect.local({
+const seen = defineEffect({
   type: 'context.seen',
+  placement: 'local',
   execute: (_input, ctx) => [
     {
       type: 'context.observed',
@@ -34,7 +35,7 @@ const seen = defineEffect.local({
   ],
 })
 
-const seenOnWorker = defineEffect.worker({ type: 'context.seen' })
+const seenOnWorker = defineEffect({ type: 'context.seen', placement: 'worker' })
 
 const contextThread = defineThread({
   kind: 'context',
@@ -45,8 +46,9 @@ const contextThread = defineThread({
 
 const context = { kind: 'context', name: 'context', version: 'v1' }
 
-const launchChild = defineEffect.local({
+const launchChild = defineEffect({
   type: 'context.launch',
+  placement: 'local',
   execute: (_input, ctx) =>
     Effect.gen(function* () {
       const launcher = yield* RunLauncherTag

@@ -48,6 +48,7 @@ function failed(threadId: string, error: string): EventInputOf<EvaluatorEvent>[]
 
 export const evaluateEffect = evaluatorModule.effect({
   type: 'evaluator.evaluate',
+  placement: 'local',
   input: EvaluateInput,
   execute: (input, ctx) =>
     Effect.gen(function* () {

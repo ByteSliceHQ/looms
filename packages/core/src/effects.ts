@@ -348,7 +348,7 @@ export type EffectHandlerResult<
 
 declare const effectInputType: unique symbol
 
-/** Where an effect attempt runs. Set by {@link defineEffect.local} / {@link defineEffect.worker}. */
+/** Where an effect attempt runs. Declared with `placement` on `m.effect` / {@link defineEffect}. */
 export type EffectPlacement = 'local' | 'worker'
 
 /** @deprecated Use {@link EffectPlacement}. */
@@ -383,7 +383,7 @@ export interface LocalEffectDefinition<
 }
 
 /**
- * An effect that only an external effect worker completes. Declare it with {@link defineEffect.worker}
+ * An effect that only an external effect worker completes. Declare it with `placement: 'worker'`
  * and implement the handler via `workerHandlers` (or an equivalent consumer).
  */
 export interface WorkerEffectDefinition<
@@ -460,41 +460,49 @@ function validateThen<R, E extends EventInput>(
   })
 }
 
-function defineLocalEffect<
-  TSchema extends SchemaInput,
-  R = never,
-  E extends EventInput = EventInput,
-  HandlerError = never,
->(def: {
-  type: string
-  input: TSchema
-  retry?: RetryPolicy
-  deterministic?: boolean
-  execute: (
-    input: InferDefinedSchema<TSchema>,
-    ctx: LocalEffectContext,
-  ) => EffectHandlerResult<R, E, HandlerError>
-}): LocalEffectDefinition<InferDefinedSchema<TSchema>, R, E>
+/**
+ * `execute` is required for `placement: 'local'` and rejected for `placement: 'worker'`. A worker
+ * handler lives with the worker (`workerHandlers`), so the host bundle never imports its
+ * dependencies.
+ */
+export type PlacementHandler<P extends EffectPlacement, THandler> = P extends 'local'
+  ? { readonly execute: THandler }
+  : {
+      readonly execute?: 'Worker effects have no execute; implement the handler with workerHandlers'
+    }
 
-function defineLocalEffect<
-  R = never,
-  E extends EventInput = EventInput,
-  HandlerError = never,
->(def: {
-  type: string
-  input?: undefined
-  retry?: RetryPolicy
-  deterministic?: boolean
-  execute: (input: JsonValue, ctx: LocalEffectContext) => EffectHandlerResult<R, E, HandlerError>
-}): LocalEffectDefinition<JsonValue, R, E>
+/** The definition type `defineEffect` / `m.effect` return for a given placement. */
+export type PlacedEffectDefinition<
+  P extends EffectPlacement,
+  TInput,
+  R,
+  E extends EventInput,
+> = P extends 'local'
+  ? LocalEffectDefinition<TInput, R, E>
+  : WorkerEffectDefinition<TInput, never, E>
 
-function defineLocalEffect<R, E extends EventInput, HandlerError>(def: {
-  type: string
-  input?: SchemaInput
-  retry?: RetryPolicy
-  deterministic?: boolean
-  execute: (input: any, ctx: LocalEffectContext) => EffectHandlerResult<R, E, HandlerError>
-}): LocalEffectDefinition<any, R, E> {
+interface EffectDefinitionInput<TPlacement extends EffectPlacement, TSchema> {
+  readonly type: string
+  readonly placement: TPlacement
+  readonly input?: TSchema
+  readonly retry?: RetryPolicy
+  readonly deterministic?: boolean
+}
+
+type LocalEffectInput<
+  R = any,
+  E extends EventInput = any,
+  HandlerError = any,
+> = EffectDefinitionInput<'local', SchemaInput | undefined> & {
+  readonly execute: (input: any, ctx: LocalEffectContext) => EffectHandlerResult<R, E, HandlerError>
+}
+
+type WorkerEffectInput = EffectDefinitionInput<'worker', SchemaInput | undefined> &
+  PlacementHandler<'worker', never>
+
+function defineLocalEffect<R, E extends EventInput, HandlerError>(
+  def: LocalEffectInput<R, E, HandlerError>,
+): LocalEffectDefinition<any, R, E> {
   const schema = def.input
   const handler = def.execute
 
@@ -509,26 +517,7 @@ function defineLocalEffect<R, E extends EventInput, HandlerError>(def: {
   }
 }
 
-function defineWorkerEffect<TSchema extends SchemaInput>(def: {
-  type: string
-  input: TSchema
-  retry?: RetryPolicy
-  deterministic?: boolean
-}): WorkerEffectDefinition<InferDefinedSchema<TSchema>>
-
-function defineWorkerEffect(def: {
-  type: string
-  input?: undefined
-  retry?: RetryPolicy
-  deterministic?: boolean
-}): WorkerEffectDefinition
-
-function defineWorkerEffect(def: {
-  type: string
-  input?: SchemaInput
-  retry?: RetryPolicy
-  deterministic?: boolean
-}): WorkerEffectDefinition<any> {
+function defineWorkerEffect(def: WorkerEffectInput): WorkerEffectDefinition<any> {
   const schema = def.input
   const noOutput: ReadonlyArray<EventInput> = []
 
@@ -544,15 +533,45 @@ function defineWorkerEffect(def: {
 }
 
 /**
- * Declare where an effect runs.
+ * Low-level effect constructor without a module namespace. Inside a module, prefer the scoped
+ * `m.effect` / `scope.effect`, which also checks the type prefix and the catalog.
  *
- * - {@link defineEffect.local} — host actor cell; requires `execute`; live `emit`; local middleware.
- * - {@link defineEffect.worker} — external effect worker; implement with `workerHandlers`.
+ * `placement: 'local'` runs `execute` in the host actor cell with live `emit`.
+ * `placement: 'worker'` has no `execute`; implement it on the worker with `workerHandlers`.
  */
-export const defineEffect = {
-  local: defineLocalEffect,
-  worker: defineWorkerEffect,
-} as const
+export function defineEffect<
+  const P extends EffectPlacement,
+  TSchema extends SchemaInput | undefined = undefined,
+  R = never,
+  E extends EventInput = EventInput,
+  HandlerError = never,
+>(
+  def: EffectDefinitionInput<P, TSchema> &
+    PlacementHandler<
+      P,
+      (
+        input: InferDefinedSchema<TSchema>,
+        ctx: LocalEffectContext,
+      ) => EffectHandlerResult<R, E, HandlerError>
+    >,
+): PlacedEffectDefinition<P, InferDefinedSchema<TSchema>, R, E>
+
+export function defineEffect(
+  def: LocalEffectInput | WorkerEffectInput,
+): EffectDefinition<any, any, any> {
+  switch (def.placement) {
+    case 'local':
+      return defineLocalEffect(def)
+
+    case 'worker':
+      return defineWorkerEffect(def)
+
+    default: {
+      const exhaustive: never = def
+      return exhaustive
+    }
+  }
+}
 
 export function spawn(args: {
   childThreadId?: string

@@ -61,8 +61,9 @@ describe('createTestRuntime', () => {
 const ingressDefinition = { kind: 'ingress-test', name: 'ingress-test' }
 
 function ingressModule(onDispatch: () => void) {
-  const runOnce = defineEffect.local({
+  const runOnce = defineEffect({
     type: 'ingress.run',
+    placement: 'local',
     execute: (_input, ctx) => {
       onDispatch()
       return [{ type: 'ingress.done', payload: {}, threadId: ctx.threadId }]

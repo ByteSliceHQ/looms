@@ -40,8 +40,9 @@ const workerDefinition = {
 }
 
 function workerModule(retry: RetryPolicy = FAST) {
-  const effect = defineEffect.worker({
+  const effect = defineEffect({
     type: 'parity.work',
+    placement: 'worker',
     retry,
   })
 

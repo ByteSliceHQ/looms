@@ -29,8 +29,8 @@ function workerModule(
 ) {
   const effect =
     execute === undefined
-      ? defineEffect.worker({ type: 'worker.do', retry })
-      : defineEffect.local({ type: 'worker.do', retry, execute })
+      ? defineEffect({ type: 'worker.do', placement: 'worker', retry })
+      : defineEffect({ type: 'worker.do', placement: 'local', retry, execute })
 
   return defineRuntimeModule({
     namespace: 'worker',
@@ -118,7 +118,7 @@ describe('durable external effect workers', () => {
         modules: [workerModule({ maxAttempts: 1 }, local)],
         worker: { handles: ['worker.do'], dispatch: () => undefined },
       }),
-    ).toThrow('defineEffect.worker')
+    ).toThrow("placement: 'worker'")
   })
 
   test('fails to create a runtime when handler-less effects have no worker', () => {
@@ -171,8 +171,9 @@ describe('durable external effect workers', () => {
   })
 
   test('times out a local handler that never settles', async () => {
-    const hanging = defineEffect.local({
+    const hanging = defineEffect({
       type: 'hang.forever',
+      placement: 'local',
       retry: { maxAttempts: 1, startToCloseTimeoutMs: 10 },
       execute: () => Effect.never,
     })
@@ -861,7 +862,7 @@ describe('durable external effect workers', () => {
   test('maxInFlightWorkerEffects caps planned dispatches per run', async () => {
     const dispatched: EffectWorkerTask[] = []
 
-    const multiEffect = defineEffect.worker({ type: 'worker.multi' })
+    const multiEffect = defineEffect({ type: 'worker.multi', placement: 'worker' })
 
     const fanoutModule = defineRuntimeModule({
       namespace: 'fanout',

@@ -45,7 +45,7 @@ interface SandboxState {
 }
 
 function sandboxModule(retry: RetryPolicy) {
-  const exec = defineEffect.worker({ type: 'sandbox.exec', retry })
+  const exec = defineEffect({ type: 'sandbox.exec', placement: 'worker', retry })
 
   const module = defineRuntimeModule({
     namespace: 'sandbox',
@@ -435,8 +435,9 @@ describe('Cloudflare Queues effect transport', () => {
 
 describe('workerHandlers', () => {
   test('validates input with the effect schema and shares EffectContext fields', async () => {
-    const exec = defineEffect.worker({
+    const exec = defineEffect({
       type: 'sandbox.exec',
+      placement: 'worker',
       input: Schema.Struct({ cmd: Schema.String }),
       retry: FAST,
     })

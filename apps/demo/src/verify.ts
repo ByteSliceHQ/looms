@@ -412,8 +412,9 @@ export async function verifyDemo(): Promise<void> {
       namespace: 'approval',
       protocolVersion: '1.0.0',
       effects: {
-        request: defineEffect.local({
+        request: defineEffect({
           type: 'approval.request',
+          placement: 'local',
           execute: () => Effect.fail(new Error('approval handler down')),
         }),
       },

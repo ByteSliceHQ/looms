@@ -375,8 +375,9 @@ describe('createLooms runtime', () => {
       namespace: 'boom',
       protocolVersion: '1.0.0',
       effects: {
-        explode: defineEffect.local({
+        explode: defineEffect({
           type: 'boom.explode',
+          placement: 'local',
           execute: () => Effect.fail(new Error('boom handler down')),
         }),
       },
@@ -624,8 +625,9 @@ describe('createLooms runtime', () => {
   test('onEffect only wraps the matched effect type', async () => {
     const seen: string[] = []
 
-    const other = defineEffect.local({
+    const other = defineEffect({
       type: 'audit.other',
+      placement: 'local',
       execute: () => Effect.succeed([{ type: 'audit.noted', payload: { ok: true } }]),
     })
 
@@ -715,8 +717,9 @@ describe('createLooms runtime', () => {
   test('admission and middleware hooks receive the decoded input', async () => {
     const seen: JsonValue[] = []
 
-    const charge = defineEffect.local({
+    const charge = defineEffect({
       type: 'billing.charge',
+      placement: 'local',
       input: Schema.Struct({
         amount: Schema.Finite,
         currency: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.succeed('USD'))),
@@ -776,8 +779,9 @@ describe('createLooms runtime', () => {
   test('admission fails the attempt when the input does not decode', async () => {
     const admitted: JsonValue[] = []
 
-    const charge = defineEffect.local({
+    const charge = defineEffect({
       type: 'billing.charge',
+      placement: 'local',
       input: Schema.Struct({ amount: Schema.Finite }),
       retry: { maxAttempts: 1 },
       execute: () => [],
@@ -826,8 +830,9 @@ describe('createLooms runtime', () => {
   test('admission rejects a worker dispatch before it is queued', async () => {
     const dispatched: string[] = []
 
-    const work = defineEffect.worker({
+    const work = defineEffect({
       type: 'gate.work',
+      placement: 'worker',
       retry: { maxAttempts: 1, scheduleToStartTimeoutMs: 60_000, startToCloseTimeoutMs: 60_000 },
     })
 
@@ -882,8 +887,9 @@ describe('createLooms runtime', () => {
   test('retries transient effect failures according to retry policy', async () => {
     let attempts = 0
 
-    const flakyEffect = defineEffect.local({
+    const flakyEffect = defineEffect({
       type: 'test.flaky',
+      placement: 'local',
       retry: { maxAttempts: 3, backoffMs: 5 },
       execute: () => {
         attempts += 1

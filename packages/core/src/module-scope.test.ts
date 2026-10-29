@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 import { defineEventCatalog, payload } from './catalog'
-import { invoke } from './effects'
+import { defineEffect, invoke } from './effects'
 import { createModuleScope, defineModule, type EventOf, type ThreadStateOf } from './module-scope'
 
 export interface DatabaseService {
@@ -215,6 +215,7 @@ describe('defineModule scope', () => {
   test('scope.effect enforces return event types and ctx.emit', () => {
     const createEffect = ordersModule.effect({
       type: 'orders.create',
+      placement: 'local',
       input: Schema.Struct({ orderId: Schema.String, amount: Schema.Finite }),
       execute: async (input, ctx) => {
         await ctx.emit({
@@ -237,6 +238,7 @@ describe('defineModule scope', () => {
   test('typed invoke accepts effect definition and verifies input', () => {
     const createEffect = ordersModule.effect({
       type: 'orders.create',
+      placement: 'local',
       input: Schema.Struct({ orderId: Schema.String, amount: Schema.Finite }),
       execute: (input) => [
         {
@@ -256,6 +258,7 @@ describe('defineModule scope', () => {
   test('defineModule requires services when effect requires environment', () => {
     const queryEffect = ordersModule.effect({
       type: 'orders.queryDb',
+      placement: 'local',
       execute: (_input, _ctx) =>
         DatabaseTag.pipe(
           Effect.flatMap((db) =>
@@ -314,12 +317,14 @@ describe('defineModule scope', () => {
     ordersModule.effect({
       // @ts-expect-error effect type must start with orders.
       type: 'wrong_namespace.action',
+      placement: 'local',
       execute: () => [],
     })
 
     // 5. Invalid returned event type from effect execute
     ordersModule.effect({
       type: 'orders.badReturn',
+      placement: 'local',
       // @ts-expect-error 'orders.fake_event' is not in EventInputOf<U>
       execute: () => [{ type: 'orders.fake_event', payload: {} }],
     })
@@ -327,6 +332,7 @@ describe('defineModule scope', () => {
     // 6. Invalid ctx.emit in effect execute
     ordersModule.effect({
       type: 'orders.badEmit',
+      placement: 'local',
       execute: async (_input, ctx) => {
         // @ts-expect-error 'orders.fake_event' is not in EventInputOf<U>
         await ctx.emit({ type: 'orders.fake_event', payload: {} })
@@ -338,12 +344,101 @@ describe('defineModule scope', () => {
     // 7. Typed invoke rejects mismatched input shape
     const effectWithSchema = ordersModule.effect({
       type: 'orders.testInput',
+      placement: 'local',
       input: Schema.Struct({ count: Schema.Finite }),
       execute: () => [],
     })
 
     // @ts-expect-error input must have count: number
     invoke(effectWithSchema, { count: 'string' })
+  })
+
+  test('placement decides the handler shape and the returned definition', () => {
+    const create = ordersModule.effect({
+      type: 'orders.createLocal',
+      placement: 'local',
+      input: Schema.Struct({ orderId: Schema.String }),
+      execute: (input) => [
+        { type: 'orders.created', payload: { orderId: input.orderId, amount: 1 } },
+      ],
+    })
+
+    const ship = ordersModule.effect({
+      type: 'orders.ship',
+      placement: 'worker',
+      input: Schema.Struct({ orderId: Schema.String }),
+    })
+
+    const localPlacement: 'local' = create.placement
+    const workerPlacement: 'worker' = ship.placement
+
+    expect(localPlacement).toBe('local')
+    expect(workerPlacement).toBe('worker')
+
+    // @ts-expect-error worker placement has no execute
+    ordersModule.effect({ type: 'orders.badWorker', placement: 'worker', execute: () => [] })
+
+    // @ts-expect-error local placement requires execute
+    ordersModule.effect({ type: 'orders.badLocal', placement: 'local' })
+
+    // @ts-expect-error placement is required
+    ordersModule.effect({ type: 'orders.noPlacement', execute: () => [] })
+  })
+
+  test('an effect from a separate file keeps its types inside defineModule', () => {
+    const create = ordersModule.effect({
+      type: 'orders.createSeparate',
+      placement: 'local',
+      input: Schema.Struct({ orderId: Schema.String }),
+      execute: (input) => [
+        { type: 'orders.created', payload: { orderId: input.orderId, amount: 1 } },
+      ],
+    })
+
+    const built = defineModule(ordersModule, () => ({ effects: { create } }))
+    const same: typeof create = built.effects.create
+
+    expect(same.type).toBe('orders.createSeparate')
+  })
+
+  test('defineModule rejects effects built outside the module catalog', () => {
+    const shippingScope = createModuleScope({
+      namespace: 'shipping',
+      protocolVersion: '1.0.0',
+      events: shippingCatalog,
+    })
+
+    const deliver = shippingScope.effect({
+      type: 'shipping.deliver',
+      placement: 'local',
+      execute: () => [{ type: 'shipping.delivered', payload: { trackingNumber: 't', at: 1 } }],
+    })
+
+    const loose = defineEffect({
+      type: 'orders.loose',
+      placement: 'local',
+      execute: () => [{ type: 'orders.anything', payload: null }],
+    })
+
+    const empty = defineEffect({ type: 'orders.empty', placement: 'local', execute: () => [] })
+
+    expect(defineModule(ordersModule, () => ({ effects: { empty } })).effects.empty).toBe(empty)
+
+    const billingScope = createModuleScope({
+      namespace: 'billing',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('billing', { invoiced: payload<{ invoiceId: string }>() }),
+    })
+
+    defineModule(billingScope, () => ({
+      // @ts-expect-error shipping.delivered is not in the billing catalog
+      effects: { deliver },
+    }))
+
+    defineModule(ordersModule, () => ({
+      // @ts-expect-error unscoped effects return untyped events
+      effects: { loose },
+    }))
   })
 
   test('defineModule produces clean RuntimeModule without leaking builder methods', () => {
