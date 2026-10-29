@@ -4,8 +4,9 @@ import type { EventCatalog } from './catalog'
 import type { DefinitionResolver } from './definition-resolver'
 import {
   isPrimitiveEffect,
-  type EffectContext,
   type EffectDefinition,
+  type LocalEffectContext,
+  type LocalEffectDefinition,
   type RuntimeEffect,
 } from './effects'
 import type { EventInput } from './envelope'
@@ -25,12 +26,12 @@ export { DEFAULT_DEFINITION_VERSION, definitionKey } from './definition-version'
 
 export type NextEffectHandler = (
   effect: RuntimeEffect,
-  ctx: EffectContext,
+  ctx: LocalEffectContext,
 ) => Effect.Effect<ReadonlyArray<EventInput>, Error>
 
 export type EffectMiddleware = (
   effect: RuntimeEffect,
-  ctx: EffectContext,
+  ctx: LocalEffectContext,
   next: NextEffectHandler,
 ) => Effect.Effect<ReadonlyArray<EventInput>, Error>
 
@@ -38,18 +39,18 @@ export type EffectMiddleware = (
 export type OnEffectNext = () => Effect.Effect<ReadonlyArray<EventInput>, Error>
 
 /**
- * Middleware that runs only for one effect definition. The handler receives the effect's
+ * Middleware that runs only for one **local** effect definition. The handler receives the effect's
  * decoded input type and must call `next()` to continue (or `failEffect` to reject the attempt).
  *
- * Middleware wraps local (in-process) effect dispatch only. Effects routed to an `EffectWorker`
- * never see it. Prefer {@link EffectAdmission} / {@link onAdmit} for gates that must apply on
- * both local and worker paths (credits, feature flags, tenant checks).
+ * Middleware wraps local (in-process) effect dispatch only. Worker-placed effects never see it —
+ * pass a {@link LocalEffectDefinition} so that is a type error rather than a silent no-op.
+ * Prefer {@link EffectAdmission} / {@link onAdmit} for gates that must apply on both paths.
  */
 export function onEffect<TInput>(
-  definition: EffectDefinition<TInput>,
+  definition: LocalEffectDefinition<TInput>,
   handler: (
     input: TInput,
-    ctx: EffectContext,
+    ctx: LocalEffectContext,
     next: OnEffectNext,
   ) => Effect.Effect<ReadonlyArray<EventInput>, Error>,
 ): EffectMiddleware {
@@ -99,8 +100,8 @@ export type EffectAdmission = (
 ) => Effect.Effect<void, Error>
 
 /**
- * Admission that runs only for one effect definition. Prefer this over middleware when the gate
- * must apply to worker-routed effects as well as local ones.
+ * Admission that runs only for one effect definition (local or worker). Prefer this over
+ * middleware when the gate must apply to worker-placed effects as well as local ones.
  */
 export function onAdmit<TInput>(
   definition: EffectDefinition<TInput>,

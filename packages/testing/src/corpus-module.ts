@@ -36,26 +36,34 @@ const decodeCheckoutInput = Schema.decodeUnknownOption(CheckoutInputSchema)
 export function corpusModule(options?: {
   readonly charge?: (input: JsonValue) => ReadonlyArray<EventInput>
 }) {
-  const charge = defineEffect({
-    type: corpusChargeV1,
-    retry: {
-      maxAttempts: 3,
-      backoffMs: 1,
-      scheduleToStartTimeoutMs: 60_000,
-      startToCloseTimeoutMs: 60_000,
-    },
-    execute: options?.charge,
-  })
+  const chargeRetry = {
+    maxAttempts: 3,
+    backoffMs: 1,
+    scheduleToStartTimeoutMs: 60_000,
+    startToCloseTimeoutMs: 60_000,
+  } as const
 
-  const chargeV2 = defineEffect({
-    type: corpusChargeV2,
-    retry: {
-      maxAttempts: 1,
-      scheduleToStartTimeoutMs: 60_000,
-      startToCloseTimeoutMs: 60_000,
-    },
-    execute: options?.charge,
-  })
+  const charge = options?.charge
+    ? defineEffect.local({
+        type: corpusChargeV1,
+        retry: chargeRetry,
+        execute: options.charge,
+      })
+    : defineEffect.worker({ type: corpusChargeV1, retry: chargeRetry })
+
+  const chargeV2Retry = {
+    maxAttempts: 1,
+    scheduleToStartTimeoutMs: 60_000,
+    startToCloseTimeoutMs: 60_000,
+  } as const
+
+  const chargeV2 = options?.charge
+    ? defineEffect.local({
+        type: corpusChargeV2,
+        retry: chargeV2Retry,
+        execute: options.charge,
+      })
+    : defineEffect.worker({ type: corpusChargeV2, retry: chargeV2Retry })
 
   return defineRuntimeModule({
     namespace: 'corpus',

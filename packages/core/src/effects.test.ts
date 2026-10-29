@@ -6,6 +6,7 @@ import { defineEffect, waitOutcome, type EffectContext } from './effects'
 import { validateInputEffect } from './schema'
 
 const ctx: EffectContext = {
+  placement: 'local',
   effectId: 'eff_1',
   runId: 'run_1',
   threadId: 'thr_1',
@@ -20,7 +21,7 @@ const ctx: EffectContext = {
 
 describe('defineEffect', () => {
   test('accepts a synchronous handler', async () => {
-    const effect = defineEffect({
+    const effect = defineEffect.local({
       type: 'demo.ping',
       execute: (_input, handlerCtx) => [
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
@@ -32,7 +33,7 @@ describe('defineEffect', () => {
   })
 
   test('accepts a promise handler', async () => {
-    const effect = defineEffect({
+    const effect = defineEffect.local({
       type: 'demo.ping',
       execute: async (_input, handlerCtx) => [
         { type: 'demo.pong', payload: { effectId: handlerCtx.effectId } },
@@ -44,7 +45,7 @@ describe('defineEffect', () => {
   })
 
   test('preserves validateInput error messages', async () => {
-    const effect = defineEffect({
+    const effect = defineEffect.local({
       type: 'demo.charge',
       input: Schema.Struct({ amount: Schema.Finite }),
       execute: () => [],
@@ -65,7 +66,7 @@ describe('defineEffect', () => {
   })
 
   test('infers input type from input schema', async () => {
-    const effect = defineEffect({
+    const effect = defineEffect.local({
       type: 'demo.charge',
       input: Schema.Struct({ amount: Schema.Finite }),
       execute: (input) => [{ type: 'demo.charged', payload: { amount: input.amount } }],
@@ -78,14 +79,14 @@ describe('defineEffect', () => {
   })
 
   test('marks definitions with a handler', () => {
-    const effect = defineEffect({ type: 'demo.ping', execute: () => [] })
+    const effect = defineEffect.local({ type: 'demo.ping', execute: () => [] })
 
     expect(effect.hasHandler).toBe(true)
-    expect(effect.execution).toBeUndefined()
+    expect(effect.placement).toBe('local')
   })
 
   test('declares a handler-less effect that still validates input', async () => {
-    const effect = defineEffect({
+    const effect = defineEffect.worker({
       type: 'demo.transcode',
       input: Schema.Struct({ url: Schema.String }),
       retry: { maxAttempts: 3 },
@@ -101,10 +102,10 @@ describe('defineEffect', () => {
     expect(Effect.runPromise(effect.execute({ url: 1 }, ctx))).rejects.toThrow('url')
   })
 
-  test('carries an explicit execution override', () => {
-    const effect = defineEffect({ type: 'demo.local', execution: 'local', execute: () => [] })
+  test('marks local placement on defineEffect.local', () => {
+    const effect = defineEffect.local({ type: 'demo.local', execute: () => [] })
 
-    expect(effect.execution).toBe('local')
+    expect(effect.placement).toBe('local')
   })
 
   test('validateInputEffect returns typed InvalidInputError with issues catchable by catchTag', async () => {

@@ -284,11 +284,12 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       </h3>
       <p>
         Define effects within a module using <code>scope.effect</code> (or standalone with{' '}
-        <code>defineEffect</code> from <code>@swirls/looms/core</code>). Using{' '}
-        <code>scope.effect</code> constrains the effect&apos;s type name to your module&apos;s
-        namespace and ensures that both the returned events and any events passed to{' '}
-        <code>ctx.emit</code> match your module&apos;s event catalog. This handler excerpt assumes a
-        configured server-side Stripe client and a payments catalog containing the authorized event:
+        <code>defineEffect.local</code> / <code>defineEffect.worker</code> from{' '}
+        <code>@swirls/looms/core</code>). Using <code>scope.effect</code> constrains the
+        effect&apos;s type name to your module&apos;s namespace and ensures that both the returned
+        events and any events passed to <code>ctx.emit</code> match your module&apos;s event
+        catalog. This handler excerpt assumes a configured server-side Stripe client and a payments
+        catalog containing the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@swirls/looms/core'

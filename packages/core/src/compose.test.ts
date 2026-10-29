@@ -35,7 +35,7 @@ describe('composeModules', () => {
       done: Schema.Struct({ ok: Schema.Boolean }),
     })
 
-    const effect = defineEffect({
+    const effect = defineEffect.local({
       type: 'demo.work',
       input: Schema.Struct({ n: Schema.Finite }),
       execute: () => [],

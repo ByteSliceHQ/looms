@@ -4,10 +4,11 @@
 
 ### Minor Changes
 
+- **Breaking:** Effect placement is explicit. Use `defineEffect.local({ …, execute })` (or `module.effect`) for host-cell effects and `defineEffect.worker({ … })` (or `module.workerEffect`) for external workers. The old inferred `execution` / handler-less / string-`handles` overlap model is removed. `cloudflareQueueWorker` routes take `{ effects: [definition], queue }` instead of `handles` type strings. `onEffect` only accepts local definitions; `workerHandlers` only accepts worker definitions. Handlers receive `LocalEffectContext` or `WorkerEffectContext` (`placement` discriminant); worker `emit` stays buffered until complete.
 - Effect admission hooks (`admission` / `onAdmit`) run in the host before every local attempt and before every worker dispatch, so credit checks and feature flags cover both paths. `failEffect` from admission becomes `runtime.effect.failed`; a rejected worker admission never queues. Execution middleware remains local-only.
 - `onAdmit` and `onEffect` decode the input with the definition's schema before the hook runs, so hooks see defaults and transforms. An input that fails to decode fails the attempt.
-- Worker and local handlers share `EffectContext`: `heartbeat`, buffered `emit` on workers, and sync `secrets` (loaded before the queue handler runs). Queue tasks carry `threadId`, `causingEventId`, and `attributes`. `workerHandlers([[definition, handler]])` validates input with the effect schema.
-- Creating a runtime fails when handler-less / `execution: 'worker'` effects have no worker, or when a worker's `handles` claims an effect that also has a local handler without an explicit `execution` pin.
+- Queue tasks carry `threadId`, `causingEventId`, and `attributes`. Secrets load through the worker callback before the handler runs. `inspectRun` / effect status includes each outstanding effect's `placement`.
+- Creating a runtime fails when worker-placed effects have no `EffectWorker`, or when a worker claims a local-placed effect type.
 - Unacknowledged worker dispatch failures no longer park as `ambiguous` on the first push. The attempt enters `dispatch_wait` via `runtime.effect.dispatch.deferred`, and the wake engine retries the same attempt with dedicated outbox backoff. `ambiguous` remains for missing workers, cancellation timeouts, and exhausted relays. Acknowledged transports (Cloudflare Queues) are unchanged. `retryEffect` can target `dispatch_wait`.
 
 ## 0.6.1

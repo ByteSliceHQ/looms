@@ -76,9 +76,8 @@ const SAME_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new 
 
 /**
  * Decides where an outstanding effect runs. An attempt already in flight keeps
- * its durable placement. Otherwise an explicit `execution` wins, then a worker
- * claim; effects with a local handler run in process and handler-less effects
- * go to the worker.
+ * its durable placement. Otherwise the definition's `placement` wins. Unregistered
+ * types go to a configured worker unless it declines them.
  */
 export function isWorkerEffect(input: {
   readonly runId: string
@@ -103,18 +102,14 @@ export function isWorkerEffect(input: {
 
   const definition = input.registry.effects.get(item.effect.type)
 
-  if (definition?.execution) {
-    return definition.execution === 'worker'
+  if (definition) {
+    return definition.placement === 'worker'
   }
 
   const claim = worker ? workerClaims(worker, input.runId, item) : undefined
 
   if (claim) {
     return true
-  }
-
-  if (definition) {
-    return !definition.hasHandler
   }
 
   return worker !== undefined && claim !== false
@@ -354,8 +349,8 @@ export function assertWorkerDeadlines(
 }
 
 /**
- * Handler-less effects (and `execution: 'worker'`) need a configured `EffectWorker`. Without one
- * they would park as ambiguous on every attempt.
+ * Worker-placed effects need a configured `EffectWorker`. Without one they would park as
+ * ambiguous on every attempt.
  */
 export function assertWorkerConfigured(
   registry: ComposedRegistry,
@@ -366,11 +361,7 @@ export function assertWorkerConfigured(
   }
 
   const needingWorker = [...registry.effects.values()]
-    .filter(
-      (definition) =>
-        definition.execution === 'worker' ||
-        (!definition.hasHandler && definition.execution !== 'local'),
-    )
+    .filter((definition) => definition.placement === 'worker')
     .map((definition) => definition.type)
 
   if (needingWorker.length > 0) {
@@ -381,8 +372,8 @@ export function assertWorkerConfigured(
 }
 
 /**
- * A worker that claims an effect which also has a local handler must set `execution: 'worker'`
- * on the definition so routing is explicit.
+ * A worker must not claim a local-placed effect. Use {@link defineEffect.worker} (or a hybrid
+ * when that lands) instead of overlapping `handles` with a local definition.
  */
 export function assertWorkerClaimsExplicit(
   registry: ComposedRegistry,
@@ -392,29 +383,31 @@ export function assertWorkerClaimsExplicit(
     return
   }
 
-  const ambiguous = [...registry.effects.values()]
+  const claimedLocal = [...registry.effects.values()]
     .filter(
       (definition) =>
-        definition.hasHandler &&
-        definition.execution !== 'worker' &&
-        definition.execution !== 'local' &&
-        workerHandlesType(worker, definition.type),
+        definition.placement === 'local' && workerHandlesType(worker, definition.type),
     )
     .map((definition) => definition.type)
 
-  if (ambiguous.length > 0) {
+  if (claimedLocal.length > 0) {
     throw new Error(
-      `Worker claims effects that also have local handlers; set execution: 'worker' (or 'local') explicitly: ${ambiguous.join(', ')}`,
+      `Worker claims local-placed effects; use defineEffect.worker (or drop the claim): ${claimedLocal.join(', ')}`,
     )
   }
 }
 
 export function claimsType(worker: EffectWorker, definition: EffectDefinition): boolean {
-  if (definition.execution) {
-    return definition.execution === 'worker'
+  if (definition.placement !== 'worker') {
+    return false
   }
 
-  return workerHandlesType(worker, definition.type) || !definition.hasHandler
+  // A worker with no claim filter takes every worker-placed effect.
+  if (!worker.handles && !worker.canDispatch) {
+    return true
+  }
+
+  return workerHandlesType(worker, definition.type)
 }
 
 function workerHandlesType(worker: EffectWorker, type: string): boolean {

@@ -270,7 +270,7 @@ describe('schedule module', () => {
       done: Schema.Struct({ ok: Schema.Boolean }),
     })
 
-    const launchTwice = defineEffect({
+    const launchTwice = defineEffect.local({
       type: 'probe.launch',
       execute: (_input, ctx) =>
         Effect.gen(function* () {

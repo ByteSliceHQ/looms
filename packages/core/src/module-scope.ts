@@ -13,12 +13,13 @@ import {
   emit,
   defineEffect,
   type EffectDefinition,
-  type EffectExecution,
   type EffectHandlerResult,
   type EmitEffect,
+  type LocalEffectDefinition,
   type RetryPolicy,
   type RuntimeEffect,
-  type ScopedEffectContext,
+  type ScopedLocalEffectContext,
+  type WorkerEffectDefinition,
 } from './effects'
 import type { EventEnvelope, EventInput } from './envelope'
 import type { RunLauncherTag } from './launcher'
@@ -130,6 +131,10 @@ export interface ModuleScope<
     reduce(state: NoInfer<InferSchemaOutput<TShape>>, event: U): InferSchemaOutput<TShape>
   }): ProjectionDefinition<InferSchemaOutput<TShape>>
 
+  /**
+   * Declare a local effect for this module. Runs in the host actor cell with live `emit`.
+   * Prefer this over {@link defineEffect.local} so the type is scoped to the module namespace.
+   */
   effect<
     TSchema extends SchemaInput | undefined = undefined,
     TInput = InferDefinedSchema<TSchema>,
@@ -139,13 +144,23 @@ export interface ModuleScope<
     type: `${TNamespace}.${string}`
     input?: TSchema
     retry?: RetryPolicy
-    execution?: EffectExecution
     deterministic?: boolean
-    execute?: (
+    execute: (
       input: TInput,
-      ctx: ScopedEffectContext<EventInputOf<U>>,
+      ctx: ScopedLocalEffectContext<EventInputOf<U>>,
     ) => EffectHandlerResult<R, EventInputOf<U>, HandlerError>
-  }): NoInfer<EffectDefinition<TInput, R, EventInputOf<U>>>
+  }): NoInfer<LocalEffectDefinition<TInput, R, EventInputOf<U>>>
+
+  /**
+   * Declare a worker-placed effect for this module. The host only dispatches it; implement the
+   * handler with `workerHandlers` (or an equivalent consumer).
+   */
+  workerEffect<TSchema extends SchemaInput | undefined = undefined>(def: {
+    type: `${TNamespace}.${string}`
+    input?: TSchema
+    retry?: RetryPolicy
+    deterministic?: boolean
+  }): NoInfer<WorkerEffectDefinition<InferDefinedSchema<TSchema>>>
 
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
@@ -206,7 +221,11 @@ export function createModuleScope<
     },
 
     effect(def: any): any {
-      return defineEffect(def)
+      return defineEffect.local(def)
+    },
+
+    workerEffect(def: any): any {
+      return defineEffect.worker(def)
     },
 
     input(key: any, payload: any, meta?: any): any {

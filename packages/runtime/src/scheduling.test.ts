@@ -405,7 +405,7 @@ describe('createLooms runtime', () => {
       namespace: 'work',
       protocolVersion: '1.0.0',
       effects: {
-        'work.do': defineEffect({
+        'work.do': defineEffect.local({
           type: 'work.do',
           execute: (_input, ctx) => {
             executeCalls += 1
@@ -468,7 +468,7 @@ describe('createLooms runtime', () => {
       namespace: 'pingpong',
       protocolVersion: '1.0.0',
       effects: {
-        'pingpong.step': defineEffect({
+        'pingpong.step': defineEffect.local({
           type: 'pingpong.step',
           input: Schema.Struct({ count: Schema.Finite }),
           execute: (input) => {

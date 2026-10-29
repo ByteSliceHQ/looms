@@ -22,7 +22,7 @@ const catalog = defineEventCatalog('relay', {
 
 const RelayInput = Schema.Struct({ depth: Schema.Finite })
 
-const launchNext = defineEffect({
+const launchNext = defineEffect.local({
   type: 'relay.launch',
   input: RelayInput,
   execute: (input, ctx) =>

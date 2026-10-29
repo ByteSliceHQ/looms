@@ -49,7 +49,7 @@ export interface ActorCellOptions<
   /** Starts runs from effect handlers. Required for schedules; there is no default inside a cell. */
   readonly launcher?: RunLauncher
   /**
-   * Dispatches `execution: 'worker'` effects out of the cell (for example a
+   * Dispatches worker-placed effects out of the cell (for example a
    * Cloudflare Queue producer). Without it, worker effects cannot leave the object.
    */
   readonly worker?: EffectWorker

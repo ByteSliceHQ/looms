@@ -375,7 +375,7 @@ describe('createLooms runtime', () => {
       namespace: 'boom',
       protocolVersion: '1.0.0',
       effects: {
-        explode: defineEffect({
+        explode: defineEffect.local({
           type: 'boom.explode',
           execute: () => Effect.fail(new Error('boom handler down')),
         }),
@@ -624,7 +624,7 @@ describe('createLooms runtime', () => {
   test('onEffect only wraps the matched effect type', async () => {
     const seen: string[] = []
 
-    const other = defineEffect({
+    const other = defineEffect.local({
       type: 'audit.other',
       execute: () => Effect.succeed([{ type: 'audit.noted', payload: { ok: true } }]),
     })
@@ -715,7 +715,7 @@ describe('createLooms runtime', () => {
   test('admission and middleware hooks receive the decoded input', async () => {
     const seen: JsonValue[] = []
 
-    const charge = defineEffect({
+    const charge = defineEffect.local({
       type: 'billing.charge',
       input: Schema.Struct({
         amount: Schema.Finite,
@@ -776,7 +776,7 @@ describe('createLooms runtime', () => {
   test('admission fails the attempt when the input does not decode', async () => {
     const admitted: JsonValue[] = []
 
-    const charge = defineEffect({
+    const charge = defineEffect.local({
       type: 'billing.charge',
       input: Schema.Struct({ amount: Schema.Finite }),
       retry: { maxAttempts: 1 },
@@ -826,9 +826,8 @@ describe('createLooms runtime', () => {
   test('admission rejects a worker dispatch before it is queued', async () => {
     const dispatched: string[] = []
 
-    const work = defineEffect({
+    const work = defineEffect.worker({
       type: 'gate.work',
-      execution: 'worker',
       retry: { maxAttempts: 1, scheduleToStartTimeoutMs: 60_000, startToCloseTimeoutMs: 60_000 },
     })
 
@@ -883,7 +882,7 @@ describe('createLooms runtime', () => {
   test('retries transient effect failures according to retry policy', async () => {
     let attempts = 0
 
-    const flakyEffect = defineEffect({
+    const flakyEffect = defineEffect.local({
       type: 'test.flaky',
       retry: { maxAttempts: 3, backoffMs: 5 },
       execute: () => {

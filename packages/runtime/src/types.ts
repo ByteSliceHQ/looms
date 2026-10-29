@@ -196,6 +196,8 @@ export interface RunOperationalStatus {
     readonly effectId: string
     readonly threadId: string
     readonly type: string
+    /** From the effect definition when registered; `undefined` for unknown types. */
+    readonly placement: 'local' | 'worker' | undefined
     readonly attempt: number
     readonly status: string
     readonly deadlineAt: number | null

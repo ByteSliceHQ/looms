@@ -772,7 +772,7 @@ describe('createLooms runtime', () => {
       }),
     })
 
-    const badOutputEffect = defineEffect({
+    const badOutputEffect = defineEffect.local({
       type: 'schematest.produceBad',
       execute: () => [
         {

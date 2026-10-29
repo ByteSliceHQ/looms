@@ -245,6 +245,7 @@ export function executeLocalEffects(
             launcherFor(launcher, input.runId, input.context, item, launched),
             item.effect,
             {
+              placement: 'local',
               effectId: item.effectId,
               runId: input.runId,
               threadId: item.threadId,

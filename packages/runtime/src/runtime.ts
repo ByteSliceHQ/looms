@@ -571,6 +571,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
             effectId: item.effectId,
             threadId: item.threadId,
             type: item.effect.type,
+            placement: registry.effects.get(item.effect.type)?.placement,
             attempt: execution?.attempt ?? 0,
             status: execution?.status ?? 'pending',
             deadlineAt: execution?.deadlineAt ?? null,

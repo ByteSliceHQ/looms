@@ -27,11 +27,10 @@ function workerModule(
   retry: RetryPolicy,
   execute?: () => ReadonlyArray<EventInput> | Effect.Effect<ReadonlyArray<EventInput>, unknown>,
 ) {
-  const effect = defineEffect({
-    type: 'worker.do',
-    retry,
-    execute,
-  })
+  const effect =
+    execute === undefined
+      ? defineEffect.worker({ type: 'worker.do', retry })
+      : defineEffect.local({ type: 'worker.do', retry, execute })
 
   return defineRuntimeModule({
     namespace: 'worker',
@@ -113,13 +112,13 @@ describe('durable external effect workers', () => {
     await inProcess.stop()
   })
 
-  test('a worker claim of a local handler requires execution: worker', () => {
+  test('a worker claim of a local-placed effect is rejected at runtime creation', () => {
     expect(() =>
       createRuntime({
         modules: [workerModule({ maxAttempts: 1 }, local)],
         worker: { handles: ['worker.do'], dispatch: () => undefined },
       }),
-    ).toThrow("execution: 'worker'")
+    ).toThrow('defineEffect.worker')
   })
 
   test('fails to create a runtime when handler-less effects have no worker', () => {
@@ -167,11 +166,12 @@ describe('durable external effect workers', () => {
     )
 
     expect(types).not.toContain('runtime.effect.ambiguous')
+
     await looms.stop()
   })
 
   test('times out a local handler that never settles', async () => {
-    const hanging = defineEffect({
+    const hanging = defineEffect.local({
       type: 'hang.forever',
       retry: { maxAttempts: 1, startToCloseTimeoutMs: 10 },
       execute: () => Effect.never,
@@ -861,7 +861,7 @@ describe('durable external effect workers', () => {
   test('maxInFlightWorkerEffects caps planned dispatches per run', async () => {
     const dispatched: EffectWorkerTask[] = []
 
-    const multiEffect = defineEffect({ type: 'worker.multi' })
+    const multiEffect = defineEffect.worker({ type: 'worker.multi' })
 
     const fanoutModule = defineRuntimeModule({
       namespace: 'fanout',

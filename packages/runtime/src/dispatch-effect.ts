@@ -7,7 +7,7 @@ import {
   isWaitOnTimer,
   readEffectFailure,
   type ComposedRegistry,
-  type EffectContext,
+  type LocalEffectContext,
   type EffectFailedPayload,
   type EventInput,
   RunLauncherTag,
@@ -52,13 +52,13 @@ export function dispatchEffect(
   definitions: DefinitionResolver,
   launcher: RunLauncher,
   effect: RuntimeEffect,
-  ctx: EffectContext,
+  ctx: LocalEffectContext,
 ): Effect.Effect<ReadonlyArray<EventInput>, Error> {
   const currentThreadId = ctx.threadId
 
   const baseDispatch = (
     eff: RuntimeEffect,
-    effCtx: EffectContext,
+    effCtx: LocalEffectContext,
   ): Effect.Effect<ReadonlyArray<EventInput>, Error> => {
     if (isPrimitiveEffect(eff)) {
       switch (eff.type) {
@@ -177,7 +177,7 @@ export function dispatchEffect(
 
   if (registry.middleware && registry.middleware.length > 0) {
     const pipeline = registry.middleware.reduceRight<
-      (e: RuntimeEffect, c: EffectContext) => Effect.Effect<ReadonlyArray<EventInput>, Error>
+      (e: RuntimeEffect, c: LocalEffectContext) => Effect.Effect<ReadonlyArray<EventInput>, Error>
     >((next, mw) => (e, c) => mw(e, c, next), baseDispatch)
 
     // Middleware may call `failEffect` (or otherwise fail) before `next`. Catch those the same

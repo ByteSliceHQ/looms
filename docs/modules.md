@@ -172,6 +172,32 @@ Conventions that keep modules composable:
 - Put each module slot in its own file once the module is more than a sketch
 - Pass `input` or `shape` (a Standard Schema or Effect Schema) to `define*` and let types infer — do not pass generics
 
+## Effect placement
+
+Every effect declares where it runs:
+
+| Constructor                                                            | Runs in                                         | Handler                            | `emit`                                    |
+| ---------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------- | ----------------------------------------- |
+| `defineEffect.local({ …, execute })` / `module.effect({ …, execute })` | Host actor cell (e.g. Durable Object)           | `execute` on the definition        | Live — subscribers see events immediately |
+| `defineEffect.worker({ … })` / `module.workerEffect({ … })`            | External `EffectWorker` (e.g. Cloudflare Queue) | `workerHandlers([[def, handler]])` | Buffered until the attempt completes      |
+
+There is no inferred placement from “has `execute`” or string `handles` overlap. A worker route lists **definitions**, not type strings:
+
+```ts
+const sandboxExec = defineEffect.worker({
+  type: 'sandbox.exec',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
+cloudflareQueueWorker({
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
+})
+```
+
+`onEffect` (middleware, with `next()`) only accepts local definitions. `onAdmit` accepts either. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`.
+
+A later `defineEffect.hybrid` may allow one definition to run in either place; until then, pick local or worker at define time.
+
 ## Effect admission and middleware
 
 Modules may declare **`admission`**: hooks that run in the host **before every local attempt and before every worker dispatch**. Use them for gates that must cover both paths — tenant credit checks, feature flags, allowlists. Prefer `onAdmit` for one effect type, and `failEffect` to reject the attempt under the retry policy:
@@ -198,9 +224,9 @@ const billing = defineRuntimeModule({
 
 `failEffect` from admission becomes `runtime.effect.failed` the same way a handler failure does. A rejected worker admission never queues or dispatches the attempt.
 
-Modules may also declare **`middleware`**: functions that wrap **local** (in-process) effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. Effects routed to an `EffectWorker` never see middleware — use `admission` for shared gates, or put execution-time wraps on the worker side (`workerHandlers` / consumer code).
+Modules may also declare **`middleware`**: functions that wrap **local** effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. `onEffect` is typed to accept only `defineEffect.local` / `module.effect` definitions, so attaching middleware to a worker effect is a compile error. Use `admission` for shared gates, or wrap execution on the worker side (`workerHandlers`).
 
-Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes). Prefer `onEffect` when you only care about one effect type.
+Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes).
 
 For usage and billing totals, fold `agent.turn.usage` or use the agent module's `tokenUsage` projection.
 

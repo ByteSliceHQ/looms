@@ -248,7 +248,8 @@ invoke(charge, { amount: '40' })`}</CodeBlock>
           Scoped <code>m.thread</code> / <code>m.projection</code> / <code>m.effect</code> narrow
           events to their module. Standalone <code>defineProjection</code> reducers receive the
           registered union unless their <code>event</code> parameter is annotated;{' '}
-          <code>defineThread</code> and <code>defineEffect</code> do not.
+          <code>defineThread</code> and <code>defineEffect.local</code> /{' '}
+          <code>defineEffect.worker</code> do not.
         </li>
         <li>
           <code>wait(&#123; on: &#123; type &#125; &#125;)</code> matches on strings; it is not

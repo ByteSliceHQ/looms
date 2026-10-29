@@ -19,7 +19,7 @@ async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 
 function flakyModule() {
   let attempts = 0
 
-  const flaky = defineEffect({
+  const flaky = defineEffect.local({
     type: 'flaky.call',
     retry: { maxAttempts: 5, backoffMs: 500 },
     execute: () => {
@@ -143,7 +143,7 @@ describe('wake loop while a workflow node waits to retry', () => {
   test('the retried effect runs again after the backoff and the workflow settles', async () => {
     let attempts = 0
 
-    const recovering = defineEffect({
+    const recovering = defineEffect.local({
       type: 'recovering.call',
       retry: { maxAttempts: 3, backoffMs: 20 },
       execute: () => {

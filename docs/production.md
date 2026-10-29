@@ -154,9 +154,8 @@ timeouts, and exhausted dispatch relays. Use `retryEffect` or
 
 Creating a runtime also fails when:
 
-- an effect has no local handler (or sets `execution: 'worker'`) and no `EffectWorker` is configured
-- a worker's `handles` list claims an effect that also has a local handler without an explicit
-  `execution: 'worker'` (or `execution: 'local'`) on the definition
+- an effect is declared with `defineEffect.worker` and no `EffectWorker` is configured
+- a worker's `handles` list (or predicate) claims an effect declared with `defineEffect.local`
 
 ### Cloudflare Queues transport
 
@@ -166,23 +165,29 @@ message past 100 KB is stored in `blobs` and sent as `inputRef`; without a blob
 store that dispatch fails. Secrets never go on the queue.
 
 ```ts
+import { defineEffect } from '@swirls/looms/core'
 import { cloudflareQueueWorker } from '@swirls/looms/cloudflare'
 
+const sandboxExec = defineEffect.worker({
+  type: 'sandbox.exec',
+  retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 60_000 },
+})
+
 const worker = cloudflareQueueWorker({
-  routes: [{ handles: ['sandbox.exec'], queue: env.SANDBOX_QUEUE }],
+  routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
   blobs: r2BlobStore(env.BLOBS),
 })
 
 createLooms({ modules, worker, maxInFlightWorkerEffects: 16 })
 ```
 
-A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is an
-`EffectContext`: secrets are loaded before the handler runs (`ctx.secrets`),
-`ctx.heartbeat(details)` reports progress, `ctx.emit` buffers events until
-completion, and `ctx.signal` aborts when the run is cancelled. Prefer
-`workerHandlers([[definition, handler]])` so input is validated with the
-effect's schema the same way local `execute` is. Throw a `QueueTaskError` with
-`nonRetryable` or `retryAfterMs` to control the retry.
+A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is a
+`WorkerEffectContext` (`placement: 'worker'`): secrets are loaded before the
+handler runs (`ctx.secrets`), `ctx.heartbeat(details)` reports progress,
+`ctx.emit` buffers events until completion (not a live stream), and `ctx.signal`
+aborts when the run is cancelled. Prefer `workerHandlers([[definition, handler]])`
+with **worker-placed** definitions so input is validated with the effect's schema.
+Throw a `QueueTaskError` with `nonRetryable` or `retryAfterMs` to control the retry.
 
 ```ts
 import { createLoomsClient } from '@swirls/looms/client'
