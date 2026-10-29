@@ -204,9 +204,11 @@ const payments = defineModule(
 const { charge } = payments.effects`}</CodeBlock>
       <p>
         That example is a local effect (<code>placement: &apos;local&apos;</code>). Long-running or
-        off-host work sets <code>placement: &apos;worker&apos;</code>, drops <code>execute</code>,
-        and runs on a consumer via <code>workerHandlers</code>. Placement, retries, Effect Layers,
-        and <code>ctx.emit</code> are covered under{' '}
+        off-host work sets <code>placement: &apos;worker&apos;</code> and leaves the handler off the
+        definition. The host and the consumer are separate programs. Both import the definition, and
+        the consumer binds the handler with <code>workerHandlers</code>, so the handler&apos;s
+        dependencies stay in the consumer program. Placement, retries, Effect Layers, and{' '}
+        <code>ctx.emit</code> are covered under{' '}
         <Link to="/docs/modules" hash="effect-placement">
           Modules
         </Link>

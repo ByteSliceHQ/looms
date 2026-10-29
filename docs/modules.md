@@ -164,6 +164,8 @@ src/
 
 A small domain module can stay in one callback. Larger modules can use `createModuleScope(options)` in `scope.ts` to author members across files, then return those members from `defineModule(scope, setup)` in `module.ts`. The scope is an authoring helper; pass the finished module to the host.
 
+`effects.ts` is part of the host bundle. A worker effect's definition can live there; its handler belongs in the consumer, bound with `workerHandlers`.
+
 ### Effects in their own file
 
 `scope.effect` takes the same fields as `m.effect` and checks them against the same catalog, so an effect can live in `effects.ts` and keep its types:
@@ -238,6 +240,12 @@ Every effect sets `placement` when you define it, and the field changes what the
 | `'local'`   | Host actor cell (e.g. Durable Object)           | `execute` on the definition (required)           | Live — subscribers see events as they append |
 | `'worker'`  | External `EffectWorker` (e.g. Cloudflare Queue) | `workerHandlers([[def, handler]])`; no `execute` | Buffered until the attempt completes         |
 
+The host and the consumer are separate programs, and both of them import the effect definition. The host imports it to register the effect, typecheck `invoke`, and route the attempt to a queue. The consumer imports it and binds the handler with `workerHandlers([[definition, handler]])`, which checks the queued input against the effect's schema before the handler runs.
+
+A `handler` field on the definition is part of the host's import, so the host bundle would include the handler and its dependencies, such as a sandbox runtime or a vendor SDK. The host sends a worker attempt to the queue. An attempt that runs in the host actor cell instead fails.
+
+The definition carries the type, the input schema, and the retry policy. Keep the handler in the consumer you deploy, and a v1 fleet can finish in-flight `payments.charge` attempts while a v2 fleet handles `payments.charge@v2`.
+
 A local effect without `execute`, a worker effect with one, or an effect with no `placement` fails to compile. The host does not infer placement from a missing `execute`, and queue routes do not take overlapping type-string `handles` lists. Pass the worker definitions into the route:
 
 ```ts
@@ -250,6 +258,14 @@ const sandboxExec = sandboxScope.effect({
 cloudflareQueueWorker({
   routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
 })
+```
+
+Bind the handler in the consumer, which imports the same definition. Pass `handlers` to `queueConsumer` or `createQueuePullConsumer`:
+
+```ts
+import { workerHandlers } from '@swirls/looms/cloudflare'
+
+const handlers = workerHandlers([[sandboxExec, runSandbox]])
 ```
 
 `onEffect` middleware accepts only local definitions. `onAdmit` accepts either. Operators can read the registry map from `runtime.effectPlacements` or `GET /definitions/effect-placements`. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`. Dual local/worker placement for one definition is a separate follow-up; pick local or worker at define time.

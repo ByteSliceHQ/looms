@@ -321,6 +321,24 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         </tbody>
       </table>
       <p>
+        The host and the consumer are separate programs, and both of them import the effect
+        definition. The host imports it to register the effect, typecheck <code>invoke</code>, and
+        route the attempt to a queue. The consumer imports it and binds the handler with{' '}
+        <code>workerHandlers([[definition, handler]])</code>, which checks the queued input against
+        the effect&apos;s schema before the handler runs.
+      </p>
+      <p>
+        A <code>handler</code> field on the definition is part of the host&apos;s import, so the
+        host bundle would include the handler and its dependencies, such as a sandbox runtime or a
+        vendor SDK. The host sends a worker attempt to the queue. An attempt that runs in the host
+        actor cell instead fails.
+      </p>
+      <p>
+        The definition carries the type, the input schema, and the retry policy. Keep the handler in
+        the consumer you deploy, and a v1 fleet can finish in-flight <code>payments.charge</code>{' '}
+        attempts while a v2 fleet handles <code>payments.charge@v2</code>.
+      </p>
+      <p>
         A local effect without <code>execute</code>, a worker effect with one, or an effect with no{' '}
         <code>placement</code> fails to compile. The host does not infer placement from a missing{' '}
         <code>execute</code>, and queue routes do not take overlapping type-string{' '}
@@ -338,6 +356,13 @@ const sandboxExec = sandboxScope.effect({
 cloudflareQueueWorker({
   routes: [{ effects: [sandboxExec], queue: env.SANDBOX_QUEUE }],
 })`}</CodeBlock>
+      <p>
+        Bind the handler in the consumer, which imports the same definition. Pass{' '}
+        <code>handlers</code> to <code>queueConsumer</code> or <code>createQueuePullConsumer</code>:
+      </p>
+      <CodeBlock lang="ts">{`import { workerHandlers } from '@swirls/looms/cloudflare'
+
+const handlers = workerHandlers([[sandboxExec, runSandbox]])`}</CodeBlock>
       <p>
         <code>onEffect</code> middleware accepts only local definitions. <code>onAdmit</code>{' '}
         accepts either. Operators can read the registry map from{' '}
@@ -361,11 +386,11 @@ cloudflareQueueWorker({
         Define effects with <code>m.effect</code> inside <code>defineModule</code>, or with{' '}
         <code>scope.effect</code> from a shared scope when the effect lives in its own file. Both
         keep the type under your module namespace and check returned events and{' '}
-        <code>ctx.emit</code> against the catalog. Worker effects set{' '}
-        <code>placement: &apos;worker&apos;</code> and implement the handler with{' '}
-        <code>workerHandlers</code> on the consumer. The Stripe excerpt below is a local effect; it
-        assumes a configured server-side Stripe client and a payments catalog that includes the
-        authorized event:
+        <code>ctx.emit</code> against the catalog. A worker effect leaves the handler off the
+        definition and binds it on the consumer; see{' '}
+        <a href="#effect-placement">Effect placement</a>. The Stripe excerpt below is a local
+        effect; it assumes a configured server-side Stripe client and a payments catalog that
+        includes the authorized event:
       </p>
       <CodeBlock lang="ts">{`import { z } from 'zod'
 import { createModuleScope } from '@swirls/looms/core'
@@ -773,6 +798,10 @@ const billing = defineRuntimeModule({
         <code>createModuleScope(options)</code> from <code>scope.ts</code>, author members across
         files, and return them from <code>defineModule(scope, setup)</code>. Only the finished
         module is passed to the host.
+      </p>
+      <p>
+        <code>effects.ts</code> is part of the host bundle. A worker effect&apos;s definition can
+        live there; its handler belongs in the consumer, bound with <code>workerHandlers</code>.
       </p>
 
       <h3 id="effects-in-their-own-file">

@@ -182,6 +182,11 @@ const worker = cloudflareQueueWorker({
 createLooms({ modules, worker, maxInFlightWorkerEffects: 16 })
 ```
 
+`sandboxExec` has no handler because this file is the host. The consumer is a
+separate program. It imports the same definition and binds the handler with
+`workerHandlers`, so the handler's dependencies stay in the consumer program.
+The definition holds the type, the input schema, and the retry policy.
+
 A consumer runs handlers of the form `(task, ctx) => events`. `ctx` is a
 `WorkerEffectContext` (`placement: 'worker'`): secrets are loaded before the
 handler runs (`ctx.secrets`), `ctx.heartbeat(details)` reports progress,
