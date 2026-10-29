@@ -11,7 +11,12 @@ import {
 import type { EventInput } from './envelope'
 import type { ProjectionDefinition } from './projection'
 import type { RunAttributes, SecretContext } from './run-context'
-import type { InferDefinedSchema, SchemaInput } from './schema'
+import {
+  validateInputEffect,
+  type InferDefinedSchema,
+  type InvalidInputError,
+  type SchemaInput,
+} from './schema'
 import type { ThreadDefinition } from './thread'
 import type { TraceContext } from './trace'
 import type { JsonValue } from './types'
@@ -53,10 +58,21 @@ export function onEffect<TInput>(
       return next(effect, ctx)
     }
 
-    // SAFETY: matched definition's phantom TInput is the schema type handlers receive after validation.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return handler(effect.input as TInput, ctx, () => next(effect, ctx))
+    return decodeEffectInput(definition, effect.input).pipe(
+      Effect.flatMap((input) => handler(input, ctx, () => next(effect, ctx))),
+    )
   }
+}
+
+function decodeEffectInput<TInput>(
+  definition: EffectDefinition<TInput>,
+  raw: JsonValue,
+): Effect.Effect<TInput, InvalidInputError> {
+  return validateInputEffect(definition.input, raw).pipe(
+    // SAFETY: decoded with the definition's own schema, whose output is the phantom TInput.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    Effect.map((input) => input as TInput),
+  )
 }
 
 /**
@@ -95,9 +111,9 @@ export function onAdmit<TInput>(
       return Effect.void
     }
 
-    // SAFETY: matched definition's phantom TInput is the schema type handlers receive after validation.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return handler(effect.input as TInput, ctx)
+    return decodeEffectInput(definition, effect.input).pipe(
+      Effect.flatMap((input) => handler(input, ctx)),
+    )
   }
 }
 

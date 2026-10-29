@@ -5,6 +5,7 @@ import { Effect, Predicate, Schema } from 'effect'
 import { agent, asEffectsTool, callLlmEffect, defineAgent } from '@looms/agent'
 import {
   defineEffect,
+  defineModule,
   defineRuntimeModule,
   defineThread,
   failEffect,
@@ -707,11 +708,124 @@ describe('createLooms runtime', () => {
       error: 'credits exhausted',
       nonRetryable: true,
     })
+
     expect(events.some((e) => e.type === 'agent.message')).toBe(false)
+  })
+
+  test('admission and middleware hooks receive the decoded input', async () => {
+    const seen: JsonValue[] = []
+
+    const charge = defineEffect({
+      type: 'billing.charge',
+      input: Schema.Struct({
+        amount: Schema.Finite,
+        currency: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.succeed('USD'))),
+      }),
+      execute: (input) => {
+        seen.push({ hook: 'execute', ...input })
+        return []
+      },
+    })
+
+    const looms = createLooms({
+      modules: [
+        defineModule({ namespace: 'billing', protocolVersion: '1.0.0' }, () => ({
+          effects: { charge },
+          admission: [
+            onAdmit(charge, (input) =>
+              Effect.sync(() => {
+                seen.push({ hook: 'admit', ...input })
+              }),
+            ),
+          ],
+          middleware: [
+            onEffect(charge, (input, _ctx, next) => {
+              seen.push({ hook: 'middleware', ...input })
+              return next()
+            }),
+          ],
+          threads: {
+            billing: defineThread({
+              kind: 'billing',
+              initialState: () => ({}),
+              step: (state) => state,
+              effects: () => [invoke('billing.charge', { amount: 5 }, 'charge')],
+            }),
+          },
+          definitions: [{ kind: 'billing', name: 'billing', version: 'v1' }],
+        })),
+      ],
+    })
+
+    const { runId } = await looms.start({ kind: 'billing', name: 'billing', version: 'v1' }, null)
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.effect.completed')
+    })
+
+    expect(seen).toEqual([
+      { hook: 'admit', amount: 5, currency: 'USD' },
+      { hook: 'middleware', amount: 5, currency: 'USD' },
+      { hook: 'execute', amount: 5, currency: 'USD' },
+    ])
+
+    await looms.stop()
+  })
+
+  test('admission fails the attempt when the input does not decode', async () => {
+    const admitted: JsonValue[] = []
+
+    const charge = defineEffect({
+      type: 'billing.charge',
+      input: Schema.Struct({ amount: Schema.Finite }),
+      retry: { maxAttempts: 1 },
+      execute: () => [],
+    })
+
+    const looms = createLooms({
+      modules: [
+        defineModule({ namespace: 'billing', protocolVersion: '1.0.0' }, () => ({
+          effects: { charge },
+          admission: [
+            onAdmit(charge, (input) =>
+              Effect.sync(() => {
+                admitted.push(input)
+              }),
+            ),
+          ],
+          threads: {
+            billing: defineThread({
+              kind: 'billing',
+              initialState: () => ({}),
+              step: (state) => state,
+              effects: () => [invoke('billing.charge', { amount: 'five' }, 'charge')],
+            }),
+          },
+          definitions: [{ kind: 'billing', name: 'billing', version: 'v1' }],
+        })),
+      ],
+    })
+
+    const { runId } = await looms.start({ kind: 'billing', name: 'billing', version: 'v1' }, null)
+
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((e) => e.type === 'runtime.effect.failed')
+    })
+
+    const events = await looms.getEvents(runId)
+    const failed = events.find((e) => e.type === 'runtime.effect.failed')
+
+    expect(admitted).toEqual([])
+    expect(JSON.stringify(failed?.payload)).toContain('amount')
+
+    await looms.stop()
   })
 
   test('admission rejects a worker dispatch before it is queued', async () => {
     const dispatched: string[] = []
+
     const work = defineEffect({
       type: 'gate.work',
       execution: 'worker',
@@ -757,10 +871,12 @@ describe('createLooms runtime', () => {
 
     expect(dispatched).toEqual([])
     expect(events.some((e) => e.type === 'runtime.effect.queued')).toBe(false)
+
     expect(events.find((e) => e.type === 'runtime.effect.failed')?.payload).toMatchObject({
       error: 'flag off',
       nonRetryable: true,
     })
+
     await looms.stop()
   })
 
