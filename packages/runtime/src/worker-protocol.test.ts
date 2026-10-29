@@ -146,11 +146,13 @@ describe('durable external effect workers', () => {
     expect((await looms.getEvents(started.runId)).map((event) => event.type)).toContain(
       'runtime.effect.dispatch.deferred',
     )
+
     expect(
       Object.values((await looms.getRun(started.runId)).effectExecutions).some(
         (execution) => execution.status === 'dispatch_wait',
       ),
     ).toBe(true)
+
     expect(calls).toBe(1)
 
     await waitFor(() => calls >= 2)
@@ -159,9 +161,11 @@ describe('durable external effect workers', () => {
 
     expect(calls).toBe(2)
     expect(types).toContain('runtime.effect.dispatched')
+
     expect(types.indexOf('runtime.effect.dispatch.deferred')).toBeLessThan(
       types.indexOf('runtime.effect.dispatched'),
     )
+
     expect(types).not.toContain('runtime.effect.ambiguous')
     await looms.stop()
   })
