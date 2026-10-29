@@ -102,8 +102,9 @@ function Page() {
         </li>
         <li>
           <strong>Temporal, Restate, DBOS, and other durable engines:</strong> Looms lets custom
-          thread kinds share one run log. Compare the features and guarantees your application needs
-          before switching.
+          thread kinds share one run log, and derives state from that log.{' '}
+          <Link to="/docs/other-engines">Other engines</Link> compares the programming models.
+          Compare the guarantees your application needs before switching.
         </li>
         <li>
           <strong>Your existing agent loop:</strong> adapt one turn through <code>runTurn</code> or

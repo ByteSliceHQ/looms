@@ -25,6 +25,7 @@ import { Route as DocsIntegrationRouteImport } from './routes/docs.integration'
 import { Route as DocsMathRouteImport } from './routes/docs.math'
 import { Route as DocsModulesRouteImport } from './routes/docs.modules'
 import { Route as DocsOperationsRouteImport } from './routes/docs.operations'
+import { Route as DocsOtherEnginesRouteImport } from './routes/docs.other-engines'
 import { Route as DocsPriorArtRouteImport } from './routes/docs.prior-art'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
@@ -119,6 +120,11 @@ const DocsModulesRoute = DocsModulesRouteImport.update({
 const DocsOperationsRoute = DocsOperationsRouteImport.update({
   id: '/operations',
   path: '/operations',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsOtherEnginesRoute = DocsOtherEnginesRouteImport.update({
+  id: '/other-engines',
+  path: '/other-engines',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsPriorArtRoute = DocsPriorArtRouteImport.update({
@@ -216,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
+  '/docs/other-engines': typeof DocsOtherEnginesRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -247,6 +254,7 @@ export interface FileRoutesByTo {
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
+  '/docs/other-engines': typeof DocsOtherEnginesRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -281,6 +289,7 @@ export interface FileRoutesById {
   '/docs/math': typeof DocsMathRoute
   '/docs/modules': typeof DocsModulesRoute
   '/docs/operations': typeof DocsOperationsRoute
+  '/docs/other-engines': typeof DocsOtherEnginesRoute
   '/docs/prior-art': typeof DocsPriorArtRoute
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -316,6 +325,7 @@ export interface FileRouteTypes {
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
+    | '/docs/other-engines'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
@@ -347,6 +357,7 @@ export interface FileRouteTypes {
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
+    | '/docs/other-engines'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
@@ -380,6 +391,7 @@ export interface FileRouteTypes {
     | '/docs/math'
     | '/docs/modules'
     | '/docs/operations'
+    | '/docs/other-engines'
     | '/docs/prior-art'
     | '/docs/projectors'
     | '/docs/quickstart'
@@ -516,6 +528,13 @@ declare module '@tanstack/react-router' {
       path: '/operations'
       fullPath: '/docs/operations'
       preLoaderRoute: typeof DocsOperationsRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/other-engines': {
+      id: '/docs/other-engines'
+      path: '/other-engines'
+      fullPath: '/docs/other-engines'
+      preLoaderRoute: typeof DocsOtherEnginesRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/prior-art': {
@@ -659,6 +678,7 @@ interface DocsRouteChildren {
   DocsMathRoute: typeof DocsMathRoute
   DocsModulesRoute: typeof DocsModulesRoute
   DocsOperationsRoute: typeof DocsOperationsRoute
+  DocsOtherEnginesRoute: typeof DocsOtherEnginesRoute
   DocsPriorArtRoute: typeof DocsPriorArtRoute
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
@@ -685,6 +705,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsMathRoute: DocsMathRoute,
   DocsModulesRoute: DocsModulesRoute,
   DocsOperationsRoute: DocsOperationsRoute,
+  DocsOtherEnginesRoute: DocsOtherEnginesRoute,
   DocsPriorArtRoute: DocsPriorArtRoute,
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
