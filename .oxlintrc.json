@@ -104,6 +104,23 @@
       }
     },
     {
+      "files": [
+        "packages/projectors/src/replica/postgres.ts",
+        "packages/projectors/src/replica/migrations.ts"
+      ],
+      "rules": {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/node-builtin-import": "off"
+      }
+    },
+    {
+      "files": ["packages/projectors/src/replica/drizzle.ts"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
       "files": ["packages/core/src/effects.ts"],
       "rules": {
         "effecttsgo/unsafe-effect-type-assertion": "off"

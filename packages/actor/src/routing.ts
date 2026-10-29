@@ -5,6 +5,7 @@ import {
   createRunId,
   isJsonObject,
   publishDefinition,
+  publishEffects,
   stringifyJson,
   type AnyRuntimeModule,
   type JsonValue,
@@ -67,16 +68,30 @@ export function crossRunResponse(req: Request, host: string): Response | null {
   return null
 }
 
-/** Answers `GET /definitions` from a module list or lazy factory without touching any run cell. */
+/**
+ * Answers definition catalogs from a module list or lazy factory without touching any run cell.
+ * `GET /definitions` is the thread-definition catalog. `GET /definitions/effects` is each declared
+ * effect, including placement.
+ */
 export function definitionsResponse(
   req: Request,
   modules: readonly AnyRuntimeModule[] | (() => readonly AnyRuntimeModule[]) | undefined,
 ): Response | null {
-  if (!modules || req.method !== 'GET' || new URL(req.url).pathname !== '/definitions') {
+  if (!modules || req.method !== 'GET') {
+    return null
+  }
+
+  const pathname = new URL(req.url).pathname
+
+  if (pathname !== '/definitions' && pathname !== '/definitions/effects') {
     return null
   }
 
   const registry = composeModules(Predicate.isFunction(modules) ? modules() : modules)
+
+  if (pathname === '/definitions/effects') {
+    return Response.json({ effects: publishEffects(registry.effects.values()) })
+  }
 
   return Response.json({
     definitions: registry.definitions.map(publishDefinition),

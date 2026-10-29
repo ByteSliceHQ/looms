@@ -142,6 +142,26 @@ describe('createLoomsClient', () => {
     expect(catalog.projections).toEqual(['nodes'])
   })
 
+  test('listEffects reads the effects route', async () => {
+    const calls: string[] = []
+
+    const client = createLoomsClient({
+      fetch: async (input) => {
+        calls.push(hrefOf(input))
+        return new Response(
+          JSON.stringify({
+            effects: [{ type: 'billing.charge', placement: 'worker' }],
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        )
+      },
+    })
+
+    const catalog = await client.listEffects()
+    expect(calls).toEqual(['/definitions/effects'])
+    expect(catalog.effects).toEqual([{ type: 'billing.charge', placement: 'worker' }])
+  })
+
   test('listRunSummaries asks the runs route for summaries', async () => {
     const calls: string[] = []
 

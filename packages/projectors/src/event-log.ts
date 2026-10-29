@@ -15,52 +15,11 @@ import {
 
 import type { Projector } from './projector'
 import { runProjectorPromise } from './projector'
+import { POSTGRES_EVENT_LOG_SCHEMA_SQL } from './replica/migrations'
+
+export { POSTGRES_EVENT_LOG_SCHEMA_SQL }
 
 const decodeAttributes = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))
-
-export const POSTGRES_EVENT_LOG_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS looms_run_events (
-  run_id TEXT NOT NULL,
-  seq BIGINT NOT NULL,
-  event_id TEXT NOT NULL,
-  ts TIMESTAMPTZ NOT NULL,
-  type TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  thread_id TEXT,
-  parent_thread_id TEXT,
-  causation_id TEXT,
-  correlation_id TEXT,
-  effect_id TEXT,
-  origin JSONB NOT NULL,
-  idempotency_key TEXT,
-  PRIMARY KEY (run_id, seq)
-);
-
-CREATE TABLE IF NOT EXISTS looms_run_index (
-  run_id TEXT PRIMARY KEY,
-  status TEXT NOT NULL,
-  kind TEXT,
-  definition_name TEXT,
-  definition_version TEXT,
-  root_thread_id TEXT,
-  parent_run_id TEXT,
-  launched_by_effect_id TEXT,
-  correlation_id TEXT,
-  attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
-  tenant TEXT,
-  project TEXT,
-  org TEXT,
-  started_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ NOT NULL,
-  completed_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS looms_run_index_tenant ON looms_run_index (tenant);
-CREATE INDEX IF NOT EXISTS looms_run_index_project ON looms_run_index (project);
-CREATE INDEX IF NOT EXISTS looms_run_index_org ON looms_run_index (org);
-CREATE INDEX IF NOT EXISTS looms_run_index_parent ON looms_run_index (parent_run_id);
-CREATE INDEX IF NOT EXISTS looms_run_index_status ON looms_run_index (status);
-`.trim()
 
 export interface EventLogEntry {
   readonly runId: string
@@ -497,16 +456,20 @@ function runIndexPatches(ops: readonly EventLogOp[]): RunIndexPatch[] {
   return [...patches.values()]
 }
 
-function applySqlOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
-  const entries = ops.flatMap((op) => (op.type === 'insert' ? [op.entry] : []))
+export function applySqlOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
+  const events = ops.flatMap((op) => (op.type === 'insert' ? [envelopeFromEntry(op.entry)] : []))
+
+  return Promise.all([insertRunEvents(sql, events), applyRunIndexOps(sql, ops)]).then(
+    () => undefined,
+  )
+}
+
+/** Fold run-summary ops. Event rows are written by {@link insertRunEvents}. */
+export function applyRunIndexOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
   const patches = runIndexPatches(ops)
   const upserts = patches.filter((patch) => patch.start !== null || patch.finish !== null)
   const touches = patches.filter((patch) => patch.start === null && patch.finish === null)
   const statements: Promise<void>[] = []
-
-  for (let index = 0; index < entries.length; index += INSERT_CHUNK_ROWS) {
-    statements.push(insertEvents(sql, entries.slice(index, index + INSERT_CHUNK_ROWS)))
-  }
 
   if (upserts.length > 0) {
     statements.push(upsertRuns(sql, upserts))
@@ -519,21 +482,54 @@ function applySqlOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<v
   return Promise.all(statements).then(() => undefined)
 }
 
-function insertEvents(sql: TransactionSql, entries: readonly EventLogEntry[]): Promise<void> {
-  const rows = entries.map((entry) => ({
-    run_id: entry.runId,
+/** Insert event envelopes, including ephemeral ones. Durable callers pass events that are already filtered. */
+export function insertRunEvents(
+  sql: TransactionSql,
+  events: readonly EventEnvelope[],
+): Promise<void> {
+  const statements: Promise<void>[] = []
+
+  for (let index = 0; index < events.length; index += INSERT_CHUNK_ROWS) {
+    statements.push(insertEventChunk(sql, events.slice(index, index + INSERT_CHUNK_ROWS)))
+  }
+
+  return Promise.all(statements).then(() => undefined)
+}
+
+function envelopeFromEntry(entry: EventLogEntry): EventEnvelope {
+  return {
+    id: entry.eventId,
+    runId: entry.runId,
     seq: entry.seq,
-    event_id: entry.eventId,
-    ts: utcDate(entry.ts),
+    ts: entry.ts,
     type: entry.type,
-    payload: sql.json(entry.payload),
-    thread_id: entry.threadId,
-    parent_thread_id: entry.parentThreadId,
-    causation_id: entry.causationId,
-    correlation_id: entry.correlationId,
-    effect_id: entry.effectId,
-    origin: sql.json(entry.origin),
-    idempotency_key: entry.idempotencyKey,
+    payload: entry.payload,
+    threadId: entry.threadId,
+    parentThreadId: entry.parentThreadId,
+    causationId: entry.causationId,
+    correlationId: entry.correlationId,
+    effectId: entry.effectId,
+    origin: entry.origin,
+    idempotencyKey: entry.idempotencyKey,
+  }
+}
+
+function insertEventChunk(sql: TransactionSql, events: readonly EventEnvelope[]): Promise<void> {
+  const rows = events.map((event) => ({
+    run_id: event.runId,
+    seq: event.seq,
+    event_id: event.id,
+    ts: utcDate(event.ts),
+    type: event.type,
+    payload: sql.json(event.payload),
+    thread_id: event.threadId,
+    parent_thread_id: event.parentThreadId ?? null,
+    causation_id: event.causationId ?? null,
+    correlation_id: event.correlationId ?? null,
+    effect_id: event.effectId ?? null,
+    origin: sql.json(event.origin),
+    idempotency_key: event.idempotencyKey ?? null,
+    ephemeral: event.ephemeral === true,
   }))
 
   return sql`

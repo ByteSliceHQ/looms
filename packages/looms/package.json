@@ -1,6 +1,6 @@
 {
   "name": "@swirls/looms",
-  "version": "0.6.1",
+  "version": "0.8.0",
   "description": "Pluggable event-sourced runtime for durable agents and workflows",
   "homepage": "https://github.com/ByteSliceHQ/looms#readme",
   "bugs": {
@@ -137,6 +137,30 @@
       "types": "./dist/projectors/sqlite.d.ts",
       "import": "./dist/projectors/sqlite.js"
     },
+    "./projectors/replica": {
+      "types": "./dist/projectors/replica/postgres.d.ts",
+      "import": "./dist/projectors/replica/postgres.js"
+    },
+    "./projectors/replica/drizzle": {
+      "types": "./dist/projectors/replica/drizzle.d.ts",
+      "import": "./dist/projectors/replica/drizzle.js"
+    },
+    "./projectors/replica/migrations": {
+      "types": "./dist/projectors/replica/migrations.d.ts",
+      "import": "./dist/projectors/replica/migrations.js"
+    },
+    "./replica": {
+      "types": "./dist/projectors/replica/postgres.d.ts",
+      "import": "./dist/projectors/replica/postgres.js"
+    },
+    "./replica/drizzle": {
+      "types": "./dist/projectors/replica/drizzle.d.ts",
+      "import": "./dist/projectors/replica/drizzle.js"
+    },
+    "./replica/migrations": {
+      "types": "./dist/projectors/replica/migrations.d.ts",
+      "import": "./dist/projectors/replica/migrations.js"
+    },
     "./s2/projector": {
       "types": "./dist/s2/projector.d.ts",
       "import": "./dist/s2/projector.js"
@@ -197,12 +221,16 @@
   "peerDependencies": {
     "@cloudflare/workers-types": "^5.20260914.1",
     "ai": "^7.0.0",
+    "drizzle-orm": "^0.44.0",
     "postgres": "^3.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "ai": {
+      "optional": true
+    },
+    "drizzle-orm": {
       "optional": true
     },
     "postgres": {

@@ -1,5 +1,19 @@
 # @swirls/looms
 
+## 0.8.0
+
+### Minor Changes
+
+- ef94314: A Postgres replica copies every run into a database you own. `postgresReplica` stores the full event envelope, folds the run summary in the same transaction, and records `replicated_seq` only through a contiguous prefix, so a restored database or a replica attached mid-run catches up instead of leaving a hole. `status` reports whether that copy is complete. `purge` deletes event copies for finished runs and later deliveries skip them.
+
+  `looms replica generate` writes the versioned SQL into your migration folder (and a Drizzle journal, when you ask). `looms replica migrate` applies it. `@swirls/looms/replica/drizzle` exports the tables, and `loomsReplicaTables` adds columns your application owns.
+
+## 0.7.0
+
+### Minor Changes
+
+- f2bef2f: Effects declare `placement: 'local' | 'worker'` on `m.effect`, `scope.effect`, or `defineEffect`. Local effects require `execute`; worker effects forbid it and implement the handler with `workerHandlers`. Queue routes take worker definitions, local and worker handlers get distinct context types, and `defineModule` rejects effects built outside the module's catalog. `GET /definitions/effects` publishes each declared effect, including placement, retry policy, and input schema.
+
 ## Unreleased
 
 ### Minor Changes
@@ -8,7 +22,7 @@
 - **Breaking:** `defineModule` rejects effects whose events fall outside the module's catalog and `observes`, such as an effect built with another module's scope or an unscoped `defineEffect` that returns untyped events. Build effects that live in their own file with `createModuleScope(...).effect`.
 - Effect admission hooks (`admission` / `onAdmit`) run in the host before every local attempt and before every worker dispatch, so credit checks and feature flags cover both paths. `failEffect` from admission becomes `runtime.effect.failed`; a rejected worker admission never queues. Execution middleware remains local-only.
 - `onAdmit` and `onEffect` decode the input with the definition's schema before the hook runs, so hooks see defaults and transforms. An input that fails to decode fails the attempt.
-- Queue tasks carry `threadId`, `causingEventId`, and `attributes`. Secrets load through the worker callback before the handler runs. `runtime.effectPlacements` / `GET /definitions/effect-placements` list declared placements; `inspectRun` / effect status includes each outstanding effect's `placement`.
+- Queue tasks carry `threadId`, `causingEventId`, and `attributes`. Secrets load through the worker callback before the handler runs. `GET /definitions/effects` lists declared effects, including placement, retry policy, and input schema. `runtime.effectPlacements` lists placements; `inspectRun` / effect status includes each outstanding effect's `placement`.
 - Creating a runtime fails when worker-placed effects have no `EffectWorker`, or when a worker claims a local-placed effect type.
 - Unacknowledged worker dispatch failures no longer park as `ambiguous` on the first push. The attempt enters `dispatch_wait` via `runtime.effect.dispatch.deferred`, and the wake engine retries the same attempt with dedicated outbox backoff. `ambiguous` remains for missing workers, cancellation timeouts, and exhausted relays. Acknowledged transports (Cloudflare Queues) are unchanged. `retryEffect` can target `dispatch_wait`.
 

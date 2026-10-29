@@ -107,9 +107,10 @@ function PriorArt() {
         <a href="https://www.dbos.dev/" target="_blank" rel="noreferrer">
           DBOS
         </a>{' '}
-        let application work survive process failure and long waits. Looms shares those goals. Its
-        programming model centers on event streams, pure reducers, explicit effect instructions, and
-        modules that contribute thread kinds and projections.
+        let application work survive process failure and long waits. Looms shares those goals and
+        inverts the programming model: the event catalog is the source of state, and reducers
+        request effects. <Link to="/docs/other-engines">Other engines</Link> compares that model
+        with Temporal, Restate, DBOS, step journals, and checkpointed agent graphs.
       </p>
 
       <h2 id="react">
@@ -128,7 +129,8 @@ function PriorArt() {
       </p>
 
       <p>
-        See <Link to="/docs/concepts">Concepts</Link> for Looms terminology,{' '}
+        See <Link to="/docs/other-engines">Other engines</Link> for the comparison,{' '}
+        <Link to="/docs/concepts">Concepts</Link> for Looms terminology,{' '}
         <Link to="/docs/concepts/events-and-effects">Events &amp; effects</Link> for reducer
         semantics, and <Link to="/docs/concepts/waits-and-replay">Waits &amp; replay</Link> for
         recovery behavior.

@@ -53,6 +53,7 @@ export const docsNav = [
     label: 'Ship & operate',
     children: [
       { to: '/docs/hosting-and-storage', label: 'Deployment & storage' },
+      { to: '/docs/replica', label: 'Postgres replica' },
       { to: '/docs/security', label: 'Authentication & tenancy' },
       { to: '/docs/reliability', label: 'Reliability & recovery' },
       { to: '/docs/versioning', label: 'Changing deployed code' },
@@ -70,6 +71,7 @@ export const docsNav = [
       { to: '/docs/concepts/type-safety', label: 'Type safety' },
       { to: '/docs/math', label: 'Execution model' },
       { to: '/docs/prior-art', label: 'Prior art' },
+      { to: '/docs/other-engines', label: 'Other engines' },
     ],
   },
   { to: '/docs/api', label: 'API reference' },

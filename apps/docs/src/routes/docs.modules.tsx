@@ -365,8 +365,9 @@ cloudflareQueueWorker({
 const handlers = workerHandlers([[sandboxExec, runSandbox]])`}</CodeBlock>
       <p>
         <code>onEffect</code> middleware accepts only local definitions. <code>onAdmit</code>{' '}
-        accepts either. Operators can read the registry map from{' '}
-        <code>runtime.effectPlacements</code> or <code>GET /definitions/effect-placements</code>.{' '}
+        accepts either. <code>GET /definitions/effects</code> lists every declared effect, including{' '}
+        <code>placement</code>, retry policy, and input schema.{' '}
+        <code>runtime.effectPlacements</code> is the in-process placement map.{' '}
         <code>inspectRun</code> and <code>GET /runs/:id/effects</code> include each outstanding
         effect&apos;s <code>placement</code>. Dual local/worker placement for one definition is a
         separate follow-up; pick local or worker at define time.

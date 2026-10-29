@@ -1,4 +1,5 @@
 export type { Projector, ProjectorErrorHandler } from './projector'
+export { ReplicaGapError } from './projector'
 export {
   createProjectorDelivery,
   ProjectorCursorError,

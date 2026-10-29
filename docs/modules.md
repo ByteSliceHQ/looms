@@ -268,7 +268,7 @@ import { workerHandlers } from '@swirls/looms/cloudflare'
 const handlers = workerHandlers([[sandboxExec, runSandbox]])
 ```
 
-`onEffect` middleware accepts only local definitions. `onAdmit` accepts either. Operators can read the registry map from `runtime.effectPlacements` or `GET /definitions/effect-placements`. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`. Dual local/worker placement for one definition is a separate follow-up; pick local or worker at define time.
+`onEffect` middleware accepts only local definitions. `onAdmit` accepts either. `GET /definitions/effects` lists every declared effect, including `placement`, retry policy, and input schema. `runtime.effectPlacements` is the in-process placement map. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`. Dual local/worker placement for one definition is a separate follow-up; pick local or worker at define time.
 
 ## Effect admission and middleware
 

@@ -3,6 +3,7 @@ import { Data, Effect, Option, Predicate, Schema, Stream } from 'effect'
 import {
   createRunId,
   DefinitionCatalogSchema,
+  EffectCatalogSchema,
   EventEnvelopeSchema,
   readSubscriptionData,
   ReplayStepSchema,
@@ -420,6 +421,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     workerSecrets,
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
+    listEffects: () => request('/definitions/effects', EffectCatalogSchema),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>
