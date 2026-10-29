@@ -7,7 +7,7 @@ import { createEvent, makeMemoryEventStore, type EventEnvelope } from '@looms/co
 import { bunSqliteExec } from '@looms/core/bun-sqlite'
 
 import { createProjectorDelivery } from './delivery'
-import type { Projector } from './projector'
+import { ReplicaGapError, type Projector } from './projector'
 import { sqliteProjectorCursorStore } from './sqlite-delivery'
 
 function event(runId: string, value: number) {
@@ -333,5 +333,80 @@ describe('projector delivery', () => {
 
     releaseSlow.resolve()
     await pending
+  })
+
+  test('rewinds to the projector position when the copy is behind the cursor', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+
+    await Effect.runPromise(
+      source.append(
+        'run_1',
+        [1, 2, 3, 4].map((value) => event('run_1', value)),
+      ),
+    )
+
+    let copied = 0
+    const seen: number[] = []
+
+    const projector: Projector = {
+      name: 'postgres-replica',
+      version: '1',
+      position: async () => copied,
+      project: async (events) => {
+        const first = events[0]
+
+        if (first && first.seq > copied + 1) {
+          throw new ReplicaGapError({ runId: 'run_1', replicatedSeq: copied, batchFrom: first.seq })
+        }
+
+        for (const item of events) {
+          if (item.seq > copied) {
+            copied = item.seq
+            seen.push(item.seq)
+          }
+        }
+      },
+    }
+
+    const database = new Database(':memory:')
+
+    const delivery = createProjectorDelivery(
+      source,
+      [projector],
+      sqliteProjectorCursorStore(bunSqliteExec(database)),
+    )
+
+    await Effect.runPromise(delivery.deliver('run_1'))
+    expect(seen).toEqual([1, 2, 3, 4])
+
+    copied = 1
+    database.run(`UPDATE looms_projector_delivery SET cursor = 4 WHERE run_id = 'run_1'`)
+    await Effect.runPromise(delivery.deliver('run_1'))
+
+    expect(copied).toBe(4)
+    expect(seen).toEqual([1, 2, 3, 4, 2, 3, 4])
+  })
+
+  test('does not rewind forever when the copy stays behind', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+    await Effect.runPromise(source.append('run_1', [event('run_1', 1)]))
+
+    const projector: Projector = {
+      name: 'postgres-replica',
+      version: '1',
+      position: async () => 0,
+      project: async () => {
+        throw new ReplicaGapError({ runId: 'run_1', replicatedSeq: 0, batchFrom: 1 })
+      },
+    }
+
+    const database = new Database(':memory:')
+    const cursors = sqliteProjectorCursorStore(bunSqliteExec(database))
+    await Effect.runPromise(cursors.advance('run_1', projector, 5, 1))
+
+    const delivery = createProjectorDelivery(source, [projector], cursors)
+    await Effect.runPromise(delivery.deliver('run_1'))
+
+    expect((await Effect.runPromise(delivery.status('run_1')))[0]?.state).toBe('retrying')
   })
 })

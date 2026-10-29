@@ -53,6 +53,7 @@ export const docsNav = [
     label: 'Ship & operate',
     children: [
       { to: '/docs/hosting-and-storage', label: 'Deployment & storage' },
+      { to: '/docs/replica', label: 'Postgres replica' },
       { to: '/docs/security', label: 'Authentication & tenancy' },
       { to: '/docs/reliability', label: 'Reliability & recovery' },
       { to: '/docs/versioning', label: 'Changing deployed code' },

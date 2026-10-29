@@ -134,6 +134,19 @@ export function sqliteProjectorCursorStore(exec: SqliteExec): ProjectorCursorSto
           [runId, projector.name, projector.version, cursor, now],
         )
       }),
+    rewind: (runId, projector, cursor, now) =>
+      query(() => {
+        exec.run(
+          `INSERT INTO looms_projector_delivery
+           (run_id, projector_name, projector_version, cursor, state, attempts, updated_at)
+         VALUES (?, ?, ?, ?, 'idle', 0, ?)
+         ON CONFLICT (run_id, projector_name, projector_version) DO UPDATE
+         SET cursor = excluded.cursor, state = 'idle', attempts = 0,
+             failed_seq = NULL, next_retry_at = NULL, last_error = NULL,
+             updated_at = excluded.updated_at`,
+          [runId, projector.name, projector.version, cursor, now],
+        )
+      }),
     fail: (runId, projector, failure) =>
       query(() => {
         exec.run(

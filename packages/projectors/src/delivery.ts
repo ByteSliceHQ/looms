@@ -1,4 +1,4 @@
-import { Data, Effect, Semaphore } from 'effect'
+import { Cause, Data, Effect, Semaphore } from 'effect'
 
 import type { EventStore, EventStoreError } from '@looms/core'
 
@@ -29,6 +29,16 @@ export interface ProjectorCursorStore {
     projector: Projector,
   ): Effect.Effect<ProjectorDeliveryStatus, ProjectorCursorError>
   advance(
+    runId: string,
+    projector: Projector,
+    cursor: number,
+    now: number,
+  ): Effect.Effect<void, ProjectorCursorError>
+  /**
+   * Set the cursor to an earlier sequence. `advance` never moves backwards, so a
+   * projector whose copy is behind the saved cursor uses this to catch up.
+   */
+  rewind(
     runId: string,
     projector: Projector,
     cursor: number,
@@ -117,9 +127,23 @@ class ProjectorDeliveryError extends Data.TaggedError('ProjectorDeliveryError')<
 }> {}
 
 function normalizeError(cause: unknown): ProjectorDeliveryError {
+  const error = Cause.isCause(cause) ? Cause.squash(cause) : cause
+
   return new ProjectorDeliveryError({
-    message: cause instanceof Error ? cause.message : String(cause),
+    message: error instanceof Error ? error.message : String(error),
   })
+}
+
+function idleStatus(status: ProjectorDeliveryStatus, cursor: number): ProjectorDeliveryStatus {
+  return {
+    ...status,
+    cursor,
+    state: 'idle',
+    attempts: 0,
+    failedSeq: null,
+    nextRetryAt: null,
+    lastError: null,
+  }
 }
 
 export function createProjectorDelivery(
@@ -235,6 +259,32 @@ export function createProjectorDelivery(
         )
 
         return
+      }
+
+      const readPosition = projector.position
+
+      if (readPosition) {
+        const aligned = yield* Effect.tryPromise({
+          try: () => readPosition(runId),
+          catch: normalizeError,
+        }).pipe(Effect.exit)
+
+        if (aligned._tag === 'Failure') {
+          yield* recordFailure(
+            runId,
+            projector,
+            status,
+            status.cursor + 1,
+            normalizeError(aligned.cause),
+          )
+
+          return
+        }
+
+        if (aligned.value !== null && aligned.value < status.cursor) {
+          yield* cursors.rewind(runId, projector, aligned.value, now())
+          status = idleStatus(status, aligned.value)
+        }
       }
 
       while (true) {
