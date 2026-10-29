@@ -70,6 +70,7 @@ export const docsNav = [
       { to: '/docs/concepts/type-safety', label: 'Type safety' },
       { to: '/docs/math', label: 'Execution model' },
       { to: '/docs/prior-art', label: 'Prior art' },
+      { to: '/docs/other-engines', label: 'Other engines' },
     ],
   },
   { to: '/docs/api', label: 'API reference' },

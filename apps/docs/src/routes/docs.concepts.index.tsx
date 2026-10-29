@@ -66,6 +66,10 @@ function ConceptsOverview() {
           <Link to="/docs/prior-art">Prior art</Link> — event sourcing, reducers, actors, durable
           execution, and React.
         </li>
+        <li>
+          <Link to="/docs/other-engines">Other engines</Link> — how Looms compares with Temporal and
+          other durable execution engines.
+        </li>
       </ul>
 
       <h2 id="vocabulary">
