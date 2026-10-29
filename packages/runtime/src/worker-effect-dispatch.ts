@@ -7,6 +7,7 @@ import {
   type ComposedRegistry,
   type EffectDefinition,
   type EffectExecutionRecord,
+  type EffectPlacement,
   type EventEnvelope,
   type OutstandingEffect,
   type RetryPolicy,
@@ -348,6 +349,21 @@ export function assertWorkerDeadlines(
   }
 }
 
+/** Registered effect types with their declared placement, sorted by type for stable output. */
+export function listEffectPlacements(
+  registry: ComposedRegistry,
+): ReadonlyArray<{ readonly type: string; readonly placement: EffectPlacement }> {
+  return [...registry.effects.values()]
+    .map((definition) => ({ type: definition.type, placement: definition.placement }))
+    .toSorted((left, right) => left.type.localeCompare(right.type))
+}
+
+function formatEffectPlacements(registry: ComposedRegistry): string {
+  return listEffectPlacements(registry)
+    .map((entry) => `${entry.type}=${entry.placement}`)
+    .join(', ')
+}
+
 /**
  * Worker-placed effects need a configured `EffectWorker`. Without one they would park as
  * ambiguous on every attempt.
@@ -366,7 +382,7 @@ export function assertWorkerConfigured(
 
   if (needingWorker.length > 0) {
     throw new Error(
-      `Effects require an EffectWorker but none is configured: ${needingWorker.join(', ')}`,
+      `Effects require an EffectWorker but none is configured: ${needingWorker.join(', ')} (registry: ${formatEffectPlacements(registry)})`,
     )
   }
 }
@@ -392,7 +408,7 @@ export function assertWorkerClaimsExplicit(
 
   if (claimedLocal.length > 0) {
     throw new Error(
-      `Worker claims local-placed effects; use defineEffect.worker (or drop the claim): ${claimedLocal.join(', ')}`,
+      `Worker claims local-placed effects; use defineEffect.worker (or drop the claim): ${claimedLocal.join(', ')} (registry: ${formatEffectPlacements(registry)})`,
     )
   }
 }

@@ -194,9 +194,9 @@ cloudflareQueueWorker({
 })
 ```
 
-`onEffect` (middleware, with `next()`) only accepts local definitions. `onAdmit` accepts either. `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`.
+`onEffect` (middleware, with `next()`) only accepts local definitions. `onAdmit` accepts either. Operators can list declared placements via `runtime.effectPlacements` / `GET /definitions/effect-placements`, and `inspectRun` / `GET /runs/:id/effects` include each outstanding effect's `placement`.
 
-A later `defineEffect.hybrid` may allow one definition to run in either place; until then, pick local or worker at define time.
+A later `defineEffect.hybrid` may allow one definition to run in either place (tracked separately); until then, pick local or worker at define time.
 
 ## Effect admission and middleware
 

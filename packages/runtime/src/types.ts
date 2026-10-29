@@ -210,6 +210,11 @@ export interface LoomsRuntime<
 > {
   readonly modules: TModules
   readonly registry: ComposedRegistry
+  /** Declared effect placements from the composed registry (`local` | `worker`). */
+  readonly effectPlacements: ReadonlyArray<{
+    readonly type: string
+    readonly placement: 'local' | 'worker'
+  }>
   startRun(
     args: StartRunArgs,
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
