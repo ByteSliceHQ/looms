@@ -1,0 +1,26 @@
+{
+  "name": "@looms/northline-worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Cloudflare host for the Northline exception desk",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8791",
+    "deploy": "wrangler deploy",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@ai-sdk/typesafe-ai": "^3.0.6",
+    "@looms/northline": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@swirls/looms": "workspace:*",
+    "ai": "^7.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260914.1",
+    "typescript": "7.0.2",
+    "wrangler": "^4.131.2"
+  }
+}

@@ -84,12 +84,14 @@
     {
       "files": [
         "apps/demo/src/server.ts",
+        "apps/northline-ui/**/*.{ts,tsx}",
         "packages/debugger/src/server/**/*.ts",
         "packages/s2/src/lite.ts",
         "packages/runtime/src/filesystem-blob-store.ts"
       ],
       "rules": {
         "effecttsgo/global-fetch": "off",
+        "effecttsgo/global-date": "off",
         "effecttsgo/node-builtin-import": "off",
         "effecttsgo/process-env": "off"
       }

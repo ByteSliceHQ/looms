@@ -1,0 +1,560 @@
+:root {
+  color-scheme: light;
+  --paper: #f3efe6;
+  --paper-2: #faf7f1;
+  --ink: #1c1915;
+  --muted: #6d645b;
+  --line: #e3d8cb;
+  --copper: #8c4524;
+  --copper-soft: #f6ebe3;
+  --pine: #1d6b4a;
+  --pine-soft: #e5f2eb;
+  --fail: #8d2f2f;
+  --fail-soft: #f8e8e6;
+  --shadow: 0 1px 0 rgb(28 25 21 / 6%);
+  --serif: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
+  --sans: 'Avenir Next', 'Segoe UI', sans-serif;
+  --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 2px;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 1.25rem;
+  border-right: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.wordmark {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  text-decoration: none;
+}
+
+.wordmark-mark {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  font-family: var(--serif);
+  font-size: 0.85rem;
+}
+
+.wordmark-name {
+  display: block;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.wordmark-sub,
+.page-kicker,
+.field-label,
+.panel-title {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nav-link {
+  padding: 0.4rem 0.5rem;
+  border-radius: 2px;
+  text-decoration: none;
+}
+
+.nav-link.is-active {
+  background: var(--ink);
+  color: var(--paper-2);
+}
+
+.rail-note {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.main {
+  padding: 1.75rem 2rem 3rem;
+  max-width: 76rem;
+}
+
+.page-head {
+  max-width: 40rem;
+  margin-bottom: 1.5rem;
+}
+
+.page-title {
+  margin: 0.2rem 0 0.4rem;
+  font-family: var(--serif);
+  font-size: 2.1rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.page-copy,
+.case-meta,
+.case-opened,
+.shipment-meta,
+.quiet,
+.empty {
+  color: var(--muted);
+}
+
+.page-copy,
+.empty {
+  margin: 0;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.8fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.panel,
+.card,
+.shipment,
+.case-link {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.panel,
+.card {
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.panel-title,
+.card-title,
+.step-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.card-title,
+.step-title {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.name-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 12rem;
+}
+
+.text-input,
+.composer-input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper);
+}
+
+.stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.shipment,
+.case-link {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 0.9rem;
+}
+
+.case-link {
+  flex-direction: column;
+  align-items: flex-start;
+  text-decoration: none;
+}
+
+.shipment-name,
+.case-pro {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.case-pro {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.shipment-meta,
+.case-opened,
+.quiet,
+.shipment-note,
+.step-detail,
+.notice-body {
+  margin: 0.2rem 0 0;
+  font-size: 0.92rem;
+}
+
+.button {
+  appearance: none;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper-2);
+  border-radius: 2px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 120ms ease-out,
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.button:hover {
+  background: #2c261f;
+}
+
+.button:active {
+  transform: scale(0.98);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.button:disabled:active {
+  transform: none;
+}
+
+.button-secondary,
+.button-quiet {
+  background: transparent;
+  color: var(--ink);
+}
+
+.button-secondary:hover,
+.button-quiet:hover {
+  background: var(--copper-soft);
+}
+
+.button-quiet {
+  border-color: var(--line);
+  white-space: normal;
+  text-align: left;
+}
+
+.pill,
+.live {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.pill-running,
+.live-connecting,
+.live-reconnecting {
+  background: var(--copper-soft);
+  color: var(--copper);
+}
+
+.pill-waiting {
+  background: var(--copper);
+  color: var(--paper-2);
+}
+
+.pill-completed,
+.live-live {
+  background: var(--pine-soft);
+  color: var(--pine);
+}
+
+.pill-failed,
+.pill-cancelled {
+  background: var(--fail-soft);
+  color: var(--fail);
+}
+
+.banner {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--fail-soft);
+  color: var(--fail);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--copper);
+}
+
+.case-head,
+.sweep-bar,
+.composer-row,
+.step-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.case-status,
+.actions,
+.suggestions,
+.sweep-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.steps {
+  list-style: none;
+  margin: 1.25rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 0.7rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.step-mark {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.step-running .step-mark,
+.step-pending .step-mark {
+  background: var(--copper-soft);
+  border-color: var(--copper);
+}
+
+.step-completed .step-mark {
+  background: var(--pine);
+  border-color: var(--pine);
+}
+
+.step-failed .step-mark {
+  background: var(--fail);
+  border-color: var(--fail);
+}
+
+.step-state {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.step-error {
+  margin: 0.3rem 0 0;
+  color: var(--fail);
+}
+
+.card {
+  margin-top: 0.8rem;
+}
+
+.card p {
+  margin: 0.35rem 0 0;
+}
+
+.card-waiting {
+  border-color: var(--copper);
+}
+
+.notice + .notice {
+  margin-top: 0.8rem;
+}
+
+.notice-subject {
+  margin: 0;
+  font-weight: 600;
+}
+
+.desk {
+  display: grid;
+  gap: 1rem;
+  max-width: 42rem;
+}
+
+.transcript {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.bubble {
+  margin: 0;
+  max-width: 36rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.bubble-user {
+  justify-self: end;
+  background: var(--ink);
+  color: var(--paper-2);
+}
+
+.bubble-assistant {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+}
+
+.tool-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.composer {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.lanes {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  max-width: 28rem;
+}
+
+.lane,
+.fire {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.lane-count {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+}
+
+@media (max-width: 800px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    gap: 0.8rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .rail-note {
+    margin-top: 0;
+  }
+
+  .main {
+    padding: 1.25rem 1rem 2.5rem;
+  }
+
+  .board,
+  .panel-head,
+  .shipment,
+  .case-head,
+  .sweep-bar {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .page-title {
+    font-size: 1.7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button:active {
+    transform: none;
+  }
+}

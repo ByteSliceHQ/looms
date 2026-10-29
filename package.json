@@ -26,6 +26,7 @@
     "verify": "turbo run build --filter=@swirls/looms... && turbo run check-types && turbo run test && bun run lint && bun run fmt:check",
     "dev": "turbo run dev --filter=@looms/debugger-app --filter=@looms/demo --filter=@looms/docs",
     "demo": "turbo run dev --filter=@looms/debugger-app --filter=@looms/demo",
+    "northline": "turbo run dev --filter=@looms/northline-ui --filter=@looms/northline-worker",
     "docs": "turbo run dev --filter=@looms/docs",
     "examples": "bun run --filter @looms/examples all",
     "setup:s2": "bash scripts/install-s2-cli.sh",
