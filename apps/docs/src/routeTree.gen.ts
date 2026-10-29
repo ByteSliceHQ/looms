@@ -29,6 +29,7 @@ import { Route as DocsPriorArtRouteImport } from './routes/docs.prior-art'
 import { Route as DocsProjectorsRouteImport } from './routes/docs.projectors'
 import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
 import { Route as DocsReliabilityRouteImport } from './routes/docs.reliability'
+import { Route as DocsReplicaRouteImport } from './routes/docs.replica'
 import { Route as DocsSchedulesRouteImport } from './routes/docs.schedules'
 import { Route as DocsSecurityRouteImport } from './routes/docs.security'
 import { Route as DocsTestingRouteImport } from './routes/docs.testing'
@@ -141,6 +142,11 @@ const DocsReliabilityRoute = DocsReliabilityRouteImport.update({
   path: '/reliability',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsReplicaRoute = DocsReplicaRouteImport.update({
+  id: '/replica',
+  path: '/replica',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsSchedulesRoute = DocsSchedulesRouteImport.update({
   id: '/schedules',
   path: '/schedules',
@@ -220,6 +226,7 @@ export interface FileRoutesByFullPath {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
@@ -251,6 +258,7 @@ export interface FileRoutesByTo {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
@@ -285,6 +293,7 @@ export interface FileRoutesById {
   '/docs/projectors': typeof DocsProjectorsRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/reliability': typeof DocsReliabilityRoute
+  '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
   '/docs/testing': typeof DocsTestingRoute
@@ -320,6 +329,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
@@ -351,6 +361,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
@@ -384,6 +395,7 @@ export interface FileRouteTypes {
     | '/docs/projectors'
     | '/docs/quickstart'
     | '/docs/reliability'
+    | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
     | '/docs/testing'
@@ -546,6 +558,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsReliabilityRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/replica': {
+      id: '/docs/replica'
+      path: '/replica'
+      fullPath: '/docs/replica'
+      preLoaderRoute: typeof DocsReplicaRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/schedules': {
       id: '/docs/schedules'
       path: '/schedules'
@@ -663,6 +682,7 @@ interface DocsRouteChildren {
   DocsProjectorsRoute: typeof DocsProjectorsRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
   DocsReliabilityRoute: typeof DocsReliabilityRoute
+  DocsReplicaRoute: typeof DocsReplicaRoute
   DocsSchedulesRoute: typeof DocsSchedulesRoute
   DocsSecurityRoute: typeof DocsSecurityRoute
   DocsTestingRoute: typeof DocsTestingRoute
@@ -689,6 +709,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsProjectorsRoute: DocsProjectorsRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
   DocsReliabilityRoute: DocsReliabilityRoute,
+  DocsReplicaRoute: DocsReplicaRoute,
   DocsSchedulesRoute: DocsSchedulesRoute,
   DocsSecurityRoute: DocsSecurityRoute,
   DocsTestingRoute: DocsTestingRoute,

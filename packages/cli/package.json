@@ -38,6 +38,7 @@
     "@looms/approval": "workspace:*",
     "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
+    "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
     "effect": "4.0.0-rc.112"
   },

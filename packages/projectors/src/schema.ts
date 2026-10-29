@@ -1,37 +1,8 @@
 /**
  * SQL schema for the optional Looms secondary index.
+ * The Postgres statements live with the replica migrations so there is one DDL source.
  */
-export const POSTGRES_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS looms_run_actors (
-  run_id TEXT NOT NULL,
-  actor_id TEXT NOT NULL,
-  kind TEXT,
-  status TEXT,
-  definition_name TEXT,
-  parent_actor_id TEXT,
-  launched_by_run_id TEXT,
-  launched_by_effect_id TEXT,
-  correlation_id TEXT,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (run_id, actor_id)
-);
-
-ALTER TABLE looms_run_actors ADD COLUMN IF NOT EXISTS launched_by_run_id TEXT;
-ALTER TABLE looms_run_actors ADD COLUMN IF NOT EXISTS launched_by_effect_id TEXT;
-ALTER TABLE looms_run_actors ADD COLUMN IF NOT EXISTS correlation_id TEXT;
-
-CREATE INDEX IF NOT EXISTS looms_run_actors_launched_by ON looms_run_actors (launched_by_run_id);
-CREATE INDEX IF NOT EXISTS looms_run_actors_correlation ON looms_run_actors (correlation_id);
-
-CREATE TABLE IF NOT EXISTS looms_run_reviews (
-  run_id TEXT NOT NULL,
-  review_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  title TEXT NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (run_id, review_id)
-);
-`.trim()
+export { POSTGRES_SCHEMA_SQL } from './replica/migrations'
 
 export const SQLITE_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS looms_run_actors (

@@ -19,6 +19,8 @@ import { steer as steerEvent } from '@looms/agent'
 import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
 import { stringifyJson, stringifyJsonPretty, type JsonValue } from '@looms/core'
+import { postgresReplica } from '@looms/projectors/replica'
+import { generateReplicaMigrations } from '@looms/projectors/replica/migrations'
 import { createLooms } from '@looms/runtime'
 
 const VERSION = '0.0.1'
@@ -275,8 +277,127 @@ const tail = Command.make(
   Command.withShortDescription('Tail run events'),
 )
 
+const databaseFlag = Flag.string('database').pipe(
+  Flag.withDescription('Postgres connection string for the replica (env DATABASE_URL)'),
+  Flag.withFallbackConfig(Config.string('DATABASE_URL')),
+)
+
+const generate = Command.make(
+  'generate',
+  {
+    out: Flag.string('out').pipe(
+      Flag.withDescription('Directory of SQL migrations to write into'),
+    ),
+    journal: Flag.optional(
+      Flag.string('journal').pipe(
+        Flag.withDescription('Also update a migration journal. Only `drizzle` is supported'),
+      ),
+    ),
+    check: Flag.boolean('check').pipe(
+      Flag.withDescription('Exit non-zero when a migration is pending, and write nothing'),
+      Flag.withDefault(false),
+    ),
+  },
+  Effect.fn('replica.generate')(function* ({ out, journal, check }) {
+    if (Option.isSome(journal) && journal.value !== 'drizzle') {
+      return yield* new CliError.UserError({
+        cause: journal.value,
+        userMessage: `Unknown journal "${journal.value}". Only "drizzle" is supported.`,
+      })
+    }
+
+    const generateOptions = Option.isSome(journal)
+      ? { out, check, journal: 'drizzle' as const }
+      : { out, check }
+
+    const result = yield* tryClient(() => generateReplicaMigrations(generateOptions))
+
+    if (check && result.pending.length > 0) {
+      return yield* new CliError.UserError({
+        cause: result.pending,
+        userMessage: `Pending Looms replica migrations: ${result.pending.join(', ')}`,
+      })
+    }
+
+    if (result.written.length === 0) {
+      return yield* Console.log('Looms replica migrations are up to date')
+    }
+
+    for (const filename of result.written) {
+      yield* Console.log(filename)
+    }
+
+    return yield* Effect.void
+  }),
+).pipe(
+  Command.withDescription('Write replica migrations the host does not already have'),
+  Command.withShortDescription('Write replica SQL'),
+)
+
+const migrate = Command.make(
+  'migrate',
+  { database: databaseFlag },
+  Effect.fn('replica.migrate')(function* ({ database }) {
+    const replica = postgresReplica({ url: database, migrate: 'auto' })
+
+    yield* tryClient(() => replica.migrate().then(() => replica.dispose?.()))
+
+    yield* Console.log('Looms replica migrations applied')
+  }),
+).pipe(
+  Command.withDescription('Apply pending replica migrations'),
+  Command.withShortDescription('Apply replica SQL'),
+)
+
+const status = Command.make(
+  'status',
+  {
+    database: databaseFlag,
+    run: Flag.optional(
+      Flag.string('run').pipe(Flag.withDescription('Also print freshness for this run id')),
+    ),
+  },
+  Effect.fn('replica.status')(function* ({ database, run }) {
+    const replica = postgresReplica({ url: database, migrate: 'verify' })
+    const pending = yield* tryClient(() => replica.pendingMigrations())
+
+    yield* Console.log(
+      pending.length === 0
+        ? 'Looms replica schema is up to date'
+        : `Pending Looms replica migrations: ${pending.join(', ')}`,
+    )
+
+    if (Option.isSome(run)) {
+      const row = yield* tryClient(() => replica.status(run.value))
+      yield* Console.log(row ? stringifyJson(row) : `No replica row for ${run.value}`)
+    }
+
+    yield* tryClient(() => replica.dispose?.() ?? Promise.resolve())
+  }),
+).pipe(
+  Command.withDescription('Show which replica migrations are applied'),
+  Command.withShortDescription('Replica schema status'),
+)
+
+const replica = Command.make('replica').pipe(
+  Command.withDescription('Copy runs into a Postgres database you own'),
+  Command.withShortDescription('Postgres replica'),
+  Command.withSubcommands([generate, migrate, status]),
+)
+
 export const looms = loomsBase.pipe(
-  Command.withSubcommands([serve, start, events, state, approve, replay, signal, steer, tail]),
+  Command.withSubcommands([
+    serve,
+    start,
+    events,
+    state,
+    approve,
+    replay,
+    signal,
+    steer,
+    tail,
+    replica,
+  ]),
 )
 
 export const cliTestLayer = Layer.mergeAll(

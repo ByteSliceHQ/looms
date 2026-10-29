@@ -1,4 +1,4 @@
-import { DateTime, Effect } from 'effect'
+import { DateTime } from 'effect'
 import createPostgresClient, { type Sql } from 'postgres'
 
 import {
@@ -64,10 +64,12 @@ function actorFromRow(row: PostgresActorRow): ActorIndexRow {
   }
 }
 
-function applyOp(
-  sql: (strings: TemplateStringsArray, ...values: any[]) => PromiseLike<void>,
-  op: IndexOp,
-): PromiseLike<void> {
+type SqlTag = (
+  strings: TemplateStringsArray,
+  ...values: readonly any[]
+) => PromiseLike<void>
+
+function applyOp(sql: SqlTag, op: IndexOp): PromiseLike<void> {
   const date = DateTime.toDateUtc(DateTime.makeUnsafe(op.updatedAt))
 
   switch (op.type) {
@@ -120,6 +122,14 @@ function applyOp(
   }
 }
 
+/** Apply actor and review index operations on an existing connection or transaction. */
+export function applyIndexOps(sql: SqlTag, ops: readonly IndexOp[]): Promise<void> {
+  return ops.reduce<Promise<void>>(
+    (chain, op) => chain.then(() => Promise.resolve(applyOp(sql, op)).then(() => undefined)),
+    Promise.resolve(),
+  )
+}
+
 export function postgres(options: PostgresProjectorOptions): IndexProjector {
   const createdClient = ownsClient(options)
   const sql = createdClient ? createPostgresClient(options.url) : options.sql
@@ -128,15 +138,9 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
     init: () =>
       runProjectorPromise('postgres', () => sql.unsafe(POSTGRES_SCHEMA_SQL)).then(() => undefined),
     applyOps: (ops) =>
-      runProjectorPromise('postgres', () =>
-        sql.begin((tx) =>
-          Effect.runPromise(
-            Effect.forEach(ops, (op) => Effect.promise(() => Promise.resolve(applyOp(tx, op))), {
-              discard: true,
-            }),
-          ),
-        ),
-      ).then(() => undefined),
+      runProjectorPromise('postgres', () => sql.begin((tx) => applyIndexOps(tx, ops))).then(
+        () => undefined,
+      ),
     getActor: (runId, actorId) =>
       runProjectorPromise(
         'postgres',
