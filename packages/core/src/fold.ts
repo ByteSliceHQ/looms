@@ -417,7 +417,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
           [effectId]: {
             effectId,
             attempt,
-            status: 'queued',
+            status: 'dispatch_wait',
             nextAttemptAt: retryAt,
             deadlineAt: retryAt,
             startedAt: null,

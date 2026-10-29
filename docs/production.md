@@ -139,16 +139,18 @@ transport can still lose a message it accepted, creating a runtime fails unless
 every effect that worker claims sets `retry.scheduleToStartTimeoutMs`.
 
 For **unacknowledged** workers, a rejected `dispatch` does not park as ambiguous.
-The attempt stays `queued` and the host records `runtime.effect.dispatch.deferred`,
-then retries the push on later wakes (outbox relay). Workers must treat
-`(runId, effectId, attempt)` as idempotent. After many deferred tries the host
-parks as `ambiguous` for an operator. Prefer `dispatchSemantics: 'acknowledged'`
+The attempt enters `dispatch_wait` via `runtime.effect.dispatch.deferred`, then the
+host retries the same attempt on later wakes with dedicated outbox backoff (not the
+effect's retry policy). Workers must treat `(runId, effectId, attempt)` as
+idempotent — a rejected push may still have arrived, so `started` from
+`dispatch_wait` is accepted. After many deferred tries the host parks as
+`ambiguous` for an operator. Prefer `dispatchSemantics: 'acknowledged'`
 (Cloudflare Queues) when the transport can promise a reject sent nothing.
 
 `ambiguous` remains for misconfiguration (no worker), cancellation acknowledgement
 timeouts, and exhausted dispatch relays. Use `retryEffect` or
-`POST /runs/:runId/effects/:effectId/retry` after verifying the destination.
-Never blindly retry a non-idempotent effect.
+`POST /runs/:runId/effects/:effectId/retry` after verifying the destination
+(including from `dispatch_wait`). Never blindly retry a non-idempotent effect.
 
 Creating a runtime also fails when:
 

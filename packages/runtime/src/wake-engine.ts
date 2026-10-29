@@ -398,7 +398,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 (dueAt !== undefined && dueAt > now + 5) ||
                 (cancellationTargets.has(item.threadId) && item.effect.type !== 'runtime.cancel') ||
                 isWorkerEffect({ runId, item, execution, registry, worker: options.worker }) ||
-                (execution?.status === 'retry_wait' &&
+                ((execution?.status === 'retry_wait' || execution?.status === 'dispatch_wait') &&
                   execution.nextAttemptAt !== null &&
                   execution.nextAttemptAt > now)
               )

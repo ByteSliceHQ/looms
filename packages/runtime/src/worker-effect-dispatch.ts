@@ -60,12 +60,18 @@ function workerClaims(
 
 const WORKER_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
   'queued',
+  'dispatch_wait',
   'dispatched',
   'started',
   'heartbeat',
   'cancel_requested',
   'timed_out',
   'ambiguous',
+])
+
+const SAME_ATTEMPT_STATUSES: ReadonlySet<EffectExecutionRecord['status']> = new Set([
+  'queued',
+  'dispatch_wait',
 ])
 
 /**
@@ -138,8 +144,10 @@ export function planWorkerEffects(input: {
 
     return (
       !execution ||
-      (execution.status === 'queued' &&
-        (execution.nextAttemptAt === null || execution.nextAttemptAt <= input.now + 5)) ||
+      execution.status === 'queued' ||
+      (execution.status === 'dispatch_wait' &&
+        execution.nextAttemptAt !== null &&
+        execution.nextAttemptAt <= input.now + 5) ||
       (execution.status === 'retry_wait' &&
         execution.nextAttemptAt !== null &&
         execution.nextAttemptAt <= input.now + 5)
@@ -148,8 +156,9 @@ export function planWorkerEffects(input: {
 
   return withinInFlightLimit(input, workerItems, due).map((item) => {
     const existing = input.state.effectExecutions[item.effectId]
+    const sameAttempt = existing !== undefined && SAME_ATTEMPT_STATUSES.has(existing.status)
 
-    const attempt = existing?.status === 'queued' ? existing.attempt : (existing?.attempt ?? 0) + 1
+    const attempt = sameAttempt ? existing.attempt : (existing?.attempt ?? 0) + 1
 
     const retry = input.registry.effects.get(item.effect.type)?.retry
 
@@ -161,17 +170,16 @@ export function planWorkerEffects(input: {
       item,
       attempt,
       retry,
-      dispatchTry: existing?.status === 'queued' ? existing.dispatchTry + 1 : 1,
-      queuedEvent:
-        existing?.status === 'queued'
-          ? undefined
-          : createEvent(input.runId, {
-              type: 'runtime.effect.queued',
-              payload: { effectId: item.effectId, attempt, deadlineAt: null },
-              threadId: item.threadId,
-              causationId: item.causingEventId,
-              origin: { type: 'system' },
-            }),
+      dispatchTry: sameAttempt ? existing.dispatchTry + 1 : 1,
+      queuedEvent: sameAttempt
+        ? undefined
+        : createEvent(input.runId, {
+            type: 'runtime.effect.queued',
+            payload: { effectId: item.effectId, attempt, deadlineAt: null },
+            threadId: item.threadId,
+            causationId: item.causingEventId,
+            origin: { type: 'system' },
+          }),
       task: workerTask(input.runId, item, attempt, {
         details: existing?.heartbeatDetails,
         secrets: input.secrets,
@@ -216,9 +224,11 @@ function withinInFlightLimit(
  * Hand a planned attempt to the worker.
  *
  * - **acknowledged** reject: nothing was sent → fail under the retry policy.
- * - **unacknowledged** reject: the attempt stays queued (`runtime.effect.dispatch.deferred`) and the
- *   wake engine retries later (outbox). After {@link DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS} tries,
- *   park as ambiguous for an operator. Workers must treat `(runId, effectId, attempt)` as idempotent.
+ * - **unacknowledged** reject: enter `dispatch_wait` (`runtime.effect.dispatch.deferred`) and the
+ *   wake engine retries later with dedicated outbox backoff. After
+ *   {@link DEFAULT_MAX_WORKER_DISPATCH_DEFERRALS} tries, park as ambiguous for an operator.
+ *   Workers must treat `(runId, effectId, attempt)` as idempotent — a rejected push may still have
+ *   arrived, so a later `started` from `dispatch_wait` is accepted.
  * - Missing worker: ambiguous (misconfiguration).
  */
 export function dispatchWorkerEffect(
@@ -282,14 +292,12 @@ export function dispatchWorkerEffect(
           )
         }
 
-        const backoff = plan.retry ?? DISPATCH_BACKOFF
-
         return createEvent(runId, {
           type: 'runtime.effect.dispatch.deferred',
           payload: {
             effectId: plan.item.effectId,
             attempt: plan.attempt,
-            retryAt: now + retryBackoff(backoff, plan.dispatchTry),
+            retryAt: now + retryBackoff(DISPATCH_BACKOFF, plan.dispatchTry),
             error: `worker dispatch deferred: ${error.message}`,
             try: plan.dispatchTry,
           },

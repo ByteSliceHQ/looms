@@ -47,6 +47,7 @@ export interface EffectExecutionRecord {
   attempt: number
   status:
     | 'queued'
+    | 'dispatch_wait'
     | 'dispatched'
     | 'started'
     | 'heartbeat'
@@ -200,6 +201,7 @@ export const RunStateSchema = Schema.Struct({
       attempt: Schema.Finite,
       status: Schema.Union([
         Schema.Literal('queued'),
+        Schema.Literal('dispatch_wait'),
         Schema.Literal('dispatched'),
         Schema.Literal('started'),
         Schema.Literal('heartbeat'),

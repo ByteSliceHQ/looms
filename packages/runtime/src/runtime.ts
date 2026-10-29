@@ -599,14 +599,11 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 return yield* new RuntimeExecutionError(`Unknown outstanding effect "${effectId}"`)
               }
 
-              const retryableQueued =
-                execution.status === 'queued' && execution.lastError !== null
-
               if (
                 execution.status !== 'ambiguous' &&
                 execution.status !== 'timed_out' &&
                 execution.status !== 'cancel_requested' &&
-                !retryableQueued
+                execution.status !== 'dispatch_wait'
               ) {
                 return yield* new RuntimeExecutionError(
                   `Effect "${effectId}" cannot be retried from status "${execution.status}"`,

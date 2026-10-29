@@ -223,6 +223,52 @@ describe('worker effect planner', () => {
     expect(plan?.queuedEvent?.type).toBe('runtime.effect.queued')
     expect(plan?.scheduleToStartDeadlineAt).toBe(1_500)
   })
+
+  test('replays the same attempt from dispatch_wait without re-queuing', () => {
+    const workerEffect = defineEffect({
+      type: 'worker.send',
+      retry: { maxAttempts: 3, scheduleToStartTimeoutMs: 500 },
+    })
+
+    const registry = composeModules([
+      defineRuntimeModule({
+        namespace: 'worker',
+        protocolVersion: '1.0.0',
+        effects: { send: workerEffect },
+      }),
+    ])
+
+    const state = runningState({
+      outstandingEffects: [
+        {
+          effectId: 'effect_1',
+          threadId: 'thread_1',
+          causingSeq: 4,
+          causingEventId: 'event_4',
+          effect: { type: 'worker.send', input: { message: 'hello' } },
+        },
+      ],
+      effectExecutions: {
+        effect_1: {
+          effectId: 'effect_1',
+          attempt: 1,
+          status: 'dispatch_wait',
+          nextAttemptAt: 1_000,
+          deadlineAt: 1_000,
+          lastHeartbeatAt: null,
+          heartbeatDetails: null,
+          lastError: 'worker dispatch deferred',
+          dispatchTry: 2,
+        },
+      },
+    })
+
+    const [plan] = planWorkerEffects({ runId: state.runId, state, registry, now: 1_000 })
+
+    expect(plan?.attempt).toBe(1)
+    expect(plan?.dispatchTry).toBe(3)
+    expect(plan?.queuedEvent).toBeUndefined()
+  })
 })
 
 function outstandingItem(type: string) {

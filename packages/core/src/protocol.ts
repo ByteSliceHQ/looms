@@ -167,7 +167,10 @@ export const protocolCatalog = defineEventCatalog('runtime', {
     attempt: Schema.Finite,
     error: Schema.String,
   }),
-  /** Unacknowledged worker.dispatch rejected; the attempt stays queued and the host retries later. */
+  /**
+   * Unacknowledged worker.dispatch rejected. The attempt enters `dispatch_wait` (same attempt,
+   * outbox backoff) until the host relays again or parks as ambiguous.
+   */
   'effect.dispatch.deferred': Schema.Struct({
     effectId: Schema.String,
     attempt: Schema.Finite,
