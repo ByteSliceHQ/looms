@@ -1,0 +1,31 @@
+{
+  "name": "@looms/meridian",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Meridian algorithmic trading desk: a Looms app",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts",
+    "./http": "./src/http.ts",
+    "./market": "./src/market/index.ts",
+    "./broker": "./src/broker/index.ts",
+    "./broker/robinhood": "./src/broker/robinhood.ts",
+    "./execution": "./src/modules/execution/fill.ts"
+  },
+  "scripts": {
+    "build": "bun x tsc -p tsconfig.json --noEmit",
+    "check-types": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@swirls/looms": "workspace:*",
+    "effect": "4.0.0-rc.112",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "7.0.2"
+  }
+}
