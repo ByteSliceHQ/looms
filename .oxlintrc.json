@@ -104,6 +104,8 @@
     {
       "files": [
         "packages/projectors/src/replica/postgres.ts",
+        "packages/projectors/src/replica/sqlite.ts",
+        "packages/projectors/src/replica/sqlite-bun.ts",
         "packages/projectors/src/replica/migrations.ts"
       ],
       "rules": {

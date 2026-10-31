@@ -19,8 +19,13 @@ import { steer as steerEvent } from '@looms/agent'
 import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
 import { stringifyJson, stringifyJsonPretty, type JsonValue } from '@looms/core'
-import { postgresReplica } from '@looms/projectors/replica'
-import { generateReplicaMigrations } from '@looms/projectors/replica/migrations'
+import { postgresReplica, type PostgresReplica } from '@looms/projectors/replica'
+import {
+  generateReplicaMigrations,
+  type ReplicaDialect,
+} from '@looms/projectors/replica/migrations'
+import { type SqliteReplica } from '@looms/projectors/replica/sqlite'
+import { openSqliteReplicaFile } from '@looms/projectors/replica/sqlite-bun'
 import { createLooms } from '@looms/runtime'
 
 const VERSION = '0.0.1'
@@ -278,17 +283,70 @@ const tail = Command.make(
 )
 
 const databaseFlag = Flag.string('database').pipe(
-  Flag.withDescription('Postgres connection string for the replica (env DATABASE_URL)'),
+  Flag.withDescription(
+    'Postgres connection string, or a SQLite file path with --dialect sqlite (env DATABASE_URL)',
+  ),
   Flag.withFallbackConfig(Config.string('DATABASE_URL')),
 )
+
+const dialectFlag = Flag.string('dialect').pipe(
+  Flag.withDescription('Replica dialect: postgres (default) or sqlite'),
+  Flag.withDefault('postgres'),
+)
+
+function asDialect(value: string): ReplicaDialect | undefined {
+  switch (value) {
+    case 'postgres':
+    case 'sqlite':
+      return value
+    default:
+      return undefined
+  }
+}
+
+interface OpenReplica {
+  readonly pendingMigrations: () => Promise<readonly string[]>
+  readonly migrate: () => Promise<void>
+  readonly status: PostgresReplica['status'] | SqliteReplica['status']
+  readonly dispose: () => Promise<void>
+}
+
+function openReplica(
+  dialect: ReplicaDialect,
+  database: string,
+  migrate: 'auto' | 'verify',
+): OpenReplica {
+  if (dialect === 'sqlite') {
+    const replica = openSqliteReplicaFile(database, migrate)
+
+    return {
+      pendingMigrations: () => replica.pendingMigrations(),
+      migrate: () => replica.migrate(),
+      status: (runId) => replica.status(runId),
+      dispose: () => replica.dispose?.() ?? Promise.resolve(),
+    }
+  }
+
+  const replica = postgresReplica({ url: database, migrate })
+
+  return {
+    pendingMigrations: () => replica.pendingMigrations(),
+    migrate: () => replica.migrate(),
+    status: (runId) => replica.status(runId),
+    dispose: () => replica.dispose?.() ?? Promise.resolve(),
+  }
+}
 
 const generate = Command.make(
   'generate',
   {
     out: Flag.string('out').pipe(Flag.withDescription('Directory of SQL migrations to write into')),
+    dialect: dialectFlag,
     journal: Flag.optional(
       Flag.string('journal').pipe(
-        Flag.withDescription('Also update a migration journal. Only `drizzle` is supported'),
+        Flag.withDescription(
+          'Also update a migration journal. Only `drizzle` is supported, and only for Postgres',
+        ),
       ),
     ),
     check: Flag.boolean('check').pipe(
@@ -296,7 +354,16 @@ const generate = Command.make(
       Flag.withDefault(false),
     ),
   },
-  Effect.fn('replica.generate')(function* ({ out, journal, check }) {
+  Effect.fn('replica.generate')(function* ({ out, dialect, journal, check }) {
+    const parsed = asDialect(dialect)
+
+    if (!parsed) {
+      return yield* new CliError.UserError({
+        cause: dialect,
+        userMessage: `Unknown dialect "${dialect}". Use "postgres" or "sqlite".`,
+      })
+    }
+
     if (Option.isSome(journal) && journal.value !== 'drizzle') {
       return yield* new CliError.UserError({
         cause: journal.value,
@@ -304,9 +371,16 @@ const generate = Command.make(
       })
     }
 
+    if (parsed === 'sqlite' && Option.isSome(journal)) {
+      return yield* new CliError.UserError({
+        cause: journal.value,
+        userMessage: 'Drizzle journal output is only supported for the Postgres replica.',
+      })
+    }
+
     const generateOptions = Option.isSome(journal)
-      ? { out, check, journal: 'drizzle' as const }
-      : { out, check }
+      ? { out, check, dialect: parsed, journal: 'drizzle' as const }
+      : { out, check, dialect: parsed }
 
     const result = yield* tryClient(() => generateReplicaMigrations(generateOptions))
 
@@ -334,13 +408,29 @@ const generate = Command.make(
 
 const migrate = Command.make(
   'migrate',
-  { database: databaseFlag },
-  Effect.fn('replica.migrate')(function* ({ database }) {
-    const replica = postgresReplica({ url: database, migrate: 'auto' })
+  { database: databaseFlag, dialect: dialectFlag },
+  Effect.fn('replica.migrate')(function* ({ database, dialect }) {
+    const parsed = asDialect(dialect)
 
-    yield* tryClient(() => replica.migrate().then(() => replica.dispose?.()))
+    if (!parsed) {
+      return yield* new CliError.UserError({
+        cause: dialect,
+        userMessage: `Unknown dialect "${dialect}". Use "postgres" or "sqlite".`,
+      })
+    }
 
-    yield* Console.log('Looms replica migrations applied')
+    if (parsed === 'sqlite' && /^postgres(ql)?:\/\//.test(database)) {
+      return yield* new CliError.UserError({
+        cause: database,
+        userMessage: 'SQLite replica --database is a file path, not a Postgres URL.',
+      })
+    }
+
+    const replica = openReplica(parsed, database, 'auto')
+
+    yield* tryClient(() => replica.migrate().then(() => replica.dispose()))
+
+    return yield* Console.log('Looms replica migrations applied')
   }),
 ).pipe(
   Command.withDescription('Apply pending replica migrations'),
@@ -351,12 +441,29 @@ const status = Command.make(
   'status',
   {
     database: databaseFlag,
+    dialect: dialectFlag,
     run: Flag.optional(
       Flag.string('run').pipe(Flag.withDescription('Also print freshness for this run id')),
     ),
   },
-  Effect.fn('replica.status')(function* ({ database, run }) {
-    const replica = postgresReplica({ url: database, migrate: 'verify' })
+  Effect.fn('replica.status')(function* ({ database, dialect, run }) {
+    const parsed = asDialect(dialect)
+
+    if (!parsed) {
+      return yield* new CliError.UserError({
+        cause: dialect,
+        userMessage: `Unknown dialect "${dialect}". Use "postgres" or "sqlite".`,
+      })
+    }
+
+    if (parsed === 'sqlite' && /^postgres(ql)?:\/\//.test(database)) {
+      return yield* new CliError.UserError({
+        cause: database,
+        userMessage: 'SQLite replica --database is a file path, not a Postgres URL.',
+      })
+    }
+
+    const replica = openReplica(parsed, database, 'verify')
     const pending = yield* tryClient(() => replica.pendingMigrations())
 
     yield* Console.log(
@@ -370,7 +477,7 @@ const status = Command.make(
       yield* Console.log(row ? stringifyJson(row) : `No replica row for ${run.value}`)
     }
 
-    yield* tryClient(() => replica.dispose?.() ?? Promise.resolve())
+    return yield* tryClient(() => replica.dispose())
   }),
 ).pipe(
   Command.withDescription('Show which replica migrations are applied'),
@@ -378,8 +485,8 @@ const status = Command.make(
 )
 
 const replica = Command.make('replica').pipe(
-  Command.withDescription('Copy runs into a Postgres database you own'),
-  Command.withShortDescription('Postgres replica'),
+  Command.withDescription('Copy runs into a Postgres or SQLite database you own'),
+  Command.withShortDescription('Event replica'),
   Command.withSubcommands([generate, migrate, status]),
 )
 
