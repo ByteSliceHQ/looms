@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { Predicate } from 'effect'
 
 import { generateReplicaMigrations, POSTGRES_REPLICA_MIGRATIONS } from './migrations'
+import { SQLITE_REPLICA_MIGRATIONS } from './sqlite-migrations'
 
 function journalEntries(text: string): readonly object[] {
   const value: unknown = JSON.parse(text)
@@ -30,6 +31,16 @@ describe('replica migration generate', () => {
     await Promise.all(
       directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     )
+  })
+
+  test('sqlite migrations use SQLite types and the same id', () => {
+    expect(SQLITE_REPLICA_MIGRATIONS.map((migration) => migration.id)).toEqual(['0001_replica'])
+    const sql = SQLITE_REPLICA_MIGRATIONS[0]?.sql ?? ''
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS looms_run_events')
+    expect(sql).toContain('payload TEXT NOT NULL')
+    expect(sql).toContain('replicated_seq INTEGER NOT NULL DEFAULT 0')
+    expect(sql).not.toContain('JSONB')
+    expect(sql).not.toContain('TIMESTAMPTZ')
   })
 
   test('the migration list records its own id and only touches looms tables', () => {
