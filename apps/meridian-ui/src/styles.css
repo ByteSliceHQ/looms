@@ -151,10 +151,101 @@ tr.selected {
 .ladder .ask {
   fill: color-mix(in srgb, var(--ask) 55%, transparent);
 }
-.equity path {
+.equity path,
+.spark path {
   fill: none;
   stroke: var(--amber);
   stroke-width: 2;
+}
+.equity circle {
+  fill: var(--amber);
+}
+.spark {
+  width: 4.5rem;
+  height: 1.4rem;
+  display: block;
+}
+.candles {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.candles line {
+  stroke: currentColor;
+}
+.candles rect {
+  fill: currentColor;
+}
+.candles .bid {
+  color: var(--bid);
+}
+.candles .ask {
+  color: var(--ask);
+}
+.tape {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  margin: 0 0 1rem;
+}
+.tape button {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.scroll {
+  overflow-x: auto;
+}
+.gauge {
+  height: 0.45rem;
+  background: var(--line);
+  margin: 0.3rem 0 0.8rem;
+}
+.gauge span {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+}
+.cycles {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.cycles li {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cycles em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.cycles em.started {
+  color: var(--amber);
+}
+.cycles em.finished {
+  color: var(--bid);
+}
+.tools {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.tools li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.tools span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
 }
 
 .ticket,

@@ -1,49 +1,188 @@
 import { useMemo, useState } from 'react'
 
-import { OrderClosed } from '@looms/meridian'
-import { isJsonObject, isJsonString } from '@swirls/looms/core'
+import { OrderClosed, SIM_LIMITS } from '@looms/meridian'
+import { isJsonObject, isJsonString, type JsonValue } from '@swirls/looms/core'
 import { defineLiveFold, useLiveFold, useRunEvents, useRunStore } from '@swirls/looms/react'
 
 import { decideApproval, haltSession, replayTo, resumeSession } from '../api'
-import { clock, signed } from '../format'
+import { clock, price, signed, size } from '../format'
 import { Equity } from './ladder'
 
-const emptyCurve: { x: number; y: number }[] = []
+const steps = ['observe', 'signal', 'risk', 'review', 'execute', 'grade', 'pace'] as const
 
-const tape = defineLiveFold({
-  name: 'meridianTape',
-  initialState: { points: emptyCurve, cash: 0, position: 0 },
-  reduce(state, event) {
-    if (event.type !== 'execution.order.closed') {
+type Step = (typeof steps)[number]
+type StepState = 'idle' | 'started' | 'finished'
+
+interface Cycle {
+  readonly index: number
+  readonly steps: Record<Step, StepState>
+}
+
+interface FillRow {
+  readonly seq: number
+  readonly symbol: string
+  readonly side: string
+  readonly qty: number
+  readonly price: number
+  readonly slippageBps: number
+  readonly status: string
+  readonly grade: string
+}
+
+interface DeskView {
+  readonly points: { x: number; y: number }[]
+  readonly cash: number
+  readonly position: number
+  readonly cycles: Cycle[]
+  readonly fills: FillRow[]
+  readonly risk: { readonly outcome: string; readonly reason: string }
+}
+
+const emptySteps = (): Record<Step, StepState> => ({
+  observe: 'idle',
+  signal: 'idle',
+  risk: 'idle',
+  review: 'idle',
+  execute: 'idle',
+  grade: 'idle',
+  pace: 'idle',
+})
+
+const emptyView: DeskView = {
+  points: [],
+  cash: 0,
+  position: 0,
+  cycles: [],
+  fills: [],
+  risk: { outcome: 'passed', reason: 'no check yet' },
+}
+
+function isStep(value: string): value is Step {
+  return steps.some((step) => step === value)
+}
+
+function nodeId(payload: JsonValue): string | undefined {
+  if (!isJsonObject(payload) || !isJsonString(payload.nodeId)) {
+    return undefined
+  }
+
+  return payload.nodeId
+}
+
+function reduceView(
+  state: DeskView,
+  event: { type: string; seq: number; payload: JsonValue },
+): DeskView {
+  const id = nodeId(event.payload)
+
+  if (event.type === 'workflow.node.started' && id !== undefined && isStep(id)) {
+    const cycles =
+      id === 'observe'
+        ? state.cycles.concat({ index: state.cycles.length, steps: emptySteps() })
+        : state.cycles
+
+    const current = cycles.at(-1)
+
+    if (!current) {
       return state
     }
 
-    const parsed = OrderClosed.safeParse(event.payload)
+    const next = cycles.slice(0, -1).concat({
+      ...current,
+      steps: { ...current.steps, [id]: 'started' },
+    })
 
-    if (!parsed.success) {
+    return { ...state, cycles: next }
+  }
+
+  if (event.type === 'workflow.node.finished' && id !== undefined && isStep(id)) {
+    const current = state.cycles.at(-1)
+
+    if (!current) {
       return state
     }
 
     return {
-      cash: parsed.data.cash,
-      position: parsed.data.position,
-      points: state.points.concat({
-        x: event.seq,
-        y: parsed.data.cash + parsed.data.position * parsed.data.price,
+      ...state,
+      cycles: state.cycles.slice(0, -1).concat({
+        ...current,
+        steps: { ...current.steps, [id]: 'finished' },
       }),
     }
-  },
+  }
+
+  if (event.type === 'risk.check.completed' && isJsonObject(event.payload)) {
+    const outcome = isJsonString(event.payload.outcome) ? event.payload.outcome : state.risk.outcome
+    const reason = isJsonString(event.payload.reason) ? event.payload.reason : state.risk.reason
+
+    return { ...state, risk: { outcome, reason } }
+  }
+
+  if (
+    event.type === 'evaluator.evaluated' &&
+    isJsonObject(event.payload) &&
+    isJsonString(event.payload.route)
+  ) {
+    const fills = state.fills.slice()
+    const last = fills.at(-1)
+
+    if (!last || last.grade !== '') {
+      return state
+    }
+
+    fills[fills.length - 1] = { ...last, grade: event.payload.route }
+
+    return { ...state, fills }
+  }
+
+  if (event.type !== 'execution.order.closed') {
+    return state
+  }
+
+  const parsed = OrderClosed.safeParse(event.payload)
+
+  if (!parsed.success) {
+    return state
+  }
+
+  return {
+    ...state,
+    cash: parsed.data.cash,
+    position: parsed.data.position,
+    points: state.points.concat({
+      x: event.seq,
+      y: parsed.data.cash + parsed.data.position * parsed.data.price,
+    }),
+    fills: state.fills.concat({
+      seq: event.seq,
+      symbol: parsed.data.symbol,
+      side: parsed.data.side,
+      qty: parsed.data.qty,
+      price: parsed.data.price,
+      slippageBps: parsed.data.slippageBps,
+      status: parsed.data.status,
+      grade: '',
+    }),
+  }
+}
+
+const tape = defineLiveFold({
+  name: 'meridianTape',
+  initialState: emptyView,
+  reduce: reduceView,
 })
 
 export function SessionDesk({ runId }: { runId: string }) {
   const store = useRunStore(runId)
   const events = useRunEvents(store)
-  const folded = useLiveFold(store, tape)
+  const live = useLiveFold(store, tape)
   const [scrub, setScrub] = useState<number | undefined>(undefined)
   const [note, setNote] = useState('')
   const last = events.at(-1)?.seq ?? 1
   const visibleSeq = scrub ?? last
   const visible = events.filter((event) => event.seq <= visibleSeq)
+  const prefix = useMemo(() => visible.reduce(reduceView, emptyView), [visible])
+  const view = scrub === undefined ? live : prefix
 
   const approvals = useMemo(
     () =>
@@ -70,6 +209,8 @@ export function SessionDesk({ runId }: { runId: string }) {
       }),
     [visible],
   )
+
+  const used = Math.min(Math.abs(view.position) / SIM_LIMITS.maxPosition, 1)
 
   return (
     <section className="session">
@@ -99,11 +240,55 @@ export function SessionDesk({ runId }: { runId: string }) {
           Resume
         </button>
         <span className="muted">
-          pos {folded.position} · equity {signed(folded.points.at(-1)?.y ?? folded.cash)}
+          pos {size(view.position)} · equity {signed(view.points.at(-1)?.y ?? view.cash)}
         </span>
       </div>
       {note ? <p className="banner">{note}</p> : null}
-      <Equity points={folded.points.filter((point) => point.x <= visibleSeq)} />
+      <Equity points={view.points} />
+      <p className="muted">
+        Risk {view.risk.outcome} · {view.risk.reason}
+      </p>
+      <div className="gauge" aria-label="Position versus the limit">
+        <span style={{ width: `${used * 100}%` }} />
+      </div>
+      <ol className="cycles">
+        {view.cycles.map((cycle) => (
+          <li key={cycle.index}>
+            <span>{cycle.index + 1}</span>
+            {steps.map((step) => (
+              <em key={step} className={cycle.steps[step]}>
+                {step}
+              </em>
+            ))}
+          </li>
+        ))}
+      </ol>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Slip</th>
+            <th>Status</th>
+            <th>Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {view.fills.map((fill) => (
+            <tr key={fill.seq}>
+              <td>{fill.symbol}</td>
+              <td className={fill.side === 'buy' ? 'bid-text' : 'ask-text'}>{fill.side}</td>
+              <td>{size(fill.qty)}</td>
+              <td>{price(fill.price)}</td>
+              <td>{signed(fill.slippageBps)}</td>
+              <td>{fill.status}</td>
+              <td>{fill.grade || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <label className="scrub">
         Replay
         <input

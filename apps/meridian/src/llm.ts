@@ -17,18 +17,6 @@ function latestUserText(messages: LlmCompleteArgs['messages']): string {
   return ''
 }
 
-function latestTool(messages: LlmCompleteArgs['messages']) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-
-    if (message?.role === 'tool') {
-      return message
-    }
-  }
-
-  return undefined
-}
-
 function toolCall(
   args: LlmCompleteArgs,
   name: string,
@@ -136,10 +124,10 @@ const help =
 
 export const deskLlm: LlmAdapter = {
   complete(args) {
-    const tool = latestTool(args.messages)
+    const last = args.messages.at(-1)
 
-    if (tool?.content) {
-      return reply(args, summarize(tool.content))
+    if (last?.role === 'tool' && last.content) {
+      return reply(args, summarize(last.content))
     }
 
     const text = latestUserText(args.messages)

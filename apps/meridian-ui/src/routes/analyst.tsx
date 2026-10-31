@@ -60,5 +60,17 @@ function Transcript({ runId }: { runId: string }) {
   const text = useLiveFold(store, streamingText)
   const shown = text.committed.concat(text.live).join('\n')
 
-  return <p className="transcript">{shown || 'Waiting for the analyst.'}</p>
+  return (
+    <div>
+      <ul className="tools">
+        {text.tools.map((tool) => (
+          <li key={tool.id}>
+            <strong>{tool.name}</strong>
+            <span>{tool.detail}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="transcript">{shown || 'Waiting for the analyst.'}</p>
+    </div>
+  )
 }
