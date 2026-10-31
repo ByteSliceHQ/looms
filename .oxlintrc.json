@@ -56,6 +56,7 @@
         "scripts/**/*.ts",
         "**/scripts/**/*.ts",
         "**/scripts/**/*.tsx",
+        "**/scripts/**/*.mjs",
         "apps/demo/src/verify.ts"
       ],
       "rules": {
@@ -84,12 +85,15 @@
     {
       "files": [
         "apps/demo/src/server.ts",
+        "apps/meridian-ui/**/*.{ts,tsx}",
         "packages/debugger/src/server/**/*.ts",
         "packages/s2/src/lite.ts",
         "packages/runtime/src/filesystem-blob-store.ts"
       ],
       "rules": {
         "effecttsgo/global-fetch": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-timers": "off",
         "effecttsgo/node-builtin-import": "off",
         "effecttsgo/process-env": "off"
       }
@@ -104,12 +108,28 @@
     {
       "files": [
         "packages/projectors/src/replica/postgres.ts",
-        "packages/projectors/src/replica/migrations.ts"
+        "packages/projectors/src/replica/sqlite.ts",
+        "packages/projectors/src/replica/sqlite-bun.ts",
+        "packages/projectors/src/replica/migrations.ts",
+        "apps/meridian-worker/src/replica.ts"
       ],
       "rules": {
         "effecttsgo/async-function": "off",
         "effecttsgo/global-date": "off",
         "effecttsgo/node-builtin-import": "off"
+      }
+    },
+    {
+      "files": ["apps/meridian-worker/src/**/*.ts"],
+      "rules": {
+        "effecttsgo/global-date": "off"
+      }
+    },
+    {
+      "files": ["apps/meridian/src/broker/robinhood.ts"],
+      "rules": {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-date": "off"
       }
     },
     {

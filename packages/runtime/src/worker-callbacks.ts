@@ -3,6 +3,7 @@ import { Clock, Effect, Predicate } from 'effect'
 import {
   createEvent,
   EventStoreTag,
+  foldRun,
   isRunTerminal,
   type ComposedRegistry,
   type EventEnvelope,
@@ -15,7 +16,7 @@ import {
   type WorkerCallbackResult,
 } from '@looms/core'
 
-import { materializeEffectOutcome } from './helpers'
+import { materializeEffectOutcome, waitSatisfiedEvents } from './helpers'
 import type { RunIngress } from './ingress'
 import { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
@@ -288,10 +289,20 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
 
         const committed = yield* repository.commit(store, runId, (cursor) =>
           planWorkerCallback({ runId, state: cursor.state, callback, registry, now }).pipe(
-            Effect.map((plan) => ({
-              events: plan.events,
-              value: { notices: plan.notices, result: plan.result },
-            })),
+            Effect.map((plan) => {
+              // Domain events from the worker are already durable before the next wake.
+              // Satisfy waits in this commit so a workflow parked on the result can continue.
+              const folded = foldRun(plan.events, registry, { runId, initial: cursor.state })
+
+              const satisfied = waitSatisfiedEvents(folded, plan.events).map((input) =>
+                createEvent(runId, input),
+              )
+
+              return {
+                events: [...plan.events, ...satisfied],
+                value: { notices: plan.notices, result: plan.result },
+              }
+            }),
           ),
         )
 

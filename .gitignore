@@ -24,6 +24,8 @@ dump.rdb
 **/.tanstack/
 .wrangler/
 **/.wrangler/
+apps/meridian-worker/wrangler.deploy.jsonc
+apps/meridian-worker/scripts/unbind.json
 .looms/
 **/.looms/
 examples/cloudflare/worker-configuration.d.ts

@@ -1,0 +1,40 @@
+{
+  "name": "meridian",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "LOOMS_RUN", "class_name": "LoomsRun" },
+      { "name": "DESK", "class_name": "DeskBoard" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LoomsRun", "DeskBoard"],
+    },
+  ],
+  "queues": {
+    "producers": [{ "binding": "ORDERS_QUEUE", "queue": "meridian-orders" }],
+    "consumers": [{ "queue": "meridian-orders", "max_batch_size": 10, "max_retries": 3 }],
+  },
+  "triggers": {
+    "crons": ["30 13 * * 1-5", "5 20 * * 1-5"],
+  },
+  "vars": {
+    "LOOMS_WORKER_TOKEN": "meridian-dev-worker",
+    "LOOMS_MODEL": "openai/gpt-4o-mini",
+    "MERIDIAN_LIVE": "0",
+    "MERIDIAN_LIVE_MAX_ORDER_USD": "25",
+    "MERIDIAN_LIVE_MAX_DAY_USD": "100",
+  },
+  "d1_databases": [
+    {
+      "binding": "MERIDIAN_REPLICA",
+      "database_name": "meridian-replica",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "migrations",
+    },
+  ],
+}

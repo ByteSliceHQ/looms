@@ -176,12 +176,17 @@ describe('server HTTP idempotency', () => {
   })
 
   test('POST /runs/:id/wake reports how many events the wake appended', async () => {
+    // Deadline checks treat a timer within 5ms as due. A 10ms timer can elapse
+    // during start on a slow runner, so the explicit wake then appends nothing.
+    const delayMs = 500
+
     const flow = defineWorkflow({
       name: 'timer-flow',
       nodes: [
         {
           id: 'delay',
-          run: (ctx) => ctx.effects([wait({ waitId: 'delay', on: { timerAt: Date.now() + 10 } })]),
+          run: (ctx) =>
+            ctx.effects([wait({ waitId: 'delay', on: { timerAt: Date.now() + delayMs } })]),
         },
       ],
     })
@@ -192,7 +197,8 @@ describe('server HTTP idempotency', () => {
     })
 
     const { runId } = await looms.start(flow, {})
-    await Bun.sleep(15)
+    expect((await looms.getRun(runId)).status).toBe('running')
+    await Bun.sleep(delayMs + 50)
 
     const wake = async () => {
       const response = await looms.fetch(

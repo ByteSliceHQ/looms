@@ -18,7 +18,11 @@ export interface QueueProducer {
  * type error — only {@link WorkerEffectDefinition} values are accepted.
  */
 export interface QueueRoute {
-  readonly effects: ReadonlyArray<WorkerEffectDefinition>
+  /**
+   * Worker effects this queue accepts. Inputs differ per effect; dispatch reads `type`.
+   * `any` keeps a specific effect assignable. A local effect still is not.
+   */
+  readonly effects: ReadonlyArray<WorkerEffectDefinition<any>>
   readonly queue: QueueProducer
 }
 

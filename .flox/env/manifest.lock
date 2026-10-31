@@ -15,6 +15,9 @@
       "postgresql": {
         "pkg-path": "postgresql"
       },
+      "terraform": {
+        "pkg-path": "terraform"
+      },
       "unzip": {
         "pkg-path": "unzip"
       }
@@ -576,6 +579,129 @@
         "plperl": "/nix/store/0rkgsn2r9151991bznkbvjhqmrkf019n-postgresql-17.10-plperl",
         "plpython3": "/nix/store/mw6f3sbwgcwpypq0v5xrx32hcwbqkbhi-postgresql-17.10-plpython3",
         "pltcl": "/nix/store/ylhbl8lk0n190pb9m6scg7nkip6wxlan-postgresql-17.10-pltcl"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "terraform",
+      "broken": false,
+      "derivation": "/nix/store/r87qx6gkd7jl57yi9y45a285l7qlicfj-terraform-1.15.7.drv",
+      "description": "Tool for building, changing, and versioning infrastructure",
+      "install_id": "terraform",
+      "license": "BUSL-1.1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "terraform-1.15.7",
+      "pname": "terraform",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:14:54.601667Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.15.7",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/b81m7gn8aq04hm1dzm4qb0wnxx3b7b2f-terraform-1.15.7"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "terraform",
+      "broken": false,
+      "derivation": "/nix/store/c676fklidkf5096hb8i4jj31gwbmpy8f-terraform-1.15.7.drv",
+      "description": "Tool for building, changing, and versioning infrastructure",
+      "install_id": "terraform",
+      "license": "BUSL-1.1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "terraform-1.15.7",
+      "pname": "terraform",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:43:55.347379Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.15.7",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ybixq1r3k8yjdzxvx45dm1yvfcv1gfxq-terraform-1.15.7"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "terraform",
+      "broken": false,
+      "derivation": "/nix/store/k5rv52bclda0rgdwnvlb2ld14d11vv7g-terraform-1.15.7.drv",
+      "description": "Tool for building, changing, and versioning infrastructure",
+      "install_id": "terraform",
+      "license": "BUSL-1.1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "terraform-1.15.7",
+      "pname": "terraform",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:11:28.639815Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.15.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dhfbiyk7q58pm69cswabznim3adk1rsn-terraform-1.15.7"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "terraform",
+      "broken": false,
+      "derivation": "/nix/store/j7y9dzyi8v1c243wrvl6ibgpicv5w9kd-terraform-1.15.7.drv",
+      "description": "Tool for building, changing, and versioning infrastructure",
+      "install_id": "terraform",
+      "license": "BUSL-1.1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "terraform-1.15.7",
+      "pname": "terraform",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:43:12.005881Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.15.7",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lfrqvszgp38kjv07525vbx6s9wzg88i7-terraform-1.15.7"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

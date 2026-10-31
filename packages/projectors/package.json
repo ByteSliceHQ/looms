@@ -46,6 +46,16 @@
       "types": "./src/replica/migrations.ts",
       "import": "./src/replica/migrations.ts",
       "default": "./src/replica/migrations.ts"
+    },
+    "./replica/sqlite": {
+      "types": "./src/replica/sqlite.ts",
+      "import": "./src/replica/sqlite.ts",
+      "default": "./src/replica/sqlite.ts"
+    },
+    "./replica/sqlite-bun": {
+      "types": "./src/replica/sqlite-bun.ts",
+      "import": "./src/replica/sqlite-bun.ts",
+      "default": "./src/replica/sqlite-bun.ts"
     }
   },
   "scripts": {
