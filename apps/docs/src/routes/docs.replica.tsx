@@ -11,11 +11,11 @@ export const Route = createFileRoute('/docs/replica')({
 function Replica() {
   return (
     <>
-      <h1>Replicate runs into your Postgres</h1>
+      <h1>Replicate runs into a database you own</h1>
       <p>
         Each run's log lives in that run's actor database. A replica keeps a complete copy of every
-        run in a Postgres database you own, so you can set retention, add indexes, run analytics,
-        and rebuild a run without opening its actor.
+        run in a Postgres or SQLite database you own, so you can set retention, add indexes, run
+        analytics, and rebuild a run without opening its actor. SQLite includes Cloudflare D1.
       </p>
 
       <h2 id="attach">
@@ -39,9 +39,33 @@ const replica = postgresReplica({
 // Pass \`replica\` in the host's projector list.
 `}</CodeBlock>
       <p>
-        <code>migrate: 'auto'</code> applies pending Looms migrations on startup, under an advisory
-        lock. <code>migrate: 'verify'</code> refuses to start when a migration is missing and tells
-        you to generate it. Use <code>verify</code> when your own migration tool owns the database.
+        <code>migrate: 'auto'</code> applies pending Looms migrations on startup. Postgres takes an
+        advisory lock while it does that. <code>migrate: 'verify'</code> refuses to start when a
+        migration is missing and tells you to generate it. Use <code>verify</code> when your own
+        migration tool owns the database.
+      </p>
+      <p>
+        <code>sqliteReplica</code> is the same projector for a shared SQLite file or D1. It is not
+        the actor's own SQLite. Pass a <code>D1Database</code> through{' '}
+        <code>d1ReplicaDatabase</code>, or any driver that implements the replica's small async SQL
+        surface. One writer per run is assumed: D1 applies the copy as a batch, not an interactive
+        transaction.
+      </p>
+      <CodeBlock lang="ts">{`import { d1ReplicaDatabase, sqliteReplica } from '@swirls/looms/replica/sqlite'
+
+const replica = sqliteReplica({
+  database: d1ReplicaDatabase(env.REPLICA),
+  migrate: 'verify',
+})
+`}</CodeBlock>
+      <CodeBlock lang="bash">{`looms replica generate --dialect sqlite --out ./migrations
+looms replica migrate --dialect sqlite --database ./replica.sqlite
+looms replica status --dialect sqlite --database ./replica.sqlite
+`}</CodeBlock>
+      <p>
+        On D1, apply the generated file with your own tool (<code>wrangler d1 execute</code>) and
+        keep <code>migrate: 'verify'</code>. <code>--database</code> for the SQLite dialect is a
+        file path. The default dialect is still Postgres.
       </p>
 
       <h2 id="migrate-or-generate">

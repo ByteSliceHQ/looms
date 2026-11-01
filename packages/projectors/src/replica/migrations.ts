@@ -3,6 +3,8 @@ import { join } from 'node:path'
 
 import { Predicate } from 'effect'
 
+import { SQLITE_REPLICA_MIGRATIONS } from './sqlite-migrations'
+
 /**
  * Actors and reviews. Same statements the Postgres index projector has always
  * applied, so a database created by an older Looms keeps working.
@@ -131,13 +133,17 @@ export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
 
 const MIGRATION_HEADER = /^-- looms-migration:\s+(\S+)/m
 
+export type ReplicaDialect = 'postgres' | 'sqlite'
+
 export interface GenerateReplicaMigrationsOptions {
   /** Directory of SQL migrations the host already applies. */
   readonly out: string
-  /** Append a Drizzle `_journal.json` entry for each file written. */
+  /** Append a Drizzle `_journal.json` entry for each file written. Postgres only. */
   readonly journal?: 'drizzle'
   /** Report pending migrations and write nothing. */
   readonly check?: boolean
+  /** Which replica DDL to write. Defaults to Postgres. */
+  readonly dialect?: ReplicaDialect
 }
 
 export interface GenerateReplicaMigrationsResult {
@@ -262,11 +268,32 @@ async function appendDrizzleJournal(directory: string, tags: readonly string[]):
  * A file counts as applied when it contains `-- looms-migration: <id>`.
  * The numeric prefix continues after the highest `NNNN_` file already in `out`.
  */
+function migrationsFor(dialect: ReplicaDialect): readonly ReplicaMigration[] {
+  switch (dialect) {
+    case 'postgres':
+      return POSTGRES_REPLICA_MIGRATIONS
+    case 'sqlite':
+      return SQLITE_REPLICA_MIGRATIONS
+
+    default: {
+      const unexpected: never = dialect
+
+      return unexpected
+    }
+  }
+}
+
 export async function generateReplicaMigrations(
   options: GenerateReplicaMigrationsOptions,
 ): Promise<GenerateReplicaMigrationsResult> {
+  const dialect = options.dialect ?? 'postgres'
+
+  if (dialect === 'sqlite' && options.journal === 'drizzle') {
+    throw new Error('Drizzle journal output is only supported for the Postgres replica.')
+  }
+
   const recorded = await recordedMigrationIds(options.out)
-  const pending = POSTGRES_REPLICA_MIGRATIONS.filter((migration) => !recorded.has(migration.id))
+  const pending = migrationsFor(dialect).filter((migration) => !recorded.has(migration.id))
 
   if (options.check || pending.length === 0) {
     return { written: [], pending: pending.map((migration) => migration.id) }
