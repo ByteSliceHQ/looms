@@ -17,7 +17,7 @@ import { bunSqliteExec } from '@looms/core/bun-sqlite'
 
 import { createProjectorDelivery } from '../delivery'
 import { sqliteProjectorCursorStore } from '../sqlite-delivery'
-import { ReplicaGapError, sqliteReplica, type SqliteReplica } from './sqlite'
+import { ReplicaGapError, sqliteReplica } from './sqlite'
 import { bunSqliteReplicaDatabase } from './sqlite-bun'
 
 const registry: FoldRegistry = { threads: new Map() }
@@ -32,12 +32,10 @@ function roundTrip(events: readonly EventEnvelope[]): readonly object[] {
   return value.filter((event) => Predicate.isObject(event))
 }
 
-function openReplica(migrate: 'auto' | 'verify' = 'auto'): {
-  db: Database
-  replica: SqliteReplica
-} {
+function openReplica(migrate: 'auto' | 'verify' = 'auto') {
   const db = new Database(':memory:')
   const replica = sqliteReplica({ database: bunSqliteReplicaDatabase(db), migrate })
+
   return { db, replica }
 }
 
@@ -66,6 +64,7 @@ describe('sqlite replica', () => {
     const migrated = openReplica('auto')
     await migrated.replica.migrate()
     expect(await migrated.replica.pendingMigrations()).toEqual([])
+
     await sqliteReplica({
       database: bunSqliteReplicaDatabase(migrated.db),
       migrate: 'verify',
@@ -211,6 +210,7 @@ describe('sqlite replica', () => {
     expect(childActor?.launched_by_run_id).toBe(parent)
 
     db.exec(`ALTER TABLE looms_run_index ADD COLUMN input TEXT`)
+
     db.run(`UPDATE looms_run_index SET input = ? WHERE run_id = ?`, [
       JSON.stringify({ kept: true }),
       parent,
