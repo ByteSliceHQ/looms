@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.9.0
+
+### Minor Changes
+
+- f6e2758: Add `sqliteReplica` for a shared SQLite or Cloudflare D1 copy of every run. `looms replica` takes `--dialect sqlite`.
+
 ## 0.8.0
 
 ### Minor Changes
