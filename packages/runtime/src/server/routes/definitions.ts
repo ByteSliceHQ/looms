@@ -1,6 +1,11 @@
 import { Effect } from 'effect'
 
-import { publishDefinition, publishEffects, type DefinitionCatalog } from '@looms/core'
+import {
+  publishDefinition,
+  publishEffects,
+  publishModules,
+  type DefinitionCatalog,
+} from '@looms/core'
 
 import type { RouteOptions } from '../http'
 import { route, type Route } from '../route-table'
@@ -16,6 +21,7 @@ export function definitionRoutes({ runtime }: RouteOptions): readonly Route[] {
         const catalog: DefinitionCatalog = {
           definitions: runtime.registry.definitions.map(publishDefinition),
           projections: [...runtime.registry.projections.keys()],
+          modules: publishModules(runtime.registry.modules),
         }
 
         return Effect.succeed(Response.json(catalog))

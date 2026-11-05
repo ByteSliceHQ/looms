@@ -73,6 +73,32 @@ describe('moduleConformance', () => {
       'worker effect sample.render must not define execute',
     ])
   })
+
+  test('folds example traces and reports a projection mismatch', () => {
+    const traced = defineRuntimeModule({
+      namespace: 'sample',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('sample', {
+        ping: payload<{ n: number }>(),
+      }),
+      projections: {
+        count: {
+          name: 'count',
+          initialState: { n: 0 },
+          reduce: (state) => state,
+        },
+      },
+      examples: [
+        {
+          name: 'ping',
+          events: [{ type: 'sample.ping', payload: { n: 1 } }],
+          projections: { count: { n: 1 } },
+        },
+      ],
+    })
+
+    expect(moduleConformance(traced).some((error) => error.includes('projection count'))).toBe(true)
+  })
 })
 
 describe('createTestRuntime', () => {

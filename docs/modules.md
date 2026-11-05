@@ -77,7 +77,7 @@ await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])
 ```
 
-Your module can do the same: export a function that returns an `EventInput`, and callers use it with `signal` or `store.commit`.
+Your module can do the same. Return the builders from `defineModule` as `signals`, and callers use `payments.signals.chargeAuthorized` with `signal` or `store.commit`. Named exports can re-export that same function.
 
 ## Add your own module
 
@@ -96,12 +96,17 @@ export const payments = defineModule(
   {
     namespace: 'payments',
     protocolVersion: '1.0.0',
+    description: 'Card charges and the ledger folded from them.',
     events: {
       'charge.requested': Charge,
       'charge.authorized': Charge,
     },
   },
   (m) => ({
+    signals: {
+      chargeAuthorized: (chargeId: string, amount: number) =>
+        m.input('charge.authorized', { chargeId, amount }),
+    },
     effects: {
       charge: m.effect({
         type: 'payments.charge',
@@ -135,12 +140,24 @@ export const payments = defineModule(
         },
       }),
     },
+    examples: [
+      {
+        name: 'an authorized charge lands on the ledger',
+        events: [m.input('charge.authorized', { chargeId: 'ch_1', amount: 40 })],
+        projections: {
+          ledger: { entries: [{ chargeId: 'ch_1', amount: 40 }] },
+        },
+      },
+    ],
   }),
 )
 
 export const { charge } = payments.effects
 export const { ledger } = payments.projections
+export const { chargeAuthorized } = payments.signals
 ```
+
+`description` is published on `GET /definitions`. `signals` are the builders callers pass to `looms.signal` or `store.commit`. `examples` are short traces that `moduleConformance` folds against the projections. The host runs neither the signals nor the examples.
 
 Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@swirls/looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
 
@@ -156,9 +173,10 @@ src/
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # builders for looms.signal / store.commit
+  signals.ts       # builders returned on the module as signals
   scope.ts         # createModuleScope for shared typed builders
   module.ts        # defineModule(options, setup) assembly
+  debugger/        # DebuggerPlugin; a separate entry so the host does not import React
   index.ts         # public re-exports
 ```
 
@@ -316,4 +334,14 @@ import {
 expect(moduleConformance(payments)).toEqual([])
 const test = await createTestRuntime([payments])
 await assertReplayDeterministic(test, runId)
+```
+
+`moduleConformance` also folds each `examples` trace. A debugger plugin stays on the package's `/debugger` subpath. `debuggerConformance` checks that the plugin name is the module namespace, every catalog event has a family, and every projection is a pane or listed in `headlessProjections`.
+
+```ts
+import { approval } from '@swirls/looms/approval'
+import { approvalDebugger } from '@swirls/looms/approval/debugger'
+import { debuggerConformance } from '@swirls/looms/debugger'
+
+expect(debuggerConformance(approval(), approvalDebugger)).toEqual([])
 ```

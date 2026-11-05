@@ -1,7 +1,7 @@
 import type { PublishedDefinition } from '@looms/core'
 import { inputForm, messageInput, type DebuggerPlugin } from '@looms/debugger'
 
-import { tokenUsage } from '../projections'
+import { conversation, tokenUsage, turnActivity } from '../projections'
 import { AgentChat } from './agent-chat'
 import { summarizeAgentEvent } from './summarize'
 import { TokenUsageView } from './token-usage'
@@ -19,6 +19,7 @@ export const agentDebugger: DebuggerPlugin = {
     component: AgentChat,
   },
   projections: [{ name: tokenUsage.name, component: TokenUsageView }],
+  headlessProjections: [conversation.name, turnActivity.name],
 }
 
 export { AgentChat, TokenUsageView }

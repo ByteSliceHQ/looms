@@ -30,6 +30,7 @@ import {
   type DefinitionHost,
   type EffectAdmission,
   type EffectMiddleware,
+  type ModuleExample,
   type RuntimeModule,
   type DefinitionRef,
   type RuntimeModuleDependency,
@@ -52,6 +53,7 @@ export interface DefineModuleOptions<
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
+  readonly description?: string
   readonly events?: TEvents
   readonly observes?: TObserves
   readonly dependencies?: readonly RuntimeModuleDependency[]
@@ -102,6 +104,7 @@ export interface ModuleScope<
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
+  readonly description?: string
   readonly events?: TEvents
   readonly observes?: TObserves
   readonly dependencies?: readonly RuntimeModuleDependency[]
@@ -215,11 +218,12 @@ export function createModuleScope<
 >(
   options: DefineModuleOptions<TNamespace, TEvents, TObserves>,
 ): ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents, TObserves> {
-  const { namespace, protocolVersion, events, observes, dependencies } = options
+  const { namespace, protocolVersion, description, events, observes, dependencies } = options
 
   const scope: ModuleScope<TNamespace, ScopeUniverse<TEvents, TObserves>, TEvents, TObserves> = {
     namespace,
     protocolVersion,
+    description,
     events,
     observes,
     dependencies,
@@ -267,7 +271,7 @@ function isModuleScope(
   return 'thread' in source && 'effect' in source
 }
 
-/** Construct a complete module. Only members returned by setup are installed. */
+/** Construct a complete module. Only members returned by setup are kept. */
 export function defineModule<
   const N extends string,
   E extends EventCatalog | CatalogEntries | undefined = undefined,
@@ -275,6 +279,7 @@ export function defineModule<
   FX extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
   TH extends { readonly [key: string]: ThreadDefinition } = {},
   PR extends { readonly [key: string]: ProjectionDefinition } = {},
+  SG = {},
 >(
   options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
   setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
@@ -282,6 +287,8 @@ export function defineModule<
       ForeignEffectsCheck<FX, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly threads?: TH
     readonly projections?: PR
+    readonly signals?: SG
+    readonly examples?: readonly ModuleExample[]
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
     readonly admission?: readonly EffectAdmission[]
@@ -292,6 +299,7 @@ export function defineModule<
   readonly effects: FX
   readonly threads: TH
   readonly projections: PR
+  readonly signals: SG
 }
 
 export function defineModule(options: any, setup: (scope: any) => any): any {
@@ -314,6 +322,11 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
     effects: members.effects ?? {},
     threads: members.threads ?? {},
     projections: members.projections ?? {},
+    signals: members.signals ?? {},
+  }
+
+  if (options.description) {
+    module.description = options.description
   }
 
   if (options.observes) {
@@ -322,6 +335,10 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
 
   if (options.dependencies) {
     module.dependencies = options.dependencies
+  }
+
+  if (members.examples) {
+    module.examples = members.examples
   }
 
   if (members.definitions) {

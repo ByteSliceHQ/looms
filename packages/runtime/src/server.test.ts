@@ -475,6 +475,13 @@ describe('server routing', () => {
 
     expect(body.definitions[0]?.inputSchema).toMatchObject({ type: 'object' })
     expect(body.projections).toContain('nodes')
+    expect(body.modules).toEqual([
+      {
+        namespace: 'workflow',
+        protocolVersion: '1.0.0',
+        description: 'DAG runs whose nodes return, spawn, sleep, or emit effects.',
+      },
+    ])
     await looms.stop()
   })
 

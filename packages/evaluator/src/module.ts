@@ -13,6 +13,7 @@ import {
 } from './evaluator'
 import { evaluations } from './projections'
 import { evaluatorModule } from './scope'
+import { evaluate } from './signals'
 import { evaluatorThread } from './threads'
 import type { EvaluatorAdapter } from './types'
 
@@ -40,6 +41,7 @@ export function evaluator(options: EvaluatorModuleOptions = {}) {
     projections: {
       evaluations,
     },
+    signals: { evaluate },
     services: () => Layer.merge(evaluatorLayer, EvaluatorDefinitionsLive(definitions)),
     bindHost(host) {
       definitions.useResolver(host.definitionResolver)

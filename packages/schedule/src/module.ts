@@ -5,6 +5,7 @@ import { ScheduleDefinitionsLive } from './definitions-store'
 import { fireEffect, planEffect } from './effects'
 import { scheduleStatus } from './projections'
 import { scheduleModule } from './scope'
+import { pause, resume, retire, trigger, update } from './signals'
 import { DEFAULT_MIN_INTERVAL_MS } from './specs'
 import { createScheduleThread } from './threads'
 
@@ -24,6 +25,7 @@ export function schedule(options: ScheduleModuleOptions = {}) {
     threads: { schedule: createScheduleThread(definitions, minIntervalMs) },
     effects: { plan: planEffect, fire: fireEffect },
     projections: { scheduleStatus },
+    signals: { update, pause, resume, retire, trigger },
     services: () => ScheduleDefinitionsLive(definitions),
     bindHost(host) {
       definitions.useResolver(host.definitionResolver)

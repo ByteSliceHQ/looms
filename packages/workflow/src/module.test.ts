@@ -6,6 +6,7 @@ import {
   foldRun,
   isJsonObject,
   isJsonString,
+  moduleExampleErrors,
   type JsonValue,
 } from '@looms/core'
 
@@ -13,6 +14,10 @@ import { defineWorkflow } from './definitions'
 import { workflow } from './module'
 
 describe('@looms/workflow module', () => {
+  test('folds its example trace', () => {
+    expect(moduleExampleErrors(workflow())).toEqual([])
+  })
+
   test('started thread requests schedule', () => {
     const registry = composeModules([workflow()])
 

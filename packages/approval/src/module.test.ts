@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { composeModules, createEvent, project } from '@looms/core'
+import { composeModules, createEvent, moduleExampleErrors, project } from '@looms/core'
 
 import { approval } from './module'
 import { pendingApprovals } from './projections'
@@ -9,6 +9,9 @@ describe('@looms/approval module', () => {
   test('composes and exposes request handler', () => {
     const registry = composeModules([approval()])
     expect(registry.effects.get('approval.request')).toBeDefined()
+    expect(approval().description).toBe('Human gates that park a run until someone decides.')
+    expect(approval().signals.decision('apr_1', 'approve').type).toBe('approval.decided')
+    expect(moduleExampleErrors(approval())).toEqual([])
   })
 
   test('the first approval, rejection, or timeout outcome wins', () => {

@@ -140,7 +140,7 @@ try {
         requests use content-type: application/json.
       </p>
       <CodeBlock lang="text">{`GET  /health                            → { ok: true }
-GET  /definitions                       → definition catalog
+GET  /definitions                       → definitions, projections, and modules
 GET  /definitions/effects               → { effects: [{ type, placement, retry, inputSchema }] }
 POST /runs                              → { runId, threadId, state }
 GET  /runs                              → { runIds } (embed only)

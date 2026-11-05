@@ -192,8 +192,9 @@ import { decision } from '@swirls/looms/approval'
 await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <p>
-        Your module can do the same: export a function that returns an <code>EventInput</code>, and
-        callers use it with <code>signal</code> or <code>store.commit</code>.
+        Your module can do the same. Return the builders from <code>defineModule</code> as{' '}
+        <code>signals</code>, and callers use them with <code>signal</code> or{' '}
+        <code>store.commit</code>. Named exports can re-export that same function.
       </p>
 
       <h2 id="add-your-own-module">
@@ -210,6 +211,12 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <code>ctx.effectId</code> as an idempotency key.
       </p>
       <CodeBlock lang="ts" code={paymentsModule} />
+      <p>
+        <code>description</code> is published on <code>GET /definitions</code>. <code>signals</code>{' '}
+        are the builders callers pass to <code>looms.signal</code> or <code>store.commit</code>.{' '}
+        <code>examples</code> are short traces that <code>moduleConformance</code> folds against the
+        projections. The host runs neither the signals nor the examples.
+      </p>
       <h3 id="what-the-scope-gives-you">
         What the scope gives you
         <a
@@ -791,8 +798,9 @@ const billing = defineRuntimeModule({
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # builders for looms.signal / store.commit
+  signals.ts       # builders returned on the module as signals
   module.ts        # defineModule(options, setup) assembly
+  debugger/        # DebuggerPlugin; a separate entry so the host does not import React
   index.ts         # public re-exports`}</CodeBlock>
       <p>
         Small modules can stay in one callback. For larger modules, export a shared{' '}

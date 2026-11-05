@@ -5,6 +5,7 @@ import { agentCatalog } from './events'
 export const agentModule = createModuleScope({
   namespace: 'agent',
   protocolVersion: '1.0.0',
+  description: 'Conversational and tool-using model runs.',
   events: agentCatalog,
 })
 

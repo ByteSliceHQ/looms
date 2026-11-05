@@ -507,4 +507,35 @@ describe('defineModule scope', () => {
     expect(shippingModule.observes).toEqual([billingCatalog])
     expect(shippingModule.dependencies).toEqual([{ namespace: 'billing' }])
   })
+
+  test('keeps description, signals, and examples on the finished module', () => {
+    const built = defineModule(
+      {
+        namespace: 'orders',
+        protocolVersion: '1.0.0',
+        description: 'Order ledger',
+        events: ordersCatalog,
+      },
+      (m) => ({
+        signals: {
+          created: (orderId: string, amount: number) => m.input('created', { orderId, amount }),
+        },
+        examples: [
+          {
+            name: 'created',
+            events: [m.input('created', { orderId: 'ord-1', amount: 5 })],
+            projections: {},
+          },
+        ],
+      }),
+    )
+
+    const created = built.signals.created('ord-1', 5)
+
+    expect(built.description).toBe('Order ledger')
+    expect(created.type).toBe('orders.created')
+    expect(created.payload.amount).toBe(5)
+    expect(built.examples?.[0]?.name).toBe('created')
+    expect(built.signals).not.toHaveProperty('execute')
+  })
 })

@@ -9,6 +9,14 @@ import { callLlmEffect, executeToolEffect } from './effects'
 import { llmFromAdapter, LlmTag, StubLlmLive, type LlmAdapter, type StubLlmPolicy } from './llm'
 import { conversation, tokenUsage, turnActivity } from './projections'
 import { agentModule } from './scope'
+import {
+  agentSessionMessageEvents,
+  cancelAgentTurn,
+  steer,
+  stopAgentTurn,
+  submitAgentMessage,
+  userMessage,
+} from './signals'
 import { agentThread } from './threads'
 
 export interface AgentModuleOptions {
@@ -51,6 +59,14 @@ export function agent(options: AgentModuleOptions = {}) {
       conversation,
       tokenUsage,
       turnActivity,
+    },
+    signals: {
+      userMessage,
+      steer,
+      stopAgentTurn,
+      submitAgentMessage,
+      cancelAgentTurn,
+      agentSessionMessageEvents,
     },
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
     interruptsOnSignal,

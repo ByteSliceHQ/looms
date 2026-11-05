@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 
 import {
   composeModules,
+  moduleExampleErrors,
   EventStoreTag,
   makeMemoryEventStore,
   ModuleCompositionError,
@@ -91,6 +92,8 @@ export function moduleConformance(module: AnyRuntimeModule): string[] {
   } catch (err) {
     errors.push(err instanceof ModuleCompositionError ? err.message : String(err))
   }
+
+  errors.push(...moduleExampleErrors(module))
 
   return errors
 }

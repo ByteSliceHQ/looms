@@ -11,12 +11,17 @@ export const payments = defineModule(
   {
     namespace: 'payments',
     protocolVersion: '1.0.0',
+    description: 'Card charges and the ledger folded from them.',
     events: {
       'charge.requested': Charge,
       'charge.authorized': Charge,
     },
   },
   (m) => ({
+    signals: {
+      chargeAuthorized: (chargeId: string, amount: number) =>
+        m.input('charge.authorized', { chargeId, amount }),
+    },
     effects: {
       charge: m.effect({
         type: 'payments.charge',
@@ -50,8 +55,18 @@ export const payments = defineModule(
         },
       }),
     },
+    examples: [
+      {
+        name: 'an authorized charge lands on the ledger',
+        events: [m.input('charge.authorized', { chargeId: 'ch_1', amount: 40 })],
+        projections: {
+          ledger: { entries: [{ chargeId: 'ch_1', amount: 40 }] },
+        },
+      },
+    ],
   }),
 )
 
 export const { charge } = payments.effects
 export const { ledger } = payments.projections
+export const { chargeAuthorized } = payments.signals

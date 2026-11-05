@@ -20,12 +20,54 @@ export const PublishedDefinitionSchema = Schema.Struct({
 
 export type PublishedDefinition = Schema.Schema.Type<typeof PublishedDefinitionSchema>
 
+/** A module as `GET /definitions` publishes it. */
+export const PublishedModuleSchema = Schema.Struct({
+  namespace: Schema.String,
+  protocolVersion: Schema.String,
+  description: Schema.optional(Schema.String),
+})
+
+export type PublishedModule = Schema.Schema.Type<typeof PublishedModuleSchema>
+
 export const DefinitionCatalogSchema = Schema.Struct({
   definitions: Schema.Array(PublishedDefinitionSchema),
   projections: Schema.Array(Schema.String),
+  modules: Schema.Array(PublishedModuleSchema).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed<readonly PublishedModule[]>([])),
+  ),
 })
 
 export type DefinitionCatalog = Schema.Schema.Type<typeof DefinitionCatalogSchema>
+
+export function publishModule(module: {
+  readonly namespace: string
+  readonly protocolVersion: string
+  readonly description?: string
+}): PublishedModule {
+  if (!module.description) {
+    return {
+      namespace: module.namespace,
+      protocolVersion: module.protocolVersion,
+    }
+  }
+
+  return {
+    namespace: module.namespace,
+    protocolVersion: module.protocolVersion,
+    description: module.description,
+  }
+}
+
+/** Modules in registration order. */
+export function publishModules(
+  modules: readonly {
+    readonly namespace: string
+    readonly protocolVersion: string
+    readonly description?: string
+  }[],
+): readonly PublishedModule[] {
+  return modules.map(publishModule)
+}
 
 export function publishDefinition(definition: RegisteredDefinition): PublishedDefinition {
   return {
