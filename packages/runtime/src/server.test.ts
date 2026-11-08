@@ -8,7 +8,9 @@ import {
   defineEventCatalog,
   defineModule,
   EffectCatalogSchema,
+  EventTypeCatalogSchema,
   RunSummariesSchema,
+  SignalCatalogSchema,
   wait,
 } from '@looms/core'
 import { defineWorkflow, workflow } from '@looms/workflow'
@@ -521,6 +523,125 @@ describe('server routing', () => {
     expect(published?.inputSchema).toMatchObject({ type: 'object' })
 
     await looms.stop()
+  })
+
+  test('signal catalog, preview, and named send', async () => {
+    const Charge = Schema.Struct({
+      chargeId: Schema.String,
+      amount: Schema.Finite,
+    })
+
+    const payments = defineModule(
+      {
+        namespace: 'payments',
+        protocolVersion: '1.0.0',
+        events: defineEventCatalog('payments', {
+          'charge.authorized': Charge,
+        }),
+      },
+      (m) => ({
+        signals: {
+          chargeAuthorized: m.signal({
+            description: 'Provider confirmed a charge.',
+            input: Charge,
+            build: (input) => m.input('charge.authorized', input),
+          }),
+        },
+      }),
+    )
+
+    const flow = defineWorkflow({
+      name: 'await-charge',
+      nodes: [
+        {
+          id: 'wait',
+          run: (ctx) =>
+            ctx.effects([
+              wait({
+                waitId: 'authorized',
+                on: { type: 'payments.charge.authorized' },
+              }),
+            ]),
+        },
+      ],
+    })
+
+    const looms = createLooms({
+      modules: [workflow({ definitions: [flow] }), payments],
+    })
+
+    try {
+      const listed = await looms.fetch(new Request('http://looms.test/definitions/signals'))
+      const signals = Schema.decodeUnknownSync(SignalCatalogSchema)(await listed?.json())
+
+      expect(listed?.status).toBe(200)
+
+      expect(signals.signals).toEqual([
+        expect.objectContaining({
+          namespace: 'payments',
+          name: 'chargeAuthorized',
+          description: 'Provider confirmed a charge.',
+          inputSchema: expect.objectContaining({ type: 'object' }),
+        }),
+      ])
+
+      const eventsListed = await looms.fetch(new Request('http://looms.test/definitions/events'))
+      const events = Schema.decodeUnknownSync(EventTypeCatalogSchema)(await eventsListed?.json())
+
+      expect(events.events.some((event) => event.type === 'payments.charge.authorized')).toBe(true)
+
+      const preview = await looms.fetch(
+        new Request('http://looms.test/definitions/signals/payments/chargeAuthorized/preview', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            input: { chargeId: 'ch_1', amount: 40 },
+            threadId: 'thr_preview',
+          }),
+        }),
+      )
+
+      expect(preview?.status).toBe(200)
+
+      expect(await preview?.json()).toEqual({
+        events: [
+          {
+            type: 'payments.charge.authorized',
+            payload: { chargeId: 'ch_1', amount: 40 },
+            threadId: 'thr_preview',
+          },
+        ],
+      })
+
+      const invalid = await looms.fetch(
+        new Request('http://looms.test/definitions/signals/payments/chargeAuthorized/preview', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ input: { chargeId: 'ch_1' } }),
+        }),
+      )
+
+      expect(invalid?.status).toBe(400)
+      expect(decodeValidationError(await invalid?.json()).issues.length).toBeGreaterThan(0)
+
+      const started = await looms.start(flow, null)
+
+      const sent = await looms.fetch(
+        new Request(
+          `http://looms.test/runs/${encodeURIComponent(started.runId)}/signals/payments/chargeAuthorized`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ input: { chargeId: 'ch_1', amount: 40 } }),
+          },
+        ),
+      )
+
+      expect(sent?.status).toBe(200)
+      expect(decodeRunResponse(await sent?.json()).state.status).toBe('completed')
+    } finally {
+      await looms.stop()
+    }
   })
 
   test('GET /runs/summaries lists each run with its status and definition', async () => {

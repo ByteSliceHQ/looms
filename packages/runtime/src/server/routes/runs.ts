@@ -3,9 +3,11 @@ import { Effect, Schema } from 'effect'
 import {
   createRunId,
   EventStoreTag,
+  findSignal,
   JsonValueSchema,
   RunAttributesSchema,
   readTraceHeaders,
+  runSignal,
   SecretContextSchema,
   stringifyJson,
   subscriptionFilter,
@@ -46,6 +48,12 @@ const SignalBodySchema = Schema.Struct({
   type: Schema.optional(Schema.String),
   payload: Schema.optional(JsonValueSchema),
   threadId: Schema.optional(Schema.NullOr(Schema.String)),
+  idempotencyKey: Schema.optional(Schema.String),
+})
+
+const NamedSignalBodySchema = Schema.Struct({
+  input: Schema.optional(JsonValueSchema),
+  threadId: Schema.optional(Schema.String),
   idempotencyKey: Schema.optional(Schema.String),
 })
 
@@ -313,6 +321,38 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
 
           return Response.json({ runId: params.runId, state })
         }),
+    }),
+    route({
+      method: 'POST',
+      path: '/runs/:runId/signals/:namespace/:name',
+      name: 'runs.signal.named',
+      access: 'write',
+      handle: ({ req, params }): Effect.Effect<Response, Error> =>
+        // SAFETY: Effect.gen residual R is never here; decode/run errors map to Error via route handlers.
+        Effect.gen(function* () {
+          const definition = findSignal(runtime.registry.modules, params.namespace, params.name)
+
+          if (!definition) {
+            return Response.json(
+              { error: `Unknown signal ${params.namespace}.${params.name}` },
+              { status: 404 },
+            )
+          }
+
+          const body = yield* readJson(req).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(NamedSignalBodySchema)),
+          )
+
+          const events = yield* runSignal(definition, body.input ?? null, body.threadId)
+          const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
+
+          const state = yield* provideStore(
+            runtime.signal(params.runId, events, { idempotencyKey }),
+            store,
+          )
+
+          return Response.json({ runId: params.runId, state })
+        }) as Effect.Effect<Response, Error>,
     }),
     route({
       method: 'POST',
