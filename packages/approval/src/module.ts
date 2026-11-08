@@ -26,7 +26,7 @@ export function approval() {
             },
             { threadId: 'thread_1' },
           ),
-          decision('apr_1', 'approve'),
+          decision({ approvalId: 'apr_1', choice: 'approve' }),
         ],
         projections: {
           pendingApprovals: {

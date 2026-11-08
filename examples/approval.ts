@@ -40,7 +40,7 @@ if (!approvalId) {
 
 console.log('pending approval:', approvalId, pending.items[0]?.title)
 
-const after = await looms.signal(runId, [decision(approvalId, 'approve')])
+const after = await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])
 console.log('after decision:', after.status)
 console.log('output:', after.rootThreadId ? after.threads[after.rootThreadId]?.output : null)
 

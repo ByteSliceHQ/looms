@@ -30,11 +30,15 @@ const looms = createLooms({
 const { runId, threadId } = await looms.start(supportSession, {})
 
 await looms.signal(runId, [
-  submitAgentMessage('message-1', 'Where is my order?', { threadId }),
-  submitAgentMessage('message-2', 'The order number is 1042.', {
-    delivery: 'followUp',
-    threadId,
-  }),
+  submitAgentMessage({ messageId: 'message-1', text: 'Where is my order?' }, { threadId }),
+  submitAgentMessage(
+    {
+      messageId: 'message-2',
+      text: 'The order number is 1042.',
+      delivery: 'followUp',
+    },
+    { threadId },
+  ),
 ])
 
 let closedTurns: EventEnvelope[] = []

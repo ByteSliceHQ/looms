@@ -72,7 +72,7 @@ export function agent(options: AgentModuleOptions = {}) {
       {
         name: 'a reply updates conversation and token usage',
         events: [
-          userMessage('Hello'),
+          userMessage({ content: 'Hello' }),
           agentModule.input('message', {
             turn: 1,
             message: { role: 'assistant', content: 'Hi there' },

@@ -73,7 +73,9 @@ describe('stopping an agent turn', () => {
     expect(stopped.status).toBe('running')
     expect(calls).toEqual(['slow'])
 
-    const answered = await looms.signal(runId!, [userMessage('again', { threadId: rootThreadId! })])
+    const answered = await looms.signal(runId!, [
+      userMessage({ content: 'again' }, { threadId: rootThreadId! }),
+    ])
 
     expect(calls).toEqual(['slow', 'again'])
 
@@ -175,7 +177,10 @@ describe('stopping an agent turn', () => {
 
     await looms.signal(runId!, [stopAgentTurn({ threadId: rootThreadId! })])
     await starting
-    await looms.signal(runId!, [userMessage('never mind', { threadId: rootThreadId! })])
+
+    await looms.signal(runId!, [
+      userMessage({ content: 'never mind' }, { threadId: rootThreadId! }),
+    ])
 
     expect(seen.at(-1)?.map((line) => [line.role, line.toolCallId ?? null])).toEqual([
       ['user', null],

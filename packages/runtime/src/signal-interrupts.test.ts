@@ -47,7 +47,7 @@ describe('signal interrupts', () => {
 
     // The steer starts a new turn that blocks too, so the signal's wake never settles here.
     void looms
-      .signal(runId!, [steer('change course', { threadId: run.rootThreadId! })])
+      .signal(runId!, [steer({ content: 'change course' }, { threadId: run.rootThreadId! })])
       .catch(() => undefined)
 
     await waitFor(() => aborted)
@@ -91,7 +91,7 @@ describe('signal interrupts', () => {
       (thread) => thread.definitionName === 'long_job',
     )
 
-    const steered = await looms.signal(runId, [steer('change course', { threadId })])
+    const steered = await looms.signal(runId, [steer({ content: 'change course' }, { threadId })])
 
     expect(steered.threads[child!.threadId]?.status).toBe('cancelled')
 

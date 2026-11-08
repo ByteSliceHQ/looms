@@ -31,7 +31,7 @@ try {
         throw new Error('No pending review. Inspect the run before sending another decision.')
       }
 
-      await looms.signal(runId, [decision(pending.approvalId, command)])
+      await looms.signal(runId, [decision({ approvalId: pending.approvalId, choice: command })])
     } else if (command !== 'inspect') {
       throw new Error(`Unknown command: ${command}`)
     }

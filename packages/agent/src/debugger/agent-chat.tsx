@@ -311,7 +311,10 @@ export function AgentChat(context: WorkspaceContext) {
         ? (started) =>
             client.signal(
               started.runId,
-              agentSessionMessageEvents(createEventId(), content, { threadId: started.threadId }),
+              agentSessionMessageEvents(
+                { messageId: createEventId(), text: content },
+                { threadId: started.threadId },
+              ),
             )
         : undefined,
     )
@@ -444,13 +447,17 @@ function Reply({ runId, session, delivery, setDelivery, startError }: ReplyProps
     setError(null)
 
     const events = session
-      ? agentSessionMessageEvents(createEventId(), content, {
-          delivery,
-          threadId: rootThreadId,
-          activeChildThreadId:
-            delivery === 'steer' ? activeSessionChild(store.events()) : undefined,
-        })
-      : [userMessage(content, { threadId: rootThreadId })]
+      ? agentSessionMessageEvents(
+          {
+            messageId: createEventId(),
+            text: content,
+            delivery,
+            activeChildThreadId:
+              delivery === 'steer' ? activeSessionChild(store.events()) : undefined,
+          },
+          { threadId: rootThreadId },
+        )
+      : [userMessage({ content }, { threadId: rootThreadId })]
 
     const [only] = events
     const commit = events.length === 1 && only ? store.commit(only) : store.commit(events)

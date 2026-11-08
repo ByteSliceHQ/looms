@@ -108,7 +108,7 @@ export async function verifyDemo(): Promise<void> {
       throw new Error('checkout missing pending approval')
     }
 
-    const next = await looms.signal(runId, [decision(approvalId, 'approve')])
+    const next = await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])
 
     if (next.status !== 'completed') {
       throw new Error(`checkout after approve expected completed, got ${next.status}`)
@@ -149,7 +149,7 @@ export async function verifyDemo(): Promise<void> {
       throw new Error('checkout decline path missing approval')
     }
 
-    const next = await looms.signal(runId, [decision(approvalId, 'reject')])
+    const next = await looms.signal(runId, [decision({ approvalId, choice: 'reject' })])
 
     if (next.status !== 'completed') {
       throw new Error(`checkout after reject expected completed, got ${next.status}`)
@@ -287,7 +287,7 @@ export async function verifyDemo(): Promise<void> {
       throw new Error('assistant checkout missing pending approval')
     }
 
-    const next = await looms.signal(runId, [decision(approvalId, 'approve')])
+    const next = await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])
     const root = rootOf(next)
 
     if (root?.status !== 'running' && root?.status !== 'waiting') {
@@ -377,7 +377,7 @@ export async function verifyDemo(): Promise<void> {
       throw new Error('checkout_caller missing pending approval')
     }
 
-    const next = await scripted.signal(runId, [decision(approvalId, 'approve')])
+    const next = await scripted.signal(runId, [decision({ approvalId, choice: 'approve' })])
 
     if (next.status !== 'completed') {
       throw new Error(`checkout_caller after approve expected completed, got ${next.status}`)

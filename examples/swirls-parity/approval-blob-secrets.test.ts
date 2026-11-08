@@ -70,7 +70,7 @@ describe('swirls-parity approval, blobs, and secrets', () => {
 
     expect(approvalId).toEqual(expect.any(String))
 
-    await looms.signal(rejected.runId, [decision(approvalId!, 'reject')])
+    await looms.signal(rejected.runId, [decision({ approvalId: approvalId!, choice: 'reject' })])
     const after = await waitForStatus(looms, rejected.runId, 'completed')
     expect(rootOutput(after)).toEqual({ outcome: 'reject' })
 

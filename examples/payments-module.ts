@@ -41,8 +41,10 @@ export const payments = defineModule(
 
       // Signals: events from outside the run. The provider's webhook confirms a charge.
       signals: {
-        chargeAuthorized: (chargeId: string, amount: number) =>
-          m.input('charge.authorized', { chargeId, amount }),
+        chargeAuthorized: m.signal({
+          input: Charge,
+          build: (input) => m.input('charge.authorized', input),
+        }),
       },
 
       // Steps: effects a thread or workflow node returns. Charge, then park until confirmed.

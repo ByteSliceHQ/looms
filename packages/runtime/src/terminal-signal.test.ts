@@ -24,7 +24,7 @@ describe('signals to a terminal run', () => {
     const before = await looms.getEvents(runId)
 
     expect(
-      looms.signal(runId, [userMessage('are you there?', { threadId })]),
+      looms.signal(runId, [userMessage({ content: 'are you there?' }, { threadId })]),
     ).rejects.toBeInstanceOf(RunTerminalError)
 
     expect(await looms.getEvents(runId)).toEqual(before)
@@ -40,7 +40,9 @@ describe('signals to a terminal run', () => {
       new Request(`http://looms.test/runs/${runId}/events`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ events: [userMessage('hello?', { threadId })] }),
+        body: JSON.stringify({
+          events: [userMessage({ content: 'hello?' }, { threadId })],
+        }),
       }),
     )
 
@@ -57,7 +59,7 @@ describe('signals to a terminal run', () => {
   test('still deduplicate a retry accepted before the run ended', async () => {
     const looms = setup()
     const { runId, threadId } = await looms.start(assistant, 'hello')
-    const message = [userMessage('follow up', { threadId })]
+    const message = [userMessage({ content: 'follow up' }, { threadId })]
 
     await looms.signal(runId, message, { idempotencyKey: 'msg-1' })
     await looms.cancel(runId)
