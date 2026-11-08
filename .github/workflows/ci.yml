@@ -36,6 +36,14 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s\n' "$PR_TITLE" | bun x commitlint --verbose
+      - name: Check changeset
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: bun run scripts/check-changeset.ts --base "$BASE_SHA" --head "$HEAD_SHA" --title "$PR_TITLE" --labels "$PR_LABELS"
       - name: Check published package
         run: bun run check:package
       - name: Check types
