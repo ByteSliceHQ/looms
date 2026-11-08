@@ -4,9 +4,9 @@ import { Predicate } from 'effect'
 
 import { type WaitEffect } from '@looms/core'
 
-import { gate } from './signals'
+import { gate } from './steps'
 
-describe('@looms/approval signals', () => {
+describe('@looms/approval steps', () => {
   test('gate returns request + wait', () => {
     const effects = gate({ title: 'OK?' })
     expect(effects[0]?.type).toBe('approval.request')

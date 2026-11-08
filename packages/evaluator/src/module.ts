@@ -13,7 +13,7 @@ import {
 } from './evaluator'
 import { evaluations } from './projections'
 import { evaluatorModule } from './scope'
-import { evaluate } from './signals'
+import { evaluate } from './steps'
 import { evaluatorThread } from './threads'
 import type { EvaluatorAdapter } from './types'
 

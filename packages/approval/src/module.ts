@@ -3,7 +3,8 @@ import { defineModule } from '@looms/core'
 import { requestApprovalEffect } from './effects'
 import { pendingApprovals } from './projections'
 import { approvalModule } from './scope'
-import { decision, gate } from './signals'
+import { decision } from './signals'
+import { gate } from './steps'
 
 export function approval() {
   return defineModule(approvalModule, () => ({
