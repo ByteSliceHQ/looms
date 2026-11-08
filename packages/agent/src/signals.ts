@@ -2,7 +2,7 @@ import { Predicate, Schema } from 'effect'
 
 import type { EventInput, JsonValue } from '@looms/core'
 
-import { AgentSessionDeliverySchema, AgentSessionMessageSubmittedPayloadSchema } from './events'
+import { AgentSessionMessageSubmittedPayloadSchema } from './events'
 import { agentModule } from './scope'
 import type { AgentMessageDelivery, AgentSessionActiveTurn } from './types'
 
@@ -17,13 +17,6 @@ const SteerInputSchema = Schema.Struct({
 
 const CancelAgentTurnInputSchema = Schema.Struct({
   childThreadId: Schema.String,
-})
-
-const AgentSessionMessageInputSchema = Schema.Struct({
-  messageId: Schema.String,
-  text: Schema.String,
-  delivery: Schema.optional(AgentSessionDeliverySchema),
-  activeChildThreadId: Schema.optional(Schema.String),
 })
 
 /**
@@ -119,18 +112,11 @@ function activeTurnFrom(value: JsonValue | undefined): AgentSessionActiveTurn | 
 /** Events for one session message. A steer aimed at `activeChildThreadId` interrupts that turn in the same batch. */
 export const agentSessionMessageEvents = agentModule.signal({
   description: 'Submit a session message, and steer the active child when delivery is steer.',
-  input: AgentSessionMessageInputSchema,
+  input: AgentSessionMessageSubmittedPayloadSchema,
   build: (input) => {
-    const submitted = agentModule.input(
-      'session.message.submitted',
-      {
-        messageId: input.messageId,
-        text: input.text,
-        delivery: input.delivery,
-        activeChildThreadId: input.activeChildThreadId,
-      },
-      { idempotencyKey: `agent-session-message:${input.messageId}` },
-    )
+    const submitted = agentModule.input('session.message.submitted', input, {
+      idempotencyKey: `agent-session-message:${input.messageId}`,
+    })
 
     if (input.delivery === 'steer' && input.activeChildThreadId) {
       return [

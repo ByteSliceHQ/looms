@@ -189,7 +189,7 @@ export const { chargeAndAwait } = payments.steps
 export const { ledger } = payments.projections
 ```
 
-`description` is published on `GET /definitions`. The host installs effects, threads, and projections. Signals, steps, and examples are not installed: signals and steps are functions that callers import, and `moduleConformance` checks examples.
+`description` is published on `GET /definitions`. The host installs effects, threads, and projections. Steps and examples are not installed: steps are functions callers import, and `moduleConformance` checks examples. Signals stay importable builders, and the host also publishes them on `GET /definitions/signals` so the debugger can preview and send by name.
 
 ### Events, effects, signals, and steps
 
@@ -197,7 +197,7 @@ A run stores only events. Every other member of a module puts events on the log 
 
 - **Events** are facts, named in the past tense. `charge.requested` means the module asked the provider for a charge. `charge.authorized` means the provider confirmed it. Events are immutable and make up the entire run log.
 - **Effects** are work the host performs for a run. A reducer cannot call Stripe, so it returns `invoke(charge, input)`. The host runs `execute`, retries it under the retry policy, and appends the events the handler returns. A handler records what it did, not what someone else decides later: `charge` appends `charge.requested` and nothing more.
-- **Signals** carry facts that originate outside the run. The provider learns the charge went through, and its webhook calls `looms.signal(runId, [payments.signals.chargeAuthorized({ chargeId, amount })])`. A signal only builds a typed event: it does no IO, and the runtime never calls it.
+- **Signals** carry facts that originate outside the run. The provider learns the charge went through, and its webhook calls `looms.signal(runId, [payments.signals.chargeAuthorized({ chargeId, amount })])`. A signal only builds typed events: it does no IO. Callers usually import and invoke it themselves; the host also publishes its input schema and can run `build` for debugger preview and named send.
 - **Steps** package the module's protocol for code inside a run. `chargeAndAwait` returns an `invoke` followed by a `wait` matched on `chargeId`. A workflow node can charge and park without knowing event names or match keys. Like a reducer, a step only describes effects; the runtime records and runs them after the node returns.
 - **Projections** fold events into state for UIs and queries. `ledger` shows each charge as `requested` or `authorized`.
 

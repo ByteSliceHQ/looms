@@ -48,8 +48,23 @@ import {
 import { asJson, cleanUndefined, type JsonValue } from './types'
 
 /** Schema-backed event builders returned on `signals`. Each is a {@link SignalDefinition}. */
-export type ModuleSignals<_U = EventEnvelope> = {
+export type ModuleSignals = {
   readonly [key: string]: AnySignalDefinition
+}
+
+type SignalBuiltOf<T> = T extends (...args: never[]) => infer R ? R : never
+
+type SignalEventOf<T> =
+  SignalBuiltOf<T> extends readonly (infer E)[] ? E : SignalBuiltOf<T> extends infer E ? E : never
+
+/**
+ * Marks each signal whose built events fall outside the module's catalogs, such as one built with
+ * another module's scope or the unscoped `defineSignal`.
+ */
+export type ForeignSignalsCheck<SG, TAllowed> = {
+  readonly [
+    K in keyof SG as [SignalEventOf<SG[K]>] extends [TAllowed] ? never : K
+  ]: 'Signal events are outside this module catalog; build it with this module scope'
 }
 
 /** Effect composers returned on `steps`. Each returns effects for threads and workflow nodes. */
@@ -333,7 +348,7 @@ export function defineModule<
   FX extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
   TH extends { readonly [key: string]: ThreadDefinition } = {},
   PR extends { readonly [key: string]: ProjectionDefinition } = {},
-  SG extends ModuleSignals<ScopeUniverse<ModuleCatalog<N, E>, O>> = {},
+  SG extends ModuleSignals = {},
   ST extends ModuleSteps = {},
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- const keeps literal example states (status: 'pending') from widening before PR is inferred
   const EX extends readonly ModuleExampleOf<ScopeUniverse<ModuleCatalog<N, E>, O>, PR>[] = [],
@@ -344,7 +359,8 @@ export function defineModule<
       ForeignEffectsCheck<FX, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly threads?: TH
     readonly projections?: PR
-    readonly signals?: SG
+    readonly signals?: SG &
+      ForeignSignalsCheck<SG, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly steps?: ST
     readonly examples?: EX
     readonly definitions?: readonly DefinitionRef[]

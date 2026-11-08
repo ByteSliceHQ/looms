@@ -186,7 +186,9 @@ export function publishSignals(modules: readonly AnyRuntimeModule[]): readonly P
   for (const module of modules) {
     for (const [name, candidate] of Object.entries(module.signals ?? {})) {
       if (!isSignalDefinition(candidate)) {
-        continue
+        throw new TypeError(
+          `Module "${module.namespace}" signals.${name} is not a SignalDefinition`,
+        )
       }
 
       signals.push(publishSignal(module.namespace, name, candidate))

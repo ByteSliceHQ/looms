@@ -81,8 +81,9 @@ interface DefineSignalInput<TSchema, E extends SignalResult> {
 }
 
 /**
- * Low-level signal constructor. Inside a module, prefer `m.signal` / `scope.signal`,
- * which check that built events belong to the module's catalogs.
+ * Low-level signal constructor. Inside a module, prefer `m.signal` / `scope.signal`, which type
+ * built events against the module's catalogs. `defineModule` also rejects foreign signals the
+ * same way it rejects foreign effects.
  */
 export function defineSignal<
   TSchema extends SchemaInput | undefined = undefined,
@@ -143,6 +144,7 @@ export function findSignal(
 
     const candidate = signals[name]
 
+    // ModuleSignals guarantees branded callables; index access widens the value.
     return isSignalDefinition(candidate) ? candidate : undefined
   }
 
@@ -150,8 +152,8 @@ export function findSignal(
 }
 
 /**
- * Validate `rawInput` against the signal's schema, run `build`, and stamp `threadId`.
- * Returns the events that `runtime.signal` would append.
+ * Validate `rawInput` against the signal's schema and invoke the callable (which stamps
+ * `threadId`). Returns the events that `runtime.signal` would append.
  */
 export function runSignal(
   definition: AnySignalDefinition,
@@ -160,8 +162,13 @@ export function runSignal(
 ): Effect.Effect<EventInput[], InvalidInputError> {
   return Effect.gen(function* () {
     const schema = definition.input
-    const built = schema ? definition(yield* validateInputEffect(schema, rawInput)) : definition()
-    return asEventList(stampSignalThread(built, threadId))
+    const options = { threadId }
+
+    const built = schema
+      ? definition(yield* validateInputEffect(schema, rawInput), options)
+      : definition(options)
+
+    return asEventList(built)
   })
 }
 
@@ -172,6 +179,11 @@ export function runSignalSync(
   threadId?: string,
 ): EventInput[] {
   const schema = definition.input
-  const built = schema ? definition(validateInputSync(schema, asJson(rawInput))) : definition()
-  return asEventList(stampSignalThread(built, threadId))
+  const options = { threadId }
+
+  const built = schema
+    ? definition(validateInputSync(schema, asJson(rawInput)), options)
+    : definition(options)
+
+  return asEventList(built)
 }

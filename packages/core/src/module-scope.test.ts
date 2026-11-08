@@ -474,6 +474,33 @@ describe('defineModule scope', () => {
     }))
   })
 
+  test('defineModule rejects signals built outside the module catalog', () => {
+    const shippingScope = createModuleScope({
+      namespace: 'shipping',
+      protocolVersion: '1.0.0',
+      events: shippingCatalog,
+    })
+
+    const delivered = shippingScope.signal({
+      build: () => shippingScope.input('delivered', { trackingNumber: 't', at: 1 }),
+    })
+
+    const billingScope = createModuleScope({
+      namespace: 'billing',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('billing', { invoiced: payload<{ invoiceId: string }>() }),
+    })
+
+    expect(defineModule(shippingScope, () => ({ signals: { delivered } })).signals.delivered).toBe(
+      delivered,
+    )
+
+    defineModule(billingScope, () => ({
+      // @ts-expect-error shipping.delivered is not in the billing catalog
+      signals: { delivered },
+    }))
+  })
+
   test('defineModule produces clean RuntimeModule without leaking builder methods', () => {
     const built = defineModule(ordersModule, () => ({
       effects: {},

@@ -215,9 +215,10 @@ await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])`}</Code
       <CodeBlock lang="ts" code={paymentsModule} />
       <p>
         <code>description</code> is published on <code>GET /definitions</code>. The host installs
-        effects, threads, and projections. Signals, steps, and examples are not installed: signals
-        and steps are functions that callers import, and <code>moduleConformance</code> checks
-        examples.
+        effects, threads, and projections. Steps and examples are not installed: steps are functions
+        callers import, and <code>moduleConformance</code> checks examples. Signals stay importable
+        builders, and the host also publishes them on <code>GET /definitions/signals</code> so the
+        debugger can preview and send by name.
       </p>
 
       <h3 id="events-effects-signals-and-steps">
@@ -254,7 +255,9 @@ await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])`}</Code
           <code>
             looms.signal(runId, [payments.signals.chargeAuthorized({'{ chargeId, amount }'})])
           </code>
-          . A signal only builds a typed event: it does no IO, and the runtime never calls it.
+          . A signal only builds typed events: it does no IO. Callers usually import and invoke it
+          themselves; the host also publishes its input schema and can run <code>build</code> for
+          debugger preview and named send.
         </li>
         <li>
           <strong>Steps</strong> package the module&apos;s protocol for code inside a run.{' '}
