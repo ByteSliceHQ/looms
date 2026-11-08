@@ -66,7 +66,9 @@ createLooms({
         Loading the page is a read of the route named <code>debugger</code>. The page then reads
         definitions, runs, and event streams. Starting, signaling, waking, cancelling, and
         continuing a run are <code>write</code> routes. Chat messages and the chat Stop button are
-        signals. Without <code>authorize</code>, all of these are open. Leave them open only on a
+        signals. The header <strong>Signal</strong> popover lists each module&apos;s{' '}
+        <code>signals</code> with a schema form, live preview, and an Advanced tab for raw catalog
+        events. Without <code>authorize</code>, all of these are open. Leave them open only on a
         trusted local machine.
       </p>
       <p>

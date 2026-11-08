@@ -31,7 +31,7 @@ function RunView({ runId }: { runId: string }) {
       </div>
       <div>Messages: {convo.lines.length}</div>
       <div>Pending approvals: {approvals.items.length}</div>
-      <button onClick={() => store.commit(userMessage('Hello'))}>Send</button>
+      <button onClick={() => store.commit(userMessage({ content: 'Hello' }))}>Send</button>
     </div>
   )
 }

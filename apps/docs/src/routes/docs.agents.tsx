@@ -53,8 +53,8 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
       </p>
       <p>
         Set <code>conversational: true</code> for an agent that should accept later user messages.
-        Use <code>userMessage(text)</code> with signal. For long conversations, decide how much
-        history to send to the model and when to summarize it.
+        Use <code>userMessage({'{ content }'})</code> with signal. For long conversations, decide
+        how much history to send to the model and when to summarize it.
       </p>
       <p>
         Signal <code>stopAgentTurn()</code> to end the turn in progress without ending the run. The
@@ -64,9 +64,10 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
         keeps the session open. Use <code>looms.cancel</code> to end the run instead.
       </p>
       <p>
-        <code>steer(text)</code> interrupts by default: it ends the turn the same way, then starts a
-        new turn with the steering message. The <code>turnActivity</code> projection reports whether
-        the root agent or session has a turn in progress, so a UI knows when to show a Stop button.
+        <code>steer({'{ content }'})</code> interrupts by default: it ends the turn the same way,
+        then starts a new turn with the steering message. The <code>turnActivity</code> projection
+        reports whether the root agent or session has a turn in progress, so a UI knows when to show
+        a Stop button.
       </p>
       <CodeBlock lang="ts">{`import { stopAgentTurn } from '@swirls/looms/agent'
 
@@ -96,9 +97,9 @@ await looms.signal(runId, [stopAgentTurn()])`}</CodeBlock>
 
 const { runId } = await looms.start(session, {})
 await looms.signal(runId, [
-  submitAgentMessage('message-1042', 'Where is my order?', {
-    delivery: 'followUp',
-  }),
+  submitAgentMessage(
+    { messageId: 'message-1042', text: 'Where is my order?', delivery: 'followUp' },
+  ),
 ])`}</CodeBlock>
       <p>
         Register the session and its pinned agent definition in the agent module. Use stable message

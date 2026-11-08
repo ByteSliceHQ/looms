@@ -322,13 +322,13 @@ export function OrderControls({ runId }: { runId: string }) {
 
   const handleApprove = () => {
     if (order.approvalId) {
-      store.commit(decision(order.approvalId, 'approve'))
+      store.commit(decision({ approvalId: order.approvalId, choice: 'approve' }))
     }
   }
 
   const handleReject = () => {
     if (order.approvalId) {
-      store.commit(decision(order.approvalId, 'reject'))
+      store.commit(decision({ approvalId: order.approvalId, choice: 'reject' }))
     }
   }
 

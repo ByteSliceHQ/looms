@@ -142,12 +142,17 @@ try {
       <CodeBlock lang="text">{`GET  /health                            → { ok: true }
 GET  /definitions                       → definitions, projections, and modules
 GET  /definitions/effects               → { effects: [{ type, placement, retry, inputSchema }] }
+GET  /definitions/signals               → { signals: [{ namespace, name, description?, inputSchema? }] }
+GET  /definitions/events                → { events: [{ type, namespace, payloadSchema? }] }
+POST /definitions/signals/:ns/:name/preview → { events } (validate + build, no append)
+POST /definitions/events/preview        → { events } (validate payloads, no append)
 POST /runs                              → { runId, threadId, state }
 GET  /runs                              → { runIds } (embed only)
 GET  /runs/summaries                    → { runs }
 GET  /runs/:id                          → { runId, state }
 GET  /runs/:id/events                   → { runId, events }
 POST /runs/:id/events                   → { runId, state }
+POST /runs/:id/signals/:ns/:name        → { runId, state } (build from signal input, then append)
 GET  /runs/:id/threads                  → { runId, threads }
 GET  /runs/:id/status                   → run, deadline, and effect status
 GET  /runs/:id/effects                  → { runId, effects } (includes placement)
