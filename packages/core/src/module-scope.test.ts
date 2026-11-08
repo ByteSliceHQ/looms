@@ -626,5 +626,46 @@ describe('defineModule scope', () => {
         },
       ],
     }))
+
+    const statusShape = Schema.Struct({
+      items: Schema.mutable(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            status: Schema.Union([Schema.Literal('open'), Schema.Literal('closed')]),
+          }),
+        ),
+      ),
+    })
+
+    defineModule(ordersModule, (m) => ({
+      projections: {
+        status: m.projection({
+          name: 'status',
+          shape: statusShape,
+          initialState: { items: [] },
+          reduce(state) {
+            return state
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'literal states need no as const',
+          events: [],
+          projections: { status: { items: [{ id: 'ord-1', status: 'open' }] } },
+        },
+        {
+          name: 'off-union literal',
+          events: [],
+          projections: {
+            status: {
+              // @ts-expect-error 'shipped' is not a status
+              items: [{ id: 'ord-1', status: 'shipped' }],
+            },
+          },
+        },
+      ],
+    }))
   })
 })

@@ -34,7 +34,7 @@ export function approval() {
                 approvalId: 'apr_1',
                 title: 'Charge $40',
                 description: 'Card charge',
-                status: 'approved' as const,
+                status: 'approved',
                 threadId: 'thread_1',
               },
             ],
@@ -60,7 +60,7 @@ export function approval() {
               {
                 approvalId: 'apr_2',
                 title: 'Refund',
-                status: 'pending' as const,
+                status: 'pending',
                 threadId: 'thread_2',
               },
             ],

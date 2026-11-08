@@ -56,11 +56,13 @@ export type ModuleSteps = {
   readonly [key: string]: (...args: never[]) => readonly RuntimeEffect[]
 }
 
+type DeepReadonly<T> = T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T
+
 /** Typed example trace. Projection keys are member keys from setup, not projection `.name` values. */
 export interface ModuleExampleOf<U, PR> {
   readonly name: string
   readonly events: readonly EventInputOf<U>[]
-  readonly projections: { readonly [K in keyof PR]?: ProjectionStateOf<PR[K]> }
+  readonly projections: { readonly [K in keyof PR]?: DeepReadonly<ProjectionStateOf<PR[K]>> }
 }
 
 function storeExamples(
@@ -313,6 +315,8 @@ export function defineModule<
   PR extends { readonly [key: string]: ProjectionDefinition } = {},
   SG extends ModuleSignals<ScopeUniverse<ModuleCatalog<N, E>, O>> = {},
   ST extends ModuleSteps = {},
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- const keeps literal example states (status: 'pending') from widening before PR is inferred
+  const EX extends readonly ModuleExampleOf<ScopeUniverse<ModuleCatalog<N, E>, O>, PR>[] = [],
 >(
   options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
   setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
@@ -322,7 +326,7 @@ export function defineModule<
     readonly projections?: PR
     readonly signals?: SG
     readonly steps?: ST
-    readonly examples?: readonly ModuleExampleOf<ScopeUniverse<ModuleCatalog<N, E>, O>, PR>[]
+    readonly examples?: EX
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
     readonly admission?: readonly EffectAdmission[]
