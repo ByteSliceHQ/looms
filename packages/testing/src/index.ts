@@ -2,7 +2,6 @@ import { Effect } from 'effect'
 
 import {
   composeModules,
-  moduleExampleErrors,
   EventStoreTag,
   makeMemoryEventStore,
   ModuleCompositionError,
@@ -16,7 +15,10 @@ import {
 } from '@looms/core'
 import { createRuntime, type LoomsRuntime } from '@looms/runtime'
 
+import { moduleExampleErrors } from './module-examples'
 import { assertReplayDeterministicEvents } from './replay-corpus'
+
+export { moduleExampleErrors } from './module-examples'
 
 export interface TestRuntime {
   readonly runtime: LoomsRuntime

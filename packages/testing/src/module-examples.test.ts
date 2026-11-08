@@ -2,11 +2,22 @@ import { describe, expect, test } from 'bun:test'
 
 import { Schema } from 'effect'
 
-import { defineEventCatalog, payload } from './catalog'
-import { defineRuntimeModule } from './module'
+import {
+  defineEventCatalog,
+  defineProjection,
+  defineRuntimeModule,
+  isJsonNumber,
+  isJsonObject,
+  isJsonString,
+  payload,
+} from '@looms/core'
+
 import { moduleExampleErrors } from './module-examples'
-import { defineProjection } from './projection'
-import { isJsonNumber, isJsonObject } from './types'
+
+type OptionalNoteState = {
+  readonly n: number
+  readonly note?: string
+}
 
 const counted = defineRuntimeModule({
   namespace: 'sample',
@@ -111,5 +122,79 @@ describe('moduleExampleErrors', () => {
     })
 
     expect(moduleExampleErrors(bare)).toEqual(['example ping names no projections'])
+  })
+
+  test('looks projections up by member key, not projection name', () => {
+    const aliased = defineRuntimeModule({
+      namespace: 'sample',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('sample', {
+        ping: Schema.Struct({ n: Schema.Finite }),
+      }),
+      projections: {
+        tally: defineProjection({
+          name: 'count',
+          initialState: { n: 0 },
+          reduce(state, event) {
+            if (event.type !== 'sample.ping') {
+              return state
+            }
+
+            if (!isJsonObject(event.payload) || !isJsonNumber(event.payload.n)) {
+              return state
+            }
+
+            return { n: state.n + event.payload.n }
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'ping adds',
+          events: [{ type: 'sample.ping', payload: { n: 2 } }],
+          projections: { tally: { n: 2 } },
+        },
+      ],
+    })
+
+    expect(moduleExampleErrors(aliased)).toEqual([])
+  })
+
+  test('strips undefined fields before comparing projection state', () => {
+    const optional = defineRuntimeModule({
+      namespace: 'sample',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('sample', {
+        ping: Schema.Struct({ n: Schema.Finite, note: Schema.optional(Schema.String) }),
+      }),
+      projections: {
+        last: defineProjection({
+          name: 'last',
+          initialState: { n: 0 } satisfies OptionalNoteState,
+          reduce(state: OptionalNoteState, event): OptionalNoteState {
+            if (event.type !== 'sample.ping') {
+              return state
+            }
+
+            if (!isJsonObject(event.payload) || !isJsonNumber(event.payload.n)) {
+              return state
+            }
+
+            const note = event.payload.note
+
+            return isJsonString(note) ? { n: event.payload.n, note } : { n: event.payload.n }
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'no note',
+          events: [{ type: 'sample.ping', payload: { n: 3 } }],
+          projections: { last: { n: 3 } },
+        },
+      ],
+    })
+
+    expect(moduleExampleErrors(optional)).toEqual([])
   })
 })

@@ -3,6 +3,8 @@ import { Data, Effect, Predicate, Schema } from 'effect'
 
 import type { CatalogEntries, CatalogEntry, EventCatalog } from './catalog'
 import type { EventInput } from './envelope'
+import type { AnyRuntimeModule } from './module'
+import { protocolCatalog } from './protocol'
 import { validateInputEffect } from './schema'
 import { cleanUndefined } from './types'
 
@@ -22,7 +24,8 @@ export class InvalidEventError extends Data.TaggedError('InvalidEventError')<{
   }
 }
 
-function findCatalogAndEntry(
+/** Locate a catalog entry for a fully-qualified event type across the given catalogs. */
+export function findCatalogEntry(
   catalogs: readonly EventCatalog[],
   type: string,
 ): { catalog: EventCatalog; key: string; entry: CatalogEntry } | undefined {
@@ -43,6 +46,11 @@ function findCatalogAndEntry(
   return undefined
 }
 
+/** Protocol, owned, and observed catalogs a module may accept events from. */
+export function moduleCatalogs(module: AnyRuntimeModule): readonly EventCatalog[] {
+  return [protocolCatalog, ...(module.events ? [module.events] : []), ...(module.observes ?? [])]
+}
+
 function isStandardSchema(entry: CatalogEntry): entry is StandardSchemaV1 {
   return Predicate.isReadonlyObject(entry) && '~standard' in entry
 }
@@ -55,7 +63,7 @@ export function validateEventInput(
   catalogs: readonly EventCatalog[],
   input: EventInput,
 ): Effect.Effect<EventInput, InvalidEventError> {
-  const match = findCatalogAndEntry(catalogs, input.type)
+  const match = findCatalogEntry(catalogs, input.type)
 
   if (!match) {
     return Effect.succeed(input)

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 import { defineEventCatalog, payload } from './catalog'
-import { defineEffect, invoke } from './effects'
+import { defineEffect, invoke, type RuntimeEffect } from './effects'
 import { createModuleScope, defineModule, type EventOf, type ThreadStateOf } from './module-scope'
 
 export interface DatabaseService {
@@ -508,7 +508,7 @@ describe('defineModule scope', () => {
     expect(shippingModule.dependencies).toEqual([{ namespace: 'billing' }])
   })
 
-  test('keeps description, signals, and examples on the finished module', () => {
+  test('keeps description, signals, steps, and examples on the finished module', () => {
     const built = defineModule(
       {
         namespace: 'orders',
@@ -519,6 +519,9 @@ describe('defineModule scope', () => {
       (m) => ({
         signals: {
           created: (orderId: string, amount: number) => m.input('created', { orderId, amount }),
+        },
+        steps: {
+          noop: () => [],
         },
         examples: [
           {
@@ -535,7 +538,93 @@ describe('defineModule scope', () => {
     expect(built.description).toBe('Order ledger')
     expect(created.type).toBe('orders.created')
     expect(created.payload.amount).toBe(5)
+    expect(built.steps.noop()).toEqual([])
     expect(built.examples?.[0]?.name).toBe('created')
+    expect(built.examples?.[0]?.projections).toEqual({})
     expect(built.signals).not.toHaveProperty('execute')
+  })
+
+  test('rejects mixed signal and step return types and mistyped examples', () => {
+    defineModule(ordersModule, () => ({
+      signals: {
+        // @ts-expect-error signals must return events, not effects
+        bad: (): RuntimeEffect[] => [],
+      },
+    }))
+
+    defineModule(ordersModule, (m) => ({
+      steps: {
+        // @ts-expect-error steps must return effects, not events
+        bad: () => m.input('created', { orderId: 'ord-1', amount: 1 }),
+      },
+    }))
+
+    defineModule(ordersModule, (m) => ({
+      projections: {
+        total: m.projection({
+          name: 'total',
+          initialState: { amount: 0 },
+          reduce(state, event) {
+            return event.type === 'orders.created'
+              ? { amount: state.amount + event.payload.amount }
+              : state
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'created',
+          events: [
+            // @ts-expect-error off-catalog event types are rejected
+            { type: 'billing.invoiced', payload: { invoiceId: 'inv_1' } },
+          ],
+          projections: { total: { amount: 0 } },
+        },
+      ],
+    }))
+
+    defineModule(ordersModule, (m) => ({
+      projections: {
+        total: m.projection({
+          name: 'total',
+          initialState: { amount: 0 },
+          reduce(state) {
+            return state
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'created',
+          events: [m.input('created', { orderId: 'ord-1', amount: 5 })],
+          projections: {
+            // @ts-expect-error unknown projection member keys are rejected
+            missing: { amount: 5 },
+          },
+        },
+      ],
+    }))
+
+    defineModule(ordersModule, (m) => ({
+      projections: {
+        total: m.projection({
+          name: 'total',
+          initialState: { amount: 0 },
+          reduce(state) {
+            return state
+          },
+        }),
+      },
+      examples: [
+        {
+          name: 'created',
+          events: [m.input('created', { orderId: 'ord-1', amount: 5 })],
+          projections: {
+            // @ts-expect-error expected state must match the projection state
+            total: { amount: 'five' },
+          },
+        },
+      ],
+    }))
   })
 })

@@ -3,7 +3,6 @@ import {
   invoke,
   isJsonString,
   wait,
-  type EventInput,
   type JsonValue,
   type RuntimeEffect,
 } from '@looms/core'
@@ -78,7 +77,7 @@ export type ApprovalChoice =
  * Build the `approval.decided` event that resolves a pending gate.
  * Send it with `looms.signal(runId, [decision(approvalId, 'approve')])`.
  */
-export function decision(approvalId: string, choice: ApprovalChoice): EventInput {
+export function decision(approvalId: string, choice: ApprovalChoice) {
   const decided: ApprovalDecided = isJsonString(choice)
     ? { approvalId, actionId: choice, outcome: choice }
     : { approvalId, actionId: choice.actionId, outcome: choice.outcome, payload: choice.payload }

@@ -1,4 +1,4 @@
-import type { Layer } from 'effect'
+import type { Context, Layer } from 'effect'
 
 import {
   defineEventCatalog,
@@ -36,7 +36,7 @@ import {
   type RuntimeModuleDependency,
   type SignalInterruptRule,
 } from './module'
-import { defineProjection, type ProjectionDefinition } from './projection'
+import { defineProjection, type ProjectionDefinition, type ProjectionStateOf } from './projection'
 import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
 import {
   defineThread,
@@ -44,7 +44,37 @@ import {
   type ThreadContext,
   type ThreadDefinition,
 } from './thread'
-import { asJson, type JsonValue } from './types'
+import { asJson, cleanUndefined, type JsonValue } from './types'
+
+/** Event builders returned on `signals`. Each returns one event or a batch for `signal`/`commit`. */
+export type ModuleSignals<U> = {
+  readonly [key: string]: (...args: never[]) => EventInputOf<U> | readonly EventInputOf<U>[]
+}
+
+/** Effect composers returned on `steps`. Each returns effects for threads and workflow nodes. */
+export type ModuleSteps = {
+  readonly [key: string]: (...args: never[]) => readonly RuntimeEffect[]
+}
+
+/** Typed example trace. Projection keys are member keys from setup, not projection `.name` values. */
+export interface ModuleExampleOf<U, PR> {
+  readonly name: string
+  readonly events: readonly EventInputOf<U>[]
+  readonly projections: { readonly [K in keyof PR]?: ProjectionStateOf<PR[K]> }
+}
+
+function storeExamples(examples: readonly ModuleExampleOf<any, any>[]): ModuleExample[] {
+  return examples.map((example) => ({
+    name: example.name,
+    events: example.events.map((event) => ({
+      ...event,
+      payload: cleanUndefined(event.payload),
+    })),
+    projections: Object.fromEntries(
+      Object.entries(example.projections).map(([key, state]) => [key, cleanUndefined(state)]),
+    ),
+  }))
+}
 
 export interface DefineModuleOptions<
   TNamespace extends string,
@@ -279,7 +309,8 @@ export function defineModule<
   FX extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
   TH extends { readonly [key: string]: ThreadDefinition } = {},
   PR extends { readonly [key: string]: ProjectionDefinition } = {},
-  SG = {},
+  SG extends ModuleSignals<ScopeUniverse<ModuleCatalog<N, E>, O>> = {},
+  ST extends ModuleSteps = {},
 >(
   options: Omit<DefineModuleOptions<N, ModuleCatalog<N, E>, O>, 'events'> & { readonly events?: E },
   setup: (scope: ModuleScope<N, ScopeUniverse<ModuleCatalog<N, E>, O>, ModuleCatalog<N, E>, O>) => {
@@ -288,18 +319,29 @@ export function defineModule<
     readonly threads?: TH
     readonly projections?: PR
     readonly signals?: SG
-    readonly examples?: readonly ModuleExample[]
+    readonly steps?: ST
+    readonly examples?: readonly ModuleExampleOf<ScopeUniverse<ModuleCatalog<N, E>, O>, PR>[]
     readonly definitions?: readonly DefinitionRef[]
     readonly middleware?: readonly EffectMiddleware[]
     readonly admission?: readonly EffectAdmission[]
     readonly interruptsOnSignal?: SignalInterruptRule
     readonly bindHost?: (host: DefinitionHost) => void
   } & ModuleServicesConfig<EffectRequirementsOf<FX>>,
-): RuntimeModule<N, Extract<ModuleCatalog<N, E>, EventCatalog>, FX, TH, PR> & {
+): RuntimeModule<
+  N,
+  Extract<ModuleCatalog<N, E>, EventCatalog>,
+  FX,
+  TH,
+  PR,
+  Context.Service.Any,
+  SG,
+  ST
+> & {
   readonly effects: FX
   readonly threads: TH
   readonly projections: PR
   readonly signals: SG
+  readonly steps: ST
 }
 
 export function defineModule(options: any, setup: (scope: any) => any): any {
@@ -323,6 +365,7 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
     threads: members.threads ?? {},
     projections: members.projections ?? {},
     signals: members.signals ?? {},
+    steps: members.steps ?? {},
   }
 
   if (options.description) {
@@ -338,7 +381,7 @@ export function defineModule(options: any, setup: (scope: any) => any): any {
   }
 
   if (members.examples) {
-    module.examples = members.examples
+    module.examples = storeExamples(members.examples)
   }
 
   if (members.definitions) {

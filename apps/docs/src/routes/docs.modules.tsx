@@ -192,9 +192,11 @@ import { decision } from '@swirls/looms/approval'
 await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <p>
-        Your module can do the same. Return the builders from <code>defineModule</code> as{' '}
+        Your module can do the same. Return event builders from <code>defineModule</code> as{' '}
         <code>signals</code>, and callers use them with <code>signal</code> or{' '}
-        <code>store.commit</code>. Named exports can re-export that same function.
+        <code>store.commit</code>. Effect composers for threads and workflow nodes go on{' '}
+        <code>steps</code> (for example <code>approval.steps.gate</code>). Named exports can
+        re-export the same functions.
       </p>
 
       <h2 id="add-your-own-module">
@@ -213,9 +215,11 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <CodeBlock lang="ts" code={paymentsModule} />
       <p>
         <code>description</code> is published on <code>GET /definitions</code>. <code>signals</code>{' '}
-        are the builders callers pass to <code>looms.signal</code> or <code>store.commit</code>.{' '}
-        <code>examples</code> are short traces that <code>moduleConformance</code> folds against the
-        projections. The host runs neither the signals nor the examples.
+        are event builders for <code>looms.signal</code> or <code>store.commit</code>.{' '}
+        <code>steps</code> are effect composers for threads and workflow nodes.{' '}
+        <code>examples</code> are short traces keyed by projection member name;{' '}
+        <code>moduleConformance</code> folds them with the same semantics as the runtime. The host
+        runs neither signals, steps, nor examples.
       </p>
       <h3 id="what-the-scope-gives-you">
         What the scope gives you
@@ -798,7 +802,7 @@ const billing = defineRuntimeModule({
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # builders returned on the module as signals
+  signals.ts       # event builders (signals) and effect composers (steps)
   module.ts        # defineModule(options, setup) assembly
   debugger/        # DebuggerPlugin; a separate entry so the host does not import React
   index.ts         # public re-exports`}</CodeBlock>

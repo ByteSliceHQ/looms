@@ -2,38 +2,23 @@ import { isDeepStrictEqual } from 'node:util'
 
 import { Predicate, Schema } from 'effect'
 
-import type { CatalogEntry, EventCatalog } from './catalog'
-import { createEvent, type EventInput } from './envelope'
-import type { AnyRuntimeModule } from './module'
-import { foldProjection } from './projection'
-import { protocolCatalog } from './protocol'
-import { validateInputSync, type SchemaInput } from './schema'
-import { cleanUndefined, stringifyJson, type JsonValue } from './types'
-
-function catalogsOf(module: AnyRuntimeModule): readonly EventCatalog[] {
-  return [protocolCatalog, ...(module.events ? [module.events] : []), ...(module.observes ?? [])]
-}
+import {
+  cleanUndefined,
+  createEvent,
+  findCatalogEntry,
+  moduleCatalogs,
+  project,
+  stringifyJson,
+  validateInputSync,
+  type AnyRuntimeModule,
+  type CatalogEntry,
+  type EventInput,
+  type JsonValue,
+  type SchemaInput,
+} from '@looms/core'
 
 function isSchemaInput(entry: CatalogEntry): entry is SchemaInput {
   return Schema.isSchema(entry) || (Predicate.isReadonlyObject(entry) && '~standard' in entry)
-}
-
-function catalogEntry(catalogs: readonly EventCatalog[], type: string): CatalogEntry | undefined {
-  for (const catalog of catalogs) {
-    const prefix = `${catalog.namespace}.`
-
-    if (!type.startsWith(prefix)) {
-      continue
-    }
-
-    const entry = catalog.entries[type.slice(prefix.length)]
-
-    if (entry !== undefined) {
-      return entry
-    }
-  }
-
-  return undefined
 }
 
 function payloadError(entry: CatalogEntry, event: EventInput): string | undefined {
@@ -60,7 +45,7 @@ function show(value: JsonValue): string {
 export function moduleExampleErrors(module: AnyRuntimeModule): readonly string[] {
   const errors: string[] = []
   const seen = new Set<string>()
-  const catalogs = catalogsOf(module)
+  const catalogs = moduleCatalogs(module)
 
   for (const example of module.examples ?? []) {
     if (example.name.trim() === '') {
@@ -75,24 +60,24 @@ export function moduleExampleErrors(module: AnyRuntimeModule): readonly string[]
       errors.push(`example ${example.name} has no events`)
     }
 
-    const projectionNames = Object.keys(example.projections)
+    const projectionKeys = Object.keys(example.projections)
 
-    if (projectionNames.length === 0) {
+    if (projectionKeys.length === 0) {
       errors.push(`example ${example.name} names no projections`)
     }
 
     let eventsOk = true
 
     for (const event of example.events) {
-      const entry = catalogEntry(catalogs, event.type)
+      const match = findCatalogEntry(catalogs, event.type)
 
-      if (entry === undefined) {
+      if (match === undefined) {
         eventsOk = false
         errors.push(`example ${example.name} event ${event.type} is outside the module catalogs`)
         continue
       }
 
-      const message = payloadError(entry, event)
+      const message = payloadError(match.entry, event)
 
       if (message !== undefined) {
         eventsOk = false
@@ -104,31 +89,32 @@ export function moduleExampleErrors(module: AnyRuntimeModule): readonly string[]
       continue
     }
 
-    for (const name of projectionNames) {
-      const projection = Object.values(module.projections ?? {}).find((item) => item.name === name)
+    const envelopes = example.events.map((event: EventInput, index) =>
+      createEvent(
+        'example',
+        {
+          ...event,
+          id: event.id ?? `example_${index + 1}`,
+          ts: event.ts ?? index + 1,
+        },
+        { seq: index + 1 },
+      ),
+    )
+
+    for (const key of projectionKeys) {
+      const projection = module.projections?.[key]
 
       if (!projection) {
-        errors.push(`example ${example.name} names unknown projection ${name}`)
+        errors.push(`example ${example.name} names unknown projection ${key}`)
         continue
       }
 
-      const folded = foldProjection(
-        projection,
-        example.events.map((event: EventInput, index) =>
-          createEvent('example', event, { seq: index + 1 }),
-        ),
-      )
-
-      const expected = example.projections[name]
-
-      if (expected === undefined) {
-        errors.push(`example ${example.name} projection ${name} has no expected state`)
-        continue
-      }
+      const folded = cleanUndefined(project(projection, envelopes))
+      const expected = example.projections[key] ?? null
 
       if (!isDeepStrictEqual(folded, expected)) {
         errors.push(
-          `example ${example.name} projection ${name}: expected ${show(expected)}, got ${show(cleanUndefined(folded))}`,
+          `example ${example.name} projection ${key}: expected ${show(expected)}, got ${show(folded)}`,
         )
       }
     }

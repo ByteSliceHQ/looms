@@ -209,7 +209,9 @@ POST /operations/deadlines/rescan        → rebuild wake deadlines`}</CodeBlock
         <li>
           <code>@swirls/looms/core</code>: defineModule, defineKind, createKind, defineEventCatalog,
           createModuleScope, defineThread, defineEffect, defineProjection; invoke, spawn, wait,
-          emit, complete, fail. The bun-sqlite entry supplies Bun storage.
+          emit, complete, fail; findCatalogEntry, moduleCatalogs. Modules expose{' '}
+          <code>signals</code> (event builders) and <code>steps</code> (effect composers). The
+          bun-sqlite entry supplies Bun storage.
         </li>
         <li>
           <code>@swirls/looms/runtime</code>: createLooms and lower-level runtime APIs.
@@ -248,8 +250,8 @@ POST /operations/deadlines/rescan        → rebuild wake deadlines`}</CodeBlock
           <code>@swirls/looms/s2</code>: stream replication.
         </li>
         <li>
-          <code>@swirls/looms/testing</code>: deterministic in-memory helpers and conformance
-          checks.
+          <code>@swirls/looms/testing</code>: deterministic in-memory helpers,{' '}
+          <code>moduleConformance</code>, and <code>moduleExampleErrors</code>.
         </li>
         <li>
           <code>@swirls/looms/otel</code>: OpenTelemetry spans and metrics for runtime observations.

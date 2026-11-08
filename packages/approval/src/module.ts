@@ -9,7 +9,8 @@ export function approval() {
   return defineModule(approvalModule, () => ({
     effects: { request: requestApprovalEffect },
     projections: { pendingApprovals },
-    signals: { decision, gate },
+    signals: { decision },
+    steps: { gate },
     examples: [
       {
         name: 'a decision resolves the pending approval',
@@ -33,8 +34,34 @@ export function approval() {
                 approvalId: 'apr_1',
                 title: 'Charge $40',
                 description: 'Card charge',
-                status: 'approved',
+                status: 'approved' as const,
                 threadId: 'thread_1',
+              },
+            ],
+          },
+        },
+      },
+      {
+        name: 'a request without a description stays pending',
+        events: [
+          approvalModule.input(
+            'requested',
+            {
+              approvalId: 'apr_2',
+              title: 'Refund',
+              actions: [{ id: 'approve', label: 'Approve', outcome: 'approve' }],
+            },
+            { threadId: 'thread_2' },
+          ),
+        ],
+        projections: {
+          pendingApprovals: {
+            items: [
+              {
+                approvalId: 'apr_2',
+                title: 'Refund',
+                status: 'pending' as const,
+                threadId: 'thread_2',
               },
             ],
           },

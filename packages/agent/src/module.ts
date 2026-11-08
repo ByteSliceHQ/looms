@@ -68,6 +68,28 @@ export function agent(options: AgentModuleOptions = {}) {
       cancelAgentTurn,
       agentSessionMessageEvents,
     },
+    examples: [
+      {
+        name: 'a reply updates conversation and token usage',
+        events: [
+          userMessage('Hello'),
+          agentModule.input('message', {
+            turn: 1,
+            message: { role: 'assistant', content: 'Hi there' },
+            usage: { input: 4, output: 2 },
+          }),
+        ],
+        projections: {
+          conversation: {
+            lines: [
+              { role: 'user', content: 'Hello' },
+              { role: 'assistant', content: 'Hi there' },
+            ],
+          },
+          tokenUsage: { input: 4, output: 2 },
+        },
+      },
+    ],
     services: () => Layer.merge(llmLayer, AgentDefinitionsLive(agentDefinitions)),
     interruptsOnSignal,
     bindHost(host) {

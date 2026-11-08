@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { composeModules, createEvent, moduleExampleErrors, project } from '@looms/core'
+import { composeModules, createEvent, project } from '@looms/core'
 
 import { approval } from './module'
 import { pendingApprovals } from './projections'
@@ -11,7 +11,7 @@ describe('@looms/approval module', () => {
     expect(registry.effects.get('approval.request')).toBeDefined()
     expect(approval().description).toBe('Human gates that park a run until someone decides.')
     expect(approval().signals.decision('apr_1', 'approve').type).toBe('approval.decided')
-    expect(moduleExampleErrors(approval())).toEqual([])
+    expect(approval().steps.gate({ title: 'Review' }).length).toBeGreaterThan(0)
   })
 
   test('the first approval, rejection, or timeout outcome wins', () => {

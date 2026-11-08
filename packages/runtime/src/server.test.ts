@@ -475,6 +475,7 @@ describe('server routing', () => {
 
     expect(body.definitions[0]?.inputSchema).toMatchObject({ type: 'object' })
     expect(body.projections).toContain('nodes')
+
     expect(body.modules).toEqual([
       {
         namespace: 'workflow',
@@ -482,6 +483,7 @@ describe('server routing', () => {
         description: 'DAG runs whose nodes return, spawn, sleep, or emit effects.',
       },
     ])
+
     await looms.stop()
   })
 

@@ -86,12 +86,12 @@ export function debuggerConformance(
   const panes = new Set((plugin.projections ?? []).map((view) => view.name))
   const headless = new Set(plugin.headlessProjections ?? [])
 
-  const declared = Object.values(module.projections ?? {})
-    .map((projection) => projection.name)
-    .toSorted()
+  const declared = new Set(
+    Object.values(module.projections ?? {}).map((projection) => projection.name),
+  )
 
   for (const name of [...panes].toSorted()) {
-    if (!declared.includes(name)) {
+    if (!declared.has(name)) {
       errors.push(`debugger pane ${name} is not a projection of ${module.namespace}`)
     }
 
@@ -101,12 +101,12 @@ export function debuggerConformance(
   }
 
   for (const name of [...headless].toSorted()) {
-    if (!declared.includes(name)) {
+    if (!declared.has(name)) {
       errors.push(`headless projection ${name} is not declared by ${module.namespace}`)
     }
   }
 
-  for (const name of declared) {
+  for (const name of [...declared].toSorted()) {
     if (!panes.has(name) && !headless.has(name)) {
       errors.push(`projection ${name} has no debugger pane or headlessProjections entry`)
     }

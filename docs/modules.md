@@ -77,7 +77,7 @@ await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])
 ```
 
-Your module can do the same. Return the builders from `defineModule` as `signals`, and callers use `payments.signals.chargeAuthorized` with `signal` or `store.commit`. Named exports can re-export that same function.
+Your module can do the same. Return event builders from `defineModule` as `signals`, and callers use `payments.signals.chargeAuthorized` with `signal` or `store.commit`. Effect composers for threads and workflow nodes go on `steps` (for example `approval.steps.gate`). Named exports can re-export the same functions.
 
 ## Add your own module
 
@@ -157,7 +157,7 @@ export const { ledger } = payments.projections
 export const { chargeAuthorized } = payments.signals
 ```
 
-`description` is published on `GET /definitions`. `signals` are the builders callers pass to `looms.signal` or `store.commit`. `examples` are short traces that `moduleConformance` folds against the projections. The host runs neither the signals nor the examples.
+`description` is published on `GET /definitions`. `signals` are event builders for `looms.signal` or `store.commit`. `steps` are effect composers for threads and workflow nodes. `examples` are short traces keyed by projection member name; `moduleConformance` folds them with the same semantics as the runtime. The host runs neither signals, steps, nor examples.
 
 Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@swirls/looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
 
@@ -173,7 +173,7 @@ src/
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # builders returned on the module as signals
+  signals.ts       # event builders (signals) and effect composers (steps)
   scope.ts         # createModuleScope for shared typed builders
   module.ts        # defineModule(options, setup) assembly
   debugger/        # DebuggerPlugin; a separate entry so the host does not import React
@@ -336,7 +336,7 @@ const test = await createTestRuntime([payments])
 await assertReplayDeterministic(test, runId)
 ```
 
-`moduleConformance` also folds each `examples` trace. A debugger plugin stays on the package's `/debugger` subpath. `debuggerConformance` checks that the plugin name is the module namespace, every catalog event has a family, and every projection is a pane or listed in `headlessProjections`.
+`moduleConformance` also folds each `examples` trace (including payload checks against the module catalogs). A debugger plugin stays on the package's `/debugger` subpath. `debuggerConformance` checks that the plugin name is the module namespace, every catalog event has a family, and every projection is a pane or listed in `headlessProjections`.
 
 ```ts
 import { approval } from '@swirls/looms/approval'
