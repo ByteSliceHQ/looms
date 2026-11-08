@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.10.0
+
+### Minor Changes
+
+- ddcb70f: Schema-first signals: declare builders with `m.signal` / `defineSignal`, publish and run them over HTTP, and use a schema-aware debugger signal picker. Built-in signal helpers take object input. Modules also publish a description and keep signals, steps, and example traces as first-class members.
+
 ## 0.9.0
 
 ### Minor Changes
