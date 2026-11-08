@@ -18,8 +18,6 @@ import { createRuntime, type LoomsRuntime } from '@looms/runtime'
 import { moduleExampleErrors } from './module-examples'
 import { assertReplayDeterministicEvents } from './replay-corpus'
 
-export { moduleExampleErrors } from './module-examples'
-
 export interface TestRuntime {
   readonly runtime: LoomsRuntime
   readonly store: EventStore
@@ -90,12 +88,10 @@ export function moduleConformance(module: AnyRuntimeModule): string[] {
   }
 
   try {
-    composeModules([module])
+    errors.push(...moduleExampleErrors(module, composeModules([module]).catalogs))
   } catch (err) {
     errors.push(err instanceof ModuleCompositionError ? err.message : String(err))
   }
-
-  errors.push(...moduleExampleErrors(module))
 
   return errors
 }

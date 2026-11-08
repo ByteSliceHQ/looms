@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
 
 import {
+  composeModules,
   defineEventCatalog,
   defineProjection,
   defineRuntimeModule,
@@ -10,191 +11,149 @@ import {
   isJsonObject,
   isJsonString,
   payload,
+  type AnyRuntimeModule,
+  type ModuleExample,
 } from '@looms/core'
 
 import { moduleExampleErrors } from './module-examples'
 
-type OptionalNoteState = {
+type NoteState = {
   readonly n: number
   readonly note?: string
 }
 
-const counted = defineRuntimeModule({
-  namespace: 'sample',
-  protocolVersion: '1.0.0',
-  events: defineEventCatalog('sample', {
-    ping: Schema.Struct({ n: Schema.Finite }),
-  }),
-  projections: {
-    count: defineProjection({
-      name: 'count',
-      initialState: { n: 0 },
-      reduce(state, event) {
-        if (event.type !== 'sample.ping') {
-          return state
-        }
-
-        if (!isJsonObject(event.payload) || !isJsonNumber(event.payload.n)) {
-          return state
-        }
-
-        return { n: state.n + event.payload.n }
-      },
-    }),
-  },
-  examples: [
-    {
-      name: 'ping adds',
-      events: [{ type: 'sample.ping', payload: { n: 2 } }],
-      projections: { count: { n: 2 } },
-    },
-  ],
+const sampleEvents = defineEventCatalog('sample', {
+  ping: Schema.Struct({ n: Schema.Finite, note: Schema.optional(Schema.String) }),
 })
+
+const count = defineProjection({
+  name: 'count',
+  initialState: { n: 0 },
+  reduce(state, event) {
+    if (event.type !== 'sample.ping' || !isJsonObject(event.payload)) {
+      return state
+    }
+
+    return isJsonNumber(event.payload.n) ? { n: state.n + event.payload.n } : state
+  },
+})
+
+const last = defineProjection({
+  name: 'last',
+  initialState: { n: 0 } satisfies NoteState,
+  reduce(state: NoteState, event): NoteState {
+    if (event.type !== 'sample.ping' || !isJsonObject(event.payload)) {
+      return state
+    }
+
+    const { n, note } = event.payload
+
+    if (!isJsonNumber(n)) {
+      return state
+    }
+
+    return isJsonString(note) ? { n, note } : { n }
+  },
+})
+
+function sample(examples: readonly ModuleExample[]) {
+  return defineRuntimeModule({
+    namespace: 'sample',
+    protocolVersion: '1.0.0',
+    events: sampleEvents,
+    projections: { count, tally: { ...count, name: 'tallied' }, last },
+    examples,
+  })
+}
+
+function errorsOf(module: AnyRuntimeModule): readonly string[] {
+  return moduleExampleErrors(module, composeModules([module]).catalogs)
+}
+
+const ping = (n: number | string) => ({ type: 'sample.ping', payload: { n } })
 
 describe('moduleExampleErrors', () => {
   test('accepts a trace that folds to the declared projection state', () => {
-    expect(moduleExampleErrors(counted)).toEqual([])
+    expect(
+      errorsOf(
+        sample([{ name: 'ping adds', events: [ping(2)], projections: { count: { n: 2 } } }]),
+      ),
+    ).toEqual([])
   })
 
   test('reports a projection that does not match the trace', () => {
-    const drifted = defineRuntimeModule({
-      ...counted,
-      examples: [
-        {
-          name: 'ping adds',
-          events: [{ type: 'sample.ping', payload: { n: 2 } }],
-          projections: { count: { n: 0 } },
-        },
-      ],
-    })
-
-    expect(moduleExampleErrors(drifted).some((error) => error.includes('projection count'))).toBe(
-      true,
-    )
+    expect(
+      errorsOf(
+        sample([{ name: 'ping adds', events: [ping(2)], projections: { count: { n: 0 } } }]),
+      ),
+    ).toEqual(['example ping adds projection count: expected {"n":0}, got {"n":2}'])
   })
 
   test('reports an event the catalog does not own', () => {
-    const foreign = defineRuntimeModule({
-      ...counted,
-      examples: [
-        {
-          name: 'elsewhere',
-          events: [{ type: 'billing.charged', payload: {} }],
-          projections: { count: { n: 0 } },
-        },
-      ],
-    })
-
-    expect(moduleExampleErrors(foreign)).toEqual([
-      'example elsewhere event billing.charged is outside the module catalogs',
-    ])
+    expect(
+      errorsOf(
+        sample([
+          {
+            name: 'elsewhere',
+            events: [{ type: 'billing.charged', payload: {} }],
+            projections: { count: { n: 0 } },
+          },
+        ]),
+      ),
+    ).toEqual(['example elsewhere event billing.charged is outside the module catalogs'])
   })
 
   test('reports a payload the catalog schema rejects', () => {
-    const invalid = defineRuntimeModule({
-      ...counted,
-      examples: [
-        {
-          name: 'bad ping',
-          events: [{ type: 'sample.ping', payload: { n: 'two' } }],
-          projections: { count: { n: 0 } },
-        },
-      ],
-    })
+    const [error] = errorsOf(
+      sample([{ name: 'bad ping', events: [ping('two')], projections: { count: { n: 0 } } }]),
+    )
 
-    expect(moduleExampleErrors(invalid)[0]).toContain('example bad ping event sample.ping')
+    expect(error).toContain('example bad ping event sample.ping: Invalid payload')
   })
 
-  test('reports an example that names no projection', () => {
-    const bare = defineRuntimeModule({
+  test('reports missing names, duplicates, and empty traces', () => {
+    expect(
+      errorsOf(
+        sample([
+          { name: ' ', events: [ping(1)], projections: { count: { n: 1 } } },
+          { name: 'twice', events: [ping(1)], projections: { count: { n: 1 } } },
+          { name: 'twice', events: [], projections: {} },
+        ]),
+      ),
+    ).toEqual([
+      'module example is missing a name',
+      'duplicate example twice',
+      'example twice has no events',
+      'example twice names no projections',
+    ])
+  })
+
+  test('accepts a catalog entry without a runtime schema', () => {
+    const typed = defineRuntimeModule({
       namespace: 'sample',
       protocolVersion: '1.0.0',
-      events: defineEventCatalog('sample', {
-        ping: payload<{ n: number }>(),
-      }),
-      examples: [
-        {
-          name: 'ping',
-          events: [{ type: 'sample.ping', payload: { n: 1 } }],
-          projections: {},
-        },
-      ],
+      events: defineEventCatalog('sample', { ping: payload<{ n: number }>() }),
+      projections: { count },
+      examples: [{ name: 'ping', events: [ping(1)], projections: { count: { n: 1 } } }],
     })
 
-    expect(moduleExampleErrors(bare)).toEqual(['example ping names no projections'])
+    expect(errorsOf(typed)).toEqual([])
   })
 
   test('looks projections up by member key, not projection name', () => {
-    const aliased = defineRuntimeModule({
-      namespace: 'sample',
-      protocolVersion: '1.0.0',
-      events: defineEventCatalog('sample', {
-        ping: Schema.Struct({ n: Schema.Finite }),
-      }),
-      projections: {
-        tally: defineProjection({
-          name: 'count',
-          initialState: { n: 0 },
-          reduce(state, event) {
-            if (event.type !== 'sample.ping') {
-              return state
-            }
-
-            if (!isJsonObject(event.payload) || !isJsonNumber(event.payload.n)) {
-              return state
-            }
-
-            return { n: state.n + event.payload.n }
-          },
-        }),
-      },
-      examples: [
-        {
-          name: 'ping adds',
-          events: [{ type: 'sample.ping', payload: { n: 2 } }],
-          projections: { tally: { n: 2 } },
-        },
-      ],
-    })
-
-    expect(moduleExampleErrors(aliased)).toEqual([])
+    expect(
+      errorsOf(
+        sample([
+          { name: 'aliased', events: [ping(2)], projections: { tally: { n: 2 } } },
+          { name: 'by name', events: [ping(2)], projections: { tallied: { n: 2 } } },
+        ]),
+      ),
+    ).toEqual(['example by name names unknown projection tallied'])
   })
 
   test('strips undefined fields before comparing projection state', () => {
-    const optional = defineRuntimeModule({
-      namespace: 'sample',
-      protocolVersion: '1.0.0',
-      events: defineEventCatalog('sample', {
-        ping: Schema.Struct({ n: Schema.Finite, note: Schema.optional(Schema.String) }),
-      }),
-      projections: {
-        last: defineProjection({
-          name: 'last',
-          initialState: { n: 0 } satisfies OptionalNoteState,
-          reduce(state: OptionalNoteState, event): OptionalNoteState {
-            if (event.type !== 'sample.ping') {
-              return state
-            }
-
-            if (!isJsonObject(event.payload) || !isJsonNumber(event.payload.n)) {
-              return state
-            }
-
-            const note = event.payload.note
-
-            return isJsonString(note) ? { n: event.payload.n, note } : { n: event.payload.n }
-          },
-        }),
-      },
-      examples: [
-        {
-          name: 'no note',
-          events: [{ type: 'sample.ping', payload: { n: 3 } }],
-          projections: { last: { n: 3 } },
-        },
-      ],
-    })
-
-    expect(moduleExampleErrors(optional)).toEqual([])
+    expect(
+      errorsOf(sample([{ name: 'no note', events: [ping(3)], projections: { last: { n: 3 } } }])),
+    ).toEqual([])
   })
 })

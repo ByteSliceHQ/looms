@@ -4,7 +4,12 @@ import { Effect, Schema } from 'effect'
 
 import { defineEventCatalog, payload } from './catalog'
 import { protocolCatalog } from './protocol'
-import { InvalidEventError, validateEventInput, validateEventsEffect } from './validate-event'
+import {
+  InvalidEventError,
+  validateEventInput,
+  validateEventInputSync,
+  validateEventsEffect,
+} from './validate-event'
 
 describe('validateEventInput', () => {
   const testCatalog = defineEventCatalog('test', {
@@ -120,5 +125,33 @@ describe('validateEventInput', () => {
     const result = await Effect.runPromise(validateEventsEffect(catalogs, batch))
 
     expect(result.length).toBe(2)
+  })
+
+  test('validateEventInputSync matches the effectful validator', () => {
+    expect(
+      validateEventInputSync(catalogs, {
+        type: 'test.schemaBacked',
+        payload: { id: 'abc', count: 1 },
+      }).payload,
+    ).toEqual({ id: 'abc', count: 1 })
+
+    expect(
+      validateEventInputSync(catalogs, {
+        type: 'test.typedOnly',
+        payload: { anything: 'allowed at runtime' },
+      }).payload,
+    ).toEqual({ anything: 'allowed at runtime' })
+
+    expect(
+      validateEventInputSync(catalogs, { type: 'foreign.event', payload: { arbitrary: true } })
+        .payload,
+    ).toEqual({ arbitrary: true })
+
+    expect(() =>
+      validateEventInputSync(catalogs, {
+        type: 'test.schemaBacked',
+        payload: { id: 123, count: 'not-a-number' },
+      }),
+    ).toThrow(InvalidEventError)
   })
 })

@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect'
 
 import type { EffectPlacement, RetryPolicy } from './effects'
 import { JsonValueSchema } from './envelope'
-import type { RegisteredDefinition } from './module'
+import type { AnyRuntimeModule, RegisteredDefinition } from './module'
 import { RunAttributesSchema } from './run-context'
 import { jsonSchemaOfInput, type SchemaInput } from './schema'
 import { RunStateSchema, type RunState } from './state'
@@ -39,34 +39,13 @@ export const DefinitionCatalogSchema = Schema.Struct({
 
 export type DefinitionCatalog = Schema.Schema.Type<typeof DefinitionCatalogSchema>
 
-export function publishModule(module: {
-  readonly namespace: string
-  readonly protocolVersion: string
-  readonly description?: string
-}): PublishedModule {
-  if (!module.description) {
-    return {
-      namespace: module.namespace,
-      protocolVersion: module.protocolVersion,
-    }
-  }
-
-  return {
-    namespace: module.namespace,
-    protocolVersion: module.protocolVersion,
-    description: module.description,
-  }
-}
-
 /** Modules in registration order. */
-export function publishModules(
-  modules: readonly {
-    readonly namespace: string
-    readonly protocolVersion: string
-    readonly description?: string
-  }[],
-): readonly PublishedModule[] {
-  return modules.map(publishModule)
+export function publishModules(modules: readonly AnyRuntimeModule[]): readonly PublishedModule[] {
+  return modules.map(({ namespace, protocolVersion, description }) => ({
+    namespace,
+    protocolVersion,
+    ...(description ? { description } : undefined),
+  }))
 }
 
 export function publishDefinition(definition: RegisteredDefinition): PublishedDefinition {

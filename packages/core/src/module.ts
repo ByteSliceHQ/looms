@@ -163,13 +163,8 @@ export type DefinitionInput<TDef> = TDef extends { readonly input?: infer S }
   : JsonValue
 
 /**
- * A trace `moduleConformance` folds. Events are catalog inputs in log order.
- * `projections` maps a projection name to the state that fold must produce.
- * The host does not read examples.
- */
-/**
- * Stored example trace. Keys are projection member keys from `defineModule`, not projection names.
- * Expected states are JSON after `cleanUndefined`.
+ * A trace `moduleConformance` folds. Events are catalog inputs in log order. `projections` maps a
+ * projection member key to the JSON state the fold must produce. The host does not read examples.
  */
 export interface ModuleExample {
   readonly name: string

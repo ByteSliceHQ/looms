@@ -63,15 +63,17 @@ export interface ModuleExampleOf<U, PR> {
   readonly projections: { readonly [K in keyof PR]?: ProjectionStateOf<PR[K]> }
 }
 
-function storeExamples(examples: readonly ModuleExampleOf<any, any>[]): ModuleExample[] {
-  return examples.map((example) => ({
-    name: example.name,
-    events: example.events.map((event) => ({
-      ...event,
-      payload: cleanUndefined(event.payload),
-    })),
+function storeExamples(
+  examples: readonly ModuleExampleOf<
+    EventEnvelope,
+    { readonly [key: string]: ProjectionDefinition }
+  >[],
+): ModuleExample[] {
+  return examples.map(({ name, events, projections }) => ({
+    name,
+    events,
     projections: Object.fromEntries(
-      Object.entries(example.projections).map(([key, state]) => [key, cleanUndefined(state)]),
+      Object.entries(projections).map(([key, state]) => [key, cleanUndefined(state)]),
     ),
   }))
 }

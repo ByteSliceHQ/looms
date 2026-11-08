@@ -1,124 +1,108 @@
 import { isDeepStrictEqual } from 'node:util'
 
-import { Predicate, Schema } from 'effect'
-
 import {
   cleanUndefined,
   createEvent,
   findCatalogEntry,
-  moduleCatalogs,
   project,
   stringifyJson,
-  validateInputSync,
+  validateEventInputSync,
   type AnyRuntimeModule,
-  type CatalogEntry,
+  type EventCatalog,
   type EventInput,
-  type JsonValue,
-  type SchemaInput,
+  type ModuleExample,
 } from '@looms/core'
 
-function isSchemaInput(entry: CatalogEntry): entry is SchemaInput {
-  return Schema.isSchema(entry) || (Predicate.isReadonlyObject(entry) && '~standard' in entry)
+function nameErrors(examples: readonly ModuleExample[]): string[] {
+  return examples.flatMap(({ name }, index) => {
+    if (name.trim() === '') {
+      return ['module example is missing a name']
+    }
+
+    return examples.findIndex((other) => other.name === name) < index
+      ? [`duplicate example ${name}`]
+      : []
+  })
 }
 
-function payloadError(entry: CatalogEntry, event: EventInput): string | undefined {
-  if (!isSchemaInput(entry)) {
-    return undefined
+function shapeErrors(example: ModuleExample): string[] {
+  return [
+    ...(example.events.length === 0 ? [`example ${example.name} has no events`] : []),
+    ...(Object.keys(example.projections).length === 0
+      ? [`example ${example.name} names no projections`]
+      : []),
+  ]
+}
+
+function eventError(
+  catalogs: readonly EventCatalog[],
+  example: ModuleExample,
+  event: EventInput,
+): string | undefined {
+  if (!findCatalogEntry(catalogs, event.type)) {
+    return `example ${example.name} event ${event.type} is outside the module catalogs`
   }
 
   try {
-    validateInputSync(entry, cleanUndefined(event.payload))
+    validateEventInputSync(catalogs, event)
     return undefined
   } catch (err) {
-    return err instanceof Error ? err.message : String(err)
+    return `example ${example.name} event ${event.type}: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
-function show(value: JsonValue): string {
-  return stringifyJson(value)
+function projectionErrors(module: AnyRuntimeModule, example: ModuleExample): string[] {
+  const envelopes = example.events.map((event, index) =>
+    createEvent(
+      'example',
+      { ...event, id: event.id ?? `example_${index + 1}`, ts: event.ts ?? index + 1 },
+      { seq: index + 1 },
+    ),
+  )
+
+  return Object.entries(example.projections).flatMap(([key, expected]) => {
+    const projection = module.projections?.[key]
+
+    if (!projection) {
+      return [`example ${example.name} names unknown projection ${key}`]
+    }
+
+    const folded = cleanUndefined(project(projection, envelopes))
+
+    return isDeepStrictEqual(folded, expected)
+      ? []
+      : [
+          `example ${example.name} projection ${key}: expected ${stringifyJson(expected)}, got ${stringifyJson(folded)}`,
+        ]
+  })
+}
+
+function exampleErrors(
+  module: AnyRuntimeModule,
+  catalogs: readonly EventCatalog[],
+  example: ModuleExample,
+): string[] {
+  const events = example.events.flatMap((event) => eventError(catalogs, example, event) ?? [])
+
+  return [
+    ...shapeErrors(example),
+    ...events,
+    ...(events.length === 0 ? projectionErrors(module, example) : []),
+  ]
 }
 
 /**
- * Fold each example trace and report events the catalog rejects or projections that do not match.
- * Returns an empty list when every example lands on its declared state.
+ * Fold each example trace with runtime projection semantics. Reports misnamed examples, events
+ * outside `catalogs` or rejected by their schema, and projections that land on a different state.
  */
-export function moduleExampleErrors(module: AnyRuntimeModule): readonly string[] {
-  const errors: string[] = []
-  const seen = new Set<string>()
-  const catalogs = moduleCatalogs(module)
+export function moduleExampleErrors(
+  module: AnyRuntimeModule,
+  catalogs: readonly EventCatalog[],
+): readonly string[] {
+  const examples = module.examples ?? []
 
-  for (const example of module.examples ?? []) {
-    if (example.name.trim() === '') {
-      errors.push('module example is missing a name')
-    } else if (seen.has(example.name)) {
-      errors.push(`duplicate example ${example.name}`)
-    }
-
-    seen.add(example.name)
-
-    if (example.events.length === 0) {
-      errors.push(`example ${example.name} has no events`)
-    }
-
-    const projectionKeys = Object.keys(example.projections)
-
-    if (projectionKeys.length === 0) {
-      errors.push(`example ${example.name} names no projections`)
-    }
-
-    let eventsOk = true
-
-    for (const event of example.events) {
-      const match = findCatalogEntry(catalogs, event.type)
-
-      if (match === undefined) {
-        eventsOk = false
-        errors.push(`example ${example.name} event ${event.type} is outside the module catalogs`)
-        continue
-      }
-
-      const message = payloadError(match.entry, event)
-
-      if (message !== undefined) {
-        eventsOk = false
-        errors.push(`example ${example.name} event ${event.type}: ${message}`)
-      }
-    }
-
-    if (!eventsOk) {
-      continue
-    }
-
-    const envelopes = example.events.map((event: EventInput, index) =>
-      createEvent(
-        'example',
-        {
-          ...event,
-          id: event.id ?? `example_${index + 1}`,
-          ts: event.ts ?? index + 1,
-        },
-        { seq: index + 1 },
-      ),
-    )
-
-    for (const key of projectionKeys) {
-      const projection = module.projections?.[key]
-
-      if (!projection) {
-        errors.push(`example ${example.name} names unknown projection ${key}`)
-        continue
-      }
-
-      const folded = cleanUndefined(project(projection, envelopes))
-      const expected = example.projections[key] ?? null
-
-      if (!isDeepStrictEqual(folded, expected)) {
-        errors.push(
-          `example ${example.name} projection ${key}: expected ${show(expected)}, got ${show(folded)}`,
-        )
-      }
-    }
-  }
-
-  return errors
+  return [
+    ...nameErrors(examples),
+    ...examples.flatMap((example) => exampleErrors(module, catalogs, example)),
+  ]
 }
