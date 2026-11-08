@@ -11,6 +11,7 @@ import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Input } from '../ui/input'
 import { ScrollArea } from '../ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Textarea } from '../ui/textarea'
 import {
   formInput,
@@ -61,7 +62,7 @@ function RunResult({ runId }: { runId: string }) {
   )
 }
 
-function FieldInput({
+export function FieldInput({
   field,
   value,
   onChange,
@@ -87,6 +88,21 @@ function FieldInput({
           onChange={(event) => onChange(event.target.value)}
         />
       )
+    case 'select':
+      return (
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="h-8 w-full font-mono text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(field.options ?? []).map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )
     case 'string':
       return (
         <Input
@@ -103,7 +119,7 @@ function FieldInput({
   }
 }
 
-function InputFields({
+export function InputFields({
   form,
   values,
   onChange,
@@ -130,7 +146,10 @@ function InputFields({
             field.type === 'boolean' ? 'flex items-center gap-2 text-xs' : 'grid gap-1.5 text-xs'
           }
         >
-          <span className="text-foreground font-medium">{field.label}</span>
+          <span className="text-foreground font-medium">
+            {field.label}
+            {field.required ? <span className="text-status-failed"> *</span> : null}
+          </span>
           <FieldInput
             field={field}
             value={values.fields[field.name] ?? ''}

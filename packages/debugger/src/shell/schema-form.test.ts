@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
-import { formFields, formInput, initialValues, inputForm, messageInput } from './schema-form'
+import {
+  formFields,
+  formInput,
+  initialValues,
+  inputForm,
+  messageInput,
+  parseFormInput,
+  valuesToInput,
+} from './schema-form'
 
 describe('formFields', () => {
   test('returns form fields for flat object with scalar properties', () => {
@@ -14,10 +22,59 @@ describe('formFields', () => {
     })
 
     expect(fields).toEqual([
-      { name: 'title', label: 'Task Title', type: 'string', defaultValue: 'Hello' },
-      { name: 'count', label: 'count', type: 'number', defaultValue: '5' },
-      { name: 'active', label: 'active', type: 'boolean', defaultValue: 'true' },
+      {
+        name: 'title',
+        label: 'Task Title',
+        type: 'string',
+        defaultValue: 'Hello',
+        required: false,
+      },
+      { name: 'count', label: 'count', type: 'number', defaultValue: '5', required: false },
+      { name: 'active', label: 'active', type: 'boolean', defaultValue: 'true', required: false },
     ])
+  })
+
+  test('maps enum and const string properties to select fields', () => {
+    expect(
+      formFields({
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['fast', 'slow'], default: 'slow' },
+          fixed: { const: 'only' },
+        },
+      }),
+    ).toEqual([
+      {
+        name: 'mode',
+        label: 'mode',
+        type: 'select',
+        defaultValue: 'slow',
+        required: false,
+        options: ['fast', 'slow'],
+      },
+      {
+        name: 'fixed',
+        label: 'fixed',
+        type: 'select',
+        defaultValue: 'only',
+        required: false,
+        options: ['only'],
+      },
+    ])
+  })
+
+  test('marks properties listed in required', () => {
+    const fields = formFields({
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string' },
+        note: { type: 'string' },
+      },
+    })
+
+    expect(fields?.find((field) => field.name === 'title')?.required).toBe(true)
+    expect(fields?.find((field) => field.name === 'note')?.required).toBe(false)
   })
 
   test('returns undefined when property type is missing or complex', () => {
@@ -33,6 +90,35 @@ describe('inputForm', () => {
     expect(inputForm({ type: 'object', properties: { n: { type: 'number' } } }).kind).toBe('fields')
     expect(inputForm({ type: 'array' })).toEqual({ kind: 'json' })
     expect(inputForm(undefined)).toEqual({ kind: 'json' })
+  })
+})
+
+describe('valuesToInput', () => {
+  test('omits optional empty strings and numbers', () => {
+    const fields = formFields({
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string' },
+        note: { type: 'string' },
+        count: { type: 'number' },
+      },
+    })
+
+    expect(fields).toBeDefined()
+    expect(valuesToInput(fields!, { title: 'Hi', note: '', count: '' })).toEqual({ title: 'Hi' })
+  })
+})
+
+describe('parseFormInput', () => {
+  test('returns parse errors instead of throwing', () => {
+    const result = parseFormInput({ kind: 'json' }, { fields: {}, source: '{' })
+
+    expect(result.ok).toBe(false)
+
+    if (!result.ok) {
+      expect(result.error.length).toBeGreaterThan(0)
+    }
   })
 })
 
