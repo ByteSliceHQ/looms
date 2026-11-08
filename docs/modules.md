@@ -77,91 +77,180 @@ await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])
 ```
 
-Your module can do the same. Return event builders from `defineModule` as `signals`, and callers use `payments.signals.chargeAuthorized` with `signal` or `store.commit`. Effect composers for threads and workflow nodes go on `steps` (for example `approval.steps.gate`). Named exports can re-export the same functions.
+`userMessage` and `decision` are **signals**: event builders for code outside the run. Your module declares its own on `signals`. Code inside a run uses **steps** instead, such as `approval.steps.gate`. Steps return effects, not events. The next section explains the difference.
 
 ## Add your own module
 
-A module declares namespaced events, effects the host should run, and optional projections for the UI. Handlers should be safe to retry — use `ctx.effectId` as an idempotency key.
+A module is one file you can read top to bottom. It holds the facts it records, the work it performs, how outside callers and runs talk to it, and the state it derives. This payments module submits a charge, waits for the provider to confirm it, and keeps a ledger. The handler simulates the provider call; a real one would call the provider with `ctx.effectId` as the idempotency key.
 
 ```ts
-import { defineModule } from '@swirls/looms/core'
 import { z } from 'zod'
+
+import { defineModule, invoke, wait } from '@swirls/looms/core'
 
 const Charge = z.object({
   chargeId: z.string(),
   amount: z.number(),
 })
 
+const Ledger = z.object({
+  charges: z.record(
+    z.string(),
+    z.object({ amount: z.number(), status: z.enum(['requested', 'authorized']) }),
+  ),
+})
+
+type Ledger = z.infer<typeof Ledger>
+
 export const payments = defineModule(
   {
     namespace: 'payments',
     protocolVersion: '1.0.0',
     description: 'Card charges and the ledger folded from them.',
+    // Events: facts in the run log, named in the past tense.
     events: {
       'charge.requested': Charge,
       'charge.authorized': Charge,
     },
   },
-  (m) => ({
-    signals: {
-      chargeAuthorized: (chargeId: string, amount: number) =>
-        m.input('charge.authorized', { chargeId, amount }),
-    },
-    effects: {
-      charge: m.effect({
-        type: 'payments.charge',
-        placement: 'local',
-        input: z.object({ amount: z.number() }),
-        execute: (input, ctx) => [
-          {
-            type: 'payments.charge.requested',
-            payload: { chargeId: ctx.effectId, amount: input.amount },
-          },
-          {
-            type: 'payments.charge.authorized',
-            payload: { chargeId: ctx.effectId, amount: input.amount },
-          },
-        ],
-      }),
-    },
-    projections: {
-      ledger: m.projection({
-        name: 'ledger',
-        shape: z.object({
-          entries: z.array(Charge),
-        }),
-        initialState: { entries: [] },
-        reduce(state, event) {
-          if (event.type !== 'payments.charge.authorized') {
-            return state
-          }
+  (m) => {
+    // Effect: work the host performs. It submits the charge and records that it did.
+    const charge = m.effect({
+      type: 'payments.charge',
+      placement: 'local',
+      input: Charge,
+      execute: (input) => [{ type: 'payments.charge.requested', payload: input }],
+    })
 
-          return { entries: [...state.entries, event.payload] }
-        },
-      }),
-    },
-    examples: [
-      {
-        name: 'an authorized charge lands on the ledger',
-        events: [m.input('charge.authorized', { chargeId: 'ch_1', amount: 40 })],
-        projections: {
-          ledger: { entries: [{ chargeId: 'ch_1', amount: 40 }] },
-        },
+    return {
+      effects: { charge },
+
+      // Signals: events from outside the run. The provider's webhook confirms a charge.
+      signals: {
+        chargeAuthorized: (chargeId: string, amount: number) =>
+          m.input('charge.authorized', { chargeId, amount }),
       },
-    ],
-  }),
+
+      // Steps: effects a thread or workflow node returns. Charge, then park until confirmed.
+      steps: {
+        chargeAndAwait: (chargeId: string, amount: number) => [
+          invoke(charge, { chargeId, amount }),
+          wait({
+            waitId: `charge_${chargeId}`,
+            on: { type: 'payments.charge.authorized', match: { chargeId } },
+          }),
+        ],
+      },
+
+      // Projection: state folded from events, for UIs and queries.
+      projections: {
+        ledger: m.projection({
+          name: 'ledger',
+          shape: Ledger,
+          initialState: { charges: {} },
+          reduce(state, event): Ledger {
+            if (
+              event.type !== 'payments.charge.requested' &&
+              event.type !== 'payments.charge.authorized'
+            ) {
+              return state
+            }
+
+            const { chargeId, amount } = event.payload
+            const status = event.type === 'payments.charge.requested' ? 'requested' : 'authorized'
+
+            return { charges: { ...state.charges, [chargeId]: { amount, status } } }
+          },
+        }),
+      },
+
+      // Examples: traces moduleConformance folds against the projections.
+      examples: [
+        {
+          name: 'a webhook authorizes a requested charge',
+          events: [
+            m.input('charge.requested', { chargeId: 'ch_1', amount: 40 }),
+            m.input('charge.authorized', { chargeId: 'ch_1', amount: 40 }),
+          ],
+          projections: {
+            ledger: { charges: { ch_1: { amount: 40, status: 'authorized' } } },
+          },
+        },
+      ],
+    }
+  },
 )
 
 export const { charge } = payments.effects
-export const { ledger } = payments.projections
 export const { chargeAuthorized } = payments.signals
+export const { chargeAndAwait } = payments.steps
+export const { ledger } = payments.projections
 ```
 
-`description` is published on `GET /definitions`. `signals` are event builders for `looms.signal` or `store.commit`. `steps` are effect composers for threads and workflow nodes. `examples` are short traces keyed by projection member name; `moduleConformance` folds them with the same semantics as the runtime. The host runs neither signals, steps, nor examples.
+`description` is published on `GET /definitions`. The host installs effects, threads, and projections. Signals, steps, and examples are not installed: signals and steps are functions that callers import, and `moduleConformance` checks examples.
+
+### Events, effects, signals, and steps
+
+A run stores only events. Every other member of a module puts events on the log or reads them. When you add a member, first decide whether code inside the run uses it or code outside the run does.
+
+- **Events** are facts, named in the past tense. `charge.requested` means the module asked the provider for a charge. `charge.authorized` means the provider confirmed it. Events are immutable and make up the entire run log.
+- **Effects** are work the host performs for a run. A reducer cannot call Stripe, so it returns `invoke(charge, input)`. The host runs `execute`, retries it under the retry policy, and appends the events the handler returns. A handler records what it did, not what someone else decides later: `charge` appends `charge.requested` and nothing more.
+- **Signals** carry facts that originate outside the run. The provider learns the charge went through, and its webhook calls `looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])`. A signal only builds a typed event: it does no IO, and the runtime never calls it.
+- **Steps** package the module's protocol for code inside a run. `chargeAndAwait` returns an `invoke` followed by a `wait` matched on `chargeId`. A workflow node can charge and park without knowing event names or match keys. Like a reducer, a step only describes effects; the runtime records and runs them after the node returns.
+- **Projections** fold events into state for UIs and queries. `ledger` shows each charge as `requested` or `authorized`.
+
+| Member        | Returns                  | Used by                                       | Through                                  |
+| ------------- | ------------------------ | --------------------------------------------- | ---------------------------------------- |
+| `events`      | Payload schemas          | Every other member                            | `m.input`, reducers, `wait` matchers     |
+| `effects`     | Events, from the handler | The host, when a run asks                     | `invoke(effect, input)`                  |
+| `signals`     | Events                   | Code outside the run: webhooks, UIs, services | `looms.signal`, `store.commit`           |
+| `steps`       | Effects                  | Code inside the run: threads, workflow nodes  | `ctx.effects(...)`, a thread's `effects` |
+| `projections` | State                    | UIs, queries, tests                           | `looms.project`, projectors              |
+
+Events enter a run two ways. Effect handlers append them from inside the run, and signals append them from outside. Steps are how a run asks for work. Signals are how the outside world reports what happened. Because signals return events and steps return effects, `defineModule` rejects a signal that returns an effect and a step that returns an event.
+
+A checkout workflow uses the step, and the provider's webhook uses the signal:
+
+```ts
+import { defineWorkflow } from '@swirls/looms/workflow'
+import { payments } from './modules/payments'
+
+export const checkout = defineWorkflow({
+  name: 'checkout',
+  input: z.object({ orderId: z.string(), amount: z.number() }),
+  nodes: [
+    {
+      id: 'charge',
+      run: (ctx) =>
+        ctx.effects(payments.steps.chargeAndAwait(`ch_${ctx.input.orderId}`, ctx.input.amount)),
+    },
+  ],
+})
+
+// The provider's webhook, after verifying the request:
+await looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])
+```
+
+Here is the run, event by event:
+
+1. The `charge` node returns the step's `invoke` and `wait`.
+2. The host runs `charge`, which appends `payments.charge.requested`. The ledger shows the charge as `requested`.
+3. The run parks on the wait. It holds no process open, so it can wait minutes or days.
+4. The webhook signals `payments.charge.authorized`. Its `chargeId` matches the wait, so the node finishes and the workflow completes. The ledger shows the charge as `authorized`.
+
+Where a new piece belongs:
+
+- Something happened that you need to record, replay, or react to: add an **event**.
+- A run needs IO, such as an API call, an email, or a model call: add an **effect** whose handler returns the events that describe what it did.
+- Code outside the run learns a fact, such as a webhook, a button click, or a reply: add a **signal**, so callers never hand-write the event type or payload.
+- Thread and node authors would otherwise repeat the same `invoke`, `wait`, or `spawn` sequence: add a **step**.
+- A UI or query needs current state: add a **projection**. Do not add an effect that reads it.
+
+`examples` tie it together. Each one is a short event trace and the state each projection should fold to, keyed by projection member key. `moduleConformance` validates the events against the catalog and folds them the way the runtime does, so the example doubles as a test and as documentation. Literal states such as `status: 'authorized'` type-check without `as const`.
 
 Prefer a Zod (or other Standard Schema) object for each event so the payload is validated. When you only need a type, `payload<{ chargeId: string }>()` from `@swirls/looms/core` declares it without a runtime schema — do not write `{} as { chargeId: string }`.
 
-Workflows invoke `payments.charge` and wait on `payments.charge.authorized`. Agents can expose the same charge as a tool.
+Agents can expose the same `charge` effect as a tool.
 
 ## File layout
 
@@ -173,7 +262,8 @@ src/
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # event builders (signals) and effect composers (steps)
+  signals.ts       # signals: event builders for callers outside the run
+  steps.ts         # steps: effect composers for threads and workflow nodes
   scope.ts         # createModuleScope for shared typed builders
   module.ts        # defineModule(options, setup) assembly
   debugger/        # DebuggerPlugin; a separate entry so the host does not import React

@@ -151,6 +151,15 @@ paymentsCatalog.input('charge.authorized', {
     amount: 40,
   }),
 ])`}</CodeBlock>
+      <p>
+        A module wraps these builders in <code>signals</code>, so callers outside a run never
+        hand-write an event. Code inside a run gets <code>steps</code>, which return effects, such
+        as an <code>invoke</code> followed by a <code>wait</code>. See{' '}
+        <Link to="/docs/modules" hash="events-effects-signals-and-steps">
+          events, effects, signals, and steps
+        </Link>{' '}
+        for the full model.
+      </p>
 
       <h2 id="defining-an-effect">
         Defining an effect
