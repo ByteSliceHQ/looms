@@ -192,8 +192,11 @@ import { decision } from '@swirls/looms/approval'
 await looms.signal(runId, [userMessage('Also greet Maya')])
 await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <p>
-        Your module can do the same: export a function that returns an <code>EventInput</code>, and
-        callers use it with <code>signal</code> or <code>store.commit</code>.
+        <code>userMessage</code> and <code>decision</code> are <strong>signals</strong>: event
+        builders for code outside the run. Your module declares its own on <code>signals</code>.
+        Code inside a run uses <strong>steps</strong> instead, such as{' '}
+        <code>approval.steps.gate</code>. Steps return effects, not events. The next section
+        explains the difference.
       </p>
 
       <h2 id="add-your-own-module">
@@ -203,13 +206,203 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         </a>
       </h2>
       <p>
-        A module declares namespaced events, effects the host should run, and optional projections
-        for the UI. Compose them with <code>defineModule</code> so event types, payloads, and
-        effects are inferred and type-checked. This complete module simulates charges without
-        contacting a payment provider. Real handlers should be safe to retry; use{' '}
-        <code>ctx.effectId</code> as an idempotency key.
+        A module is one file you can read top to bottom. It holds the facts it records, the work it
+        performs, how outside callers and runs talk to it, and the state it derives. This payments
+        module submits a charge, waits for the provider to confirm it, and keeps a ledger. The
+        handler simulates the provider call; a real one would call the provider with{' '}
+        <code>ctx.effectId</code> as the idempotency key.
       </p>
       <CodeBlock lang="ts" code={paymentsModule} />
+      <p>
+        <code>description</code> is published on <code>GET /definitions</code>. The host installs
+        effects, threads, and projections. Signals, steps, and examples are not installed: signals
+        and steps are functions that callers import, and <code>moduleConformance</code> checks
+        examples.
+      </p>
+
+      <h3 id="events-effects-signals-and-steps">
+        Events, effects, signals, and steps
+        <a
+          className="heading-anchor"
+          href="#events-effects-signals-and-steps"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h3>
+      <p>
+        A run stores only events. Every other member of a module puts events on the log or reads
+        them. When you add a member, first decide whether code inside the run uses it or code
+        outside the run does.
+      </p>
+      <ul>
+        <li>
+          <strong>Events</strong> are facts, named in the past tense. <code>charge.requested</code>{' '}
+          means the module asked the provider for a charge. <code>charge.authorized</code> means the
+          provider confirmed it. Events are immutable and make up the entire run log.
+        </li>
+        <li>
+          <strong>Effects</strong> are work the host performs for a run. A reducer cannot call
+          Stripe, so it returns <code>invoke(charge, input)</code>. The host runs{' '}
+          <code>execute</code>, retries it under the retry policy, and appends the events the
+          handler returns. A handler records what it did, not what someone else decides later:{' '}
+          <code>charge</code> appends <code>charge.requested</code> and nothing more.
+        </li>
+        <li>
+          <strong>Signals</strong> carry facts that originate outside the run. The provider learns
+          the charge went through, and its webhook calls{' '}
+          <code>looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])</code>. A
+          signal only builds a typed event: it does no IO, and the runtime never calls it.
+        </li>
+        <li>
+          <strong>Steps</strong> package the module&apos;s protocol for code inside a run.{' '}
+          <code>chargeAndAwait</code> returns an <code>invoke</code> followed by a <code>wait</code>{' '}
+          matched on <code>chargeId</code>. A workflow node can charge and park without knowing
+          event names or match keys. Like a reducer, a step only describes effects; the runtime
+          records and runs them after the node returns.
+        </li>
+        <li>
+          <strong>Projections</strong> fold events into state for UIs and queries.{' '}
+          <code>ledger</code> shows each charge as <code>requested</code> or <code>authorized</code>
+          .
+        </li>
+      </ul>
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Returns</th>
+            <th>Used by</th>
+            <th>Through</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>events</code>
+            </td>
+            <td>Payload schemas</td>
+            <td>Every other member</td>
+            <td>
+              <code>m.input</code>, reducers, <code>wait</code> matchers
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>effects</code>
+            </td>
+            <td>Events, from the handler</td>
+            <td>The host, when a run asks</td>
+            <td>
+              <code>invoke(effect, input)</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>signals</code>
+            </td>
+            <td>Events</td>
+            <td>Code outside the run: webhooks, UIs, services</td>
+            <td>
+              <code>looms.signal</code>, <code>store.commit</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>steps</code>
+            </td>
+            <td>Effects</td>
+            <td>Code inside the run: threads, workflow nodes</td>
+            <td>
+              <code>ctx.effects(...)</code>, a thread&apos;s <code>effects</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>projections</code>
+            </td>
+            <td>State</td>
+            <td>UIs, queries, tests</td>
+            <td>
+              <code>looms.project</code>, projectors
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Events enter a run two ways. Effect handlers append them from inside the run, and signals
+        append them from outside. Steps are how a run asks for work. Signals are how the outside
+        world reports what happened. Because signals return events and steps return effects,{' '}
+        <code>defineModule</code> rejects a signal that returns an effect and a step that returns an
+        event.
+      </p>
+      <p>A checkout workflow uses the step, and the provider&apos;s webhook uses the signal:</p>
+      <CodeBlock lang="ts">{`import { defineWorkflow } from '@swirls/looms/workflow'
+import { payments } from './modules/payments'
+
+export const checkout = defineWorkflow({
+  name: 'checkout',
+  input: z.object({ orderId: z.string(), amount: z.number() }),
+  nodes: [
+    {
+      id: 'charge',
+      run: (ctx) =>
+        ctx.effects(payments.steps.chargeAndAwait(\`ch_\${ctx.input.orderId}\`, ctx.input.amount)),
+    },
+  ],
+})
+
+// The provider's webhook, after verifying the request:
+await looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])`}</CodeBlock>
+      <p>Here is the run, event by event:</p>
+      <ol>
+        <li>
+          The <code>charge</code> node returns the step&apos;s <code>invoke</code> and{' '}
+          <code>wait</code>.
+        </li>
+        <li>
+          The host runs <code>charge</code>, which appends <code>payments.charge.requested</code>.
+          The ledger shows the charge as <code>requested</code>.
+        </li>
+        <li>
+          The run parks on the wait. It holds no process open, so it can wait minutes or days.
+        </li>
+        <li>
+          The webhook signals <code>payments.charge.authorized</code>. Its <code>chargeId</code>{' '}
+          matches the wait, so the node finishes and the workflow completes. The ledger shows the
+          charge as <code>authorized</code>.
+        </li>
+      </ol>
+      <p>Where a new piece belongs:</p>
+      <ul>
+        <li>
+          Something happened that you need to record, replay, or react to: add an{' '}
+          <strong>event</strong>.
+        </li>
+        <li>
+          A run needs IO, such as an API call, an email, or a model call: add an{' '}
+          <strong>effect</strong> whose handler returns the events that describe what it did.
+        </li>
+        <li>
+          Code outside the run learns a fact, such as a webhook, a button click, or a reply: add a{' '}
+          <strong>signal</strong>, so callers never hand-write the event type or payload.
+        </li>
+        <li>
+          Thread and node authors would otherwise repeat the same <code>invoke</code>,{' '}
+          <code>wait</code>, or <code>spawn</code> sequence: add a <strong>step</strong>.
+        </li>
+        <li>
+          A UI or query needs current state: add a <strong>projection</strong>. Do not add an effect
+          that reads it.
+        </li>
+      </ul>
+      <p>
+        <code>examples</code> tie it together. Each one is a short event trace and the state each
+        projection should fold to, keyed by projection member key. <code>moduleConformance</code>{' '}
+        validates the events against the catalog and folds them the way the runtime does, so the
+        example doubles as a test and as documentation. Literal states such as{' '}
+        <code>status: &apos;authorized&apos;</code> type-check without <code>as const</code>.
+      </p>
       <h3 id="what-the-scope-gives-you">
         What the scope gives you
         <a
@@ -253,8 +446,7 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <code>@swirls/looms/core</code> declares it without a runtime schema.
       </p>
       <p>
-        Workflows invoke <code>payments.charge</code> and wait on{' '}
-        <code>payments.charge.authorized</code>. Agents can expose the same charge as a tool. See{' '}
+        Agents can expose the same <code>charge</code> effect as a tool. See{' '}
         <Link to="/docs/examples">Examples</Link> for runnable definitions and{' '}
         <Link to="/docs/projectors">Projections</Link> for UI integration.
       </p>
@@ -791,8 +983,10 @@ const billing = defineRuntimeModule({
   threads.ts       # thread kinds (omit if the module has none)
   effects.ts       # host-side effect handlers
   projections.ts   # read models
-  signals.ts       # builders for looms.signal / store.commit
+  signals.ts       # signals: event builders for callers outside the run
+  steps.ts         # steps: effect composers for threads and workflow nodes
   module.ts        # defineModule(options, setup) assembly
+  debugger/        # DebuggerPlugin; a separate entry so the host does not import React
   index.ts         # public re-exports`}</CodeBlock>
       <p>
         Small modules can stay in one callback. For larger modules, export a shared{' '}

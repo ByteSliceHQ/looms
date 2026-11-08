@@ -162,6 +162,16 @@ export type DefinitionInput<TDef> = TDef extends { readonly input?: infer S }
   ? InferDefinedSchema<S>
   : JsonValue
 
+/**
+ * A trace `moduleConformance` folds. Events are catalog inputs in log order. `projections` maps a
+ * projection member key to the JSON state the fold must produce. The host does not read examples.
+ */
+export interface ModuleExample {
+  readonly name: string
+  readonly events: readonly EventInput[]
+  readonly projections: { readonly [memberKey: string]: JsonValue }
+}
+
 export interface RuntimeModule<
   TNamespace extends string = string,
   TEvents extends EventCatalog = EventCatalog,
@@ -175,14 +185,24 @@ export interface RuntimeModule<
     readonly [key: string]: ProjectionDefinition
   },
   TServices = Context.Service.Any,
+  TSignals = {},
+  TSteps = {},
 > {
   readonly namespace: TNamespace
   readonly protocolVersion: string
+  /** Published on `GET /definitions` so a catalog can name the module. */
+  readonly description?: string
   readonly events?: TEvents
   readonly observes?: readonly EventCatalog[]
   readonly threads?: TThreads
   readonly effects?: TEffects
   readonly projections?: TProjections
+  /** Event builders callers pass to `signal` or `commit`. The host does not run them. */
+  readonly signals?: TSignals
+  /** Effect composers for threads and workflow nodes. The host does not run them. */
+  readonly steps?: TSteps
+  /** Sample traces. The host ignores them; conformance folds them. */
+  readonly examples?: readonly ModuleExample[]
   readonly definitions?: readonly DefinitionRef[]
   readonly dependencies?: readonly RuntimeModuleDependency[]
   readonly middleware?: readonly EffectMiddleware[]
@@ -208,9 +228,29 @@ export function defineRuntimeModule<
   TThreads extends { readonly [key: string]: ThreadDefinition },
   TProjections extends { readonly [key: string]: ProjectionDefinition },
   TServices = Context.Service.Any,
+  TSignals = {},
+  TSteps = {},
 >(
-  module: RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices>,
-): RuntimeModule<TNamespace, TEvents, TEffects, TThreads, TProjections, TServices> {
+  module: RuntimeModule<
+    TNamespace,
+    TEvents,
+    TEffects,
+    TThreads,
+    TProjections,
+    TServices,
+    TSignals,
+    TSteps
+  >,
+): RuntimeModule<
+  TNamespace,
+  TEvents,
+  TEffects,
+  TThreads,
+  TProjections,
+  TServices,
+  TSignals,
+  TSteps
+> {
   return module
 }
 

@@ -13,6 +13,7 @@ import {
 } from './evaluator'
 import { evaluations } from './projections'
 import { evaluatorModule } from './scope'
+import { evaluate } from './steps'
 import { evaluatorThread } from './threads'
 import type { EvaluatorAdapter } from './types'
 
@@ -40,6 +41,38 @@ export function evaluator(options: EvaluatorModuleOptions = {}) {
     projections: {
       evaluations,
     },
+    steps: { evaluate },
+    examples: [
+      {
+        name: 'an evaluated answer lands in the list',
+        events: [
+          evaluatorModule.input('evaluated', {
+            evaluationId: 'ev_1',
+            definitionName: 'risk',
+            answers: {
+              ok: { type: 'boolean', value: true, probability: 0.9 },
+            },
+            route: 'approve',
+            reason: 'model',
+          }),
+        ],
+        projections: {
+          evaluations: {
+            items: [
+              {
+                evaluationId: 'ev_1',
+                definitionName: 'risk',
+                answers: {
+                  ok: { type: 'boolean', value: true, probability: 0.9 },
+                },
+                route: 'approve',
+                reason: 'model',
+              },
+            ],
+          },
+        },
+      },
+    ],
     services: () => Layer.merge(evaluatorLayer, EvaluatorDefinitionsLive(definitions)),
     bindHost(host) {
       definitions.useResolver(host.definitionResolver)

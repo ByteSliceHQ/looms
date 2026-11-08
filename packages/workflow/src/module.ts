@@ -23,6 +23,19 @@ export function workflow(options: WorkflowModuleOptions = {}) {
       runNode: runNodeEffect,
     },
     projections: { nodes },
+    examples: [
+      {
+        name: 'a started node is running',
+        events: [workflowModule.input('node.started', { nodeId: 'charge' })],
+        projections: {
+          nodes: {
+            nodes: {
+              charge: { status: 'running', result: null, error: null },
+            },
+          },
+        },
+      },
+    ],
     services: () => WorkflowDefinitionsLive(definitions),
     bindHost(host) {
       definitions.useResolver(host.definitionResolver)

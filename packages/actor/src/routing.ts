@@ -6,6 +6,7 @@ import {
   isJsonObject,
   publishDefinition,
   publishEffects,
+  publishModules,
   stringifyJson,
   type AnyRuntimeModule,
   type JsonValue,
@@ -96,6 +97,7 @@ export function definitionsResponse(
   return Response.json({
     definitions: registry.definitions.map(publishDefinition),
     projections: [...registry.projections.keys()],
+    modules: publishModules(registry.modules),
   })
 }
 

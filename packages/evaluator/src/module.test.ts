@@ -10,7 +10,7 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 import { defineEvaluator } from './definitions'
 import { evaluator } from './module'
 import { evaluations } from './projections'
-import { evaluate } from './signals'
+import { evaluate } from './steps'
 import type { EvaluatorAnswers, EvaluatorRouteDecision } from './types'
 
 const RefundInput = Schema.Struct({

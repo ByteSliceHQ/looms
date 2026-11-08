@@ -3,7 +3,12 @@ import { Data, Effect, Predicate, Schema } from 'effect'
 
 import type { CatalogEntries, CatalogEntry, EventCatalog } from './catalog'
 import type { EventInput } from './envelope'
-import { validateInputEffect } from './schema'
+import {
+  InvalidInputError,
+  validateInputEffect,
+  validateInputSync,
+  type SchemaInput,
+} from './schema'
 import { cleanUndefined } from './types'
 
 export class InvalidEventError extends Data.TaggedError('InvalidEventError')<{
@@ -22,7 +27,8 @@ export class InvalidEventError extends Data.TaggedError('InvalidEventError')<{
   }
 }
 
-function findCatalogAndEntry(
+/** Locate a catalog entry for a fully-qualified event type across the given catalogs. */
+export function findCatalogEntry(
   catalogs: readonly EventCatalog[],
   type: string,
 ): { catalog: EventCatalog; key: string; entry: CatalogEntry } | undefined {
@@ -51,38 +57,64 @@ function isEffectSchema(entry: CatalogEntry): entry is Schema.ConstraintDecoder<
   return Schema.isSchema(entry)
 }
 
+/** The runtime schema behind a catalog entry. `payload<T>()` entries have none. */
+function schemaOf(entry: CatalogEntry): SchemaInput | undefined {
+  return isEffectSchema(entry) || isStandardSchema(entry) ? entry : undefined
+}
+
+function invalidEvent(type: string, err: InvalidInputError): InvalidEventError {
+  return new InvalidEventError(
+    type,
+    `Invalid payload for event "${type}": ${err.message}`,
+    err.issues,
+  )
+}
+
 export function validateEventInput(
   catalogs: readonly EventCatalog[],
   input: EventInput,
 ): Effect.Effect<EventInput, InvalidEventError> {
-  const match = findCatalogAndEntry(catalogs, input.type)
+  const match = findCatalogEntry(catalogs, input.type)
 
   if (!match) {
     return Effect.succeed(input)
   }
 
-  const cleanedPayload = cleanUndefined(input.payload)
-
-  const validated = isEffectSchema(match.entry)
-    ? validateInputEffect(match.entry, cleanedPayload)
-    : isStandardSchema(match.entry)
-      ? validateInputEffect(match.entry, cleanedPayload)
-      : Effect.succeed(cleanedPayload)
-
-  return validated.pipe(
+  return validateInputEffect(schemaOf(match.entry), cleanUndefined(input.payload)).pipe(
     Effect.map((validatedPayload) => ({
       ...input,
       payload: cleanUndefined(validatedPayload),
     })),
-    Effect.mapError(
-      (err) =>
-        new InvalidEventError(
-          input.type,
-          `Invalid payload for event "${input.type}": ${err.message}`,
-          err.issues,
-        ),
-    ),
+    Effect.mapError((err) => invalidEvent(input.type, err)),
   )
+}
+
+/**
+ * Synchronous `validateEventInput`. Throws `InvalidEventError` for a rejected payload, and
+ * throws when a catalog schema validates asynchronously.
+ */
+export function validateEventInputSync(
+  catalogs: readonly EventCatalog[],
+  input: EventInput,
+): EventInput {
+  const match = findCatalogEntry(catalogs, input.type)
+
+  if (!match) {
+    return input
+  }
+
+  const schema = schemaOf(match.entry)
+  const payload = cleanUndefined(input.payload)
+
+  if (!schema) {
+    return { ...input, payload }
+  }
+
+  try {
+    return { ...input, payload: cleanUndefined(validateInputSync(schema, payload)) }
+  } catch (err) {
+    throw err instanceof InvalidInputError ? invalidEvent(input.type, err) : err
+  }
 }
 
 export function validateEventsEffect(

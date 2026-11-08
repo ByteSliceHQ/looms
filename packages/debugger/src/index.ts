@@ -16,6 +16,7 @@ export {
   type OpenRunTarget,
 } from './context'
 export {
+  debuggerConformance,
   projectionFor,
   workspaceFor,
   type DebuggerPlugin,

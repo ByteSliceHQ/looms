@@ -14,7 +14,7 @@ export interface AgentSignalOptions {
  * Build the `agent.message.received` event for a conversational agent.
  * Send it with `looms.signal(runId, [userMessage('Also greet Maya')])`.
  */
-export function userMessage(content: string, options: AgentSignalOptions = {}): EventInput {
+export function userMessage(content: string, options: AgentSignalOptions = {}) {
   return agentModule.input(
     'message.received',
     { message: { role: 'user', content } },
@@ -29,7 +29,7 @@ export function userMessage(content: string, options: AgentSignalOptions = {}): 
 export function steer(
   content: string,
   options: AgentSignalOptions & { readonly interrupt?: boolean } = {},
-): EventInput {
+) {
   return agentModule.input(
     'steered',
     {
@@ -45,7 +45,7 @@ export function steer(
  * Build the `agent.turn.stopped` event. A conversational agent aborts its in-flight turn and
  * waits for the next message; an agent session cancels its active turn and stays open.
  */
-export function stopAgentTurn(options: AgentSignalOptions = {}): EventInput {
+export function stopAgentTurn(options: AgentSignalOptions = {}) {
   return agentModule.input('turn.stopped', {}, { threadId: options.threadId })
 }
 
@@ -59,7 +59,7 @@ export function submitAgentMessage(
   messageId: string,
   text: string,
   options: AgentSessionMessageOptions = {},
-): EventInput {
+) {
   return agentModule.input(
     'session.message.submitted',
     {
@@ -75,14 +75,11 @@ export function submitAgentMessage(
   )
 }
 
-export function cancelAgentTurn(
-  childThreadId: string,
-  options: AgentSignalOptions = {},
-): EventInput[] {
+export function cancelAgentTurn(childThreadId: string, options: AgentSignalOptions = {}) {
   return [
     agentModule.input('session.cancel.requested', {}, { threadId: options.threadId }),
     {
-      type: 'runtime.thread.cancel.requested',
+      type: 'runtime.thread.cancel.requested' as const,
       payload: { threadId: childThreadId },
       threadId: options.threadId,
     },
@@ -121,11 +118,12 @@ export function agentSessionMessageEvents(
   messageId: string,
   text: string,
   options: AgentSessionMessageOptions = {},
-): EventInput[] {
-  const events: EventInput[] = [submitAgentMessage(messageId, text, options)]
+) {
+  const submitted = submitAgentMessage(messageId, text, options)
 
   if (options.delivery === 'steer' && options.activeChildThreadId) {
-    events.push(
+    return [
+      submitted,
       agentModule.input(
         'steered',
         {
@@ -136,10 +134,10 @@ export function agentSessionMessageEvents(
         },
         { threadId: options.activeChildThreadId },
       ),
-    )
+    ]
   }
 
-  return events
+  return [submitted]
 }
 
 export function sendAgentSessionMessage<Result>(

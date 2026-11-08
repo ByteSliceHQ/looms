@@ -140,6 +140,7 @@ describe('createLoomsClient', () => {
     expect(calls).toEqual(['/definitions'])
     expect(catalog.definitions[0]?.name).toBe('checkout')
     expect(catalog.projections).toEqual(['nodes'])
+    expect(catalog.modules).toEqual([])
   })
 
   test('listEffects reads the effects route', async () => {

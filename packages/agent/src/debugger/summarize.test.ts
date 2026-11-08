@@ -1,12 +1,21 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createEvent, type JsonValue } from '@looms/core'
+import { debuggerConformance } from '@looms/debugger'
 
+import { agent } from '../module'
+import { agentDebugger } from './index'
 import { summarizeAgentEvent } from './summarize'
 
 function event(type: string, payload: JsonValue) {
   return createEvent('run_agent', { type, payload, threadId: 'thr_a', id: 'evt_1', ts: 10 })
 }
+
+describe('agent debugger', () => {
+  test('covers the agent module', () => {
+    expect(debuggerConformance(agent(), agentDebugger)).toEqual([])
+  })
+})
 
 describe('summarizeAgentEvent', () => {
   test('summarizes user and agent messages', () => {

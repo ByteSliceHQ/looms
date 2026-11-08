@@ -9,6 +9,9 @@ describe('@looms/approval module', () => {
   test('composes and exposes request handler', () => {
     const registry = composeModules([approval()])
     expect(registry.effects.get('approval.request')).toBeDefined()
+    expect(approval().description).toBe('Human gates that park a run until someone decides.')
+    expect(approval().signals.decision('apr_1', 'approve').type).toBe('approval.decided')
+    expect(approval().steps.gate({ title: 'Review' }).length).toBeGreaterThan(0)
   })
 
   test('the first approval, rejection, or timeout outcome wins', () => {

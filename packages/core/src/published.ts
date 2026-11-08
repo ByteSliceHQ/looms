@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect'
 
 import type { EffectPlacement, RetryPolicy } from './effects'
 import { JsonValueSchema } from './envelope'
-import type { RegisteredDefinition } from './module'
+import type { AnyRuntimeModule, RegisteredDefinition } from './module'
 import { RunAttributesSchema } from './run-context'
 import { jsonSchemaOfInput, type SchemaInput } from './schema'
 import { RunStateSchema, type RunState } from './state'
@@ -20,12 +20,33 @@ export const PublishedDefinitionSchema = Schema.Struct({
 
 export type PublishedDefinition = Schema.Schema.Type<typeof PublishedDefinitionSchema>
 
+/** A module as `GET /definitions` publishes it. */
+export const PublishedModuleSchema = Schema.Struct({
+  namespace: Schema.String,
+  protocolVersion: Schema.String,
+  description: Schema.optional(Schema.String),
+})
+
+export type PublishedModule = Schema.Schema.Type<typeof PublishedModuleSchema>
+
 export const DefinitionCatalogSchema = Schema.Struct({
   definitions: Schema.Array(PublishedDefinitionSchema),
   projections: Schema.Array(Schema.String),
+  modules: Schema.Array(PublishedModuleSchema).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed<readonly PublishedModule[]>([])),
+  ),
 })
 
 export type DefinitionCatalog = Schema.Schema.Type<typeof DefinitionCatalogSchema>
+
+/** Modules in registration order. */
+export function publishModules(modules: readonly AnyRuntimeModule[]): readonly PublishedModule[] {
+  return modules.map(({ namespace, protocolVersion, description }) => ({
+    namespace,
+    protocolVersion,
+    ...(description ? { description } : undefined),
+  }))
+}
 
 export function publishDefinition(definition: RegisteredDefinition): PublishedDefinition {
   return {

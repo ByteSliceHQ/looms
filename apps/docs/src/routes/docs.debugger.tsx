@@ -148,6 +148,12 @@ export const billingDebugger: DebuggerPlugin = {
           <code>projections</code> names a projection and a component. The component receives the
           run ID and reads that projection itself.
         </li>
+        <li>
+          <code>headlessProjections</code> names projections this plugin renders inside a workspace,
+          or leaves as data. <code>debuggerConformance(module, plugin)</code> requires the plugin
+          name to be the module namespace, every catalog event to have a family, and every
+          projection to be a pane or listed here.
+        </li>
       </ul>
       <p>
         A run that another run&apos;s effect started, such as a schedule fire, shows{' '}

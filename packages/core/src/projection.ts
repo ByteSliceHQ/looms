@@ -15,6 +15,8 @@ export interface ProjectionDefinition<S = unknown> {
   reduce(state: S, event: EventEnvelope): S
 }
 
+export type ProjectionStateOf<T> = T extends ProjectionDefinition<infer S> ? S : never
+
 // TEvent is inferred from an annotated reducer and otherwise defaults to the registered union.
 export function defineProjection<
   S = unknown,

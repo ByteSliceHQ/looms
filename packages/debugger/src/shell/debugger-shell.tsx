@@ -25,7 +25,7 @@ export interface DebuggerSelection {
   readonly seq?: number
 }
 
-const emptyCatalog: DefinitionCatalog = { definitions: [], projections: [] }
+const emptyCatalog: DefinitionCatalog = { definitions: [], projections: [], modules: [] }
 
 function useDefinitionCatalog() {
   const { client } = useDebugger()
