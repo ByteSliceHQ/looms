@@ -509,6 +509,11 @@ describe('defineModule scope', () => {
   })
 
   test('keeps description, signals, steps, and examples on the finished module', () => {
+    const createdInput = Schema.Struct({
+      orderId: Schema.String,
+      amount: Schema.Finite,
+    })
+
     const built = defineModule(
       {
         namespace: 'orders',
@@ -518,7 +523,11 @@ describe('defineModule scope', () => {
       },
       (m) => ({
         signals: {
-          created: (orderId: string, amount: number) => m.input('created', { orderId, amount }),
+          created: m.signal({
+            description: 'An order was created outside the run.',
+            input: createdInput,
+            build: (input) => m.input('created', input),
+          }),
         },
         steps: {
           noop: () => [],
@@ -533,9 +542,10 @@ describe('defineModule scope', () => {
       }),
     )
 
-    const created = built.signals.created('ord-1', 5)
+    const created = built.signals.created({ orderId: 'ord-1', amount: 5 })
 
     expect(built.description).toBe('Order ledger')
+    expect(built.signals.created.description).toBe('An order was created outside the run.')
     expect(created.type).toBe('orders.created')
     expect(created.payload.amount).toBe(5)
     expect(built.steps.noop()).toEqual([])
@@ -547,7 +557,7 @@ describe('defineModule scope', () => {
   test('rejects mixed signal and step return types and mistyped examples', () => {
     defineModule(ordersModule, () => ({
       signals: {
-        // @ts-expect-error signals must return events, not effects
+        // @ts-expect-error signals must be SignalDefinitions, not plain effect composers
         bad: (): RuntimeEffect[] => [],
       },
     }))

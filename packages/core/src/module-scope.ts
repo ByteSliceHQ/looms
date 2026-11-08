@@ -38,6 +38,7 @@ import {
 } from './module'
 import { defineProjection, type ProjectionDefinition, type ProjectionStateOf } from './projection'
 import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
+import { defineSignal, type AnySignalDefinition, type SignalDefinition } from './signals'
 import {
   defineThread,
   type StartContext,
@@ -46,9 +47,9 @@ import {
 } from './thread'
 import { asJson, cleanUndefined, type JsonValue } from './types'
 
-/** Event builders returned on `signals`. Each returns one event or a batch for `signal`/`commit`. */
-export type ModuleSignals<U> = {
-  readonly [key: string]: (...args: never[]) => EventInputOf<U> | readonly EventInputOf<U>[]
+/** Schema-backed event builders returned on `signals`. Each is a {@link SignalDefinition}. */
+export type ModuleSignals<_U = EventEnvelope> = {
+  readonly [key: string]: AnySignalDefinition
 }
 
 /** Effect composers returned on `steps`. Each returns effects for threads and workflow nodes. */
@@ -211,6 +212,21 @@ export interface ModuleScope<
     >,
   ): NoInfer<PlacedEffectDefinition<P, TInput, R, EventInputOf<U>>>
 
+  /**
+   * Declare a signal for this module. Callers outside the run invoke it to build typed events.
+   * The host publishes its `input` schema and can run `build` over HTTP for the debugger.
+   */
+  signal<
+    TSchema extends SchemaInput | undefined = undefined,
+    E extends EventInputOf<U> | readonly EventInputOf<U>[] =
+      | EventInputOf<U>
+      | readonly EventInputOf<U>[],
+  >(def: {
+    readonly description?: string
+    readonly input?: TSchema
+    readonly build: (input: InferDefinedSchema<TSchema, undefined>) => E
+  }): SignalDefinition<InferDefinedSchema<TSchema, undefined>, E>
+
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
     payload: InferPayload<(TEvents extends EventCatalog<any, infer E> ? E : never)[K]>,
@@ -272,6 +288,10 @@ export function createModuleScope<
 
     effect(def: any): any {
       return defineEffect(def)
+    },
+
+    signal(def: any): any {
+      return defineSignal(def)
     },
 
     input(key: any, payload: any, meta?: any): any {

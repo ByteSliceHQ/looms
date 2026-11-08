@@ -18,6 +18,7 @@ import {
   type InvalidInputError,
   type SchemaInput,
 } from './schema'
+import type { AnySignalDefinition } from './signals'
 import type { ThreadDefinition } from './thread'
 import type { TraceContext } from './trace'
 import type { JsonValue } from './types'
@@ -259,5 +260,8 @@ export type AnyRuntimeModule = RuntimeModule<
   EventCatalog,
   { readonly [name: string]: EffectDefinition<any, any, any> },
   { readonly [kind: string]: ThreadDefinition },
-  { readonly [name: string]: ProjectionDefinition }
+  { readonly [name: string]: ProjectionDefinition },
+  Context.Service.Any,
+  { readonly [name: string]: AnySignalDefinition },
+  { readonly [name: string]: (...args: never[]) => readonly RuntimeEffect[] }
 >
