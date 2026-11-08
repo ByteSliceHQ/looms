@@ -210,8 +210,8 @@ describe('@looms/agent module', () => {
   test('registers a signal interrupt rule for interrupting steers', () => {
     const [rule] = composeModules([agent()]).interruptRules
 
-    expect(rule?.(steer('stop', { threadId: 'thr_a' }))).toEqual(['thr_a'])
-    expect(rule?.(steer('later', { threadId: 'thr_a', interrupt: false }))).toEqual([])
+    expect(rule?.(steer({ content: 'stop' }, { threadId: 'thr_a' }))).toEqual(['thr_a'])
+    expect(rule?.(steer({ content: 'later', interrupt: false }, { threadId: 'thr_a' }))).toEqual([])
     expect(rule?.(stopAgentTurn({ threadId: 'thr_a' }))).toEqual(['thr_a'])
   })
 })

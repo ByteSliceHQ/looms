@@ -49,12 +49,12 @@ describe('agent-session mailbox', () => {
     const started = await looms.start(session)
 
     await looms.signal(started.runId, [
-      submitAgentMessage('msg-1', 'first', { threadId: started.threadId }),
-      submitAgentMessage('msg-2', 'second', { threadId: started.threadId }),
+      submitAgentMessage({ messageId: 'msg-1', text: 'first' }, { threadId: started.threadId }),
+      submitAgentMessage({ messageId: 'msg-2', text: 'second' }, { threadId: started.threadId }),
     ])
 
     await looms.signal(started.runId, [
-      submitAgentMessage('msg-1', 'duplicate', { threadId: started.threadId }),
+      submitAgentMessage({ messageId: 'msg-1', text: 'duplicate' }, { threadId: started.threadId }),
     ])
 
     expect(calls).toEqual(['first', 'second'])
@@ -208,11 +208,15 @@ describe('agent-session mailbox', () => {
       activeTurn && isJsonString(activeTurn.childThreadId) ? activeTurn.childThreadId : undefined
 
     const lateSteer = looms.signal(started.runId, [
-      submitAgentMessage('msg-2', 'late steer', {
-        delivery: 'steer',
-        threadId: started.threadId,
-        activeChildThreadId,
-      }),
+      submitAgentMessage(
+        {
+          messageId: 'msg-2',
+          text: 'late steer',
+          delivery: 'steer',
+          activeChildThreadId,
+        },
+        { threadId: started.threadId },
+      ),
     ])
 
     await Bun.sleep(10)
@@ -251,7 +255,7 @@ describe('agent-session mailbox', () => {
     await waitFor(() => calls.length === 1)
 
     const queued = looms.signal(started.runId, [
-      submitAgentMessage('msg-2', 'second', { threadId: started.threadId }),
+      submitAgentMessage({ messageId: 'msg-2', text: 'second' }, { threadId: started.threadId }),
     ])
 
     await Bun.sleep(10)
@@ -329,7 +333,10 @@ describe('agent-session mailbox', () => {
     })
 
     await recovered.signal(started.runId, [
-      submitAgentMessage('durable-id', 'duplicate', { threadId: started.threadId }),
+      submitAgentMessage(
+        { messageId: 'durable-id', text: 'duplicate' },
+        { threadId: started.threadId },
+      ),
     ])
 
     expect(calls).toEqual(['once'])

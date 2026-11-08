@@ -108,10 +108,14 @@ describe('swirls-parity agent, schedule, and projector', () => {
 
     for (let offset = 0; offset < turns; offset += batchSize) {
       const batch = Array.from({ length: Math.min(batchSize, turns - offset) }, (_, index) =>
-        submitAgentMessage(`m-${offset + index}`, `turn-${offset + index}`, {
-          delivery: 'followUp',
-          threadId,
-        }),
+        submitAgentMessage(
+          {
+            messageId: `m-${offset + index}`,
+            text: `turn-${offset + index}`,
+            delivery: 'followUp',
+          },
+          { threadId },
+        ),
       )
 
       await looms.signal(runId, batch)
@@ -126,7 +130,10 @@ describe('swirls-parity agent, schedule, and projector', () => {
 
     // Do not await: wake stays busy in the slow runTurn while we steer/stop.
     const slowTurn = looms.signal(runId, [
-      submitAgentMessage('slow-1', 'slow-for-steer', { delivery: 'followUp', threadId }),
+      submitAgentMessage(
+        { messageId: 'slow-1', text: 'slow-for-steer', delivery: 'followUp' },
+        { threadId },
+      ),
     ])
 
     await Bun.sleep(20)

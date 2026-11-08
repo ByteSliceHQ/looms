@@ -44,7 +44,10 @@ describe('refund triage', () => {
 
     expect(approvalId).toBeDefined()
 
-    const next = await looms.signal(runId, [decision(approvalId ?? '', 'reject')])
+    const next = await looms.signal(runId, [
+      decision({ approvalId: approvalId ?? '', choice: 'reject' }),
+    ])
+
     const root = next.threads[next.rootThreadId ?? '']
 
     expect(next.status).toBe('completed')

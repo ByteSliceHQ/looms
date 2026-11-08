@@ -38,6 +38,7 @@ import {
 } from './module'
 import { defineProjection, type ProjectionDefinition, type ProjectionStateOf } from './projection'
 import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
+import { defineSignal, type AnySignalDefinition, type SignalDefinition } from './signals'
 import {
   defineThread,
   type StartContext,
@@ -46,9 +47,24 @@ import {
 } from './thread'
 import { asJson, cleanUndefined, type JsonValue } from './types'
 
-/** Event builders returned on `signals`. Each returns one event or a batch for `signal`/`commit`. */
-export type ModuleSignals<U> = {
-  readonly [key: string]: (...args: never[]) => EventInputOf<U> | readonly EventInputOf<U>[]
+/** Schema-backed event builders returned on `signals`. Each is a {@link SignalDefinition}. */
+export type ModuleSignals = {
+  readonly [key: string]: AnySignalDefinition
+}
+
+type SignalBuiltOf<T> = T extends (...args: never[]) => infer R ? R : never
+
+type SignalEventOf<T> =
+  SignalBuiltOf<T> extends readonly (infer E)[] ? E : SignalBuiltOf<T> extends infer E ? E : never
+
+/**
+ * Marks each signal whose built events fall outside the module's catalogs, such as one built with
+ * another module's scope or the unscoped `defineSignal`.
+ */
+export type ForeignSignalsCheck<SG, TAllowed> = {
+  readonly [
+    K in keyof SG as [SignalEventOf<SG[K]>] extends [TAllowed] ? never : K
+  ]: 'Signal events are outside this module catalog; build it with this module scope'
 }
 
 /** Effect composers returned on `steps`. Each returns effects for threads and workflow nodes. */
@@ -211,6 +227,21 @@ export interface ModuleScope<
     >,
   ): NoInfer<PlacedEffectDefinition<P, TInput, R, EventInputOf<U>>>
 
+  /**
+   * Declare a signal for this module. Callers outside the run invoke it to build typed events.
+   * The host publishes its `input` schema and can run `build` over HTTP for the debugger.
+   */
+  signal<
+    TSchema extends SchemaInput | undefined = undefined,
+    E extends EventInputOf<U> | readonly EventInputOf<U>[] =
+      | EventInputOf<U>
+      | readonly EventInputOf<U>[],
+  >(def: {
+    readonly description?: string
+    readonly input?: TSchema
+    readonly build: (input: InferDefinedSchema<TSchema, undefined>) => E
+  }): SignalDefinition<InferDefinedSchema<TSchema, undefined>, E>
+
   input<K extends keyof (TEvents extends EventCatalog<any, infer E> ? E : never) & string>(
     key: K,
     payload: InferPayload<(TEvents extends EventCatalog<any, infer E> ? E : never)[K]>,
@@ -274,6 +305,10 @@ export function createModuleScope<
       return defineEffect(def)
     },
 
+    signal(def: any): any {
+      return defineSignal(def)
+    },
+
     input(key: any, payload: any, meta?: any): any {
       return buildScopeInput(namespace, key, payload, meta)
     },
@@ -313,7 +348,7 @@ export function defineModule<
   FX extends { readonly [key: string]: EffectDefinition<any, any, any> } = {},
   TH extends { readonly [key: string]: ThreadDefinition } = {},
   PR extends { readonly [key: string]: ProjectionDefinition } = {},
-  SG extends ModuleSignals<ScopeUniverse<ModuleCatalog<N, E>, O>> = {},
+  SG extends ModuleSignals = {},
   ST extends ModuleSteps = {},
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- const keeps literal example states (status: 'pending') from widening before PR is inferred
   const EX extends readonly ModuleExampleOf<ScopeUniverse<ModuleCatalog<N, E>, O>, PR>[] = [],
@@ -324,7 +359,8 @@ export function defineModule<
       ForeignEffectsCheck<FX, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly threads?: TH
     readonly projections?: PR
-    readonly signals?: SG
+    readonly signals?: SG &
+      ForeignSignalsCheck<SG, EventInputOf<ScopeUniverse<ModuleCatalog<N, E>, O>>>
     readonly steps?: ST
     readonly examples?: EX
     readonly definitions?: readonly DefinitionRef[]

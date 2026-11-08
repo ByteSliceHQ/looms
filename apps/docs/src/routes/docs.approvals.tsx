@@ -50,7 +50,7 @@ if (!approved.safeParse(ctx.results.review).success) {
 const reviews = await looms.project(runId, pendingApprovals)
 const pending = reviews.items.find((review) => review.status === 'pending')
 if (!pending) throw new Error('No pending approval')
-await looms.signal(runId, [decision(pending.approvalId, 'reject')], {
+await looms.signal(runId, [decision({ approvalId: pending.approvalId, choice: 'reject' })], {
   idempotencyKey: 'decision-request-from-your-application',
 })`}</CodeBlock>
       <p>

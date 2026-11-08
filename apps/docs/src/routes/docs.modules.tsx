@@ -189,8 +189,8 @@ await looms.start(checkout, { amount: 150, currency: 'USD' })`}</CodeBlock>
       <CodeBlock lang="ts">{`import { userMessage } from '@swirls/looms/agent'
 import { decision } from '@swirls/looms/approval'
 
-await looms.signal(runId, [userMessage('Also greet Maya')])
-await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
+await looms.signal(runId, [userMessage({ content: 'Also greet Maya' })])
+await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])`}</CodeBlock>
       <p>
         <code>userMessage</code> and <code>decision</code> are <strong>signals</strong>: event
         builders for code outside the run. Your module declares its own on <code>signals</code>.
@@ -215,9 +215,10 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
       <CodeBlock lang="ts" code={paymentsModule} />
       <p>
         <code>description</code> is published on <code>GET /definitions</code>. The host installs
-        effects, threads, and projections. Signals, steps, and examples are not installed: signals
-        and steps are functions that callers import, and <code>moduleConformance</code> checks
-        examples.
+        effects, threads, and projections. Steps and examples are not installed: steps are functions
+        callers import, and <code>moduleConformance</code> checks examples. Signals stay importable
+        builders, and the host also publishes them on <code>GET /definitions/signals</code> so the
+        debugger can preview and send by name.
       </p>
 
       <h3 id="events-effects-signals-and-steps">
@@ -251,8 +252,12 @@ await looms.signal(runId, [decision(approvalId, 'approve')])`}</CodeBlock>
         <li>
           <strong>Signals</strong> carry facts that originate outside the run. The provider learns
           the charge went through, and its webhook calls{' '}
-          <code>looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])</code>. A
-          signal only builds a typed event: it does no IO, and the runtime never calls it.
+          <code>
+            looms.signal(runId, [payments.signals.chargeAuthorized({'{ chargeId, amount }'})])
+          </code>
+          . A signal only builds typed events: it does no IO. Callers usually import and invoke it
+          themselves; the host also publishes its input schema and can run <code>build</code> for
+          debugger preview and named send.
         </li>
         <li>
           <strong>Steps</strong> package the module&apos;s protocol for code inside a run.{' '}
@@ -353,7 +358,7 @@ export const checkout = defineWorkflow({
 })
 
 // The provider's webhook, after verifying the request:
-await looms.signal(runId, [payments.signals.chargeAuthorized(chargeId, amount)])`}</CodeBlock>
+await looms.signal(runId, [payments.signals.chargeAuthorized({ chargeId, amount })])`}</CodeBlock>
       <p>Here is the run, event by event:</p>
       <ol>
         <li>

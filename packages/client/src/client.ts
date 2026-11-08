@@ -5,11 +5,14 @@ import {
   DefinitionCatalogSchema,
   EffectCatalogSchema,
   EventEnvelopeSchema,
+  EventTypeCatalogSchema,
+  JsonValueSchema,
   readSubscriptionData,
   ReplayStepSchema,
   RunStateSchema,
   RunSummariesSchema,
   SecretContextSchema,
+  SignalCatalogSchema,
   stringifyJson,
   traceHeaders,
   type DefinitionInput,
@@ -129,6 +132,17 @@ const ProjectionResultSchema = Schema.Struct({
   runId: Schema.String,
   name: Schema.String,
   value: Schema.Unknown,
+})
+
+const PreviewEventSchema = Schema.Struct({
+  type: Schema.String,
+  payload: JsonValueSchema,
+  threadId: Schema.optional(Schema.NullOr(Schema.String)),
+  idempotencyKey: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+const PreviewEventsResultSchema = Schema.Struct({
+  events: Schema.Array(PreviewEventSchema),
 })
 
 export interface LoomsClientOptions {
@@ -403,6 +417,17 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
         method: 'POST',
         body: stringifyJson({ events }),
       }),
+    sendSignal: (
+      runId: string,
+      namespace: string,
+      name: string,
+      body: { input?: JsonValue; threadId?: string; idempotencyKey?: string } = {},
+    ) =>
+      request(
+        `/runs/${encodeURIComponent(runId)}/signals/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
+        RunResultSchema,
+        { method: 'POST', body: stringifyJson(body) },
+      ),
     wake: (runId: string) =>
       request(`/runs/${encodeURIComponent(runId)}/wake`, WakeResultSchema, { method: 'POST' }),
     /** Cancel a thread and its descendants; omit `threadId` to cancel the whole run. */
@@ -422,6 +447,23 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     listRunSummaries: () => request('/runs/summaries', RunSummariesSchema),
     listDefinitions: () => request('/definitions', DefinitionCatalogSchema),
     listEffects: () => request('/definitions/effects', EffectCatalogSchema),
+    listSignals: () => request('/definitions/signals', SignalCatalogSchema),
+    listEvents: () => request('/definitions/events', EventTypeCatalogSchema),
+    previewSignal: (
+      namespace: string,
+      name: string,
+      body: { input?: JsonValue; threadId?: string } = {},
+    ) =>
+      request(
+        `/definitions/signals/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/preview`,
+        PreviewEventsResultSchema,
+        { method: 'POST', body: stringifyJson(body) },
+      ),
+    previewEvents: (events: ReadonlyArray<EventInput>) =>
+      request('/definitions/events/preview', PreviewEventsResultSchema, {
+        method: 'POST',
+        body: stringifyJson({ events }),
+      }),
     replayTo: (runId: string, seq: number) =>
       request(`/runs/${encodeURIComponent(runId)}/replay?seq=${seq}`, ReplayResultSchema),
     project: (runId: string, name: string) =>

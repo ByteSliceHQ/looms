@@ -228,7 +228,7 @@ describe('createLooms runtime', () => {
     const payload = firstReq && Predicate.isObject(firstReq.payload) ? firstReq.payload : {}
     const approvalId = Predicate.isString(payload.approvalId) ? payload.approvalId : ''
     expect(approvalId).not.toBe('')
-    const afterDecision = await looms.signal(runId, [decision(approvalId, 'approve')])
+    const afterDecision = await looms.signal(runId, [decision({ approvalId, choice: 'approve' })])
     expect(afterDecision.status).toBe('completed')
 
     const eventsAfterDone = await looms.getEvents(runId)
@@ -266,7 +266,7 @@ describe('createLooms runtime', () => {
 
     const [, signalled] = await Promise.allSettled([
       looms.wake(started.runId),
-      looms.signal(started.runId, [decision(approvalId, 'approve')]),
+      looms.signal(started.runId, [decision({ approvalId, choice: 'approve' })]),
     ])
 
     // When the timeout wins, the run has already failed and rejects the late decision.

@@ -35,7 +35,7 @@ test('a checkout parks on its charge until the provider webhook signals', async 
       charges: { ch_ord_1: { amount: 40, status: 'requested' } },
     })
 
-    await looms.signal(runId, [chargeAuthorized('ch_ord_1', 40)])
+    await looms.signal(runId, [chargeAuthorized({ chargeId: 'ch_ord_1', amount: 40 })])
 
     expect((await looms.getRun(runId)).status).toBe('completed')
 

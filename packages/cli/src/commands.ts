@@ -171,7 +171,7 @@ const approve = Command.make(
     const { url } = yield* loomsBase
 
     const result = yield* tryClient(() =>
-      clientFor(url).signal(runId, [decision(approvalId, outcome)]),
+      clientFor(url).signal(runId, [decision({ approvalId, choice: outcome })]),
     )
 
     yield* Console.log(stringifyJsonPretty(result))
@@ -239,7 +239,7 @@ const steer = Command.make(
     const { url } = yield* loomsBase
 
     const result = yield* tryClient(() =>
-      clientFor(url).signal(runId, [steerEvent(message.join(' '), { interrupt })]),
+      clientFor(url).signal(runId, [steerEvent({ content: message.join(' '), interrupt })]),
     )
 
     yield* Console.log(stringifyJsonPretty(result))

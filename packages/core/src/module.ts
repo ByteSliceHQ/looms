@@ -18,6 +18,7 @@ import {
   type InvalidInputError,
   type SchemaInput,
 } from './schema'
+import type { AnySignalDefinition } from './signals'
 import type { ThreadDefinition } from './thread'
 import type { TraceContext } from './trace'
 import type { JsonValue } from './types'
@@ -197,7 +198,10 @@ export interface RuntimeModule<
   readonly threads?: TThreads
   readonly effects?: TEffects
   readonly projections?: TProjections
-  /** Event builders callers pass to `signal` or `commit`. The host does not run them. */
+  /**
+   * Schema-backed event builders for callers outside a run. Callers import them, and the host
+   * publishes their input schemas and can run `build` for preview / named send over HTTP.
+   */
   readonly signals?: TSignals
   /** Effect composers for threads and workflow nodes. The host does not run them. */
   readonly steps?: TSteps
@@ -259,5 +263,8 @@ export type AnyRuntimeModule = RuntimeModule<
   EventCatalog,
   { readonly [name: string]: EffectDefinition<any, any, any> },
   { readonly [kind: string]: ThreadDefinition },
-  { readonly [name: string]: ProjectionDefinition }
+  { readonly [name: string]: ProjectionDefinition },
+  Context.Service.Any,
+  { readonly [name: string]: AnySignalDefinition },
+  { readonly [name: string]: (...args: never[]) => readonly RuntimeEffect[] }
 >

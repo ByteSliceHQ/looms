@@ -15,7 +15,7 @@ export function ApprovalsView({ runId }: { runId: string }) {
   }
 
   function decide(approvalId: string, outcome: 'approve' | 'reject') {
-    void client.signal(runId, [decision(approvalId, outcome)])
+    void client.signal(runId, [decision({ approvalId, choice: outcome })])
   }
 
   return (

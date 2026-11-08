@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { Schema } from 'effect'
 
+import { defineEventCatalog } from './catalog'
 import { defineEffect } from './effects'
 import { defineRuntimeModule } from './module'
-import { publishEffects, publishModules } from './published'
+import { defineModule } from './module-scope'
+import { publishEffects, publishEvents, publishModules, publishSignals } from './published'
 
 describe('publishEffects', () => {
   test('publishes placement with the rest of each declared effect', () => {
@@ -70,6 +72,63 @@ describe('publishModules', () => {
     expect(publishModules([billing, notes])).toEqual([
       { namespace: 'billing', protocolVersion: '1.0.0', description: 'Card charges' },
       { namespace: 'notes', protocolVersion: '2.0.0' },
+    ])
+  })
+})
+
+describe('publishSignals and publishEvents', () => {
+  const Charge = Schema.Struct({
+    chargeId: Schema.String,
+    amount: Schema.Finite,
+  })
+
+  const payments = defineModule(
+    {
+      namespace: 'payments',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('payments', {
+        'charge.authorized': Charge,
+      }),
+    },
+    (m) => ({
+      signals: {
+        chargeAuthorized: m.signal({
+          description: 'The provider confirmed a charge.',
+          input: Charge,
+          build: (input) => m.input('charge.authorized', input),
+        }),
+        ping: m.signal({
+          description: 'No input.',
+          build: () => m.input('charge.authorized', { chargeId: 'ch_0', amount: 0 }),
+        }),
+      },
+    }),
+  )
+
+  test('publishes signals sorted by namespace and name', () => {
+    const signals = publishSignals([payments])
+
+    expect(signals.map((signal) => signal.name)).toEqual(['chargeAuthorized', 'ping'])
+
+    expect(signals[0]).toMatchObject({
+      namespace: 'payments',
+      name: 'chargeAuthorized',
+      description: 'The provider confirmed a charge.',
+    })
+
+    expect(signals[0]?.inputSchema).toMatchObject({ type: 'object' })
+    expect(signals[1]).not.toHaveProperty('inputSchema')
+  })
+
+  test('publishes catalog events with payload schemas', () => {
+    const events = publishEvents([payments])
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'payments.charge.authorized',
+        namespace: 'payments',
+        payloadSchema: expect.objectContaining({ type: 'object' }),
+      }),
     ])
   })
 })

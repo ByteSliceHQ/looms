@@ -83,7 +83,7 @@ export function GuidedRun() {
           lang="ts"
           code={
             complete
-              ? `await looms.signal(runId, [decision(approvalId, '${outcome}')])`
+              ? `await looms.signal(runId, [decision({ approvalId, choice: '${outcome}' })])`
               : stage.code
           }
         />

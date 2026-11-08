@@ -155,7 +155,9 @@ describe('forking a run', () => {
     expect(forkTypes).not.toContain('runtime.thread.cancelled')
     expect(forkTypes).toContain('runtime.run.forked')
 
-    await looms.signal(forked.runId, [userMessage('more', { threadId: forked.threadId })])
+    await looms.signal(forked.runId, [
+      userMessage({ content: 'more' }, { threadId: forked.threadId }),
+    ])
 
     expect(
       (await looms.project(forked.runId, conversation)).lines.map((line) => line.content),

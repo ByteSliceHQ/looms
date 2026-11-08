@@ -29,7 +29,7 @@ console.log('status:', state.status)
 console.log('ledger:', (await looms.project(runId, ledger)).charges)
 
 // The provider's webhook would send this.
-await looms.signal(runId, [chargeAuthorized('ch_ord_1', 40)])
+await looms.signal(runId, [chargeAuthorized({ chargeId: 'ch_ord_1', amount: 40 })])
 
 console.log('status:', (await looms.getRun(runId)).status)
 console.log('ledger:', (await looms.project(runId, ledger)).charges)
