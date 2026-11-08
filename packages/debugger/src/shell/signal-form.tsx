@@ -86,11 +86,7 @@ function PreviewPanel({
   error: string | null
   events: PreviewEvents | null
 }) {
-  if (pending) {
-    return <p className="text-muted-foreground text-[11px]">Previewing…</p>
-  }
-
-  if (error) {
+  if (error && !events) {
     return (
       <p className="text-status-failed text-[11px]" title={error}>
         {error}
@@ -99,7 +95,11 @@ function PreviewPanel({
   }
 
   if (!events) {
-    return <p className="text-muted-foreground text-[11px]">Preview will appear here.</p>
+    return (
+      <p className="text-muted-foreground text-[11px]">
+        {pending ? 'Previewing…' : 'Preview will appear here.'}
+      </p>
+    )
   }
 
   if (events.length === 0) {
@@ -107,8 +107,22 @@ function PreviewPanel({
   }
 
   return (
-    <div className="border-border bg-card max-h-48 overflow-auto rounded-md border p-2">
-      <JsonTree value={events} defaultExpandDepth={2} />
+    <div className="grid gap-1">
+      {pending ? <p className="text-muted-foreground text-[11px]">Updating…</p> : null}
+      {error ? (
+        <p className="text-status-failed text-[11px]" title={error}>
+          {error}
+        </p>
+      ) : null}
+      <div
+        className={
+          pending
+            ? 'border-border bg-card max-h-48 overflow-auto rounded-md border p-2 opacity-60'
+            : 'border-border bg-card max-h-48 overflow-auto rounded-md border p-2'
+        }
+      >
+        <JsonTree value={events} defaultExpandDepth={2} />
+      </div>
     </div>
   )
 }
@@ -228,6 +242,7 @@ function SignalExecutor({
   const previewRun = useDebouncedPreview({
     enabled: selectionKey.length > 0 && parsed.ok,
     key: `${inputKey}:${resolvedThreadId ?? ''}`,
+    resetKey: selectionKey,
     run: () => {
       if (!parsed.ok) {
         return Promise.reject(new Error(parsed.error))

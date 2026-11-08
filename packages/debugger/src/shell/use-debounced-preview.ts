@@ -4,7 +4,8 @@ import type { JsonValue } from '@looms/core'
 
 import { errorMessage } from '../lib/cn'
 
-const PREVIEW_MS = 250
+/** Short trailing debounce so typing stays smooth without feeling laggy. */
+const PREVIEW_MS = 100
 
 export type PreviewEvents = readonly { readonly type: string; readonly payload: JsonValue }[]
 
@@ -12,16 +13,18 @@ export type PreviewEvents = readonly { readonly type: string; readonly payload: 
  * Debounced preview with a generation token so a slow stale response cannot overwrite a newer
  * one or clear pending while a later request is still in flight.
  *
- * `key` must change whenever `run`'s closed-over inputs change. `run` itself is read from a ref
- * so the effect does not reschedule on every render.
+ * Input changes (`key`) keep the last successful preview visible until the next result arrives.
+ * Selection changes (`resetKey`) clear immediately so a previous signal/event never flashes.
  */
 export function useDebouncedPreview({
   enabled,
   key,
+  resetKey,
   run,
 }: {
   enabled: boolean
   key: string
+  resetKey: string
   run: () => Promise<PreviewEvents>
 }) {
   const [events, setEvents] = useState<PreviewEvents | null>(null)
@@ -32,14 +35,22 @@ export function useDebouncedPreview({
   runRef.current = run
 
   useEffect(() => {
-    const current = ++generation.current
+    generation.current += 1
     setEvents(null)
     setError(null)
     setPending(false)
+  }, [resetKey])
 
+  useEffect(() => {
     if (!enabled) {
+      generation.current += 1
+      setEvents(null)
+      setError(null)
+      setPending(false)
       return undefined
     }
+
+    const current = ++generation.current
 
     // oxlint-disable-next-line effecttsgo/global-timers -- React preview debounce uses DOM timers.
     const timer = setTimeout(() => {

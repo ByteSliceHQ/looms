@@ -77,6 +77,37 @@ describe('formFields', () => {
     expect(fields?.find((field) => field.name === 'note')?.required).toBe(false)
   })
 
+  test('treats Effect optional scalars (anyOf with null) as normal fields', () => {
+    expect(
+      formFields({
+        type: 'object',
+        required: ['content'],
+        properties: {
+          content: { type: 'string' },
+          interrupt: {
+            anyOf: [{ type: 'boolean' }, { type: 'null' }],
+          },
+        },
+        additionalProperties: false,
+      }),
+    ).toEqual([
+      {
+        name: 'content',
+        label: 'content',
+        type: 'string',
+        defaultValue: '',
+        required: true,
+      },
+      {
+        name: 'interrupt',
+        label: 'interrupt',
+        type: 'boolean',
+        defaultValue: 'false',
+        required: false,
+      },
+    ])
+  })
+
   test('returns undefined when property type is missing or complex', () => {
     expect(formFields({ type: 'object', properties: { items: { type: 'array' } } })).toBeUndefined()
     expect(formFields({ type: 'object', properties: { untyped: {} } })).toBeUndefined()
@@ -94,7 +125,7 @@ describe('inputForm', () => {
 })
 
 describe('valuesToInput', () => {
-  test('omits optional empty strings and numbers', () => {
+  test('always emits booleans from checkboxes and omits other empty optionals', () => {
     const fields = formFields({
       type: 'object',
       required: ['title'],
@@ -102,11 +133,46 @@ describe('valuesToInput', () => {
         title: { type: 'string' },
         note: { type: 'string' },
         count: { type: 'number' },
+        interrupt: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
       },
     })
 
     expect(fields).toBeDefined()
-    expect(valuesToInput(fields!, { title: 'Hi', note: '', count: '' })).toEqual({ title: 'Hi' })
+
+    expect(
+      valuesToInput(fields!, { title: 'Hi', note: '', count: '', interrupt: 'false' }),
+    ).toEqual({
+      title: 'Hi',
+      interrupt: false,
+    })
+
+    expect(valuesToInput(fields!, { title: 'Hi', note: '', count: '', interrupt: 'true' })).toEqual(
+      {
+        title: 'Hi',
+        interrupt: true,
+      },
+    )
+  })
+
+  test('rejects empty required strings and invalid numbers', () => {
+    const fields = formFields({
+      type: 'object',
+      required: ['title', 'count'],
+      properties: {
+        title: { type: 'string' },
+        count: { type: 'number' },
+      },
+    })
+
+    expect(fields).toBeDefined()
+
+    expect(() => valuesToInput(fields!, { title: '', count: '1' })).toThrow('title is required')
+
+    expect(() => valuesToInput(fields!, { title: 'Hi', count: '' })).toThrow('count is required')
+
+    expect(() => valuesToInput(fields!, { title: 'Hi', count: 'nope' })).toThrow(
+      'count must be a number',
+    )
   })
 })
 
@@ -119,6 +185,26 @@ describe('parseFormInput', () => {
     if (!result.ok) {
       expect(result.error.length).toBeGreaterThan(0)
     }
+  })
+
+  test('surfaces required field errors for the steer-shaped schema', () => {
+    const form = inputForm({
+      type: 'object',
+      required: ['content'],
+      properties: {
+        content: { type: 'string' },
+        interrupt: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+      },
+    })
+
+    expect(parseFormInput(form, initialValues(form)).ok).toBe(false)
+
+    const filled = parseFormInput(form, {
+      fields: { content: 'hello', interrupt: 'false' },
+      source: '',
+    })
+
+    expect(filled).toEqual({ ok: true, value: { content: 'hello', interrupt: false } })
   })
 })
 

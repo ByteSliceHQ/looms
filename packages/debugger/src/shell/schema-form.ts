@@ -46,6 +46,43 @@ function fieldType(value: JsonValue): FormField['type'] | undefined {
   return undefined
 }
 
+/** Effect `Schema.optional` often publishes `anyOf: [{ type: T }, { type: "null" }]`. */
+function scalarTypeOfProperty(property: {
+  readonly [key: string]: JsonValue
+}): FormField['type'] | undefined {
+  if (isJsonString(property.type)) {
+    return fieldType(property.type)
+  }
+
+  if (Array.isArray(property.type)) {
+    const scalars = property.type.filter((entry) => entry !== 'null')
+
+    if (scalars.length === 1) {
+      return fieldType(scalars[0]!)
+    }
+
+    return undefined
+  }
+
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    const variants = property[key]
+
+    if (!Array.isArray(variants)) {
+      continue
+    }
+
+    const nonNull = variants.filter((variant) => isJsonObject(variant) && variant.type !== 'null')
+
+    if (nonNull.length !== 1 || !isJsonObject(nonNull[0])) {
+      return undefined
+    }
+
+    return scalarTypeOfProperty(nonNull[0])
+  }
+
+  return undefined
+}
+
 function stringEnumOptions(property: {
   readonly [key: string]: JsonValue
 }): readonly string[] | undefined {
@@ -123,11 +160,7 @@ export function formFields(schema: JsonValue | undefined): readonly FormField[] 
       continue
     }
 
-    if (!isJsonString(property.type)) {
-      return undefined
-    }
-
-    const type = fieldType(property.type)
+    const type = scalarTypeOfProperty(property)
 
     if (!type) {
       return undefined
@@ -135,10 +168,14 @@ export function formFields(schema: JsonValue | undefined): readonly FormField[] 
 
     const fallback = property.default
 
-    const defaultValue =
-      isJsonString(fallback) || isJsonNumber(fallback) || Predicate.isBoolean(fallback)
-        ? String(fallback)
-        : ''
+    let defaultValue = ''
+
+    if (isJsonString(fallback) || isJsonNumber(fallback) || Predicate.isBoolean(fallback)) {
+      defaultValue = String(fallback)
+    } else if (type === 'boolean') {
+      // Checkboxes are two-state; start unchecked so the control matches emitted `false`.
+      defaultValue = 'false'
+    }
 
     fields.push({
       name,
@@ -189,20 +226,29 @@ export function valuesToInput(
   for (const field of fields) {
     const raw = values[field.name] ?? field.defaultValue
 
+    // Checkboxes always emit a boolean so the control matches preview/send input.
+    if (field.type === 'boolean') {
+      input[field.name] = raw === 'true'
+      continue
+    }
+
+    // Optional empty strings/numbers are omitted; required empties fail below.
     if (!field.required && raw === '') {
-      if (field.type === 'string' || field.type === 'number' || field.type === 'select') {
-        continue
-      }
+      continue
+    }
+
+    if (field.required && raw.trim() === '') {
+      throw new Error(`${field.label} is required`)
     }
 
     if (field.type === 'number') {
       const parsed = Number(raw)
-      input[field.name] = Number.isFinite(parsed) ? parsed : 0
-      continue
-    }
 
-    if (field.type === 'boolean') {
-      input[field.name] = raw === 'true'
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`${field.label} must be a number`)
+      }
+
+      input[field.name] = parsed
       continue
     }
 
