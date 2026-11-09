@@ -63,9 +63,6 @@ describe('event log', () => {
       parentRunId: 'run_parent',
       launchedByEffectId: 'eff_1',
       correlationId: 'run_root',
-      tenant: 'acme',
-      project: 'billing',
-      org: 'hq',
       attributes: { tenant: 'acme', project: 'billing', org: 'hq' },
     })
   })
@@ -103,7 +100,7 @@ describe('event log', () => {
     ])
 
     expect(log.run('run_1')?.status).toBe('failed')
-    expect(log.run('run_1')?.tenant).toBe('acme')
+    expect(log.run('run_1')?.attributes.tenant).toBe('acme')
   })
 
   test('rebuilds the sink from the source log', async () => {
@@ -141,10 +138,8 @@ describe('event log', () => {
     expect(log.events('run_1')).toHaveLength(2)
   })
 
-  test('the postgres schema keys events by run and seq and indexes tenant columns', () => {
+  test('the postgres schema keys events by run and seq and has no attribute columns', () => {
     expect(POSTGRES_EVENT_LOG_SCHEMA_SQL).toContain('PRIMARY KEY (run_id, seq)')
-    expect(POSTGRES_EVENT_LOG_SCHEMA_SQL).toContain('looms_run_index_tenant')
-    expect(POSTGRES_EVENT_LOG_SCHEMA_SQL).toContain('looms_run_index_project')
-    expect(POSTGRES_EVENT_LOG_SCHEMA_SQL).toContain('looms_run_index_org')
+    expect(POSTGRES_EVENT_LOG_SCHEMA_SQL).not.toMatch(/\btenant\b|\bproject\b|\borg\b/)
   })
 })

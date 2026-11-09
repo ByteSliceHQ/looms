@@ -6,6 +6,7 @@ import type {
   EventInput,
   EventStore,
   EventStoreTrimCoverage,
+  RunAttributeFields,
   RunLauncher,
   RunState,
   SnapshotStore,
@@ -57,6 +58,8 @@ export interface LocalActorHostOptions<
   readonly modules: TModules
   /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
   readonly definitionResolver?: DefinitionResolver
+  /** Declared run attributes. See `CreateRuntimeOptions`. */
+  readonly attributes?: RunAttributeFields
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -141,6 +144,7 @@ export function createLocalActorHost<
           scheduler,
           modules: options.modules,
           definitionResolver: options.definitionResolver,
+          attributes: options.attributes,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,

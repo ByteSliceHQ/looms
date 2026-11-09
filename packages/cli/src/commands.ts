@@ -18,10 +18,16 @@ import { ChildProcessSpawner } from 'effect/unstable/process'
 import { steer as steerEvent } from '@looms/agent'
 import { decision } from '@looms/approval'
 import { createLoomsClient } from '@looms/client'
-import { stringifyJson, stringifyJsonPretty, type JsonValue } from '@looms/core'
+import {
+  stringifyJson,
+  stringifyJsonPretty,
+  type JsonValue,
+  type RunAttributeFields,
+} from '@looms/core'
 import { postgresReplica, type PostgresReplica } from '@looms/projectors/replica'
 import {
   generateReplicaMigrations,
+  postgresReplicaMigrations,
   type ReplicaDialect,
 } from '@looms/projectors/replica/migrations'
 import { type SqliteReplica } from '@looms/projectors/replica/sqlite'
@@ -294,6 +300,73 @@ const dialectFlag = Flag.string('dialect').pipe(
   Flag.withDefault('postgres'),
 )
 
+const configFlag = Flag.optional(
+  Flag.string('config').pipe(
+    Flag.withDescription(
+      'Module that exports the run attributes from defineRunAttributes, as `attributes` or default',
+    ),
+  ),
+)
+
+const RunAttributeFieldsSchema = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    required: Schema.optional(Schema.Boolean),
+    index: Schema.optional(Schema.Boolean),
+    fieldName: Schema.optional(Schema.String),
+  }),
+)
+
+/** The exports `--config` reads. Every module namespace has this shape. */
+interface ConfigModule {
+  readonly attributes?: unknown
+  readonly default?: unknown
+}
+
+function configError(cause: unknown, userMessage: string): CliError.UserError {
+  return new CliError.UserError({ cause, userMessage })
+}
+
+function loadAttributes(
+  config: Option.Option<string>,
+): Effect.Effect<RunAttributeFields, CliError.UserError, Path.Path> {
+  if (Option.isNone(config)) {
+    return Effect.succeed({})
+  }
+
+  return Effect.gen(function* () {
+    const path = yield* Path.Path
+
+    const url = yield* path
+      .toFileUrl(path.resolve(config.value))
+      .pipe(Effect.mapError((cause) => configError(cause, `Invalid --config ${config.value}`)))
+
+    const exported = yield* Effect.tryPromise({
+      try: () => import(url.href).then((module: ConfigModule) => module),
+      catch: (cause) =>
+        configError(cause, `Could not load --config ${config.value}: ${String(cause)}`),
+    })
+
+    const attributes = yield* Schema.decodeUnknownEffect(RunAttributeFieldsSchema)(
+      exported.attributes ?? exported.default,
+    ).pipe(
+      Effect.mapError((cause) =>
+        configError(
+          cause,
+          `--config ${config.value} must export defineRunAttributes(...) as \`attributes\` or default`,
+        ),
+      ),
+    )
+
+    yield* Effect.try({
+      try: () => postgresReplicaMigrations(attributes),
+      catch: (cause) => configError(cause, cause instanceof Error ? cause.message : String(cause)),
+    })
+
+    return attributes
+  })
+}
+
 function asDialect(value: string): ReplicaDialect | undefined {
   switch (value) {
     case 'postgres':
@@ -315,9 +388,10 @@ function openReplica(
   dialect: ReplicaDialect,
   database: string,
   migrate: 'auto' | 'verify',
+  additionalFields: RunAttributeFields,
 ): OpenReplica {
   if (dialect === 'sqlite') {
-    const replica = openSqliteReplicaFile(database, migrate)
+    const replica = openSqliteReplicaFile(database, migrate, additionalFields)
 
     return {
       pendingMigrations: () => replica.pendingMigrations(),
@@ -327,7 +401,7 @@ function openReplica(
     }
   }
 
-  const replica = postgresReplica({ url: database, migrate })
+  const replica = postgresReplica({ url: database, migrate, additionalFields })
 
   return {
     pendingMigrations: () => replica.pendingMigrations(),
@@ -353,9 +427,11 @@ const generate = Command.make(
       Flag.withDescription('Exit non-zero when a migration is pending, and write nothing'),
       Flag.withDefault(false),
     ),
+    config: configFlag,
   },
-  Effect.fn('replica.generate')(function* ({ out, dialect, journal, check }) {
+  Effect.fn('replica.generate')(function* ({ out, dialect, journal, check, config }) {
     const parsed = asDialect(dialect)
+    const additionalFields = yield* loadAttributes(config)
 
     if (!parsed) {
       return yield* new CliError.UserError({
@@ -379,8 +455,8 @@ const generate = Command.make(
     }
 
     const generateOptions = Option.isSome(journal)
-      ? { out, check, dialect: parsed, journal: 'drizzle' as const }
-      : { out, check, dialect: parsed }
+      ? { out, check, dialect: parsed, additionalFields, journal: 'drizzle' as const }
+      : { out, check, dialect: parsed, additionalFields }
 
     const result = yield* tryClient(() => generateReplicaMigrations(generateOptions))
 
@@ -408,9 +484,10 @@ const generate = Command.make(
 
 const migrate = Command.make(
   'migrate',
-  { database: databaseFlag, dialect: dialectFlag },
-  Effect.fn('replica.migrate')(function* ({ database, dialect }) {
+  { database: databaseFlag, dialect: dialectFlag, config: configFlag },
+  Effect.fn('replica.migrate')(function* ({ database, dialect, config }) {
     const parsed = asDialect(dialect)
+    const additionalFields = yield* loadAttributes(config)
 
     if (!parsed) {
       return yield* new CliError.UserError({
@@ -426,7 +503,7 @@ const migrate = Command.make(
       })
     }
 
-    const replica = openReplica(parsed, database, 'auto')
+    const replica = openReplica(parsed, database, 'auto', additionalFields)
 
     yield* tryClient(() => replica.migrate().then(() => replica.dispose()))
 
@@ -445,9 +522,11 @@ const status = Command.make(
     run: Flag.optional(
       Flag.string('run').pipe(Flag.withDescription('Also print freshness for this run id')),
     ),
+    config: configFlag,
   },
-  Effect.fn('replica.status')(function* ({ database, dialect, run }) {
+  Effect.fn('replica.status')(function* ({ database, dialect, run, config }) {
     const parsed = asDialect(dialect)
+    const additionalFields = yield* loadAttributes(config)
 
     if (!parsed) {
       return yield* new CliError.UserError({
@@ -463,7 +542,7 @@ const status = Command.make(
       })
     }
 
-    const replica = openReplica(parsed, database, 'verify')
+    const replica = openReplica(parsed, database, 'verify', additionalFields)
     const pending = yield* tryClient(() => replica.pendingMigrations())
 
     yield* Console.log(

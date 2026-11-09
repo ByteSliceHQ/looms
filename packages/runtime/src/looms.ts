@@ -20,7 +20,10 @@ import {
   type JsonValue,
   type SnapshotStore,
   type ProjectionDefinition,
+  type HasRequiredAttributes,
   type ReplayStep,
+  type RunAttributeFields,
+  type RunAttributesOption,
   type RunLauncher,
   type RunState,
 } from '@looms/core'
@@ -45,9 +48,14 @@ import {
   type RunningServer,
 } from './server'
 
-export interface CreateLoomsOptions {
+export interface CreateLoomsOptions<Fields extends RunAttributeFields = RunAttributeFields> {
   /** Runtime modules to enable. Pass `agent()`, `workflow()`, `approval()`, and/or your own. */
   readonly modules?: readonly AnyRuntimeModule[]
+  /**
+   * Declared run attributes, from `defineRunAttributes`. They type `attributes` on every start.
+   * A start that misses a `required` attribute or sends an undeclared one is rejected.
+   */
+  readonly attributes?: Fields
   /**
    * Loads a definition that was not registered on a module. Registered definitions are checked
    * first. A run pins the resolved version on its start event.
@@ -106,49 +114,43 @@ export interface StartResult {
   readonly state: RunState
 }
 
-export interface Looms {
+export type LoomsStartOptions<Fields extends RunAttributeFields = RunAttributeFields> = {
+  runId?: string
+  threadId?: string
+  idempotencyKey?: string
+  secrets?: StartRunArgs['secrets']
+  trace?: StartRunArgs['trace']
+} & RunAttributesOption<Fields>
+
+export type LoomsStartRunArgs<Fields extends RunAttributeFields = RunAttributeFields> = {
+  kind: string
+  definitionName: string
+  definitionVersion?: string
+  input?: JsonValue
+} & LoomsStartOptions<Fields>
+
+/** `start`'s arguments after the definition. Options are required when an attribute is. */
+export type LoomsStartArgs<
+  TDef extends DefinitionRef,
+  Fields extends RunAttributeFields = RunAttributeFields,
+> =
+  HasRequiredAttributes<Fields> extends true
+    ? [input: DefinitionInput<TDef> | undefined, options: LoomsStartOptions<Fields>]
+    : [input?: DefinitionInput<TDef>, options?: LoomsStartOptions<Fields>]
+
+export interface Looms<Fields extends RunAttributeFields = RunAttributeFields> {
   readonly runtime: Promise<LoomsRuntime>
   readonly store: Promise<EventStore>
   ready(): Promise<{ store: EventStore; runtime: LoomsRuntime }>
   /** Start a run from a definition object; the input type follows the definition's schema. */
   start<TDef extends DefinitionRef>(
     definition: TDef,
-    input?: DefinitionInput<TDef>,
-    options?: {
-      runId?: string
-      threadId?: string
-      idempotencyKey?: string
-      attributes?: StartRunArgs['attributes']
-      secrets?: StartRunArgs['secrets']
-      trace?: StartRunArgs['trace']
-    },
+    ...args: LoomsStartArgs<TDef, Fields>
   ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
-  startRun(args: {
-    kind: string
-    definitionName: string
-    definitionVersion?: string
-    input?: JsonValue
-    runId?: string
-    threadId?: string
-    idempotencyKey?: string
-    attributes?: StartRunArgs['attributes']
-    secrets?: StartRunArgs['secrets']
-    trace?: StartRunArgs['trace']
-  }): Promise<StartResult>
+  startRun(args: LoomsStartRunArgs<Fields>): Promise<StartResult>
   /** Commit a run's start and schedule a wake without waiting for it. */
-  launchRun(args: {
-    kind: string
-    definitionName: string
-    definitionVersion?: string
-    input?: JsonValue
-    runId?: string
-    threadId?: string
-    idempotencyKey?: string
-    attributes?: StartRunArgs['attributes']
-    secrets?: StartRunArgs['secrets']
-    trace?: StartRunArgs['trace']
-  }): Promise<StartResult>
+  launchRun(args: LoomsStartRunArgs<Fields>): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
   signal(
@@ -193,6 +195,10 @@ class LoomsInitializationError extends Data.TaggedError('LoomsInitializationErro
     this.name = 'LoomsInitializationError'
   }
 }
+
+export function createLooms<const Fields extends RunAttributeFields = RunAttributeFields>(
+  options?: CreateLoomsOptions<Fields>,
+): Looms<Fields>
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
@@ -246,6 +252,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
             observer: options.observer,
             definitionResolver: options.definitionResolver,
+            attributes: options.attributes,
           })
 
           if (options.rescanTimers !== false) {
@@ -294,7 +301,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
     ready: () => getInit().then(({ store, runtime }) => ({ store, runtime })),
     startRun: (args) => runEffect((i) => i.runtime.startRun(args)),
     launchRun: (args) => runEffect((i) => i.runtime.launchRun(args)),
-    start: (definition, input, startOpts) =>
+    start: (definition, input?: DefinitionInput<DefinitionRef>, startOpts?: LoomsStartOptions) =>
       runEffect((i) =>
         i.runtime.startRun({
           kind: definition.kind,

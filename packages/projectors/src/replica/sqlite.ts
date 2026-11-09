@@ -9,13 +9,24 @@ import {
   type EventStore,
   type FoldRegistry,
   type JsonValue,
+  type RunAttributeFields,
   type RunState,
 } from '@looms/core'
 
 import { eventLogOps, type EventLogOp } from '../event-log-ops'
 import { indexOpsFor, type IndexOp } from '../index-model'
 import { ReplicaGapError, type Projector } from '../projector'
-import { SQLITE_REPLICA_MIGRATIONS } from './sqlite-migrations'
+import {
+  columnValues,
+  purgeFilters,
+  resolveReplicaColumns,
+  type NoAdditionalFields,
+  type ReplicaPurgeOptions,
+  type ResolvedReplicaColumn,
+} from './columns'
+import { sqliteReplicaMigrations } from './sqlite-migrations'
+
+export type { NoAdditionalFields, ReplicaPurgeOptions } from './columns'
 
 const REPLICA_NAME = 'sqlite-replica'
 const REPLICA_VERSION = '1'
@@ -34,19 +45,6 @@ export interface ReplicaStatus {
   readonly complete: boolean
   /** Set once retention has deleted the event copy. */
   readonly purgedAt: number | null
-}
-
-export interface ReplicaPurgeOptions {
-  /** Delete event copies for runs that finished before this epoch millisecond. */
-  readonly finishedBefore: number
-  /** Keep the run summary row. Defaults to true. */
-  readonly keepIndex?: boolean
-  /** Optional attribute filters; all provided keys must match looms_run_index attributes. */
-  readonly where?: {
-    readonly project?: string
-    readonly org?: string
-    readonly tenant?: string
-  }
 }
 
 export interface ReplicaPurgeResult {
@@ -85,7 +83,7 @@ export interface D1BoundStatement {
   first<T>(): Promise<T | null>
 }
 
-export type SqliteReplicaOptions = {
+export type SqliteReplicaOptions<Fields extends RunAttributeFields = NoAdditionalFields> = {
   readonly database: SqliteReplicaDatabase
   /**
    * `auto` applies pending migrations on init.
@@ -93,6 +91,11 @@ export type SqliteReplicaOptions = {
    * `looms replica generate --dialect sqlite` so the host can commit the SQL.
    */
   readonly migrate: SqliteReplicaMigrate
+  /**
+   * Declared run attributes, from `defineRunAttributes`. Each one is a `looms_run_index`
+   * column, and each column and index is its own migration. `purge({ where })` filters on them.
+   */
+  readonly additionalFields?: Fields
 }
 
 type ProgressRow = {
@@ -349,15 +352,20 @@ function runIndexPatches(ops: readonly EventLogOp[]): RunIndexPatch[] {
   return [...patches.values()]
 }
 
-function upsertRun(patch: RunIndexPatch): SqlStatement {
+function upsertRun(patch: RunIndexPatch, columns: readonly ResolvedReplicaColumn[]): SqlStatement {
   const start = patch.start
+  const hostNames = columns.map((column) => `"${column.name}"`)
+
+  const hostSet = hostNames.map(
+    (name) => `${name} = COALESCE(looms_run_index.${name}, excluded.${name}),`,
+  )
 
   return sqlStatement(
     `INSERT INTO looms_run_index (
        run_id, status, kind, definition_name, definition_version, root_thread_id,
        parent_run_id, launched_by_effect_id, correlation_id, attributes,
-       tenant, project, org, started_at, updated_at, completed_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       started_at, updated_at, completed_at${hostNames.map((name) => `, ${name}`).join('')}
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${', ?'.repeat(columns.length)})
      ON CONFLICT (run_id) DO UPDATE SET
        status = CASE
          WHEN excluded.completed_at IS NOT NULL THEN excluded.status
@@ -375,9 +383,7 @@ function upsertRun(patch: RunIndexPatch): SqlStatement {
          WHEN looms_run_index.attributes = '{}' THEN excluded.attributes
          ELSE looms_run_index.attributes
        END,
-       tenant = COALESCE(looms_run_index.tenant, excluded.tenant),
-       project = COALESCE(looms_run_index.project, excluded.project),
-       org = COALESCE(looms_run_index.org, excluded.org),
+       ${hostSet.join('\n       ')}
        started_at = COALESCE(looms_run_index.started_at, excluded.started_at),
        updated_at = MAX(looms_run_index.updated_at, excluded.updated_at),
        completed_at = COALESCE(looms_run_index.completed_at, excluded.completed_at)`,
@@ -392,22 +398,23 @@ function upsertRun(patch: RunIndexPatch): SqlStatement {
       start?.launchedByEffectId ?? null,
       start?.correlationId ?? null,
       jsonText(start?.attributes ?? {}),
-      start?.tenant ?? null,
-      start?.project ?? null,
-      start?.org ?? null,
       start ? start.at : null,
       patch.updatedAt,
       patch.completedAt,
+      ...columnValues(columns, start?.attributes),
     ],
   )
 }
 
-function runIndexStatements(ops: readonly EventLogOp[]): SqlStatement[] {
+function runIndexStatements(
+  ops: readonly EventLogOp[],
+  columns: readonly ResolvedReplicaColumn[],
+): SqlStatement[] {
   const statements: SqlStatement[] = []
 
   for (const patch of runIndexPatches(ops)) {
     if (patch.start || patch.finish) {
-      statements.push(upsertRun(patch))
+      statements.push(upsertRun(patch, columns))
       continue
     }
 
@@ -491,7 +498,9 @@ function indexStatements(ops: readonly IndexOp[]): SqlStatement[] {
  * Reading an event back returns the envelope the source returned.
  * Targets a shared SQLite database or D1, not the per-run actor store.
  */
-export interface SqliteReplica extends Projector {
+export interface SqliteReplica<
+  Fields extends RunAttributeFields = NoAdditionalFields,
+> extends Projector {
   readonly position: (runId: string) => Promise<number | null>
   /** Apply pending migrations. `init` does this only when `migrate` is `auto`. */
   readonly migrate: () => Promise<void>
@@ -503,13 +512,17 @@ export interface SqliteReplica extends Projector {
   /** How far the copy has got, and whether it is safe to treat as complete. */
   readonly status: (runId: string) => Promise<ReplicaStatus | null>
   /** Delete event copies for finished runs. Later deliveries for those runs are skipped. */
-  readonly purge: (options: ReplicaPurgeOptions) => Promise<ReplicaPurgeResult>
+  readonly purge: (options: ReplicaPurgeOptions<Fields>) => Promise<ReplicaPurgeResult>
   /** Copy every run in `source`. Purged runs are left alone. */
   readonly rebuild: (source: EventStore) => Promise<number>
 }
 
-export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
+export function sqliteReplica<const Fields extends RunAttributeFields = NoAdditionalFields>(
+  options: SqliteReplicaOptions<Fields>,
+): SqliteReplica<Fields> {
   const database = options.database
+  const columns = resolveReplicaColumns(options.additionalFields)
+  const migrations = sqliteReplicaMigrations(options.additionalFields)
   let ready: Promise<void> | undefined
 
   const appliedMigrationIds = async (): Promise<Set<string>> => {
@@ -528,15 +541,15 @@ export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
   const pendingMigrations = async (): Promise<readonly string[]> => {
     const applied = await appliedMigrationIds()
 
-    return SQLITE_REPLICA_MIGRATIONS.filter((migration) => !applied.has(migration.id)).map(
-      (migration) => migration.id,
-    )
+    return migrations
+      .filter((migration) => !applied.has(migration.id))
+      .map((migration) => migration.id)
   }
 
   const migrate = async (): Promise<void> => {
     const applied = await appliedMigrationIds()
 
-    for (const migration of SQLITE_REPLICA_MIGRATIONS) {
+    for (const migration of migrations) {
       if (!applied.has(migration.id)) {
         await database.exec(migration.sql)
       }
@@ -587,7 +600,14 @@ export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
       const last = batch.at(-1)
 
       statements.push(...insertEvents(batch))
-      statements.push(...runIndexStatements(durable.flatMap((event) => eventLogOps(event))))
+
+      statements.push(
+        ...runIndexStatements(
+          durable.flatMap((event) => eventLogOps(event)),
+          columns,
+        ),
+      )
+
       statements.push(...indexStatements(durable.flatMap(indexOpsFor)))
 
       if (next === replicatedSeq || !last) {
@@ -773,30 +793,11 @@ export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
     }
   }
 
-  const purge = async (purgeOptions: ReplicaPurgeOptions): Promise<ReplicaPurgeResult> => {
+  const purge = async (purgeOptions: ReplicaPurgeOptions<Fields>): Promise<ReplicaPurgeResult> => {
     const keepIndex = purgeOptions.keepIndex !== false
-
-    const where = purgeOptions.where
-
-    const filterSql = [
-      where?.project ? 'AND project = ?' : '',
-      where?.org ? 'AND org = ?' : '',
-      where?.tenant ? 'AND tenant = ?' : '',
-    ].join(' ')
-
-    const filterParams: SqlValue[] = []
-
-    if (where?.project) {
-      filterParams.push(where.project)
-    }
-
-    if (where?.org) {
-      filterParams.push(where.org)
-    }
-
-    if (where?.tenant) {
-      filterParams.push(where.tenant)
-    }
+    const filters = purgeFilters(columns, purgeOptions.where)
+    const filterSql = filters.map((filter) => `AND "${filter.column}" = ?`).join(' ')
+    const filterParams = filters.map((filter) => filter.value)
 
     const doomed = await database.all<{ run_id: string }>(
       `SELECT run_id FROM looms_run_index

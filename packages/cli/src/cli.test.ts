@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { Effect, Exit, Layer } from 'effect'
 import { TestConsole } from 'effect/testing'
@@ -44,5 +47,59 @@ describe('@looms/cli', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     const text = `${out}\n${err}`
     expect(text.toLowerCase()).toMatch(/unknown|did you mean|nope/)
+  })
+
+  describe('replica generate --config', () => {
+    const directories: string[] = []
+
+    afterEach(async () => {
+      await Promise.all(
+        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+      )
+    })
+
+    const withConfig = async (source: string) => {
+      const directory = await mkdtemp(join(tmpdir(), 'looms-cli-'))
+      directories.push(directory)
+      const config = join(directory, 'attributes.ts')
+      await writeFile(config, source)
+      return { out: join(directory, 'migrations'), config }
+    }
+
+    test('writes a column and an index migration for each declared attribute', async () => {
+      const { out, config } = await withConfig(
+        'export const attributes = { tenantId: { required: true, index: true } }\n',
+      )
+
+      const result = await run([
+        'replica',
+        'generate',
+        '--dialect',
+        'sqlite',
+        '--out',
+        out,
+        '--config',
+        config,
+      ])
+
+      expect(Exit.isSuccess(result.exit)).toBe(true)
+
+      expect(result.out.split('\n')).toEqual([
+        '0000_looms_0001_replica.sql',
+        '0001_looms_column_tenant_id.sql',
+        '0002_looms_index_tenant_id.sql',
+      ])
+    })
+
+    test('refuses an attribute whose column name is invalid', async () => {
+      const { out, config } = await withConfig(
+        "export default { tenant: { fieldName: 'Tenant' } }\n",
+      )
+
+      const result = await run(['replica', 'generate', '--out', out, '--config', config])
+
+      expect(Exit.isFailure(result.exit)).toBe(true)
+      expect(`${result.out}\n${result.err}`).toMatch(/lowercase snake_case/)
+    })
   })
 })

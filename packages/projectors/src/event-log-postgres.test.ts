@@ -76,9 +76,6 @@ interface IndexRow {
   readonly launched_by_effect_id: string | null
   readonly correlation_id: string | null
   readonly attributes: { readonly [key: string]: string }
-  readonly tenant: string | null
-  readonly project: string | null
-  readonly org: string | null
   readonly started_at: Date | null
   readonly updated_at: Date
   readonly completed_at: Date | null
@@ -96,9 +93,6 @@ function fromIndexRow(row: IndexRow): RunLogRow {
     launchedByEffectId: row.launched_by_effect_id,
     correlationId: row.correlation_id,
     attributes: row.attributes,
-    tenant: row.tenant,
-    project: row.project,
-    org: row.org,
     startedAt: row.started_at?.getTime() ?? null,
     updatedAt: row.updated_at.getTime(),
     completedAt: row.completed_at?.getTime() ?? null,
@@ -208,5 +202,29 @@ describe('postgres event log', () => {
     expect(statements.filter((query) => /^\s*UPDATE/i.test(query))).toHaveLength(1)
     expect((await indexRow('run_touch'))?.updatedAt).toBe(1_700_000_009_000)
     expect(await indexRow('run_unknown')).toBeNull()
+  })
+
+  test('copies declared attributes into their own indexed columns', async () => {
+    const client = requireSql()
+
+    const postgres = postgresEventLog({
+      sql: client,
+      additionalFields: { tenant: { index: true }, projectKey: { fieldName: 'project' } },
+    })
+
+    await postgres.init?.()
+    await postgres.project([started('run_fields')])
+
+    const [row] = await client<{ tenant: string | null; project: string | null }[]>`
+      SELECT tenant, project FROM looms_run_index WHERE run_id = 'run_fields'
+    `
+
+    const indexes = await client<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes WHERE tablename = 'looms_run_index'
+    `
+
+    expect(row).toEqual({ tenant: 'acme', project: null })
+    expect(indexes.map((index) => index.indexname)).toContain('looms_run_index_tenant')
+    expect(indexes.map((index) => index.indexname)).not.toContain('looms_run_index_project')
   })
 })

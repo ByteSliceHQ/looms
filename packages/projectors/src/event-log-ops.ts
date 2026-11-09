@@ -39,9 +39,6 @@ export interface RunLogRow {
   readonly launchedByEffectId: string | null
   readonly correlationId: string | null
   readonly attributes: { readonly [key: string]: string }
-  readonly tenant: string | null
-  readonly project: string | null
-  readonly org: string | null
   readonly startedAt: number | null
   readonly updatedAt: number
   readonly completedAt: number | null
@@ -60,9 +57,6 @@ export type EventLogOp =
       readonly launchedByEffectId: string | null
       readonly correlationId: string | null
       readonly attributes: { readonly [key: string]: string }
-      readonly tenant: string | null
-      readonly project: string | null
-      readonly org: string | null
       readonly at: number
     }
   | {
@@ -141,9 +135,6 @@ function startOp(event: EventEnvelope, payload: { [key: string]: JsonValue }): E
     launchedByEffectId: launchedBy?.effectId ?? null,
     correlationId: event.correlationId ?? null,
     attributes,
-    tenant: attributes.tenant ?? null,
-    project: attributes.project ?? null,
-    org: attributes.org ?? null,
     at: event.ts,
   }
 }

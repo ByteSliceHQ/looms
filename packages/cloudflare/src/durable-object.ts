@@ -10,6 +10,7 @@ import {
   type BlobStore,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
+  type RunAttributeFields,
   type RunLauncher,
   type RunState,
   type RunStatusSnapshot,
@@ -37,6 +38,8 @@ export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
   /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
   readonly definitionResolver?: DefinitionResolver
+  /** Declared run attributes. Pass the same declaration to the replica. */
+  readonly attributes?: RunAttributeFields
   readonly projectors?: readonly Projector[]
   /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
   readonly blobs?: BlobStore
@@ -124,6 +127,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         scheduler: alarms.scheduler,
         modules: config.modules,
         definitionResolver: config.definitionResolver,
+        attributes: config.attributes,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         maxPendingRunOperations: config.maxPendingRunOperations,

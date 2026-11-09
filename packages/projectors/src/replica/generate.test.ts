@@ -5,8 +5,12 @@ import { join } from 'node:path'
 
 import { Predicate } from 'effect'
 
-import { generateReplicaMigrations, POSTGRES_REPLICA_MIGRATIONS } from './migrations'
-import { SQLITE_REPLICA_MIGRATIONS } from './sqlite-migrations'
+import {
+  generateReplicaMigrations,
+  POSTGRES_REPLICA_MIGRATIONS,
+  postgresReplicaMigrations,
+} from './migrations'
+import { SQLITE_REPLICA_MIGRATIONS, sqliteReplicaMigrations } from './sqlite-migrations'
 
 function journalEntries(text: string): readonly object[] {
   const value: unknown = JSON.parse(text)
@@ -93,5 +97,60 @@ describe('replica migration generate', () => {
 
     const reread = journalEntries(await readFile(join(out, 'meta', '_journal.json'), 'utf8'))
     expect(reread).toHaveLength(1)
+  })
+
+  test('declared attributes add a column migration and, when indexed, an index migration', () => {
+    const fields = { tenantId: { index: true }, region: { fieldName: 'home_region' } }
+
+    expect(postgresReplicaMigrations(fields).map((migration) => migration.id)).toEqual([
+      '0001_replica',
+      'column_tenant_id',
+      'index_tenant_id',
+      'column_home_region',
+    ])
+
+    expect(sqliteReplicaMigrations(fields).map((migration) => migration.id)).toEqual([
+      '0001_replica',
+      'column_tenant_id',
+      'index_tenant_id',
+      'column_home_region',
+    ])
+
+    const postgres = postgresReplicaMigrations(fields)[1]?.sql ?? ''
+    expect(postgres).toContain('ADD COLUMN IF NOT EXISTS "tenant_id" TEXT')
+    expect(postgres).toContain("attributes ->> 'tenantId'")
+
+    const sqlite = sqliteReplicaMigrations(fields)[3]?.sql ?? ''
+    expect(sqlite).toContain('ADD COLUMN "home_region" TEXT')
+    expect(sqlite).toContain("key = 'region'")
+  })
+
+  test('refuses column names that are invalid, reserved, or shared', () => {
+    expect(() => postgresReplicaMigrations({ '2fa': {} })).toThrow(/set fieldName/)
+
+    expect(() => postgresReplicaMigrations({ tenant: { fieldName: 'Tenant' } })).toThrow(
+      /lowercase snake_case/,
+    )
+
+    expect(() => postgresReplicaMigrations({ runId: {} })).toThrow(/which Looms owns/)
+
+    expect(() => postgresReplicaMigrations({ tenantId: {}, tenant_id: {} })).toThrow(
+      /both map to column "tenant_id"/,
+    )
+  })
+
+  test('writes column migrations after the base migration', async () => {
+    const out = await tempDir()
+    await generateReplicaMigrations({ out })
+
+    const result = await generateReplicaMigrations({
+      out,
+      additionalFields: { tenantId: { index: true } },
+    })
+
+    expect(result.written).toEqual([
+      '0001_looms_column_tenant_id.sql',
+      '0002_looms_index_tenant_id.sql',
+    ])
   })
 })

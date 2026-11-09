@@ -1,5 +1,4 @@
 import { sql } from 'drizzle-orm'
-import type { BuildColumns } from 'drizzle-orm/column-builder'
 import {
   bigint,
   boolean,
@@ -9,9 +8,14 @@ import {
   primaryKey,
   text,
   timestamp,
+  type ExtraConfigColumn,
   type PgColumnBuilderBase,
-  type PgTableWithColumns,
+  type PgTextBuilderInitial,
 } from 'drizzle-orm/pg-core'
+
+import type { RunAttributeFields } from '@looms/core'
+
+import { resolveReplicaColumns, type NoAdditionalFields } from './columns'
 
 /** Column builders for `looms_run_index`. Call again for each table; do not reuse the result. */
 export function loomsRunIndexColumns() {
@@ -29,9 +33,6 @@ export function loomsRunIndexColumns() {
       .$type<Record<string, string>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
-    tenant: text('tenant'),
-    project: text('project'),
-    org: text('org'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -94,42 +95,57 @@ export const loomsSchemaMigrations = pgTable('looms_schema_migrations', {
 
 type RunIndexExtras = Record<string, PgColumnBuilderBase>
 
-type RunIndexColumns<Extra extends RunIndexExtras> = ReturnType<typeof loomsRunIndexColumns> & Extra
+/** One text column per declared attribute, keyed by attribute name. */
+type AttributeColumnBuilders<Fields extends RunAttributeFields> = {
+  [Key in keyof Fields & string]: PgTextBuilderInitial<'', [string, ...string[]]>
+}
 
-type RunIndexTable<Extra extends RunIndexExtras> = PgTableWithColumns<{
-  name: 'looms_run_index'
-  schema: undefined
-  dialect: 'pg'
-  columns: BuildColumns<'looms_run_index', RunIndexColumns<Extra>, 'pg'>
-}>
+type RunIndexColumns<Extra extends RunIndexExtras, Fields extends RunAttributeFields> = ReturnType<
+  typeof loomsRunIndexColumns
+> &
+  AttributeColumnBuilders<Fields> &
+  Extra
 
-export interface LoomsReplicaTablesOptions<Extra extends RunIndexExtras = Record<never, never>> {
+export interface LoomsReplicaTablesOptions<
+  Extra extends RunIndexExtras = Record<never, never>,
+  Fields extends RunAttributeFields = NoAdditionalFields,
+> {
+  /** Declared run attributes. Pass the same declaration the replica uses. */
+  readonly additionalFields?: Fields
   /** Host-owned columns on `looms_run_index`. Looms never writes these. */
   readonly runIndex?: Extra
 }
 
 /**
- * Drizzle tables for the replica. Pass `runIndex` to add columns the host owns
- * (`input`, `error`, and so on). Those columns are not in Looms migrations.
+ * Drizzle tables for the replica. `additionalFields` adds a column per declared attribute,
+ * keyed by attribute name, with its index. `runIndex` adds columns the host owns
+ * (`input`, `error`, and so on); those are not in Looms migrations.
  */
-export function loomsReplicaTables<Extra extends RunIndexExtras = Record<never, never>>(
-  options?: LoomsReplicaTablesOptions<Extra>,
-) {
+export function loomsReplicaTables<
+  Extra extends RunIndexExtras = Record<never, never>,
+  const Fields extends RunAttributeFields = NoAdditionalFields,
+>(options?: LoomsReplicaTablesOptions<Extra, Fields>) {
+  const attributeColumns = resolveReplicaColumns(options?.additionalFields)
+
+  // SAFETY: resolveReplicaColumns returns one column for each key of Fields, and runIndex is Extra.
   const columns = {
     ...loomsRunIndexColumns(),
+    ...Object.fromEntries(attributeColumns.map((column) => [column.key, text(column.name)])),
     ...options?.runIndex,
-  }
+  } as RunIndexColumns<Extra, Fields>
 
-  const loomsRunIndex = pgTable('looms_run_index', columns, (table) => [
-    index('looms_run_index_tenant').on(table.tenant),
-    index('looms_run_index_project').on(table.project),
-    index('looms_run_index_org').on(table.org),
-    index('looms_run_index_parent').on(table.parentRunId),
-    index('looms_run_index_status').on(table.status),
-  ])
+  const runIndex = pgTable('looms_run_index', columns, (table) => {
+    const byKey: { readonly [key: string]: ExtraConfigColumn | undefined } = table
 
-  // SAFETY: BuildColumns maps the same builder object, including host columns, to Postgres columns.
-  const runIndex: RunIndexTable<Extra> = loomsRunIndex as RunIndexTable<Extra>
+    return [
+      index('looms_run_index_parent').on(table.parentRunId),
+      index('looms_run_index_status').on(table.status),
+      ...attributeColumns.flatMap((column) => {
+        const built = byKey[column.key]
+        return column.index && built ? [index(`looms_run_index_${column.name}`).on(built)] : []
+      }),
+    ]
+  })
 
   const loomsRunEvents = pgTable('looms_run_events', loomsRunEventsColumns(), (table) => [
     primaryKey({ columns: [table.runId, table.seq] }),

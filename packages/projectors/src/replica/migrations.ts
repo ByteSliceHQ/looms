@@ -3,7 +3,17 @@ import { join } from 'node:path'
 
 import { Predicate } from 'effect'
 
-import { SQLITE_REPLICA_MIGRATIONS } from './sqlite-migrations'
+import type { RunAttributeFields } from '@looms/core'
+
+import {
+  columnMigrations,
+  sqlStringLiteral,
+  type ReplicaMigration,
+  type ResolvedReplicaColumn,
+} from './columns'
+import { sqliteReplicaMigrations } from './sqlite-migrations'
+
+export type { ReplicaMigration }
 
 /**
  * Actors and reviews. Same statements the Postgres index projector has always
@@ -80,9 +90,6 @@ CREATE TABLE IF NOT EXISTS looms_run_index (
   launched_by_effect_id TEXT,
   correlation_id TEXT,
   attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
-  tenant TEXT,
-  project TEXT,
-  org TEXT,
   started_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL,
   completed_at TIMESTAMPTZ,
@@ -93,9 +100,6 @@ CREATE TABLE IF NOT EXISTS looms_run_index (
 ALTER TABLE looms_run_index ADD COLUMN IF NOT EXISTS replicated_seq BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE looms_run_index ADD COLUMN IF NOT EXISTS purged_at TIMESTAMPTZ;
 
-CREATE INDEX IF NOT EXISTS looms_run_index_tenant ON looms_run_index (tenant);
-CREATE INDEX IF NOT EXISTS looms_run_index_project ON looms_run_index (project);
-CREATE INDEX IF NOT EXISTS looms_run_index_org ON looms_run_index (org);
 CREATE INDEX IF NOT EXISTS looms_run_index_parent ON looms_run_index (parent_run_id);
 CREATE INDEX IF NOT EXISTS looms_run_index_status ON looms_run_index (status);
 `.trim()
@@ -107,11 +111,6 @@ CREATE TABLE IF NOT EXISTS looms_schema_migrations (
 );
 `.trim()
 
-export interface ReplicaMigration {
-  readonly id: string
-  readonly sql: string
-}
-
 function replicaMigration(id: string, statements: readonly string[]): ReplicaMigration {
   return {
     id,
@@ -122,7 +121,38 @@ function replicaMigration(id: string, statements: readonly string[]): ReplicaMig
   }
 }
 
-/** Versioned DDL for the Postgres replica. Looms only creates and alters `looms_*` objects. */
+/**
+ * Adds one attribute column and copies it from `attributes` for runs already in the table.
+ * Safe to repeat: the backfill only touches rows that have the attribute and an empty column.
+ */
+export function postgresColumnSql(column: ResolvedReplicaColumn): string {
+  const name = `"${column.name}"`
+  const attribute = sqlStringLiteral(column.key)
+
+  return `
+ALTER TABLE looms_run_index ADD COLUMN IF NOT EXISTS ${name} TEXT;
+
+UPDATE looms_run_index SET ${name} = attributes ->> ${attribute}
+WHERE ${name} IS NULL AND attributes ? ${attribute};
+`.trim()
+}
+
+export function postgresColumnIndexSql(column: ResolvedReplicaColumn): string {
+  return `CREATE INDEX IF NOT EXISTS looms_run_index_${column.name} ON looms_run_index ("${column.name}");`
+}
+
+/** Every attribute column statement, for sinks that apply their schema on init instead of through migrations. */
+export function postgresColumnsSql(columns: readonly ResolvedReplicaColumn[]): string {
+  return columns
+    .flatMap((column) =>
+      column.index
+        ? [postgresColumnSql(column), postgresColumnIndexSql(column)]
+        : [postgresColumnSql(column)],
+    )
+    .join('\n\n')
+}
+
+/** Versioned DDL for the Postgres replica with no attribute columns. Looms only creates and alters `looms_*` objects. */
 export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
   replicaMigration('0001_replica', [
     POSTGRES_SCHEMA_SQL,
@@ -130,6 +160,20 @@ export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
     POSTGRES_REPLICA_BOOKKEEPING_SQL,
   ]),
 ]
+
+export function postgresReplicaMigrations(
+  additionalFields?: RunAttributeFields,
+): readonly ReplicaMigration[] {
+  return [
+    ...POSTGRES_REPLICA_MIGRATIONS,
+    ...columnMigrations(
+      additionalFields,
+      (id, sql) => replicaMigration(id, [sql]),
+      postgresColumnSql,
+      postgresColumnIndexSql,
+    ),
+  ]
+}
 
 const MIGRATION_HEADER = /^-- looms-migration:\s+(\S+)/m
 
@@ -144,6 +188,8 @@ export interface GenerateReplicaMigrationsOptions {
   readonly check?: boolean
   /** Which replica DDL to write. Defaults to Postgres. */
   readonly dialect?: ReplicaDialect
+  /** Declared run attributes. Pass the same declaration the replica uses. */
+  readonly additionalFields?: RunAttributeFields
 }
 
 export interface GenerateReplicaMigrationsResult {
@@ -268,12 +314,15 @@ async function appendDrizzleJournal(directory: string, tags: readonly string[]):
  * A file counts as applied when it contains `-- looms-migration: <id>`.
  * The numeric prefix continues after the highest `NNNN_` file already in `out`.
  */
-function migrationsFor(dialect: ReplicaDialect): readonly ReplicaMigration[] {
+function migrationsFor(
+  dialect: ReplicaDialect,
+  additionalFields: RunAttributeFields | undefined,
+): readonly ReplicaMigration[] {
   switch (dialect) {
     case 'postgres':
-      return POSTGRES_REPLICA_MIGRATIONS
+      return postgresReplicaMigrations(additionalFields)
     case 'sqlite':
-      return SQLITE_REPLICA_MIGRATIONS
+      return sqliteReplicaMigrations(additionalFields)
 
     default: {
       const unexpected: never = dialect
@@ -293,7 +342,10 @@ export async function generateReplicaMigrations(
   }
 
   const recorded = await recordedMigrationIds(options.out)
-  const pending = migrationsFor(dialect).filter((migration) => !recorded.has(migration.id))
+
+  const pending = migrationsFor(dialect, options.additionalFields).filter(
+    (migration) => !recorded.has(migration.id),
+  )
 
   if (options.check || pending.length === 0) {
     return { written: [], pending: pending.map((migration) => migration.id) }

@@ -90,6 +90,50 @@ looms replica status --database "$DATABASE_URL"
         add on <code>looms_run_index</code> are left alone.
       </p>
 
+      <h2 id="attribute-columns">
+        Columns for your run attributes
+        <a className="heading-anchor" href="#attribute-columns" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Every run's attributes are stored as JSON on <code>looms_run_index</code>. Looms has no
+        built-in attribute columns. Declare the attributes you filter, secure, or purge on with{' '}
+        <code>defineRunAttributes</code>, and pass the same object to the host, the client, and the
+        replica as <code>additionalFields</code>.
+      </p>
+      <CodeBlock lang="ts">{`// looms.attributes.ts
+import { defineRunAttributes } from '@swirls/looms'
+
+export const attributes = defineRunAttributes({
+  tenantId: { required: true, index: true },
+  project: { index: true },
+  region: { fieldName: 'home_region' },
+})
+`}</CodeBlock>
+      <CodeBlock lang="ts">{`const looms = createLooms({ modules, attributes })
+await looms.start(billing, input, { attributes: { tenantId: 'acme' } })
+
+const replica = postgresReplica({ url, migrate: 'auto', additionalFields: attributes })
+`}</CodeBlock>
+      <p>
+        Each attribute becomes a text column named in snake_case (<code>tenantId</code> is{' '}
+        <code>tenant_id</code>) unless you set <code>fieldName</code>. <code>index: true</code> adds{' '}
+        <code>looms_run_index_tenant_id</code>. A <code>required</code> attribute must be on every
+        start: leaving it out is a type error, and the host refuses it at runtime with{' '}
+        <code>InvalidRunAttributesError</code> (400 on <code>POST /runs</code>). Undeclared keys are
+        refused the same way. Launched runs and forks inherit their parent's attributes.
+      </p>
+      <p>
+        Each column and each index is its own migration, such as <code>column_tenant_id</code> and{' '}
+        <code>index_tenant_id</code>. Adding a column fills it in from the <code>attributes</code>{' '}
+        JSON of runs already copied. Pass the module to the CLI with <code>--config</code> so the
+        generated SQL matches; it reads an <code>attributes</code> or default export.
+      </p>
+      <CodeBlock lang="bash">{`looms replica generate --out ./migrations --config ./looms.attributes.ts
+looms replica migrate --database "$DATABASE_URL" --config ./looms.attributes.ts
+`}</CodeBlock>
+
       <h2 id="query-with-drizzle">
         Query with Drizzle
         <a className="heading-anchor" href="#query-with-drizzle" aria-label="Link to this section">
@@ -98,13 +142,18 @@ looms replica status --database "$DATABASE_URL"
       </h2>
       <p>
         <code>drizzle-orm</code> is optional. Import the tables from{' '}
-        <code>@swirls/looms/replica/drizzle</code>, and pass <code>runIndex</code> for columns your
-        application owns. Those columns are not part of the Looms migration.
+        <code>@swirls/looms/replica/drizzle</code>. <code>additionalFields</code> adds your
+        attribute columns under their attribute keys, so <code>loomsRunIndex.tenantId</code> is the{' '}
+        <code>tenant_id</code> column. Pass <code>runIndex</code> for columns your application owns.
+        Those columns are not part of the Looms migration.
       </p>
       <CodeBlock lang="ts">{`import { jsonb, text, timestamp } from 'drizzle-orm/pg-core'
 import { loomsReplicaTables } from '@swirls/looms/replica/drizzle'
 
+import { attributes } from './looms.attributes'
+
 export const { loomsRunIndex, loomsRunEvents } = loomsReplicaTables({
+  additionalFields: attributes,
   runIndex: {
     input: jsonb('input'),
     error: text('error'),
@@ -153,6 +202,16 @@ const freshness = await replica.status(runId)
       </p>
       <CodeBlock lang="ts">{`await replica.purge({
   finishedBefore: Date.now() - 30 * 24 * 60 * 60 * 1000,
+})
+`}</CodeBlock>
+      <p>
+        <code>where</code> limits a purge to runs whose attribute columns match. It accepts only
+        declared attributes, so a typo is a type error rather than a purge of everything. Index the
+        attributes you purge on.
+      </p>
+      <CodeBlock lang="ts">{`await replica.purge({
+  finishedBefore: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  where: { tenantId: 'acme' },
 })
 `}</CodeBlock>
 

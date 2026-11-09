@@ -19,6 +19,7 @@ import type {
   EventStoreTrimCoverage,
   RunLauncher,
   RunLaunchSource,
+  RunAttributeFields,
   RunAttributes,
   SecretContext,
   TraceContext,
@@ -100,6 +101,11 @@ export interface CreateRuntimeOptions<
   readonly worker?: EffectWorker
   /** Failure-isolated, framework-neutral operational event sink. */
   readonly observer?: RuntimeObserver
+  /**
+   * Declared run attributes. When set, a start that misses a `required` attribute or sends an
+   * undeclared one fails with `InvalidRunAttributesError` and writes no events.
+   */
+  readonly attributes?: RunAttributeFields
 }
 
 export interface EffectWorkerTask {

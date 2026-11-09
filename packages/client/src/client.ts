@@ -19,8 +19,10 @@ import {
   type DefinitionRef,
   type EventEnvelope,
   type EventInput,
+  type HasRequiredAttributes,
   type JsonValue,
-  type RunAttributes,
+  type RunAttributeFields,
+  type RunAttributesOption,
   type RunState,
   type SecretContext,
   type SubscriptionTransport,
@@ -145,7 +147,7 @@ const PreviewEventsResultSchema = Schema.Struct({
   events: Schema.Array(PreviewEventSchema),
 })
 
-export interface LoomsClientOptions {
+export interface LoomsClientOptions<Fields extends RunAttributeFields = RunAttributeFields> {
   baseUrl?: string
   fetch?: typeof fetch
   workerCallbackToken?: string
@@ -154,7 +156,28 @@ export interface LoomsClientOptions {
    * grant cannot authorize other requests, so it is not sent on them.
    */
   grant?: string
+  /** Declared run attributes, from `defineRunAttributes`. Types `attributes` on starts. */
+  attributes?: Fields
 }
+
+type ClientStartArgs<Fields extends RunAttributeFields> = {
+  kind: string
+  definitionName: string
+  definitionVersion?: string
+  input?: JsonValue
+  runId?: string
+  /** Sent as the W3C `traceparent` and `tracestate` headers. */
+  trace?: TraceContext
+} & RunAttributesOption<Fields>
+
+/** `stream`'s arguments after the definition. Options are required when an attribute is. */
+export type ClientStreamArgs<
+  TDef extends DefinitionRef,
+  Fields extends RunAttributeFields = RunAttributeFields,
+> =
+  HasRequiredAttributes<Fields> extends true
+    ? [input: DefinitionInput<TDef> | undefined, options: RunAttributesOption<Fields>]
+    : [input?: DefinitionInput<TDef>, options?: RunAttributesOption<Fields>]
 
 export interface StartResult {
   runId: string
@@ -166,7 +189,9 @@ export interface StreamHandle extends AsyncIterable<EventEnvelope> {
   readonly runId: string
 }
 
-export function createLoomsClient(options: LoomsClientOptions = {}) {
+export function createLoomsClient<const Fields extends RunAttributeFields = RunAttributeFields>(
+  options: LoomsClientOptions<Fields> = {},
+) {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
   const fetchImpl = options.fetch ?? fetch
 
@@ -286,17 +311,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     }
   }
 
-  const startRun = (args: {
-    kind: string
-    definitionName: string
-    definitionVersion?: string
-    input?: JsonValue
-    runId?: string
-    attributes?: RunAttributes
-    secrets?: SecretContext
-    /** Sent as the W3C `traceparent` and `tracestate` headers. */
-    trace?: TraceContext
-  }) => {
+  const startRun = (args: ClientStartArgs<Fields> & { secrets?: SecretContext }) => {
     const { trace, ...body } = args
 
     return request('/runs', StartResultSchema, {
@@ -331,14 +346,7 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
       body: '{}',
     })
 
-  const streamRun = (args: {
-    kind: string
-    definitionName: string
-    definitionVersion?: string
-    input?: JsonValue
-    runId?: string
-    trace?: TraceContext
-  }): StreamHandle => {
+  const streamRun = (args: ClientStartArgs<Fields>): StreamHandle => {
     const { trace, ...body } = args
     const runId = body.runId ?? createRunId()
 
@@ -479,9 +487,10 @@ export function createLoomsClient(options: LoomsClientOptions = {}) {
     streamRun,
     stream: <TDef extends DefinitionRef>(
       definition: TDef,
-      input?: DefinitionInput<TDef>,
+      ...[input, streamOptions]: ClientStreamArgs<TDef, Fields>
     ): StreamHandle =>
       streamRun({
+        ...streamOptions,
         kind: definition.kind,
         definitionName: definition.name,
         definitionVersion: definition.version,
