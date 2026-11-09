@@ -29,7 +29,10 @@ export interface TerminalRunStorageHost {
   }
 }
 
-function parseProjectorIdentity(identity: string): { readonly name: string; readonly version: string } {
+function parseProjectorIdentity(identity: string): {
+  readonly name: string
+  readonly version: string
+} {
   const at = identity.indexOf('@')
 
   if (at <= 0 || at === identity.length - 1) {

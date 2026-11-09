@@ -242,7 +242,14 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
       const state = await cell.getRun()
 
-      await deleteTerminalRunStorage(this.ctx.storage, store, runId, state, options, store.projectorDelivery)
+      await deleteTerminalRunStorage(
+        this.ctx.storage,
+        store,
+        runId,
+        state,
+        options,
+        store.projectorDelivery,
+      )
 
       this.cellPromise = undefined
       this.store = undefined
