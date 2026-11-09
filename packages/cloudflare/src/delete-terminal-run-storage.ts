@@ -6,9 +6,11 @@ import type { ProjectorDelivery } from '@looms/projectors'
 export interface DeleteTerminalRunStorageOptions {
   /**
    * Projector identities (`name@version`) that must have delivered through the
-   * log tail before storage is removed.
+   * log tail before storage is removed. Requires `delivery`.
    */
   readonly requireProjectors?: readonly string[]
+  /** Delivery used to read projector cursors when `requireProjectors` is set. */
+  readonly delivery?: ProjectorDelivery
 }
 
 export class RunNotTerminalError extends Data.TaggedError('RunNotTerminalError')<{
@@ -34,67 +36,34 @@ interface ProjectorIdentity {
   readonly version: string
 }
 
-interface ProjectorCursorRow {
-  readonly cursor: number
-}
-
-function parseProjectorIdentity(identity: string): ProjectorIdentity {
+function parseProjectorIdentity(
+  runId: string,
+  identity: string,
+): Effect.Effect<ProjectorIdentity, ProjectorCoverageError> {
   const at = identity.indexOf('@')
 
   if (at <= 0 || at === identity.length - 1) {
-    throw new ProjectorCoverageError({
-      runId: '',
-      message: `Invalid projector identity "${identity}"; expected name@version`,
-    })
+    return Effect.fail(
+      new ProjectorCoverageError({
+        runId,
+        message: `Invalid projector identity "${identity}"; expected name@version`,
+      }),
+    )
   }
 
-  return { name: identity.slice(0, at), version: identity.slice(at + 1) }
+  return Effect.succeed({ name: identity.slice(0, at), version: identity.slice(at + 1) })
 }
 
-function deliveryCursor(
-  storage: TerminalRunStorageHost,
-  delivery: ProjectorDelivery | undefined,
-  runId: string,
-  name: string,
-  version: string,
-): Promise<number | null> {
-  if (delivery) {
-    return Effect.runPromise(delivery.status(runId)).then((rows) => {
-      const row = rows.find((entry) => entry.projector === name && entry.version === version)
-
-      return row?.cursor ?? null
-    })
-  }
-
-  // SAFETY: SqlStorage.exec yields untyped row objects; we only read the cursor column
-  // selected by the query above.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const [row] = [
-    ...storage.sql.exec(
-      `SELECT cursor FROM looms_projector_delivery
-       WHERE run_id = ? AND projector_name = ? AND projector_version = ?`,
-      runId,
-      name,
-      version,
-    ),
-  ] as ProjectorCursorRow[]
-
-  return Promise.resolve(row?.cursor ?? null)
-}
-
-function projectorTailCovered(
-  storage: TerminalRunStorageHost,
+function assertProjectorCoverage(
   store: EventStore,
-  delivery: ProjectorDelivery | undefined,
+  delivery: ProjectorDelivery,
   runId: string,
   requireProjectors: readonly string[],
-): Promise<void> {
-  if (requireProjectors.length === 0) {
-    return Promise.resolve()
-  }
+): Effect.Effect<void, ProjectorCoverageError> {
+  const boundsOf = store.bounds
 
-  if (!store.bounds) {
-    return Promise.reject(
+  if (!boundsOf) {
+    return Effect.fail(
       new ProjectorCoverageError({
         runId,
         message: 'Event store has no bounds(); cannot verify projector coverage',
@@ -102,25 +71,89 @@ function projectorTailCovered(
     )
   }
 
-  return Effect.runPromise(store.bounds(runId)).then((bounds) => {
-    const tail = bounds.tail
-
-    return requireProjectors.reduce<Promise<void>>(
-      (prior, identity) =>
-        prior.then(() => {
-          const { name, version } = parseProjectorIdentity(identity)
-
-          return deliveryCursor(storage, delivery, runId, name, version).then((cursor) => {
-            if (cursor === null || cursor < tail) {
-              throw new ProjectorCoverageError({
-                runId,
-                message: `Projector "${identity}" cursor ${cursor ?? 'missing'} is before log tail ${tail}`,
-              })
-            }
-          })
-        }),
-      Promise.resolve(),
+  return Effect.gen(function* () {
+    const bounds = yield* boundsOf(runId).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProjectorCoverageError({
+            runId,
+            message: cause instanceof Error ? cause.message : String(cause),
+          }),
+      ),
     )
+
+    const statuses = yield* delivery.status(runId).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProjectorCoverageError({
+            runId,
+            message: cause.message,
+          }),
+      ),
+    )
+
+    yield* Effect.forEach(
+      requireProjectors,
+      (identity) =>
+        Effect.gen(function* () {
+          const { name, version } = yield* parseProjectorIdentity(runId, identity)
+
+          const row = statuses.find(
+            (entry) => entry.projector === name && entry.version === version,
+          )
+
+          const cursor = row?.cursor ?? null
+
+          if (cursor === null || cursor < bounds.tail) {
+            return yield* new ProjectorCoverageError({
+              runId,
+              message: `Projector "${identity}" cursor ${cursor ?? 'missing'} is before log tail ${bounds.tail}`,
+            })
+          }
+
+          return undefined
+        }),
+      { concurrency: 'unbounded' },
+    )
+  })
+}
+
+function wipeStorage(
+  storage: TerminalRunStorageHost,
+  runId: string,
+  delivery: ProjectorDelivery | undefined,
+): Effect.Effect<void> {
+  const deleteAll = storage.deleteAll
+
+  if (deleteAll) {
+    return Effect.promise(() => deleteAll())
+  }
+
+  return Effect.sync(() => {
+    const tables = [
+      'looms_events',
+      'looms_snapshots',
+      'looms_commands',
+      'looms_run_secrets',
+      'looms_run_headers',
+      'looms_streams',
+    ]
+
+    if (delivery) {
+      tables.unshift('looms_projector_delivery')
+    }
+
+    for (const table of tables) {
+      try {
+        void [...storage.sql.exec(`DELETE FROM ${table} WHERE run_id = ?`, runId)]
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause)
+
+        if (!/no such table/i.test(message)) {
+          throw cause
+        }
+      }
+    }
   })
 }
 
@@ -135,43 +168,37 @@ export function deleteTerminalRunStorage(
   runId: string,
   state: RunState,
   options: DeleteTerminalRunStorageOptions = {},
-  delivery?: ProjectorDelivery,
 ): Promise<void> {
-  if (!isRunTerminal(state)) {
-    return Promise.reject(new RunNotTerminalError({ runId, status: state.status }))
-  }
-
-  const required = options.requireProjectors ?? []
-
-  const covered =
-    required.length > 0
-      ? projectorTailCovered(storage, store, delivery, runId, required)
-      : Promise.resolve()
-
-  return covered
-    .then(() => {
-      if (storage.deleteAll) {
-        return storage.deleteAll()
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      if (!isRunTerminal(state)) {
+        return yield* new RunNotTerminalError({ runId, status: state.status })
       }
 
-      const tables = [
-        'looms_events',
-        'looms_snapshots',
-        'looms_commands',
-        'looms_run_secrets',
-        'looms_run_headers',
-        'looms_streams',
-      ]
+      const required = options.requireProjectors ?? []
 
-      if (delivery) {
-        tables.unshift('looms_projector_delivery')
+      if (required.length > 0) {
+        const delivery = options.delivery
+
+        if (!delivery) {
+          return yield* new ProjectorCoverageError({
+            runId,
+            message: 'requireProjectors needs projector delivery on the event store',
+          })
+        }
+
+        yield* assertProjectorCoverage(store, delivery, runId, required)
       }
 
-      for (const table of tables) {
-        void [...storage.sql.exec(`DELETE FROM ${table} WHERE run_id = ?`, runId)]
+      yield* wipeStorage(storage, runId, options.delivery)
+
+      const deleteAlarm = storage.deleteAlarm
+
+      if (deleteAlarm) {
+        yield* Effect.promise(() => deleteAlarm())
       }
 
       return undefined
-    })
-    .then(() => storage.deleteAlarm?.())
+    }),
+  )
 }

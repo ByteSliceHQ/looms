@@ -226,5 +226,30 @@ describe('postgres event log', () => {
     expect(row).toEqual({ tenant: 'acme', project: null })
     expect(indexes.map((index) => index.indexname)).toContain('looms_run_index_tenant')
     expect(indexes.map((index) => index.indexname)).not.toContain('looms_run_index_project')
+
+    const applied = await client<{ id: string }[]>`
+      SELECT id FROM looms_schema_migrations WHERE id LIKE 'column_%' OR id LIKE 'index_%'
+      ORDER BY id
+    `
+
+    expect(applied.map((entry) => entry.id)).toEqual([
+      'column_project',
+      'column_tenant',
+      'index_tenant',
+    ])
+
+    // A second init must not re-apply recorded attribute migrations.
+    await postgres.init?.()
+
+    const still = await client<{ id: string }[]>`
+      SELECT id FROM looms_schema_migrations WHERE id LIKE 'column_%' OR id LIKE 'index_%'
+      ORDER BY id
+    `
+
+    expect(still.map((entry) => entry.id)).toEqual([
+      'column_project',
+      'column_tenant',
+      'index_tenant',
+    ])
   })
 })

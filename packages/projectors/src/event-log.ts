@@ -13,7 +13,11 @@ import { eventLogOps, type EventLogEntry, type EventLogOp, type RunLogRow } from
 import type { Projector } from './projector'
 import { runProjectorPromise } from './projector'
 import { columnValues, resolveReplicaColumns, type ResolvedReplicaColumn } from './replica/columns'
-import { POSTGRES_EVENT_LOG_SCHEMA_SQL, postgresColumnsSql } from './replica/migrations'
+import {
+  POSTGRES_EVENT_LOG_SCHEMA_SQL,
+  POSTGRES_SCHEMA_MIGRATIONS_SQL,
+  postgresAttributeMigrations,
+} from './replica/migrations'
 
 export { POSTGRES_EVENT_LOG_SCHEMA_SQL, eventLogOps }
 export type { EventLogEntry, EventLogOp, RunLogRow }
@@ -89,7 +93,10 @@ export function postgresEventLog(options: PostgresEventLogOptions): EventLogProj
   const connected = created ? createPostgresClient(options.url) : options.sql
   const columns = resolveReplicaColumns(options.additionalFields)
 
-  return createEventLogProjector('postgres-event-log', postgresStore(connected, created, columns))
+  return createEventLogProjector(
+    'postgres-event-log',
+    postgresStore(connected, created, columns, options.additionalFields),
+  )
 }
 
 function createEventLogProjector(
@@ -228,12 +235,41 @@ function utcDate(ms: number): Date {
   return DateTime.toDateUtc(DateTime.makeUnsafe(ms))
 }
 
-function postgresStore(sql: Sql, ownsClient: boolean, columns: readonly ResolvedReplicaColumn[]) {
-  const schema = [POSTGRES_EVENT_LOG_SCHEMA_SQL, postgresColumnsSql(columns)].join('\n\n')
+function postgresStore(
+  sql: Sql,
+  ownsClient: boolean,
+  columns: readonly ResolvedReplicaColumn[],
+  additionalFields: RunAttributeFields | undefined,
+) {
+  const attributeMigrations = postgresAttributeMigrations(additionalFields)
 
   return {
     init: () =>
-      runProjectorPromise('postgres-event-log', () => sql.unsafe(schema)).then(() => undefined),
+      runProjectorPromise('postgres-event-log', () =>
+        // Base schema stays IF NOT EXISTS on every boot. Attribute columns are
+        // recorded migrations so their backfill UPDATE runs once, not every start.
+        sql
+          .unsafe(POSTGRES_EVENT_LOG_SCHEMA_SQL)
+          .then(() => sql.unsafe(POSTGRES_SCHEMA_MIGRATIONS_SQL))
+          .then(() => {
+            if (attributeMigrations.length === 0) {
+              return undefined
+            }
+
+            return sql<{ id: string }[]>`SELECT id FROM looms_schema_migrations`.then((rows) => {
+              const applied = new Set(rows.map((row) => row.id))
+
+              return attributeMigrations.reduce(
+                (prior, migration) =>
+                  prior.then(() =>
+                    applied.has(migration.id) ? undefined : sql.unsafe(migration.sql),
+                  ),
+                Promise.resolve<unknown>(undefined),
+              )
+            })
+          })
+          .then(() => undefined),
+      ),
     apply: (events: readonly EventEnvelope[]) => {
       const ops = events.flatMap(eventLogOps)
 

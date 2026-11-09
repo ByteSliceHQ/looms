@@ -104,7 +104,8 @@ CREATE INDEX IF NOT EXISTS looms_run_index_parent ON looms_run_index (parent_run
 CREATE INDEX IF NOT EXISTS looms_run_index_status ON looms_run_index (status);
 `.trim()
 
-const POSTGRES_REPLICA_BOOKKEEPING_SQL = `
+/** Tracks applied Looms migrations, including attribute column migrations. */
+export const POSTGRES_SCHEMA_MIGRATIONS_SQL = `
 CREATE TABLE IF NOT EXISTS looms_schema_migrations (
   id TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -141,15 +142,19 @@ export function postgresColumnIndexSql(column: ResolvedReplicaColumn): string {
   return `CREATE INDEX IF NOT EXISTS looms_run_index_${column.name} ON looms_run_index ("${column.name}");`
 }
 
-/** Every attribute column statement, for sinks that apply their schema on init instead of through migrations. */
-export function postgresColumnsSql(columns: readonly ResolvedReplicaColumn[]): string {
-  return columns
-    .flatMap((column) =>
-      column.index
-        ? [postgresColumnSql(column), postgresColumnIndexSql(column)]
-        : [postgresColumnSql(column)],
-    )
-    .join('\n\n')
+/**
+ * Attribute column and index migrations for Postgres.
+ * Each runs once when recorded in `looms_schema_migrations`, including the backfill UPDATE.
+ */
+export function postgresAttributeMigrations(
+  additionalFields?: RunAttributeFields,
+): readonly ReplicaMigration[] {
+  return columnMigrations(
+    additionalFields,
+    (id, sql) => replicaMigration(id, [sql]),
+    postgresColumnSql,
+    postgresColumnIndexSql,
+  )
 }
 
 /** Versioned DDL for the Postgres replica with no attribute columns. Looms only creates and alters `looms_*` objects. */
@@ -157,7 +162,7 @@ export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
   replicaMigration('0001_replica', [
     POSTGRES_SCHEMA_SQL,
     POSTGRES_EVENT_LOG_SCHEMA_SQL,
-    POSTGRES_REPLICA_BOOKKEEPING_SQL,
+    POSTGRES_SCHEMA_MIGRATIONS_SQL,
   ]),
 ]
 

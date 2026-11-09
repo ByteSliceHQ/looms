@@ -1,16 +1,15 @@
-import { Option, Predicate, Schema } from 'effect'
+import { Predicate } from 'effect'
 
 import {
   completedRunStatus,
   isJsonObject,
+  readAttributes,
   readRunLaunchSource,
   type EventEnvelope,
   type EventOrigin,
   type JsonValue,
   type RunStatus,
 } from '@looms/core'
-
-const decodeAttributes = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))
 
 export interface EventLogEntry {
   readonly runId: string
@@ -142,12 +141,4 @@ function startOp(event: EventEnvelope, payload: { [key: string]: JsonValue }): E
 function readString(payload: { [key: string]: JsonValue }, key: string): string | null {
   const value = payload[key]
   return Predicate.isString(value) ? value : null
-}
-
-function readAttributes(value: JsonValue | undefined): { [key: string]: string } {
-  if (value === undefined) {
-    return {}
-  }
-
-  return Option.getOrElse(decodeAttributes(value), () => ({}))
 }

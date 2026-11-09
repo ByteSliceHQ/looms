@@ -36,7 +36,7 @@ const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost } =
 
 const { durableObjectAlarms } = await import('./alarm-scheduler')
 
-const { deleteTerminalRunStorage, RunNotTerminalError } =
+const { deleteTerminalRunStorage, ProjectorCoverageError, RunNotTerminalError } =
   await import('./delete-terminal-run-storage')
 
 const { durableObjectEventStore } = await import('./event-store')
@@ -602,9 +602,137 @@ describe('deleteTerminalRunStorage', () => {
     const events = await Effect.runPromise(store.read(runId))
     const state = foldRun(events, { threads: new Map() })
 
-    expect(deleteTerminalRunStorage(storage, store, runId, state)).rejects.toBeInstanceOf(
-      RunNotTerminalError,
+    const refused = await deleteTerminalRunStorage(storage, store, runId, state).then(
+      () => null,
+      (error) => error,
     )
+
+    expect(refused).toBeInstanceOf(RunNotTerminalError)
+  })
+
+  test('requireProjectors needs delivery and a covering cursor', async () => {
+    const storage = sqliteStorage()
+    const runId = 'run_coverage'
+    const ctx = objectContext(runId, storage)
+    const store = durableObjectEventStore(ctx)
+    const past = Date.parse('2020-06-01T00:00:00.000Z')
+
+    await Effect.runPromise(
+      store.append(runId, [
+        createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr',
+            kind: 'workflow',
+            definitionName: 'job',
+            input: null,
+          },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past,
+        }),
+        createEvent(runId, {
+          type: 'runtime.run.completed',
+          payload: { output: null, error: null },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past + 1,
+        }),
+      ]),
+    )
+
+    const events = await Effect.runPromise(store.read(runId))
+    const state = foldRun(events, { threads: new Map() })
+    const tail = (await Effect.runPromise(store.bounds!(runId))).tail
+
+    const missingDelivery = await deleteTerminalRunStorage(storage, store, runId, state, {
+      requireProjectors: ['postgres-replica@1'],
+    }).then(
+      () => null,
+      (error) => error,
+    )
+
+    expect(missingDelivery).toBeInstanceOf(ProjectorCoverageError)
+    expect(String(missingDelivery)).toMatch(/needs projector delivery/)
+
+    const behind = await deleteTerminalRunStorage(storage, store, runId, state, {
+      requireProjectors: ['postgres-replica@1'],
+      delivery: {
+        status: () =>
+          Effect.succeed([
+            {
+              runId,
+              projector: 'postgres-replica',
+              version: '1',
+              cursor: Math.max(0, tail - 1),
+              state: 'idle' as const,
+              attempts: 0,
+              failedSeq: null,
+              nextRetryAt: null,
+              lastError: null,
+              updatedAt: past,
+            },
+          ]),
+        deliver: () => Effect.void,
+        requeue: () => Effect.void,
+        nextRetryAt: () => Effect.succeed(null),
+        inspect: () => Effect.succeed([]),
+        recover: () => Effect.succeed(0),
+      },
+    }).then(
+      () => null,
+      (error) => error,
+    )
+
+    expect(behind).toBeInstanceOf(ProjectorCoverageError)
+    expect(String(behind)).toMatch(/before log tail/)
+
+    const badIdentity = await deleteTerminalRunStorage(storage, store, runId, state, {
+      requireProjectors: ['no-version'],
+      delivery: {
+        status: () => Effect.succeed([]),
+        deliver: () => Effect.void,
+        requeue: () => Effect.void,
+        nextRetryAt: () => Effect.succeed(null),
+        inspect: () => Effect.succeed([]),
+        recover: () => Effect.succeed(0),
+      },
+    }).then(
+      () => null,
+      (error) => error,
+    )
+
+    expect(badIdentity).toBeInstanceOf(ProjectorCoverageError)
+    expect(badIdentity).toMatchObject({ runId })
+    expect(String(badIdentity)).toMatch(/expected name@version/)
+
+    await deleteTerminalRunStorage(storage, store, runId, state, {
+      requireProjectors: ['postgres-replica@1'],
+      delivery: {
+        status: () =>
+          Effect.succeed([
+            {
+              runId,
+              projector: 'postgres-replica',
+              version: '1',
+              cursor: tail,
+              state: 'idle' as const,
+              attempts: 0,
+              failedSeq: null,
+              nextRetryAt: null,
+              lastError: null,
+              updatedAt: past,
+            },
+          ]),
+        deliver: () => Effect.void,
+        requeue: () => Effect.void,
+        nextRetryAt: () => Effect.succeed(null),
+        inspect: () => Effect.succeed([]),
+        recover: () => Effect.succeed(0),
+      },
+    })
+
+    expect(await Effect.runPromise(store.listRuns)).toEqual([])
   })
 })
 
