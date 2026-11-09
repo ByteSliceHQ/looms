@@ -20,14 +20,20 @@ finishes, is retried on the next alarm or request.
 
 `postgresEventLog` is the generic sink: one row per non-ephemeral envelope,
 keyed by `(run_id, seq)`, and a `looms_run_index` row with status, timestamps,
-the parent run, the launching effect, and the run's attributes. `tenant`,
-`project`, and `org` are copied out of string attributes so row-level security
-can index them:
+the parent run, the launching effect, and the run's attributes as JSON. Pass
+`additionalFields` (see [Run attributes](#run-attributes-and-secret-context)) to
+copy declared attributes into their own columns, so row-level security can use
+them:
+
+```ts
+const attributes = defineRunAttributes({ tenantId: { required: true, index: true } })
+postgresEventLog({ url, additionalFields: attributes })
+```
 
 ```sql
 ALTER TABLE looms_run_index ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON looms_run_index
-  USING (tenant = current_setting('looms.tenant', true));
+  USING (tenant_id = current_setting('looms.tenant_id', true));
 ```
 
 Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Each
@@ -68,10 +74,57 @@ is referencing it, that run's append fails and its retry uploads the body again.
 
 ## Run attributes and secret context
 
-`attributes` on `start` are immutable labels (tenant, project, org). They are
-written on `runtime.run.started`, folded into run state, and copied onto the
-run summary. Authorization receives them on `route.attributes` when a run has
-any. They must be safe for every reader of the run.
+`attributes` on `start` are immutable string labels, such as a tenant or project
+id. They are written on `runtime.run.started`, folded into run state, and copied
+onto the run summary. Authorization receives them on `route.attributes` when a
+run has any. They must be safe for every reader of the run. A launched run or a
+fork inherits its parent's attributes.
+
+Looms has no built-in attributes. Declare yours once with `defineRunAttributes`
+and pass the same object to the host, the client, and the replica:
+
+```ts
+// looms.attributes.ts
+import { defineRunAttributes } from '@swirls/looms'
+
+export const attributes = defineRunAttributes({
+  tenantId: { required: true, index: true },
+  project: { index: true },
+  region: { fieldName: 'home_region' },
+})
+```
+
+```ts
+const looms = createLooms({ modules, attributes })
+await looms.start(billing, input, { attributes: { tenantId: 'acme' } })
+
+const client = createLoomsClient({ baseUrl, attributes })
+const replica = postgresReplica({ url, additionalFields: attributes })
+const tables = loomsReplicaTables({ additionalFields: attributes })
+```
+
+Once attributes are declared, `start`, `startRun`, `launchRun`, and the client
+only accept declared keys, and a start without a `required` key is a type error.
+The host checks the same rules at runtime and refuses a start with
+`InvalidRunAttributesError`; `POST /runs` answers 400 with the `issues`.
+Without a declaration, any string attributes are accepted.
+
+In a replica or `postgresEventLog`, each declared attribute is also a text
+column on `looms_run_index`, named in snake_case (`tenantId` becomes
+`tenant_id`) unless `fieldName` is set. `index: true` adds
+`looms_run_index_<column>`. Each column and index is its own migration
+(`column_tenant_id`, `index_tenant_id`), and adding a column backfills it from
+the `attributes` JSON of runs already copied. `postgresEventLog` applies these
+migrations itself on `init` and records them in `looms_schema_migrations`, so
+the backfill runs once. The replica applies them when `migrate` is `auto`, or
+refuses to start until they exist when it is `verify`. The Drizzle table
+exposes the column under the attribute key, for example
+`tables.loomsRunIndex.tenantId`. Pass the declaration to the CLI with
+`--config` so generated migrations match:
+
+```sh
+looms replica generate --out drizzle --config ./looms.attributes.ts
+```
 
 `secrets` are bearer material for the run. The memory and SQLite stores keep
 them in a side table, `looms_run_secrets`, which is not part of the event log
@@ -320,6 +373,20 @@ trimAfterSnapshot: {
 Without proof, trimming fails with `UnsafeEventStoreTrimError` and the
 authoritative log remains intact. Keep archived events for the longest required
 replay/audit window and test restores before enabling retention.
+
+A Postgres or SQLite replica can drop event copies for one tenant or project
+with `replica.purge({ finishedBefore, where: { tenantId: 'acme' } })`. `where`
+takes declared attributes only, and every key you pass must match the run's
+column. Index the attributes you purge on.
+
+After the replica has acknowledged a terminal run and every required projector
+has caught up, delete the actor's Durable Object storage with
+`deleteTerminalRunStorage` from `@looms/cloudflare`, or
+`stub.deleteTerminalRunStorage({ requireProjectors: ['postgres-replica@1'] })` on
+`LoomsDurableObject`. The run must be terminal; when `requireProjectors` is set,
+the event store must have projectors attached and each identity's delivery
+cursor must be at or beyond the log tail. A refusal throws `RunNotTerminalError`
+or `ProjectorCoverageError` and deletes nothing.
 
 ## Versioned deploy and rollback
 

@@ -1,9 +1,17 @@
+import type { RunAttributeFields } from '@looms/core'
+
+import {
+  columnMigrations,
+  sqlStringLiteral,
+  type ReplicaMigration,
+  type ResolvedReplicaColumn,
+} from './columns'
+
 /**
  * Same tables as the Postgres replica, in SQLite types.
  * Timestamps are epoch milliseconds. JSON is text. Booleans are 0 or 1.
  * A fresh database gets every column from `CREATE TABLE`. SQLite has no
- * `ADD COLUMN IF NOT EXISTS` we want to depend on, so later migrations should
- * add columns the way the index projector does: read `PRAGMA table_info` first.
+ * `ADD COLUMN IF NOT EXISTS`, so an attribute column is added once, by its own migration.
  */
 const SQLITE_REPLICA_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS looms_run_actors (
@@ -63,9 +71,6 @@ CREATE TABLE IF NOT EXISTS looms_run_index (
   launched_by_effect_id TEXT,
   correlation_id TEXT,
   attributes TEXT NOT NULL DEFAULT '{}',
-  tenant TEXT,
-  project TEXT,
-  org TEXT,
   started_at INTEGER,
   updated_at INTEGER NOT NULL,
   completed_at INTEGER,
@@ -73,9 +78,6 @@ CREATE TABLE IF NOT EXISTS looms_run_index (
   purged_at INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS looms_run_index_tenant ON looms_run_index (tenant);
-CREATE INDEX IF NOT EXISTS looms_run_index_project ON looms_run_index (project);
-CREATE INDEX IF NOT EXISTS looms_run_index_org ON looms_run_index (org);
 CREATE INDEX IF NOT EXISTS looms_run_index_parent ON looms_run_index (parent_run_id);
 CREATE INDEX IF NOT EXISTS looms_run_index_status ON looms_run_index (status);
 
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS looms_schema_migrations (
 );
 `.trim()
 
-function sqliteReplicaMigration(id: string, sql: string) {
+function sqliteReplicaMigration(id: string, sql: string): ReplicaMigration {
   return {
     id,
     sql: [
@@ -95,7 +97,38 @@ function sqliteReplicaMigration(id: string, sql: string) {
   }
 }
 
-/** Versioned DDL for the SQLite replica, including D1. Looms only creates `looms_*` objects. */
-export const SQLITE_REPLICA_MIGRATIONS = [
+function sqliteColumnSql(column: ResolvedReplicaColumn): string {
+  const name = `"${column.name}"`
+
+  const value = `(SELECT value FROM json_each(looms_run_index.attributes) WHERE key = ${sqlStringLiteral(column.key)})`
+
+  return `
+ALTER TABLE looms_run_index ADD COLUMN ${name} TEXT;
+
+UPDATE looms_run_index SET ${name} = ${value}
+WHERE ${name} IS NULL AND ${value} IS NOT NULL;
+`.trim()
+}
+
+function sqliteColumnIndexSql(column: ResolvedReplicaColumn): string {
+  return `CREATE INDEX IF NOT EXISTS looms_run_index_${column.name} ON looms_run_index ("${column.name}");`
+}
+
+/** Versioned DDL for the SQLite replica with no attribute columns, including D1. Looms only creates `looms_*` objects. */
+export const SQLITE_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
   sqliteReplicaMigration('0001_replica', SQLITE_REPLICA_SCHEMA_SQL),
 ]
+
+export function sqliteReplicaMigrations(
+  additionalFields?: RunAttributeFields,
+): readonly ReplicaMigration[] {
+  return [
+    ...SQLITE_REPLICA_MIGRATIONS,
+    ...columnMigrations(
+      additionalFields,
+      sqliteReplicaMigration,
+      sqliteColumnSql,
+      sqliteColumnIndexSql,
+    ),
+  ]
+}

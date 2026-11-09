@@ -5,6 +5,7 @@ import {
   ForkSourceError,
   InvalidEventError,
   InvalidInputError,
+  InvalidRunAttributesError,
   JsonValueSchema,
   type EventStore,
   type JsonValue,
@@ -119,7 +120,11 @@ export function toErrorResponse(err: Error): Response {
     return Response.json({ error: err.message }, { status: 400 })
   }
 
-  if (err instanceof InvalidInputError || err instanceof InvalidEventError) {
+  if (
+    err instanceof InvalidInputError ||
+    err instanceof InvalidEventError ||
+    err instanceof InvalidRunAttributesError
+  ) {
     return Response.json({ error: err.message, issues: err.issues }, { status: 400 })
   }
 

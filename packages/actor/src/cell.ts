@@ -8,6 +8,7 @@ import {
   type EventStore,
   type EventStoreTrimCoverage,
   type LaunchRunArgs,
+  type RunAttributeFields,
   type RunLauncher,
   type RunState,
   type RunStatusSnapshot,
@@ -53,6 +54,8 @@ export interface ActorCellOptions<
    * Cloudflare Queue producer). Without it, worker effects cannot leave the object.
    */
   readonly worker?: EffectWorker
+  /** Declared run attributes. See `CreateRuntimeOptions`. */
+  readonly attributes?: RunAttributeFields
 }
 
 export interface ActorCell<
@@ -103,6 +106,7 @@ export function createActorCell<
     maxPendingRunOperations: options.maxPendingRunOperations,
     snapshotStore: options.snapshotStore,
     trimAfterSnapshot: options.trimAfterSnapshot,
+    attributes: options.attributes,
   })
 
   const provide = <A, E>(effect: Effect.Effect<A, E, EventStoreTag>) =>

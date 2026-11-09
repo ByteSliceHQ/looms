@@ -1,5 +1,8 @@
 import { Database } from 'bun:sqlite'
 
+import type { RunAttributeFields } from '@looms/core'
+
+import type { NoAdditionalFields } from './columns'
 import {
   sqliteReplica,
   type SqlStatement,
@@ -10,12 +13,18 @@ import {
 } from './sqlite'
 
 /** Opens a SQLite file. The replica closes it on `dispose`. */
-export function openSqliteReplicaFile(
+export function openSqliteReplicaFile<const Fields extends RunAttributeFields = NoAdditionalFields>(
   filename: string,
   migrate: SqliteReplicaMigrate,
-): SqliteReplica {
+  additionalFields?: Fields,
+): SqliteReplica<Fields> {
   const db = new Database(filename)
-  const replica = sqliteReplica({ database: bunSqliteReplicaDatabase(db), migrate })
+
+  const replica = sqliteReplica<Fields>({
+    database: bunSqliteReplicaDatabase(db),
+    migrate,
+    additionalFields,
+  })
 
   return {
     ...replica,

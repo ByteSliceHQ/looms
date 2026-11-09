@@ -1,16 +1,15 @@
-import { Option, Predicate, Schema } from 'effect'
+import { Predicate } from 'effect'
 
 import {
   completedRunStatus,
   isJsonObject,
+  readAttributes,
   readRunLaunchSource,
   type EventEnvelope,
   type EventOrigin,
   type JsonValue,
   type RunStatus,
 } from '@looms/core'
-
-const decodeAttributes = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))
 
 export interface EventLogEntry {
   readonly runId: string
@@ -39,9 +38,6 @@ export interface RunLogRow {
   readonly launchedByEffectId: string | null
   readonly correlationId: string | null
   readonly attributes: { readonly [key: string]: string }
-  readonly tenant: string | null
-  readonly project: string | null
-  readonly org: string | null
   readonly startedAt: number | null
   readonly updatedAt: number
   readonly completedAt: number | null
@@ -60,9 +56,6 @@ export type EventLogOp =
       readonly launchedByEffectId: string | null
       readonly correlationId: string | null
       readonly attributes: { readonly [key: string]: string }
-      readonly tenant: string | null
-      readonly project: string | null
-      readonly org: string | null
       readonly at: number
     }
   | {
@@ -141,9 +134,6 @@ function startOp(event: EventEnvelope, payload: { [key: string]: JsonValue }): E
     launchedByEffectId: launchedBy?.effectId ?? null,
     correlationId: event.correlationId ?? null,
     attributes,
-    tenant: attributes.tenant ?? null,
-    project: attributes.project ?? null,
-    org: attributes.org ?? null,
     at: event.ts,
   }
 }
@@ -151,12 +141,4 @@ function startOp(event: EventEnvelope, payload: { [key: string]: JsonValue }): E
 function readString(payload: { [key: string]: JsonValue }, key: string): string | null {
   const value = payload[key]
   return Predicate.isString(value) ? value : null
-}
-
-function readAttributes(value: JsonValue | undefined): { [key: string]: string } {
-  if (value === undefined) {
-    return {}
-  }
-
-  return Option.getOrElse(decodeAttributes(value), () => ({}))
 }

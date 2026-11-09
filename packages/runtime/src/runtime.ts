@@ -14,7 +14,9 @@ import {
   EventStoreTag,
   foldRun,
   hasEntries,
+  InvalidRunAttributesError,
   isRunTerminal,
+  runAttributeIssues,
   unavailableRunLauncher,
   planFork,
   project,
@@ -335,6 +337,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
   const commitStart = (args: StartRunArgs, runId: string) =>
     Effect.gen(function* () {
+      if (options.attributes) {
+        const issues = runAttributeIssues(options.attributes, args.attributes ?? {})
+
+        if (issues.length > 0) {
+          return yield* new InvalidRunAttributesError(issues)
+        }
+      }
+
       const definitionVersion = args.definitionVersion ?? DEFAULT_DEFINITION_VERSION
 
       const resolved = yield* definitionResolver.resolve(

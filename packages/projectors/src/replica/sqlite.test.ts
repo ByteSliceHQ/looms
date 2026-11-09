@@ -410,4 +410,88 @@ describe('sqlite replica', () => {
     expect(await Effect.runPromise(copy.eventStore().read(runId))).toEqual([])
     expect((await copy.status(runId))?.purgedAt).not.toBeNull()
   })
+
+  test('declared attributes get columns, a backfill, and scope purge', async () => {
+    const db = new Database(':memory:')
+    const database = bunSqliteReplicaDatabase(db)
+    const past = Date.parse('2020-06-01T00:00:00.000Z')
+    const cutoff = Date.parse('2021-01-01T00:00:00.000Z')
+
+    const finishedRun = (runId: string, projectId: string): EventEnvelope[] => [
+      {
+        ...createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr',
+            kind: 'workflow',
+            definitionName: 'old',
+            input: null,
+            attributes: { projectId },
+          },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past,
+        }),
+        seq: 1,
+      },
+      {
+        ...createEvent(runId, {
+          type: 'runtime.run.completed',
+          payload: { output: null, error: null },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past + 1_000,
+        }),
+        seq: 2,
+      },
+    ]
+
+    await sqliteReplica({ database, migrate: 'auto' }).project(finishedRun('run_before', 'alpha'))
+
+    const copy = sqliteReplica({
+      database,
+      migrate: 'auto',
+      additionalFields: { projectId: { index: true } },
+    })
+
+    expect(await copy.pendingMigrations()).toEqual(['column_project_id', 'index_project_id'])
+    await copy.project(finishedRun('run_alpha', 'alpha'))
+    await copy.project(finishedRun('run_beta', 'beta'))
+
+    const rows = db
+      .query<{ run_id: string; project_id: string | null }, []>(
+        `SELECT run_id, project_id FROM looms_run_index ORDER BY run_id`,
+      )
+      .all()
+
+    expect(rows).toEqual([
+      { run_id: 'run_alpha', project_id: 'alpha' },
+      { run_id: 'run_before', project_id: 'alpha' },
+      { run_id: 'run_beta', project_id: 'beta' },
+    ])
+
+    const indexes = db
+      .query<{ name: string }, []>(`SELECT name FROM pragma_index_list('looms_run_index')`)
+      .all()
+
+    expect(indexes.map((index) => index.name)).toContain('looms_run_index_project_id')
+
+    expect(await copy.purge({ finishedBefore: cutoff, where: { projectId: 'alpha' } })).toEqual({
+      runs: 2,
+    })
+
+    expect((await copy.status('run_before'))?.purgedAt).not.toBeNull()
+    expect((await copy.status('run_beta'))?.purgedAt).toBeNull()
+    expect(await Effect.runPromise(copy.eventStore().read('run_beta'))).not.toEqual([])
+
+    const undeclared = await copy
+      // @ts-expect-error `tenant` is not a declared attribute
+      .purge({ finishedBefore: cutoff, where: { tenant: 'acme' } })
+      .then(
+        () => null,
+        (error) => error,
+      )
+
+    expect(String(undeclared)).toMatch(/where.tenant is not a declared attribute/)
+  })
 })

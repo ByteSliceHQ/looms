@@ -1,5 +1,5 @@
 import { DateTime, Effect, Predicate, Stream } from 'effect'
-import createPostgresClient, { type Sql, type TransactionSql } from 'postgres'
+import createPostgresClient, { type Sql } from 'postgres'
 
 import {
   EventStoreError,
@@ -9,6 +9,7 @@ import {
   type EventStore,
   type FoldRegistry,
   type JsonValue,
+  type RunAttributeFields,
   type RunState,
 } from '@looms/core'
 
@@ -16,11 +17,22 @@ import { applyRunIndexOps, eventLogOps, insertRunEvents } from '../event-log'
 import { indexOpsFor } from '../index-model'
 import { applyIndexOps } from '../postgres'
 import { ReplicaGapError, type Projector } from '../projector'
-import { POSTGRES_REPLICA_MIGRATIONS } from './migrations'
+import {
+  purgeFilters,
+  resolveReplicaColumns,
+  type NoAdditionalFields,
+  type ReplicaPurgeOptions,
+} from './columns'
+import {
+  appliedPostgresMigrationIds,
+  applyPostgresMigrations,
+  postgresReplicaMigrations,
+} from './migrations'
+
+export type { NoAdditionalFields, ReplicaPurgeOptions } from './columns'
 
 const REPLICA_NAME = 'postgres-replica'
 const REPLICA_VERSION = '1'
-const ADVISORY_LOCK_KEY = 814_764
 const READ_PAGE = 500
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled'])
@@ -36,26 +48,27 @@ export interface ReplicaStatus {
   readonly purgedAt: number | null
 }
 
-export interface ReplicaPurgeOptions {
-  /** Delete event copies for runs that finished before this epoch millisecond. */
-  readonly finishedBefore: number
-  /** Keep the run summary row. Defaults to true. */
-  readonly keepIndex?: boolean
-}
-
 export interface ReplicaPurgeResult {
   readonly runs: number
 }
 
 export type PostgresReplicaMigrate = 'auto' | 'verify'
 
-export type PostgresReplicaOptions = ({ readonly url: string } | { readonly sql: Sql }) & {
+export type PostgresReplicaOptions<Fields extends RunAttributeFields = NoAdditionalFields> = (
+  | { readonly url: string }
+  | { readonly sql: Sql }
+) & {
   /**
    * `auto` applies pending migrations on init.
    * `verify` refuses to start when a migration has not been applied, and names
    * `looms replica generate` so the host can commit the SQL.
    */
   readonly migrate: PostgresReplicaMigrate
+  /**
+   * Declared run attributes, from `defineRunAttributes`. Each one is a `looms_run_index`
+   * column, and each column and index is its own migration. `purge({ where })` filters on them.
+   */
+  readonly additionalFields?: Fields
 }
 
 type RunProgressRow = {
@@ -188,19 +201,6 @@ function contiguousSeq(
   return cursor
 }
 
-async function appliedMigrationIds(sql: Sql | TransactionSql): Promise<Set<string>> {
-  const [table] = await sql<{ name: string | null }[]>`
-    SELECT to_regclass('public.looms_schema_migrations') AS name
-  `
-
-  if (!table?.name) {
-    return new Set()
-  }
-
-  const rows = await sql<{ id: string }[]>`SELECT id FROM looms_schema_migrations`
-  return new Set(rows.map((row) => row.id))
-}
-
 async function readPage(
   sql: Sql,
   runId: string,
@@ -223,7 +223,9 @@ async function readPage(
  * A complete, gap-checked copy of every run, plus the run summary folded in the same transaction.
  * Reading an event back returns the envelope the source returned.
  */
-export interface PostgresReplica extends Projector {
+export interface PostgresReplica<
+  Fields extends RunAttributeFields = NoAdditionalFields,
+> extends Projector {
   readonly position: (runId: string) => Promise<number | null>
   /** Apply pending migrations. `init` does this only when `migrate` is `auto`. */
   readonly migrate: () => Promise<void>
@@ -235,35 +237,28 @@ export interface PostgresReplica extends Projector {
   /** How far the copy has got, and whether it is safe to treat as complete. */
   readonly status: (runId: string) => Promise<ReplicaStatus | null>
   /** Delete event copies for finished runs. Later deliveries for those runs are skipped. */
-  readonly purge: (options: ReplicaPurgeOptions) => Promise<ReplicaPurgeResult>
+  readonly purge: (options: ReplicaPurgeOptions<Fields>) => Promise<ReplicaPurgeResult>
   /** Copy every run in `source`. Purged runs are left alone. */
   readonly rebuild: (source: EventStore) => Promise<number>
 }
 
-export function postgresReplica(options: PostgresReplicaOptions): PostgresReplica {
+export function postgresReplica<const Fields extends RunAttributeFields = NoAdditionalFields>(
+  options: PostgresReplicaOptions<Fields>,
+): PostgresReplica<Fields> {
+  const columns = resolveReplicaColumns(options.additionalFields)
+  const migrations = postgresReplicaMigrations(options.additionalFields)
   const { sql, owned } = replicaClient(options)
   let ready: Promise<void> | undefined
 
   const pendingMigrations = async (): Promise<readonly string[]> => {
-    const applied = await appliedMigrationIds(sql)
+    const applied = await appliedPostgresMigrationIds(sql)
 
-    return POSTGRES_REPLICA_MIGRATIONS.filter((migration) => !applied.has(migration.id)).map(
-      (migration) => migration.id,
-    )
+    return migrations
+      .filter((migration) => !applied.has(migration.id))
+      .map((migration) => migration.id)
   }
 
-  const migrate = async (): Promise<void> => {
-    await sql.begin(async (tx) => {
-      await tx`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`
-      const applied = await appliedMigrationIds(tx)
-
-      for (const migration of POSTGRES_REPLICA_MIGRATIONS) {
-        if (!applied.has(migration.id)) {
-          await tx.unsafe(migration.sql)
-        }
-      }
-    })
-  }
+  const migrate = (): Promise<void> => applyPostgresMigrations(sql, migrations)
 
   const init = (): Promise<void> => {
     ready ??= (options.migrate === 'verify' ? verify() : migrate()).catch((cause: unknown) => {
@@ -314,6 +309,7 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
         await applyRunIndexOps(
           tx,
           durable.flatMap((event) => eventLogOps(event)),
+          columns,
         )
 
         await applyIndexOps(tx, durable.flatMap(indexOpsFor))
@@ -480,9 +476,10 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
     }
   }
 
-  const purge = async (purgeOptions: ReplicaPurgeOptions): Promise<ReplicaPurgeResult> => {
+  const purge = async (purgeOptions: ReplicaPurgeOptions<Fields>): Promise<ReplicaPurgeResult> => {
     const cutoff = utcDate(purgeOptions.finishedBefore)
     const keepIndex = purgeOptions.keepIndex !== false
+    const filters = purgeFilters(columns, purgeOptions.where)
 
     return sql.begin(async (tx) => {
       const doomed = await tx<{ run_id: string }[]>`
@@ -492,6 +489,10 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
           AND status IN ('completed', 'failed', 'cancelled')
           AND completed_at IS NOT NULL
           AND completed_at < ${cutoff}
+          ${filters.reduce(
+            (clause, filter) => tx`${clause} AND ${tx(filter.column)} = ${filter.value}`,
+            tx``,
+          )}
         RETURNING run_id
       `
 

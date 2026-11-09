@@ -24,6 +24,7 @@ import { sqliteProjectorCursorStore } from '../sqlite-delivery'
 import {
   loomsRunActors,
   loomsRunEvents,
+  loomsReplicaTables,
   loomsRunIndex,
   loomsRunReviews,
   loomsSchemaMigrations,
@@ -475,5 +476,105 @@ describe('postgres replica', () => {
     await Effect.runPromise(delivery.deliver(runId))
     expect(await Effect.runPromise(copy.eventStore().read(runId))).toEqual([])
     expect((await copy.status(runId))?.purgedAt).not.toBeNull()
+  })
+
+  test('declared attributes get columns, a backfill, and scope purge', async () => {
+    const client = requireSql()
+    const past = Date.parse('2020-06-01T00:00:00.000Z')
+    const cutoff = Date.parse('2021-01-01T00:00:00.000Z')
+
+    const finishedRun = (runId: string, projectId: string): EventEnvelope[] => [
+      {
+        ...createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr',
+            kind: 'workflow',
+            definitionName: 'old',
+            input: null,
+            attributes: { projectId },
+          },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past,
+        }),
+        seq: 1,
+      },
+      {
+        ...createEvent(runId, {
+          type: 'runtime.run.completed',
+          payload: { output: null, error: null },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past + 1_000,
+        }),
+        seq: 2,
+      },
+    ]
+
+    await requireReplica().project(finishedRun('run_fields_before', 'alpha'))
+
+    const copy = postgresReplica({
+      sql: client,
+      migrate: 'auto',
+      additionalFields: { projectId: { index: true } },
+    })
+
+    expect(await copy.pendingMigrations()).toEqual(['column_project_id', 'index_project_id'])
+    await copy.project(finishedRun('run_fields_alpha', 'alpha'))
+    await copy.project(finishedRun('run_fields_beta', 'beta'))
+
+    const rows = await client<{ run_id: string; project_id: string | null }[]>`
+      SELECT run_id, project_id FROM looms_run_index
+      WHERE run_id LIKE 'run_fields_%'
+      ORDER BY run_id
+    `
+
+    expect(rows.map((row) => ({ ...row }))).toEqual([
+      { run_id: 'run_fields_alpha', project_id: 'alpha' },
+      { run_id: 'run_fields_before', project_id: 'alpha' },
+      { run_id: 'run_fields_beta', project_id: 'beta' },
+    ])
+
+    const indexes = await client<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes WHERE tablename = 'looms_run_index'
+    `
+
+    expect(indexes.map((index) => index.indexname)).toContain('looms_run_index_project_id')
+
+    const tables = loomsReplicaTables({ additionalFields: { projectId: { index: true } } })
+    const config = getTableConfig(tables.loomsRunIndex)
+
+    const columns = await client<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'looms_run_index'
+    `
+
+    expect(columns.map((column) => column.column_name)).toEqual(
+      expect.arrayContaining(config.columns.map((column) => column.name)),
+    )
+
+    expect(config.columns).toHaveLength(getTableConfig(loomsRunIndex).columns.length + 1)
+    expect(tables.loomsRunIndex.projectId.name).toBe('project_id')
+
+    expect(config.indexes.map((index) => index.config.name)).toContain('looms_run_index_project_id')
+
+    expect(await copy.purge({ finishedBefore: cutoff, where: { projectId: 'alpha' } })).toEqual({
+      runs: 2,
+    })
+
+    expect((await copy.status('run_fields_before'))?.purgedAt).not.toBeNull()
+    expect((await copy.status('run_fields_beta'))?.purgedAt).toBeNull()
+    expect(await Effect.runPromise(copy.eventStore().read('run_fields_beta'))).not.toEqual([])
+
+    const undeclared = await copy
+      // @ts-expect-error `tenant` is not a declared attribute
+      .purge({ finishedBefore: cutoff, where: { tenant: 'acme' } })
+      .then(
+        () => null,
+        (error) => error,
+      )
+
+    expect(String(undeclared)).toMatch(/where.tenant is not a declared attribute/)
   })
 })

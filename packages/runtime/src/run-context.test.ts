@@ -6,9 +6,11 @@ import {
   RunLauncherTag,
   complete,
   defineEffect,
+  defineRunAttributes,
   defineRuntimeModule,
   defineThread,
   hasEntries,
+  InvalidRunAttributesError,
   invoke,
   makeMemoryEventStore,
   type EventStore,
@@ -384,6 +386,89 @@ describe('run attributes and secret context', () => {
       expect(await Effect.runPromise(store.runSecrets.get('run_fork'))).toEqual({ token: SECRET })
     }
 
+    await looms.stop()
+  })
+})
+
+describe('declared run attributes', () => {
+  const attributes = defineRunAttributes({ tenant: { required: true }, project: {} })
+
+  test('a start must carry required attributes and only declared ones', async () => {
+    const looms = createLooms({ modules: [contextModule], attributes })
+
+    const missing = await looms
+      // @ts-expect-error `tenant` is required, so the start options are too
+      .start(context, null)
+      .then(
+        () => null,
+        (error) => error,
+      )
+
+    expect(missing).toBeInstanceOf(InvalidRunAttributesError)
+    expect(missing.issues).toEqual(['"tenant" is required'])
+
+    const undeclared = await looms
+      // @ts-expect-error `region` is not a declared attribute
+      .start(context, null, { attributes: { tenant: 'acme', region: 'eu' } })
+      .then(
+        () => null,
+        (error) => error,
+      )
+
+    expect(undeclared).toBeInstanceOf(InvalidRunAttributesError)
+    expect(undeclared.issues).toEqual(['"region" is not a declared attribute'])
+
+    const started = await looms.start(context, null, {
+      runId: 'run_declared',
+      attributes: { tenant: 'acme' },
+    })
+
+    expect(started.state.attributes).toEqual({ tenant: 'acme' })
+    await looms.stop()
+  })
+
+  test('a launched run inherits required attributes from its parent', async () => {
+    const looms = createLooms({ modules: [contextModule], attributes })
+
+    await looms.start({ kind: 'parent', name: 'parent', version: 'v1' }, null, {
+      runId: 'run_declared_parent',
+      attributes: { tenant: 'acme' },
+    })
+
+    const deadline = Date.now() + 5_000
+
+    while ((await looms.getRun('run_declared_parent')).status !== 'completed') {
+      if (Date.now() > deadline) {
+        throw new Error('the parent run did not complete')
+      }
+
+      await Bun.sleep(5)
+    }
+
+    expect((await looms.getRun('run_declared_parent-child')).attributes).toEqual({
+      tenant: 'acme',
+    })
+
+    await looms.stop()
+  })
+
+  test('the start route answers 400 with the attribute issues', async () => {
+    const looms = createLooms({ modules: [contextModule], attributes })
+
+    const response = await looms.fetch(
+      new Request('http://looms.test/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'context',
+          definitionName: 'context',
+          attributes: { project: 'billing' },
+        }),
+      }),
+    )
+
+    expect(response?.status).toBe(400)
+    expect(await response?.json()).toMatchObject({ issues: ['"tenant" is required'] })
     await looms.stop()
   })
 })

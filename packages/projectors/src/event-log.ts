@@ -5,13 +5,20 @@ import {
   type EventEnvelope,
   type EventStore,
   type EventStoreError,
+  type RunAttributeFields,
   type RunStatus,
 } from '@looms/core'
 
 import { eventLogOps, type EventLogEntry, type EventLogOp, type RunLogRow } from './event-log-ops'
 import type { Projector } from './projector'
 import { runProjectorPromise } from './projector'
-import { POSTGRES_EVENT_LOG_SCHEMA_SQL } from './replica/migrations'
+import { columnValues, resolveReplicaColumns, type ResolvedReplicaColumn } from './replica/columns'
+import {
+  applyPostgresMigrations,
+  POSTGRES_EVENT_LOG_SCHEMA_SQL,
+  POSTGRES_SCHEMA_MIGRATIONS_SQL,
+  postgresAttributeMigrations,
+} from './replica/migrations'
 
 export { POSTGRES_EVENT_LOG_SCHEMA_SQL, eventLogOps }
 export type { EventLogEntry, EventLogOp, RunLogRow }
@@ -40,9 +47,6 @@ interface RunRecord {
   launchedByEffectId: string | null
   correlationId: string | null
   attributes: { [key: string]: string }
-  tenant: string | null
-  project: string | null
-  org: string | null
   startedAt: number | null
   updatedAt: number
   completedAt: number | null
@@ -80,11 +84,19 @@ export function memoryEventLog(): MemoryEventLog {
   }
 }
 
-export function postgresEventLog(options: { url: string } | { sql: Sql }): EventLogProjector {
+export type PostgresEventLogOptions = ({ url: string } | { sql: Sql }) & {
+  /** Declared run attributes. Each one is a `looms_run_index` column. */
+  readonly additionalFields?: RunAttributeFields
+}
+
+export function postgresEventLog(options: PostgresEventLogOptions): EventLogProjector {
   const created = 'url' in options
   const connected = created ? createPostgresClient(options.url) : options.sql
 
-  return createEventLogProjector('postgres-event-log', postgresStore(connected, created))
+  return createEventLogProjector(
+    'postgres-event-log',
+    postgresStore(connected, created, options.additionalFields),
+  )
 }
 
 function createEventLogProjector(
@@ -192,9 +204,6 @@ function mergeStart(
       existing && Object.keys(existing.attributes).length > 0
         ? existing.attributes
         : { ...op.attributes },
-    tenant: existing?.tenant ?? op.tenant,
-    project: existing?.project ?? op.project,
-    org: existing?.org ?? op.org,
     startedAt: existing?.startedAt ?? op.at,
     updatedAt: Math.max(existing?.updatedAt ?? 0, op.at),
     completedAt: existing?.completedAt ?? null,
@@ -216,9 +225,6 @@ function mergeFinish(
     launchedByEffectId: existing?.launchedByEffectId ?? null,
     correlationId: existing?.correlationId ?? null,
     attributes: existing?.attributes ?? {},
-    tenant: existing?.tenant ?? null,
-    project: existing?.project ?? null,
-    org: existing?.org ?? null,
     startedAt: existing?.startedAt ?? null,
     updatedAt: Math.max(existing?.updatedAt ?? 0, op.at),
     completedAt: existing?.completedAt ?? op.at,
@@ -229,12 +235,27 @@ function utcDate(ms: number): Date {
   return DateTime.toDateUtc(DateTime.makeUnsafe(ms))
 }
 
-function postgresStore(sql: Sql, ownsClient: boolean) {
+/** Applied on every init; each statement is idempotent. */
+const POSTGRES_EVENT_LOG_INIT_SQL = [
+  POSTGRES_EVENT_LOG_SCHEMA_SQL,
+  POSTGRES_SCHEMA_MIGRATIONS_SQL,
+].join('\n\n')
+
+function postgresStore(
+  sql: Sql,
+  ownsClient: boolean,
+  additionalFields: RunAttributeFields | undefined,
+) {
+  const columns = resolveReplicaColumns(additionalFields)
+  const attributeMigrations = postgresAttributeMigrations(additionalFields)
+
   return {
     init: () =>
       runProjectorPromise('postgres-event-log', () =>
-        sql.unsafe(POSTGRES_EVENT_LOG_SCHEMA_SQL),
-      ).then(() => undefined),
+        sql
+          .unsafe(POSTGRES_EVENT_LOG_INIT_SQL)
+          .then(() => applyPostgresMigrations(sql, attributeMigrations)),
+      ),
     apply: (events: readonly EventEnvelope[]) => {
       const ops = events.flatMap(eventLogOps)
 
@@ -243,7 +264,7 @@ function postgresStore(sql: Sql, ownsClient: boolean) {
       }
 
       return runProjectorPromise('postgres-event-log', () =>
-        sql.begin((tx) => applySqlOps(tx, ops)),
+        sql.begin((tx) => applySqlOps(tx, ops, columns)),
       ).then(() => undefined)
     },
     dispose: () =>
@@ -303,23 +324,31 @@ function runIndexPatches(ops: readonly EventLogOp[]): RunIndexPatch[] {
   return [...patches.values()]
 }
 
-export function applySqlOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
+export function applySqlOps(
+  sql: TransactionSql,
+  ops: readonly EventLogOp[],
+  columns: readonly ResolvedReplicaColumn[] = [],
+): Promise<void> {
   const events = ops.flatMap((op) => (op.type === 'insert' ? [envelopeFromEntry(op.entry)] : []))
 
-  return Promise.all([insertRunEvents(sql, events), applyRunIndexOps(sql, ops)]).then(
+  return Promise.all([insertRunEvents(sql, events), applyRunIndexOps(sql, ops, columns)]).then(
     () => undefined,
   )
 }
 
 /** Fold run-summary ops. Event rows are written by {@link insertRunEvents}. */
-export function applyRunIndexOps(sql: TransactionSql, ops: readonly EventLogOp[]): Promise<void> {
+export function applyRunIndexOps(
+  sql: TransactionSql,
+  ops: readonly EventLogOp[],
+  columns: readonly ResolvedReplicaColumn[] = [],
+): Promise<void> {
   const patches = runIndexPatches(ops)
   const upserts = patches.filter((patch) => patch.start !== null || patch.finish !== null)
   const touches = patches.filter((patch) => patch.start === null && patch.finish === null)
   const statements: Promise<void>[] = []
 
   if (upserts.length > 0) {
-    statements.push(upsertRuns(sql, upserts))
+    statements.push(upsertRuns(sql, upserts, columns))
   }
 
   if (touches.length > 0) {
@@ -387,8 +416,13 @@ function insertEventChunk(sql: TransactionSql, events: readonly EventEnvelope[])
 
 // A finish in the batch sets the status; otherwise a finished run keeps its status and a
 // started run becomes running. Start fields fill only columns that are still empty.
-function upsertRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Promise<void> {
+function upsertRuns(
+  sql: TransactionSql,
+  patches: readonly RunIndexPatch[],
+  columns: readonly ResolvedReplicaColumn[],
+): Promise<void> {
   const rows = patches.map(({ runId, start, finish, completedAt, updatedAt }) => ({
+    ...hostColumnRow(columns, start?.attributes),
     run_id: runId,
     status: finish?.status ?? 'running',
     kind: start?.kind ?? null,
@@ -399,9 +433,6 @@ function upsertRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Pro
     launched_by_effect_id: start?.launchedByEffectId ?? null,
     correlation_id: start?.correlationId ?? null,
     attributes: sql.json(start?.attributes ?? {}),
-    tenant: start?.tenant ?? null,
-    project: start?.project ?? null,
-    org: start?.org ?? null,
     started_at: start ? utcDate(start.at) : null,
     updated_at: utcDate(updatedAt),
     completed_at: completedAt === null ? null : utcDate(completedAt),
@@ -426,13 +457,23 @@ function upsertRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Pro
         WHEN looms_run_index.attributes = '{}'::jsonb THEN EXCLUDED.attributes
         ELSE looms_run_index.attributes
       END,
-      tenant = COALESCE(looms_run_index.tenant, EXCLUDED.tenant),
-      project = COALESCE(looms_run_index.project, EXCLUDED.project),
-      org = COALESCE(looms_run_index.org, EXCLUDED.org),
+      ${columns.reduce(
+        (set, column) =>
+          sql`${set} ${sql(column.name)} = COALESCE(looms_run_index.${sql(column.name)}, EXCLUDED.${sql(column.name)}),`,
+        sql``,
+      )}
       started_at = COALESCE(looms_run_index.started_at, EXCLUDED.started_at),
       updated_at = GREATEST(looms_run_index.updated_at, EXCLUDED.updated_at),
       completed_at = COALESCE(looms_run_index.completed_at, EXCLUDED.completed_at)
   `.then(() => undefined)
+}
+
+function hostColumnRow(
+  columns: readonly ResolvedReplicaColumn[],
+  attributes: { readonly [key: string]: string } | undefined,
+): { [column: string]: string | null } {
+  const values = columnValues(columns, attributes)
+  return Object.fromEntries(columns.map((column, index) => [column.name, values[index] ?? null]))
 }
 
 function touchRuns(sql: TransactionSql, patches: readonly RunIndexPatch[]): Promise<void> {
