@@ -775,12 +775,15 @@ export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
 
   const purge = async (purgeOptions: ReplicaPurgeOptions): Promise<ReplicaPurgeResult> => {
     const keepIndex = purgeOptions.keepIndex !== false
+
     const where = purgeOptions.where
+
     const filterSql = [
       where?.project ? 'AND project = ?' : '',
       where?.org ? 'AND org = ?' : '',
       where?.tenant ? 'AND tenant = ?' : '',
     ].join(' ')
+
     const filterParams: SqlValue[] = []
 
     if (where?.project) {

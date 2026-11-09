@@ -35,8 +35,10 @@ const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost } =
   await import('./durable-object')
 
 const { durableObjectAlarms } = await import('./alarm-scheduler')
+
 const { deleteTerminalRunStorage, RunNotTerminalError } =
   await import('./delete-terminal-run-storage')
+
 const { durableObjectEventStore } = await import('./event-store')
 const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
@@ -600,7 +602,7 @@ describe('deleteTerminalRunStorage', () => {
     const events = await Effect.runPromise(store.read(runId))
     const state = foldRun(events, { threads: new Map() })
 
-    await expect(deleteTerminalRunStorage(storage, store, runId, state)).rejects.toBeInstanceOf(
+    expect(deleteTerminalRunStorage(storage, store, runId, state)).rejects.toBeInstanceOf(
       RunNotTerminalError,
     )
   })

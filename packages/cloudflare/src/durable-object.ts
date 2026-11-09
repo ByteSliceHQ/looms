@@ -225,7 +225,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
    * rebuilds an empty store.
    */
   deleteTerminalRunStorage(options: DeleteTerminalRunStorageOptions = {}): Promise<void> {
-    return this.getCell().then(async (cell) => {
+    return this.getCell().then((cell) => {
       const runId = this.ctx.id.name
 
       if (!runId) {
@@ -240,19 +240,19 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         throw new Error('Run storage is not ready')
       }
 
-      const state = await cell.getRun()
-
-      await deleteTerminalRunStorage(
-        this.ctx.storage,
-        store,
-        runId,
-        state,
-        options,
-        store.projectorDelivery,
+      return cell.getRun().then((state) =>
+        deleteTerminalRunStorage(
+          this.ctx.storage,
+          store,
+          runId,
+          state,
+          options,
+          store.projectorDelivery,
+        ).then(() => {
+          this.cellPromise = undefined
+          this.store = undefined
+        }),
       )
-
-      this.cellPromise = undefined
-      this.store = undefined
     })
   }
 
