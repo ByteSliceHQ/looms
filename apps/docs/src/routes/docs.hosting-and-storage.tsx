@@ -158,6 +158,16 @@ Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(re
         recovery policy. See <Link to="/docs/operations">operations</Link> and{' '}
         <Link to="/docs/reliability">reliability</Link>.
       </p>
+      <p>
+        A Durable Object keeps a finished run's storage until you delete it. Once a{' '}
+        <Link to="/docs/replica">replica</Link> holds the copy you need, call{' '}
+        <code>deleteTerminalRunStorage</code> on the object's stub. It refuses with{' '}
+        <code>RunNotTerminalError</code> while the run is still going. With{' '}
+        <code>requireProjectors</code>, it also refuses with <code>ProjectorCoverageError</code>{' '}
+        until each listed projector has delivered through the end of the log. The object must have
+        those projectors attached. A refusal deletes nothing.
+      </p>
+      <CodeBlock lang="ts">{`await stub.deleteTerminalRunStorage({ requireProjectors: ['postgres-replica@1'] })`}</CodeBlock>
       <h2 id="other-hosts">
         Other hosts
         <a className="heading-anchor" href="#other-hosts" aria-label="Link to this section">

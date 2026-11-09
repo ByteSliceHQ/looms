@@ -14,6 +14,7 @@ import type { Projector } from './projector'
 import { runProjectorPromise } from './projector'
 import { columnValues, resolveReplicaColumns, type ResolvedReplicaColumn } from './replica/columns'
 import {
+  applyPostgresMigrations,
   POSTGRES_EVENT_LOG_SCHEMA_SQL,
   POSTGRES_SCHEMA_MIGRATIONS_SQL,
   postgresAttributeMigrations,
@@ -91,11 +92,10 @@ export type PostgresEventLogOptions = ({ url: string } | { sql: Sql }) & {
 export function postgresEventLog(options: PostgresEventLogOptions): EventLogProjector {
   const created = 'url' in options
   const connected = created ? createPostgresClient(options.url) : options.sql
-  const columns = resolveReplicaColumns(options.additionalFields)
 
   return createEventLogProjector(
     'postgres-event-log',
-    postgresStore(connected, created, columns, options.additionalFields),
+    postgresStore(connected, created, options.additionalFields),
   )
 }
 
@@ -235,40 +235,26 @@ function utcDate(ms: number): Date {
   return DateTime.toDateUtc(DateTime.makeUnsafe(ms))
 }
 
+/** Applied on every init; each statement is idempotent. */
+const POSTGRES_EVENT_LOG_INIT_SQL = [
+  POSTGRES_EVENT_LOG_SCHEMA_SQL,
+  POSTGRES_SCHEMA_MIGRATIONS_SQL,
+].join('\n\n')
+
 function postgresStore(
   sql: Sql,
   ownsClient: boolean,
-  columns: readonly ResolvedReplicaColumn[],
   additionalFields: RunAttributeFields | undefined,
 ) {
+  const columns = resolveReplicaColumns(additionalFields)
   const attributeMigrations = postgresAttributeMigrations(additionalFields)
 
   return {
     init: () =>
       runProjectorPromise('postgres-event-log', () =>
-        // Base schema stays IF NOT EXISTS on every boot. Attribute columns are
-        // recorded migrations so their backfill UPDATE runs once, not every start.
         sql
-          .unsafe(POSTGRES_EVENT_LOG_SCHEMA_SQL)
-          .then(() => sql.unsafe(POSTGRES_SCHEMA_MIGRATIONS_SQL))
-          .then(() => {
-            if (attributeMigrations.length === 0) {
-              return undefined
-            }
-
-            return sql<{ id: string }[]>`SELECT id FROM looms_schema_migrations`.then((rows) => {
-              const applied = new Set(rows.map((row) => row.id))
-
-              return attributeMigrations.reduce(
-                (prior, migration) =>
-                  prior.then(() =>
-                    applied.has(migration.id) ? undefined : sql.unsafe(migration.sql),
-                  ),
-                Promise.resolve<unknown>(undefined),
-              )
-            })
-          })
-          .then(() => undefined),
+          .unsafe(POSTGRES_EVENT_LOG_INIT_SQL)
+          .then(() => applyPostgresMigrations(sql, attributeMigrations)),
       ),
     apply: (events: readonly EventEnvelope[]) => {
       const ops = events.flatMap(eventLogOps)

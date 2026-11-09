@@ -245,10 +245,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       }
 
       return cell.getRun().then((state) =>
-        deleteTerminalRunStorage(this.ctx.storage, store, runId, state, {
-          ...options,
-          delivery: options.delivery ?? store.projectorDelivery,
-        }).then(() => {
+        deleteTerminalRunStorage(this.ctx.storage, store, runId, state, options).then(() => {
           this.cellPromise = undefined
           this.store = undefined
         }),

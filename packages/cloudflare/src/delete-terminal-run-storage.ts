@@ -3,14 +3,14 @@ import { Data, Effect } from 'effect'
 import { isRunTerminal, type EventStore, type RunState } from '@looms/core'
 import type { ProjectorDelivery } from '@looms/projectors'
 
+import type { DurableObjectEventStore } from './event-store'
+
 export interface DeleteTerminalRunStorageOptions {
   /**
    * Projector identities (`name@version`) that must have delivered through the
-   * log tail before storage is removed. Requires `delivery`.
+   * log tail before storage is removed. The store must have projectors attached.
    */
   readonly requireProjectors?: readonly string[]
-  /** Delivery used to read projector cursors when `requireProjectors` is set. */
-  readonly delivery?: ProjectorDelivery
 }
 
 export class RunNotTerminalError extends Data.TaggedError('RunNotTerminalError')<{
@@ -77,7 +77,7 @@ function assertProjectorCoverage(
         (cause) =>
           new ProjectorCoverageError({
             runId,
-            message: cause instanceof Error ? cause.message : String(cause),
+            message: cause.message,
           }),
       ),
     )
@@ -144,15 +144,7 @@ function wipeStorage(
     }
 
     for (const table of tables) {
-      try {
-        void [...storage.sql.exec(`DELETE FROM ${table} WHERE run_id = ?`, runId)]
-      } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause)
-
-        if (!/no such table/i.test(message)) {
-          throw cause
-        }
-      }
+      void [...storage.sql.exec(`DELETE FROM ${table} WHERE run_id = ?`, runId)]
     }
   })
 }
@@ -164,11 +156,13 @@ function wipeStorage(
  */
 export function deleteTerminalRunStorage(
   storage: TerminalRunStorageHost,
-  store: EventStore,
+  store: DurableObjectEventStore,
   runId: string,
   state: RunState,
   options: DeleteTerminalRunStorageOptions = {},
 ): Promise<void> {
+  const delivery = store.projectorDelivery
+
   return Effect.runPromise(
     Effect.gen(function* () {
       if (!isRunTerminal(state)) {
@@ -178,19 +172,17 @@ export function deleteTerminalRunStorage(
       const required = options.requireProjectors ?? []
 
       if (required.length > 0) {
-        const delivery = options.delivery
-
         if (!delivery) {
           return yield* new ProjectorCoverageError({
             runId,
-            message: 'requireProjectors needs projector delivery on the event store',
+            message: 'requireProjectors needs an event store with projectors attached',
           })
         }
 
         yield* assertProjectorCoverage(store, delivery, runId, required)
       }
 
-      yield* wipeStorage(storage, runId, options.delivery)
+      yield* wipeStorage(storage, runId, delivery)
 
       const deleteAlarm = storage.deleteAlarm
 

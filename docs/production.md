@@ -114,9 +114,13 @@ column on `looms_run_index`, named in snake_case (`tenantId` becomes
 `tenant_id`) unless `fieldName` is set. `index: true` adds
 `looms_run_index_<column>`. Each column and index is its own migration
 (`column_tenant_id`, `index_tenant_id`), and adding a column backfills it from
-the `attributes` JSON of runs already copied. The Drizzle table exposes the
-column under the attribute key, for example `tables.loomsRunIndex.tenantId`.
-Pass the declaration to the CLI with `--config` so generated migrations match:
+the `attributes` JSON of runs already copied. `postgresEventLog` applies these
+migrations itself on `init` and records them in `looms_schema_migrations`, so
+the backfill runs once. The replica applies them when `migrate` is `auto`, or
+refuses to start until they exist when it is `verify`. The Drizzle table
+exposes the column under the attribute key, for example
+`tables.loomsRunIndex.tenantId`. Pass the declaration to the CLI with
+`--config` so generated migrations match:
 
 ```sh
 looms replica generate --out drizzle --config ./looms.attributes.ts
@@ -380,7 +384,9 @@ has caught up, delete the actor's Durable Object storage with
 `deleteTerminalRunStorage` from `@looms/cloudflare`, or
 `stub.deleteTerminalRunStorage({ requireProjectors: ['postgres-replica@1'] })` on
 `LoomsDurableObject`. The run must be terminal; when `requireProjectors` is set,
-each identity's delivery cursor must be at or beyond the log tail.
+the event store must have projectors attached and each identity's delivery
+cursor must be at or beyond the log tail. A refusal throws `RunNotTerminalError`
+or `ProjectorCoverageError` and deletes nothing.
 
 ## Versioned deploy and rollback
 

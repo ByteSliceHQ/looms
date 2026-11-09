@@ -643,96 +643,37 @@ describe('deleteTerminalRunStorage', () => {
 
     const events = await Effect.runPromise(store.read(runId))
     const state = foldRun(events, { threads: new Map() })
-    const tail = (await Effect.runPromise(store.bounds!(runId))).tail
+    const replica = { name: 'replica', version: '1', project: async () => {} }
+    const projected = durableObjectEventStore(ctx, { projectors: [replica] })
+    const delivery = projected.projectorDelivery!
 
-    const missingDelivery = await deleteTerminalRunStorage(storage, store, runId, state, {
-      requireProjectors: ['postgres-replica@1'],
-    }).then(
-      () => null,
-      (error) => error,
-    )
+    const refusal = (target: typeof store, requireProjectors: readonly string[]) =>
+      deleteTerminalRunStorage(storage, target, runId, state, { requireProjectors }).then(
+        () => null,
+        (error) => error,
+      )
 
+    const missingDelivery = await refusal(store, ['replica@1'])
     expect(missingDelivery).toBeInstanceOf(ProjectorCoverageError)
-    expect(String(missingDelivery)).toMatch(/needs projector delivery/)
+    expect(String(missingDelivery)).toMatch(/projectors attached/)
 
-    const behind = await deleteTerminalRunStorage(storage, store, runId, state, {
-      requireProjectors: ['postgres-replica@1'],
-      delivery: {
-        status: () =>
-          Effect.succeed([
-            {
-              runId,
-              projector: 'postgres-replica',
-              version: '1',
-              cursor: Math.max(0, tail - 1),
-              state: 'idle' as const,
-              attempts: 0,
-              failedSeq: null,
-              nextRetryAt: null,
-              lastError: null,
-              updatedAt: past,
-            },
-          ]),
-        deliver: () => Effect.void,
-        requeue: () => Effect.void,
-        nextRetryAt: () => Effect.succeed(null),
-        inspect: () => Effect.succeed([]),
-        recover: () => Effect.succeed(0),
-      },
-    }).then(
-      () => null,
-      (error) => error,
-    )
-
+    const behind = await refusal(projected, ['replica@1'])
     expect(behind).toBeInstanceOf(ProjectorCoverageError)
-    expect(String(behind)).toMatch(/before log tail/)
+    expect(String(behind)).toMatch(/cursor missing is before log tail/)
 
-    const badIdentity = await deleteTerminalRunStorage(storage, store, runId, state, {
-      requireProjectors: ['no-version'],
-      delivery: {
-        status: () => Effect.succeed([]),
-        deliver: () => Effect.void,
-        requeue: () => Effect.void,
-        nextRetryAt: () => Effect.succeed(null),
-        inspect: () => Effect.succeed([]),
-        recover: () => Effect.succeed(0),
-      },
-    }).then(
-      () => null,
-      (error) => error,
-    )
-
+    const badIdentity = await refusal(projected, ['no-version'])
     expect(badIdentity).toBeInstanceOf(ProjectorCoverageError)
     expect(badIdentity).toMatchObject({ runId })
     expect(String(badIdentity)).toMatch(/expected name@version/)
 
-    await deleteTerminalRunStorage(storage, store, runId, state, {
-      requireProjectors: ['postgres-replica@1'],
-      delivery: {
-        status: () =>
-          Effect.succeed([
-            {
-              runId,
-              projector: 'postgres-replica',
-              version: '1',
-              cursor: tail,
-              state: 'idle' as const,
-              attempts: 0,
-              failedSeq: null,
-              nextRetryAt: null,
-              lastError: null,
-              updatedAt: past,
-            },
-          ]),
-        deliver: () => Effect.void,
-        requeue: () => Effect.void,
-        nextRetryAt: () => Effect.succeed(null),
-        inspect: () => Effect.succeed([]),
-        recover: () => Effect.succeed(0),
-      },
+    await Effect.runPromise(delivery.deliver(runId))
+
+    await deleteTerminalRunStorage(storage, projected, runId, state, {
+      requireProjectors: ['replica@1'],
     })
 
     expect(await Effect.runPromise(store.listRuns)).toEqual([])
+    expect(await Effect.runPromise(delivery.status(runId))).toEqual([])
   })
 })
 

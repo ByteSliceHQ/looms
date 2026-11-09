@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { Predicate } from 'effect'
+import type { Sql, TransactionSql } from 'postgres'
 
 import type { RunAttributeFields } from '@looms/core'
 
@@ -157,6 +158,42 @@ export function postgresAttributeMigrations(
   )
 }
 
+/** Serializes Looms migrations across processes that share one database. */
+const MIGRATION_LOCK_KEY = 814_764
+
+/** Ids recorded in `looms_schema_migrations`, or none when the table does not exist yet. */
+export async function appliedPostgresMigrationIds(
+  sql: Sql | TransactionSql,
+): Promise<ReadonlySet<string>> {
+  const [table] = await sql<{ name: string | null }[]>`
+    SELECT to_regclass('public.looms_schema_migrations') AS name
+  `
+
+  if (!table?.name) {
+    return new Set()
+  }
+
+  const rows = await sql<{ id: string }[]>`SELECT id FROM looms_schema_migrations`
+  return new Set(rows.map((row) => row.id))
+}
+
+/** Applies each migration that is not recorded yet, in order, under one advisory lock. */
+export async function applyPostgresMigrations(
+  sql: Sql,
+  migrations: readonly ReplicaMigration[],
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`
+    const applied = await appliedPostgresMigrationIds(tx)
+
+    for (const migration of migrations) {
+      if (!applied.has(migration.id)) {
+        await tx.unsafe(migration.sql)
+      }
+    }
+  })
+}
+
 /** Versioned DDL for the Postgres replica with no attribute columns. Looms only creates and alters `looms_*` objects. */
 export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
   replicaMigration('0001_replica', [
@@ -169,15 +206,7 @@ export const POSTGRES_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
 export function postgresReplicaMigrations(
   additionalFields?: RunAttributeFields,
 ): readonly ReplicaMigration[] {
-  return [
-    ...POSTGRES_REPLICA_MIGRATIONS,
-    ...columnMigrations(
-      additionalFields,
-      (id, sql) => replicaMigration(id, [sql]),
-      postgresColumnSql,
-      postgresColumnIndexSql,
-    ),
-  ]
+  return [...POSTGRES_REPLICA_MIGRATIONS, ...postgresAttributeMigrations(additionalFields)]
 }
 
 const MIGRATION_HEADER = /^-- looms-migration:\s+(\S+)/m

@@ -1,5 +1,5 @@
 import { DateTime, Effect, Predicate, Stream } from 'effect'
-import createPostgresClient, { type Sql, type TransactionSql } from 'postgres'
+import createPostgresClient, { type Sql } from 'postgres'
 
 import {
   EventStoreError,
@@ -23,13 +23,16 @@ import {
   type NoAdditionalFields,
   type ReplicaPurgeOptions,
 } from './columns'
-import { postgresReplicaMigrations } from './migrations'
+import {
+  appliedPostgresMigrationIds,
+  applyPostgresMigrations,
+  postgresReplicaMigrations,
+} from './migrations'
 
 export type { NoAdditionalFields, ReplicaPurgeOptions } from './columns'
 
 const REPLICA_NAME = 'postgres-replica'
 const REPLICA_VERSION = '1'
-const ADVISORY_LOCK_KEY = 814_764
 const READ_PAGE = 500
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled'])
@@ -198,19 +201,6 @@ function contiguousSeq(
   return cursor
 }
 
-async function appliedMigrationIds(sql: Sql | TransactionSql): Promise<Set<string>> {
-  const [table] = await sql<{ name: string | null }[]>`
-    SELECT to_regclass('public.looms_schema_migrations') AS name
-  `
-
-  if (!table?.name) {
-    return new Set()
-  }
-
-  const rows = await sql<{ id: string }[]>`SELECT id FROM looms_schema_migrations`
-  return new Set(rows.map((row) => row.id))
-}
-
 async function readPage(
   sql: Sql,
   runId: string,
@@ -261,25 +251,14 @@ export function postgresReplica<const Fields extends RunAttributeFields = NoAddi
   let ready: Promise<void> | undefined
 
   const pendingMigrations = async (): Promise<readonly string[]> => {
-    const applied = await appliedMigrationIds(sql)
+    const applied = await appliedPostgresMigrationIds(sql)
 
     return migrations
       .filter((migration) => !applied.has(migration.id))
       .map((migration) => migration.id)
   }
 
-  const migrate = async (): Promise<void> => {
-    await sql.begin(async (tx) => {
-      await tx`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`
-      const applied = await appliedMigrationIds(tx)
-
-      for (const migration of migrations) {
-        if (!applied.has(migration.id)) {
-          await tx.unsafe(migration.sql)
-        }
-      }
-    })
-  }
+  const migrate = (): Promise<void> => applyPostgresMigrations(sql, migrations)
 
   const init = (): Promise<void> => {
     ready ??= (options.migrate === 'verify' ? verify() : migrate()).catch((cause: unknown) => {
