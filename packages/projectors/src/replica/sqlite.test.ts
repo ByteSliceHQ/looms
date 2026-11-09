@@ -410,4 +410,58 @@ describe('sqlite replica', () => {
     expect(await Effect.runPromise(copy.eventStore().read(runId))).toEqual([])
     expect((await copy.status(runId))?.purgedAt).not.toBeNull()
   })
+
+  test('purge applies optional project filter', async () => {
+    const { replica: copy } = openReplica()
+    const source: EventStore = await Effect.runPromise(makeMemoryEventStore)
+
+    const delivery = createProjectorDelivery(
+      source,
+      [copy],
+      sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
+    )
+
+    const past = Date.parse('2020-06-01T00:00:00.000Z')
+    const cutoff = Date.parse('2021-01-01T00:00:00.000Z')
+
+    const seed = async (runId: string, project: string) => {
+      await Effect.runPromise(
+        source.append(runId, [
+          createEvent(runId, {
+            type: 'runtime.run.started',
+            payload: {
+              rootThreadId: 'thr',
+              kind: 'workflow',
+              definitionName: 'old',
+              input: null,
+              attributes: { project },
+            },
+            threadId: null,
+            origin: { type: 'system' },
+            ts: past,
+          }),
+          createEvent(runId, {
+            type: 'runtime.run.completed',
+            payload: { output: null, error: null },
+            threadId: null,
+            origin: { type: 'system' },
+            ts: past + 1_000,
+          }),
+        ]),
+      )
+
+      await Effect.runPromise(delivery.deliver(runId))
+    }
+
+    await seed('run_alpha', 'alpha')
+    await seed('run_beta', 'beta')
+
+    expect(await copy.purge({ finishedBefore: cutoff, where: { project: 'alpha' } })).toEqual({
+      runs: 1,
+    })
+
+    expect((await copy.status('run_alpha'))?.purgedAt).not.toBeNull()
+    expect((await copy.status('run_beta'))?.purgedAt).toBeNull()
+    expect(await Effect.runPromise(copy.eventStore().read('run_beta'))).not.toEqual([])
+  })
 })

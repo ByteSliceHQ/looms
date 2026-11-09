@@ -1,5 +1,12 @@
 export { durableObjectAlarms, type AlarmStorage, type DurableObjectAlarms } from './alarm-scheduler'
 export {
+  deleteTerminalRunStorage,
+  ProjectorCoverageError,
+  RunNotTerminalError,
+  type DeleteTerminalRunStorageOptions,
+  type TerminalRunStorageHost,
+} from './delete-terminal-run-storage'
+export {
   durableObjectEventStore,
   type DurableObjectEventStore,
   type DurableObjectStoreOptions,

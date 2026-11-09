@@ -5,8 +5,10 @@ import { Effect, Schema } from 'effect'
 
 import { createLocalActorHost } from '@looms/actor'
 import {
+  createEvent,
   DefinitionCatalogSchema,
   emptyRunState,
+  foldRun,
   makeMemoryEventStore,
   type SubscriptionAttachment,
 } from '@looms/core'
@@ -33,6 +35,8 @@ const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost } =
   await import('./durable-object')
 
 const { durableObjectAlarms } = await import('./alarm-scheduler')
+const { deleteTerminalRunStorage, RunNotTerminalError } = await import('./delete-terminal-run-storage')
+const { durableObjectEventStore } = await import('./event-store')
 const { routeToDurableObject } = await import('./router')
 import type { AlarmStorage } from './alarm-scheduler'
 import type { LoomsDurableObjectConfig } from './durable-object'
@@ -455,6 +459,7 @@ interface ObjectStorage {
   getAlarm(): Promise<number | null>
   setAlarm(at: number | Date): Promise<void>
   deleteAlarm(): Promise<void>
+  deleteAll?: () => Promise<void>
   alarmAt(): number | null
   writes(): number
   resetWrites(): void
@@ -527,6 +532,78 @@ function objectContext(name: string, storage: ObjectStorage) {
     storage,
   }
 }
+
+describe('deleteTerminalRunStorage', () => {
+  test('wipes sqlite for a terminal run', async () => {
+    const storage = sqliteStorage()
+    const runId = 'run_storage_delete'
+    const ctx = objectContext(runId, storage)
+    const store = durableObjectEventStore(ctx)
+
+    const past = Date.parse('2020-06-01T00:00:00.000Z')
+
+    await Effect.runPromise(
+      store.append(runId, [
+        createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr',
+            kind: 'workflow',
+            definitionName: 'job',
+            input: null,
+          },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past,
+        }),
+        createEvent(runId, {
+          type: 'runtime.run.completed',
+          payload: { output: null, error: null },
+          threadId: null,
+          origin: { type: 'system' },
+          ts: past + 1,
+        }),
+      ]),
+    )
+
+    const events = await Effect.runPromise(store.read(runId))
+    const state = foldRun(events, { threads: new Map() })
+
+    await deleteTerminalRunStorage(storage, store, runId, state)
+
+    expect(await Effect.runPromise(store.listRuns)).toEqual([])
+  })
+
+  test('refuses a non-terminal run', async () => {
+    const storage = sqliteStorage()
+    const runId = 'run_running'
+    const ctx = objectContext(runId, storage)
+    const store = durableObjectEventStore(ctx)
+
+    await Effect.runPromise(
+      store.append(runId, [
+        createEvent(runId, {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr',
+            kind: 'workflow',
+            definitionName: 'job',
+            input: null,
+          },
+          threadId: null,
+          origin: { type: 'system' },
+        }),
+      ]),
+    )
+
+    const events = await Effect.runPromise(store.read(runId))
+    const state = foldRun(events, { threads: new Map() })
+
+    await expect(deleteTerminalRunStorage(storage, store, runId, state)).rejects.toBeInstanceOf(
+      RunNotTerminalError,
+    )
+  })
+})
 
 describe('schedule durable objects', () => {
   test('launch returns before the target runs, and a duplicate alarm fires once', async () => {

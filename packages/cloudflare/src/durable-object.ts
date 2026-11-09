@@ -25,6 +25,10 @@ import {
 } from '@looms/runtime'
 
 import { durableObjectAlarms } from './alarm-scheduler'
+import {
+  deleteTerminalRunStorage,
+  type DeleteTerminalRunStorageOptions,
+} from './delete-terminal-run-storage'
 import { durableObjectEventStore, type DurableObjectEventStore } from './event-store'
 import type { DurableObjectNamespaceLike } from './router'
 import { attachSocketFanout, isRunSocketUpgrade, openRunSocket } from './websocket'
@@ -215,6 +219,36 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     return this.getCell().then((cell) => cell.getRun())
   }
 
+  /**
+   * Wipes this object's SQLite once the run is terminal and optional projector
+   * checkpoints cover the log tail. Clears the cached cell so the next request
+   * rebuilds an empty store.
+   */
+  deleteTerminalRunStorage(options: DeleteTerminalRunStorageOptions = {}): Promise<void> {
+    return this.getCell().then(async (cell) => {
+      const runId = this.ctx.id.name
+
+      if (!runId) {
+        throw new Error(
+          'LoomsDurableObject requires a named Durable Object id (use idFromName / getByName)',
+        )
+      }
+
+      const store = this.store
+
+      if (!store) {
+        throw new Error('Run storage is not ready')
+      }
+
+      const state = await cell.getRun()
+
+      await deleteTerminalRunStorage(this.ctx.storage, store, runId, state, options, store.projectorDelivery)
+
+      this.cellPromise = undefined
+      this.store = undefined
+    })
+  }
+
   /** A rejected alarm is retried by the platform with backoff, so failures just propagate. */
   override alarm(): Promise<void> {
     return this.getCell()
@@ -246,6 +280,7 @@ export interface DurableObjectRunStub {
   ): Promise<RunState>
   cancel(): Promise<void>
   getRun(): Promise<RunState>
+  deleteTerminalRunStorage?(options?: DeleteTerminalRunStorageOptions): Promise<void>
 }
 
 /**

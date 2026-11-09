@@ -321,6 +321,17 @@ Without proof, trimming fails with `UnsafeEventStoreTrimError` and the
 authoritative log remains intact. Keep archived events for the longest required
 replay/audit window and test restores before enabling retention.
 
+A Postgres or SQLite replica can drop per-project event copies with
+`replica.purge({ finishedBefore, where: { project, org, tenant } })`. Only keys
+you pass are applied; every provided column must match the run summary row.
+
+After the replica has acknowledged a terminal run and every required projector
+has caught up, delete the actor's Durable Object storage with
+`deleteTerminalRunStorage` from `@looms/cloudflare`, or
+`stub.deleteTerminalRunStorage({ requireProjectors: ['postgres-replica@1'] })` on
+`LoomsDurableObject`. The run must be terminal; when `requireProjectors` is set,
+each identity's delivery cursor must be at or beyond the log tail.
+
 ## Versioned deploy and rollback
 
 Definitions and projectors are versioned identities. Deploy additively:

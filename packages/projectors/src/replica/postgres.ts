@@ -41,6 +41,12 @@ export interface ReplicaPurgeOptions {
   readonly finishedBefore: number
   /** Keep the run summary row. Defaults to true. */
   readonly keepIndex?: boolean
+  /** Optional attribute filters; all provided keys must match looms_run_index attributes. */
+  readonly where?: {
+    readonly project?: string
+    readonly org?: string
+    readonly tenant?: string
+  }
 }
 
 export interface ReplicaPurgeResult {
@@ -483,6 +489,7 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
   const purge = async (purgeOptions: ReplicaPurgeOptions): Promise<ReplicaPurgeResult> => {
     const cutoff = utcDate(purgeOptions.finishedBefore)
     const keepIndex = purgeOptions.keepIndex !== false
+    const where = purgeOptions.where
 
     return sql.begin(async (tx) => {
       const doomed = await tx<{ run_id: string }[]>`
@@ -492,6 +499,9 @@ export function postgresReplica(options: PostgresReplicaOptions): PostgresReplic
           AND status IN ('completed', 'failed', 'cancelled')
           AND completed_at IS NOT NULL
           AND completed_at < ${cutoff}
+          ${where?.project ? tx`AND project = ${where.project}` : tx``}
+          ${where?.org ? tx`AND org = ${where.org}` : tx``}
+          ${where?.tenant ? tx`AND tenant = ${where.tenant}` : tx``}
         RETURNING run_id
       `
 

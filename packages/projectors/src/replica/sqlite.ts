@@ -41,6 +41,12 @@ export interface ReplicaPurgeOptions {
   readonly finishedBefore: number
   /** Keep the run summary row. Defaults to true. */
   readonly keepIndex?: boolean
+  /** Optional attribute filters; all provided keys must match looms_run_index attributes. */
+  readonly where?: {
+    readonly project?: string
+    readonly org?: string
+    readonly tenant?: string
+  }
 }
 
 export interface ReplicaPurgeResult {
@@ -769,14 +775,34 @@ export function sqliteReplica(options: SqliteReplicaOptions): SqliteReplica {
 
   const purge = async (purgeOptions: ReplicaPurgeOptions): Promise<ReplicaPurgeResult> => {
     const keepIndex = purgeOptions.keepIndex !== false
+    const where = purgeOptions.where
+    const filterSql = [
+      where?.project ? 'AND project = ?' : '',
+      where?.org ? 'AND org = ?' : '',
+      where?.tenant ? 'AND tenant = ?' : '',
+    ].join(' ')
+    const filterParams: SqlValue[] = []
+
+    if (where?.project) {
+      filterParams.push(where.project)
+    }
+
+    if (where?.org) {
+      filterParams.push(where.org)
+    }
+
+    if (where?.tenant) {
+      filterParams.push(where.tenant)
+    }
 
     const doomed = await database.all<{ run_id: string }>(
       `SELECT run_id FROM looms_run_index
        WHERE purged_at IS NULL
          AND status IN ('completed', 'failed', 'cancelled')
          AND completed_at IS NOT NULL
-         AND completed_at < ?`,
-      [purgeOptions.finishedBefore],
+         AND completed_at < ?
+         ${filterSql}`,
+      [purgeOptions.finishedBefore, ...filterParams],
     )
 
     if (doomed.length === 0) {
