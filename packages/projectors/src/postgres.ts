@@ -9,7 +9,12 @@ import {
   type IndexProjector,
 } from './index-model'
 import { runProjectorPromise } from './projector'
-import { POSTGRES_SCHEMA_SQL } from './schema'
+import {
+  applyPostgresMigrations,
+  postgresReplicaMigrations,
+  verifyPostgresMigrations,
+  type PostgresReplicaMigrate,
+} from './replica/migrations'
 
 export { POSTGRES_SCHEMA_SQL } from './schema'
 export {
@@ -22,7 +27,14 @@ export {
   type RunLogRow,
 } from './event-log'
 
-export type PostgresProjectorOptions = { url: string } | { sql: Sql }
+export type PostgresProjectorOptions = ({ url: string } | { sql: Sql }) & {
+  /**
+   * Schema ownership on init. Default `auto` applies pending versioned migrations
+   * (lock-free when nothing is pending). `verify` refuses to start when a migration
+   * is missing. `skip` leaves schema ownership to the host.
+   */
+  readonly migrate?: PostgresReplicaMigrate
+}
 
 type PostgresActorRow = {
   run_id: string
@@ -130,10 +142,36 @@ export function applyIndexOps(sql: SqlTag, ops: readonly IndexOp[]): Promise<voi
 export function postgres(options: PostgresProjectorOptions): IndexProjector {
   const createdClient = ownsClient(options)
   const sql = createdClient ? createPostgresClient(options.url) : options.sql
+  const migrate = options.migrate ?? 'auto'
+  const migrations = postgresReplicaMigrations()
+  let ready: Promise<void> | undefined
+
+  const initSchema = (): Promise<void> => {
+    switch (migrate) {
+      case 'skip':
+        return Promise.resolve()
+      case 'verify':
+        return verifyPostgresMigrations(sql, migrations)
+      case 'auto':
+        return applyPostgresMigrations(sql, migrations)
+
+      default: {
+        const exhaustive: never = migrate
+
+        return exhaustive
+      }
+    }
+  }
 
   const backend: IndexBackend = {
-    init: () =>
-      runProjectorPromise('postgres', () => sql.unsafe(POSTGRES_SCHEMA_SQL)).then(() => undefined),
+    init: () => {
+      ready ??= runProjectorPromise('postgres', initSchema).catch((cause: unknown) => {
+        ready = undefined
+        throw cause
+      })
+
+      return ready
+    },
     applyOps: (ops) =>
       runProjectorPromise('postgres', () => sql.begin((tx) => applyIndexOps(tx, ops))).then(
         () => undefined,

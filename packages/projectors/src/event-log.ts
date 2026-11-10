@@ -16,8 +16,9 @@ import { columnValues, resolveReplicaColumns, type ResolvedReplicaColumn } from 
 import {
   applyPostgresMigrations,
   POSTGRES_EVENT_LOG_SCHEMA_SQL,
-  POSTGRES_SCHEMA_MIGRATIONS_SQL,
-  postgresAttributeMigrations,
+  postgresReplicaMigrations,
+  verifyPostgresMigrations,
+  type PostgresReplicaMigrate,
 } from './replica/migrations'
 
 export { POSTGRES_EVENT_LOG_SCHEMA_SQL, eventLogOps }
@@ -87,6 +88,12 @@ export function memoryEventLog(): MemoryEventLog {
 export type PostgresEventLogOptions = ({ url: string } | { sql: Sql }) & {
   /** Declared run attributes. Each one is a `looms_run_index` column. */
   readonly additionalFields?: RunAttributeFields
+  /**
+   * Schema ownership on init. Default `auto` applies pending versioned migrations
+   * (lock-free when nothing is pending). `verify` refuses to start when a migration
+   * is missing. `skip` leaves schema ownership to the host.
+   */
+  readonly migrate?: PostgresReplicaMigrate
 }
 
 export function postgresEventLog(options: PostgresEventLogOptions): EventLogProjector {
@@ -95,7 +102,7 @@ export function postgresEventLog(options: PostgresEventLogOptions): EventLogProj
 
   return createEventLogProjector(
     'postgres-event-log',
-    postgresStore(connected, created, options.additionalFields),
+    postgresStore(connected, created, options.additionalFields, options.migrate ?? 'auto'),
   )
 }
 
@@ -235,27 +242,42 @@ function utcDate(ms: number): Date {
   return DateTime.toDateUtc(DateTime.makeUnsafe(ms))
 }
 
-/** Applied on every init; each statement is idempotent. */
-const POSTGRES_EVENT_LOG_INIT_SQL = [
-  POSTGRES_EVENT_LOG_SCHEMA_SQL,
-  POSTGRES_SCHEMA_MIGRATIONS_SQL,
-].join('\n\n')
-
 function postgresStore(
   sql: Sql,
   ownsClient: boolean,
   additionalFields: RunAttributeFields | undefined,
+  migrate: PostgresReplicaMigrate,
 ) {
   const columns = resolveReplicaColumns(additionalFields)
-  const attributeMigrations = postgresAttributeMigrations(additionalFields)
+  const migrations = postgresReplicaMigrations(additionalFields)
+  let ready: Promise<void> | undefined
+
+  const initSchema = (): Promise<void> => {
+    switch (migrate) {
+      case 'skip':
+        return Promise.resolve()
+      case 'verify':
+        return verifyPostgresMigrations(sql, migrations)
+      case 'auto':
+        return applyPostgresMigrations(sql, migrations)
+
+      default: {
+        const exhaustive: never = migrate
+
+        return exhaustive
+      }
+    }
+  }
 
   return {
-    init: () =>
-      runProjectorPromise('postgres-event-log', () =>
-        sql
-          .unsafe(POSTGRES_EVENT_LOG_INIT_SQL)
-          .then(() => applyPostgresMigrations(sql, attributeMigrations)),
-      ),
+    init: () => {
+      ready ??= runProjectorPromise('postgres-event-log', initSchema).catch((cause: unknown) => {
+        ready = undefined
+        throw cause
+      })
+
+      return ready
+    },
     apply: (events: readonly EventEnvelope[]) => {
       const ops = events.flatMap(eventLogOps)
 

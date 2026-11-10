@@ -244,6 +244,19 @@ export function createProjectorDelivery(
         return
       }
 
+      // Skip projector.init (often Hyperdrive/Postgres DDL) when there is nothing
+      // to project. Brand-new runs and caught-up deliveries stay off the critical
+      // path; projectors with `position` still need init to align the cursor.
+      const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => 0))
+
+      if (sourceTail === 0) {
+        return
+      }
+
+      if (sourceTail <= status.cursor && projector.position === undefined) {
+        return
+      }
+
       const initialization = yield* Effect.tryPromise({
         try: () => initialize(projector),
         catch: normalizeError,
@@ -322,7 +335,7 @@ export function createProjectorDelivery(
           lastError: null,
         }
 
-        const sourceTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => last.seq))
+        const lagTail = yield* source.tail(runId).pipe(Effect.orElseSucceed(() => last.seq))
 
         observe({
           type: 'projector.lag',
@@ -330,7 +343,7 @@ export function createProjectorDelivery(
           projector: projectorIdentity(projector),
           at: advancedAt,
           cursor: last.seq,
-          lag: Math.max(0, sourceTail - last.seq),
+          lag: Math.max(0, lagTail - last.seq),
           attempts: 0,
         })
       }

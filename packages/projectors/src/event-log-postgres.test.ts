@@ -252,4 +252,59 @@ describe('postgres event log', () => {
       'index_tenant',
     ])
   })
+
+  test('migrate auto is lock-free when migrations are already applied', async () => {
+    const client = requireSql()
+    const first = postgresEventLog({ sql: client, migrate: 'auto' })
+    await first.init?.()
+
+    statements.length = 0
+    const second = postgresEventLog({ sql: client, migrate: 'auto' })
+    await second.init?.()
+
+    const ddl = statements.filter((query) =>
+      /^\s*(CREATE|ALTER|INSERT\s+INTO\s+looms_schema_migrations)/i.test(query),
+    )
+
+    const locks = statements.filter((query) => /pg_advisory_xact_lock/i.test(query))
+
+    expect(ddl).toEqual([])
+    expect(locks).toEqual([])
+  })
+
+  test('migrate verify refuses a database that is missing migrations', async () => {
+    const client = requireSql()
+    await client`DROP TABLE IF EXISTS looms_schema_migrations CASCADE`
+
+    const projector = postgresEventLog({ sql: client, migrate: 'verify' })
+    let message = ''
+
+    try {
+      await projector.init?.()
+    } catch (cause) {
+      message = cause instanceof Error ? cause.message : String(cause)
+    }
+
+    expect(message).toMatch(/looms replica generate/)
+    expect(message).toMatch(/0001_replica/)
+
+    // Restore schema for later tests in this file.
+    await postgresEventLog({ sql: client, migrate: 'auto' }).init?.()
+  })
+
+  test('migrate skip leaves schema ownership to the host', async () => {
+    const client = requireSql()
+    await client`DROP TABLE IF EXISTS looms_schema_migrations CASCADE`
+
+    const projector = postgresEventLog({ sql: client, migrate: 'skip' })
+    await projector.init?.()
+
+    const tables = await client<{ name: string | null }[]>`
+      SELECT to_regclass('public.looms_schema_migrations') AS name
+    `
+
+    expect(tables[0]?.name).toBeNull()
+
+    await postgresEventLog({ sql: client, migrate: 'auto' }).init?.()
+  })
 })
