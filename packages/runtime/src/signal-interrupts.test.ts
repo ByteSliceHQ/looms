@@ -104,4 +104,38 @@ describe('signal interrupts', () => {
 
     await looms.stop()
   })
+
+  test('a non-interrupt steer wakes an idle conversational agent without aborting work', async () => {
+    const seen: string[] = []
+    let firstTurnStarted = false
+
+    const assistant = defineAgent({
+      name: 'idle-steerable',
+      instructions: 'answer',
+      conversational: true,
+      runTurn: ({ messages }) => {
+        const content = messages.findLast((message) => message.role === 'user')?.content ?? ''
+        seen.push(content)
+
+        if (content === 'hello') {
+          firstTurnStarted = true
+          return { message: { role: 'assistant', content: 'hi' }, done: true }
+        }
+
+        return { message: { role: 'assistant', content: `heard: ${content}` }, done: true }
+      },
+    })
+
+    const looms = createLooms({ modules: [agent({ definitions: [assistant] })] })
+    const { runId, threadId } = await looms.start(assistant, 'hello')
+
+    await waitFor(() => firstTurnStarted && seen.includes('hello'))
+
+    await looms.signal(runId, [steer({ content: 'keep going', interrupt: false }, { threadId })])
+
+    await waitFor(() => seen.includes('keep going'))
+    expect(seen).toEqual(['hello', 'keep going'])
+
+    await looms.stop()
+  })
 })

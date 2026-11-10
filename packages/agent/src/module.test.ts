@@ -214,4 +214,172 @@ describe('@looms/agent module', () => {
     expect(rule?.(steer({ content: 'later', interrupt: false }, { threadId: 'thr_a' }))).toEqual([])
     expect(rule?.(stopAgentTurn({ threadId: 'thr_a' }))).toEqual(['thr_a'])
   })
+
+  test('a non-interrupt steer wakes an idle agent for another LLM turn', () => {
+    const registry = composeModules([agent()])
+    const runId = 'run_steer_idle'
+    const threadId = 'thr_steer_idle'
+
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'agent',
+              definitionName: 'assistant',
+              input: 'hi',
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.turn.started',
+            payload: { turn: 1 },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 2,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.message',
+            payload: {
+              turn: 1,
+              message: { role: 'assistant', content: 'done for now' },
+            },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 3,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.steered',
+            payload: {
+              turn: 0,
+              interrupt: false,
+              messageId: 'msg_1',
+              message: { role: 'user', content: 'keep going' },
+            },
+            threadId,
+            origin: { type: 'external' },
+          }),
+          seq: 4,
+        },
+      ],
+      registry,
+    )
+
+    expect(state.outstandingEffects.some((item) => item.effect.type === 'agent.callLLM')).toBe(true)
+
+    const threadState = Schema.decodeUnknownSync(
+      Schema.Struct({
+        needsLlmCall: Schema.Boolean,
+        pendingSteer: Schema.NullOr(Schema.Struct({ role: Schema.String, content: Schema.String })),
+        lines: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.String })),
+      }),
+    )(state.threads[threadId]?.state)
+
+    expect(threadState.needsLlmCall).toBe(true)
+    expect(threadState.pendingSteer).toEqual({ role: 'user', content: 'keep going' })
+    expect(threadState.lines.at(-1)).toEqual({ role: 'user', content: 'keep going' })
+  })
+
+  test('a non-interrupt steer waits for open tool calls instead of starting an LLM turn', () => {
+    const registry = composeModules([agent()])
+    const runId = 'run_steer_busy'
+    const threadId = 'thr_steer_busy'
+
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'agent',
+              definitionName: 'assistant',
+              input: 'hi',
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.turn.started',
+            payload: { turn: 1 },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 2,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.message',
+            payload: {
+              turn: 1,
+              message: {
+                role: 'assistant',
+                content: '',
+                toolCalls: [{ id: 'tc1', name: 'greet', arguments: { name: 'Dylan' } }],
+              },
+            },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 3,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.tool_call.requested',
+            payload: {
+              turn: 1,
+              toolCall: { id: 'tc1', name: 'greet', arguments: { name: 'Dylan' } },
+            },
+            threadId,
+            origin: { type: 'thread', threadId },
+          }),
+          seq: 4,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.steered',
+            payload: {
+              turn: 0,
+              interrupt: false,
+              messageId: 'msg_2',
+              message: { role: 'user', content: 'after the tool' },
+            },
+            threadId,
+            origin: { type: 'external' },
+          }),
+          seq: 5,
+        },
+      ],
+      registry,
+    )
+
+    expect(state.outstandingEffects.some((item) => item.effect.type === 'agent.callLLM')).toBe(
+      false,
+    )
+
+    const threadState = Schema.decodeUnknownSync(
+      Schema.Struct({
+        needsLlmCall: Schema.Boolean,
+        pendingSteer: Schema.NullOr(Schema.Struct({ role: Schema.String, content: Schema.String })),
+      }),
+    )(state.threads[threadId]?.state)
+
+    expect(threadState.needsLlmCall).toBe(false)
+    expect(threadState.pendingSteer).toEqual({ role: 'user', content: 'after the tool' })
+  })
 })
