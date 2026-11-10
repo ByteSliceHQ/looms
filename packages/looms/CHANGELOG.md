@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.11.3
+
+### Patch Changes
+
+- 733514a: Cut cold Durable Object start-run latency: defer projector recover/deliver with `waitUntil`, skip `projector.init` when the log is empty or caught up, and add `migrate: 'auto' | 'verify' | 'skip'` so hosts that own Postgres DDL avoid per-run table locks.
+
 ## 0.11.2
 
 ### Patch Changes
@@ -23,11 +29,11 @@
   ```ts
   const attributes = defineRunAttributes({
     tenantId: { required: true, index: true },
-  })
+  });
 
-  createLooms({ modules, attributes })
-  postgresReplica({ url, additionalFields: attributes })
-  loomsReplicaTables({ additionalFields: attributes })
+  createLooms({ modules, attributes });
+  postgresReplica({ url, additionalFields: attributes });
+  loomsReplicaTables({ additionalFields: attributes });
   ```
 
   - Each attribute is a text column named in snake_case unless `fieldName` is set. `index: true` adds an index. Each column and index is its own migration, and a new column is backfilled from the `attributes` JSON. `postgresEventLog` records these migrations in `looms_schema_migrations` and applies each one once.
