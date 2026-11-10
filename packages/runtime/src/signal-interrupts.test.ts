@@ -138,4 +138,54 @@ describe('signal interrupts', () => {
 
     await looms.stop()
   })
+
+  test('a non-interrupt steer that arrives mid-call is answered on the next turn', async () => {
+    const seen: string[] = []
+    let releaseFirst: (() => void) | undefined
+    let firstTurnStarted = false
+
+    const assistant = defineAgent({
+      name: 'midcall-steerable',
+      instructions: 'answer',
+      conversational: true,
+      runTurn: async ({ messages }) => {
+        const content = messages.findLast((message) => message.role === 'user')?.content ?? ''
+        seen.push(content)
+
+        if (content === 'hello') {
+          firstTurnStarted = true
+
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve
+          })
+
+          return { message: { role: 'assistant', content: 'hi' }, done: true }
+        }
+
+        return { message: { role: 'assistant', content: `heard: ${content}` }, done: true }
+      },
+    })
+
+    const looms = createLooms({ modules: [agent({ definitions: [assistant] })] })
+    const starting = looms.start(assistant, 'hello')
+    await waitFor(() => firstTurnStarted)
+    const [runId] = await looms.listRuns()
+    const { rootThreadId } = await looms.getRun(runId!)
+
+    // Do not await: the wake waits on the in-flight turn, which we release next.
+    void looms
+      .signal(runId!, [
+        steer({ content: 'late request', interrupt: false }, { threadId: rootThreadId! }),
+      ])
+      .catch(() => undefined)
+
+    await waitFor(() => releaseFirst !== undefined)
+    releaseFirst?.()
+    await starting
+
+    await waitFor(() => seen.includes('late request'))
+    expect(seen).toEqual(['hello', 'late request'])
+
+    await looms.stop()
+  })
 })

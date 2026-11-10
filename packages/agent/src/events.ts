@@ -10,6 +10,12 @@ export const AgentMessageReceivedPayloadSchema = Schema.Struct({
 
 export const AgentTurnStartedPayloadSchema = Schema.Struct({
   turn: Schema.Finite,
+  /** Snapshot of `lines.length` when the LLM call began. Used to detect mid-call steers. */
+  messageCount: Schema.optional(Schema.Finite),
+})
+
+export const AgentTurnSettledPayloadSchema = Schema.Struct({
+  turn: Schema.Finite,
 })
 
 export const AgentTurnTextDeltaPayloadSchema = Schema.Struct({
@@ -132,6 +138,7 @@ export const AgentEffectsRequestedPayloadSchema = Schema.Struct({
 export const agentCatalog = defineEventCatalog('agent', {
   'message.received': AgentMessageReceivedPayloadSchema,
   'turn.started': AgentTurnStartedPayloadSchema,
+  'turn.settled': AgentTurnSettledPayloadSchema,
   'turn.text_delta': AgentTurnTextDeltaPayloadSchema,
   message: AgentMessageEventPayloadSchema,
   'tool_call.requested': AgentToolCallRequestedPayloadSchema,

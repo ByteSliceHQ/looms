@@ -107,6 +107,16 @@ export interface AgentState {
    * Optional so snapshots taken before turns could be abandoned still fold.
    */
   abandonedChildThreadIds?: string[]
+  /**
+   * Set when a steer arrived during the LLM call. Honored by `agent.turn.settled` after the
+   * rest of the turn's events so we do not schedule the next call before `agent.message`.
+   */
+  deferWake?: boolean
+  /**
+   * User/system lines that arrived after the LLM call began. Re-attached after compaction so a
+   * mid-call steer is not lost when `lines` are replaced.
+   */
+  midCallMessages?: Message[]
 }
 
 export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'
