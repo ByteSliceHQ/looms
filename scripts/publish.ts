@@ -41,6 +41,7 @@ if (response.ok) {
   console.log(
     `${name}@${version} is already published on npm; creating any missing git tags for the release action.`,
   )
+
   // `changeset publish` skips already-published versions and does not create
   // tags. `changeset tag` still emits `New tag:` for missing tags so the
   // action can push them and open the GitHub release.
