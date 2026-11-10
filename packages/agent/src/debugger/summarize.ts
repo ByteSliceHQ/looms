@@ -34,6 +34,8 @@ export function summarizeAgentEvent(event: DebuggerEvent): EventSummary | undefi
       return { title: 'user message', detail: messageContent(event.payload) }
     case 'agent.turn.started':
       return { title: 'turn started', detail: `turn ${jsonNumberText(payload.turn) ?? ''}` }
+    case 'agent.turn.settled':
+      return { title: 'turn settled', detail: `turn ${jsonNumberText(payload.turn) ?? ''}` }
     case 'agent.turn.text_delta':
       return { title: 'text delta', detail: jsonText(payload.delta) }
     case 'agent.message':

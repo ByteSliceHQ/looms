@@ -77,6 +77,7 @@ function abandonTurn(state: AgentState): AgentState {
     pendingEmits: [],
     pendingEffectTools: {},
     needsLlmCall: false,
+    deferWake: false,
     abandonedChildThreadIds: [
       ...(state.abandonedChildThreadIds ?? []),
       ...state.pendingSpawns.map((item) => item.childThreadId),
@@ -135,12 +136,28 @@ export const agentThread = agentModule.thread<AgentState>({
         return { ...state, depth: event.payload.depth }
 
       case 'agent.turn.started': {
+        // Mid-call steers are already in `lines` when this fires (first event of the batch).
+        // Defer the wake until `agent.turn.settled` so we do not schedule the next LLM before
+        // `agent.message` / tool-call events from this same turn are applied.
+        const messageCount = event.payload.messageCount ?? state.lines.length
+        const arrivedMidCall = state.lines.length > messageCount
+
         return {
           ...state,
           turn: event.payload.turn,
           needsLlmCall: false,
-          pendingSteer: null,
+          deferWake: arrivedMidCall,
+          pendingSteer: arrivedMidCall ? state.pendingSteer : null,
           abandonedChildThreadIds: [],
+        }
+      }
+
+      case 'agent.turn.settled': {
+        const deferWake = state.deferWake === true
+        return {
+          ...state,
+          deferWake: false,
+          needsLlmCall: deferWake && state.pendingToolCalls.length === 0,
         }
       }
 

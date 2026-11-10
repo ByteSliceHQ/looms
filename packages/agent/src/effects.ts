@@ -222,10 +222,18 @@ function runCallLlm(args: {
     const events: EventInputOf<AgentEvent>[] = [
       {
         type: 'agent.turn.started',
-        payload: { turn },
+        payload: { turn, messageCount: messages.length },
         threadId,
       },
     ]
+
+    const commitTurnSettled = (): void => {
+      events.push({
+        type: 'agent.turn.settled',
+        payload: { turn },
+        threadId,
+      })
+    }
 
     const executeTurn = (
       turnMessages: readonly Message[],
@@ -355,6 +363,7 @@ function runCallLlm(args: {
         })
       }
 
+      commitTurnSettled()
       return events
     }
 
@@ -380,6 +389,7 @@ function runCallLlm(args: {
       })
     }
 
+    commitTurnSettled()
     return events
   })
 }
