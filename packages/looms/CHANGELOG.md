@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.11.1
+
+### Patch Changes
+
+- 2ff6701: Wake idle agents on a non-interrupt steer. Queued steers still wait for open tool calls to finish, so in-flight work is not abandoned.
+
 ## 0.11.0
 
 ### Minor Changes
@@ -11,11 +17,11 @@
   ```ts
   const attributes = defineRunAttributes({
     tenantId: { required: true, index: true },
-  })
+  });
 
-  createLooms({ modules, attributes })
-  postgresReplica({ url, additionalFields: attributes })
-  loomsReplicaTables({ additionalFields: attributes })
+  createLooms({ modules, attributes });
+  postgresReplica({ url, additionalFields: attributes });
+  loomsReplicaTables({ additionalFields: attributes });
   ```
 
   - Each attribute is a text column named in snake_case unless `fieldName` is set. `index: true` adds an index. Each column and index is its own migration, and a new column is backfilled from the `attributes` JSON. `postgresEventLog` records these migrations in `looms_schema_migrations` and applies each one once.
