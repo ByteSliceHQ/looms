@@ -87,12 +87,12 @@ From a host with `ENGINE_URL` + service token:
 
 ## Code pointers
 
-| Area                                | Path                                                                         |
-| ----------------------------------- | ---------------------------------------------------------------------------- |
-| Cold cell waitUntil                 | `packages/cloudflare/src/durable-object.ts` (`createCell`, `alarm`)          |
-| waitUntil append delivery           | `packages/cloudflare/src/event-store.ts` (`durableObjectEventStore`)         |
-| Skip init on empty / caught-up      | `packages/projectors/src/delivery.ts` (`deliverProjector`)                   |
-| Migration modes                     | `packages/projectors/src/event-log.ts`, `packages/projectors/src/postgres.ts` |
-| Production guarantees               | `docs/production.md`                                                         |
-| Swirls engine projector wiring      | `swirls-platform/apps/engine/src/index.ts`                                   |
-| Swirls enqueue holds txn            | `swirls-platform/packages/workflow-runs/src/index.ts` (`enqueueWorkflowRun`) |
+| Area                           | Path                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| Cold cell waitUntil            | `packages/cloudflare/src/durable-object.ts` (`createCell`, `alarm`)           |
+| waitUntil append delivery      | `packages/cloudflare/src/event-store.ts` (`durableObjectEventStore`)          |
+| Skip init on empty / caught-up | `packages/projectors/src/delivery.ts` (`deliverProjector`)                    |
+| Migration modes                | `packages/projectors/src/event-log.ts`, `packages/projectors/src/postgres.ts` |
+| Production guarantees          | `docs/production.md`                                                          |
+| Swirls engine projector wiring | `swirls-platform/apps/engine/src/index.ts`                                    |
+| Swirls enqueue holds txn       | `swirls-platform/packages/workflow-runs/src/index.ts` (`enqueueWorkflowRun`)  |
