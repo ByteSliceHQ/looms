@@ -433,9 +433,11 @@ describe('@looms/cloudflare', () => {
   test('cold startRun does not await projector init', async () => {
     let resolveInit: (() => void) | undefined
     const initStarted = Promise.withResolvers<void>()
+
     const initGate = new Promise<void>((resolve) => {
       resolveInit = resolve
     })
+
     let projected = 0
 
     const hangProjector = {

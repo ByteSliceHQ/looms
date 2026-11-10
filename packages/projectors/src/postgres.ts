@@ -154,8 +154,10 @@ export function postgres(options: PostgresProjectorOptions): IndexProjector {
         return verifyPostgresMigrations(sql, migrations)
       case 'auto':
         return applyPostgresMigrations(sql, migrations)
+
       default: {
         const exhaustive: never = migrate
+
         return exhaustive
       }
     }

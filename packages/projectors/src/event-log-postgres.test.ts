@@ -265,6 +265,7 @@ describe('postgres event log', () => {
     const ddl = statements.filter((query) =>
       /^\s*(CREATE|ALTER|INSERT\s+INTO\s+looms_schema_migrations)/i.test(query),
     )
+
     const locks = statements.filter((query) => /pg_advisory_xact_lock/i.test(query))
 
     expect(ddl).toEqual([])

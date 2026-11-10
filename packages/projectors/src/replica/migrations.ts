@@ -223,6 +223,7 @@ export async function verifyPostgresMigrations(
   migrations: readonly ReplicaMigration[],
 ): Promise<void> {
   const applied = await appliedPostgresMigrationIds(sql)
+
   const pending = migrations
     .filter((migration) => !applied.has(migration.id))
     .map((migration) => migration.id)
