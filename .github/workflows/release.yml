@@ -34,6 +34,7 @@ jobs:
       - name: Open version PR or publish
         uses: changesets/action@v1
         with:
+          version: bun run version-packages
           publish: bun run release
           title: 'chore(release): publish @swirls/looms'
           commit: 'chore(release): publish @swirls/looms'

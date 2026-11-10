@@ -8,22 +8,21 @@ const ManifestSchema = Schema.Struct({
   version: Schema.String,
 })
 
-async function run(command: readonly string[], cwd: string): Promise<string> {
+async function run(command: readonly string[], cwd: string): Promise<void> {
   const child = Bun.spawn([...command], {
     cwd,
     env: process.env,
     stderr: 'inherit',
-    stdout: 'pipe',
+    // Forward stdout so changesets/action can parse `New tag:` lines and
+    // push git tags / create GitHub releases.
+    stdout: 'inherit',
   })
 
-  const output = await new Response(child.stdout).text()
   const exitCode = await child.exited
 
   if (exitCode !== 0) {
     throw new Error(`${command.join(' ')} exited with ${exitCode}`)
   }
-
-  return output
 }
 
 const root = resolve(import.meta.dirname, '..')
@@ -39,7 +38,13 @@ const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(name)}/${ve
 const response = await fetch(registryUrl, { method: 'HEAD' })
 
 if (response.ok) {
-  console.log(`${name}@${version} is already published on npm; skipping build and publish.`)
+  console.log(
+    `${name}@${version} is already published on npm; creating any missing git tags for the release action.`,
+  )
+  // `changeset publish` skips already-published versions and does not create
+  // tags. `changeset tag` still emits `New tag:` for missing tags so the
+  // action can push them and open the GitHub release.
+  await run(['bun', 'x', 'changeset', 'tag'], root)
   process.exit(0)
 }
 

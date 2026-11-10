@@ -31,7 +31,7 @@
     "setup:s2": "bash scripts/install-s2-cli.sh",
     "changeset": "changeset",
     "check:changeset": "bun run scripts/check-changeset.ts",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && oxfmt packages/looms/CHANGELOG.md",
     "prepare": "effect-tsgo patch --typescript --oxlint",
     "check:package": "bun run scripts/check-package.ts",
     "release": "bun run scripts/publish.ts"
