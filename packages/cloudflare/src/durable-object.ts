@@ -139,11 +139,17 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
       const delivery = store.projectorDelivery
 
-      const recoverProjectors = delivery
-        ? Effect.runPromise(delivery.recover(runId).pipe(Effect.andThen(delivery.deliver(runId))))
-        : Promise.resolve()
+      // Projector recover/deliver opens Hyperdrive/Postgres and runs projector.init.
+      // That must not block the first request on a cold (or empty) cell. Schedule it
+      // the same way post-append delivery uses waitUntil; deliverExclusive still
+      // serializes per run and projector, and alarms retry from durable cursors.
+      if (delivery) {
+        this.ctx.waitUntil(
+          Effect.runPromise(delivery.recover(runId).pipe(Effect.andThen(delivery.deliver(runId)))),
+        )
+      }
 
-      return recoverProjectors.then(() => cell.recoverWake()).then(() => cell)
+      return cell.recoverWake().then(() => cell)
     })
   }
 
@@ -258,12 +264,16 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     return this.getCell()
       .then((cell) => {
         const delivery = this.store?.projectorDelivery
+        const runId = this.ctx.id.name ?? ''
 
-        const delivered = delivery
-          ? Effect.runPromise(delivery.deliver(this.ctx.id.name ?? ''))
-          : Promise.resolve()
+        // Projector delivery must not delay timer wakes; waitUntil keeps the
+        // isolate alive until delivery finishes, and failed work is retried from
+        // durable cursors on the next alarm or request.
+        if (delivery) {
+          this.ctx.waitUntil(Effect.runPromise(delivery.deliver(runId)))
+        }
 
-        return delivered.then(() => cell.wake())
+        return cell.wake()
       })
       .then(() => undefined)
   }

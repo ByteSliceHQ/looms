@@ -17,6 +17,14 @@ import { sqliteReplicaMigrations } from './sqlite-migrations'
 export type { ReplicaMigration }
 
 /**
+ * Schema ownership for Postgres projectors and the replica.
+ * `auto` applies pending migrations on init (lock-free when nothing is pending).
+ * `verify` refuses to start when a migration has not been applied.
+ * `skip` leaves schema ownership to the host.
+ */
+export type PostgresReplicaMigrate = 'auto' | 'verify' | 'skip'
+
+/**
  * Actors and reviews. Same statements the Postgres index projector has always
  * applied, so a database created by an older Looms keeps working.
  */
@@ -177,21 +185,53 @@ export async function appliedPostgresMigrationIds(
   return new Set(rows.map((row) => row.id))
 }
 
-/** Applies each migration that is not recorded yet, in order, under one advisory lock. */
+/**
+ * Applies each migration that is not recorded yet, in order, under one advisory lock.
+ * When every migration is already recorded, returns after a lock-free read so cold
+ * Durable Object inits do not contend on DDL or the global migration lock.
+ */
 export async function applyPostgresMigrations(
   sql: Sql,
   migrations: readonly ReplicaMigration[],
 ): Promise<void> {
+  if (migrations.length === 0) {
+    return
+  }
+
+  const applied = await appliedPostgresMigrationIds(sql)
+  const pending = migrations.some((migration) => !applied.has(migration.id))
+
+  if (!pending) {
+    return
+  }
+
   await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`
-    const applied = await appliedPostgresMigrationIds(tx)
+    const appliedUnderLock = await appliedPostgresMigrationIds(tx)
 
     for (const migration of migrations) {
-      if (!applied.has(migration.id)) {
+      if (!appliedUnderLock.has(migration.id)) {
         await tx.unsafe(migration.sql)
       }
     }
   })
+}
+
+/** Throws when any migration has not been recorded yet. */
+export async function verifyPostgresMigrations(
+  sql: Sql,
+  migrations: readonly ReplicaMigration[],
+): Promise<void> {
+  const applied = await appliedPostgresMigrationIds(sql)
+  const pending = migrations
+    .filter((migration) => !applied.has(migration.id))
+    .map((migration) => migration.id)
+
+  if (pending.length > 0) {
+    throw new Error(
+      `Looms replica is missing migrations: ${pending.join(', ')}. Generate them with \`looms replica generate\` and apply the files before starting.`,
+    )
+  }
 }
 
 /** Versioned DDL for the Postgres replica with no attribute columns. Looms only creates and alters `looms_*` objects. */

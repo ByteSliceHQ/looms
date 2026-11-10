@@ -127,6 +127,64 @@ describe('projector delivery', () => {
     expect(projectCalls).toBe(1)
   })
 
+  test('skips init when the event log is empty', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+    let initCalls = 0
+    let projectCalls = 0
+
+    const projector: Projector = {
+      name: 'search',
+      version: '1',
+      init: async () => {
+        initCalls += 1
+      },
+      project: async () => {
+        projectCalls += 1
+      },
+    }
+
+    const delivery = createProjectorDelivery(
+      source,
+      [projector],
+      sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
+    )
+
+    await Effect.runPromise(delivery.deliver('run_new'))
+
+    expect(initCalls).toBe(0)
+    expect(projectCalls).toBe(0)
+  })
+
+  test('skips init when the cursor is already caught up', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+    await Effect.runPromise(source.append('run_1', [event('run_1', 1)]))
+
+    let initCalls = 0
+    let projectCalls = 0
+
+    const projector: Projector = {
+      name: 'search',
+      version: '1',
+      init: async () => {
+        initCalls += 1
+      },
+      project: async () => {
+        projectCalls += 1
+      },
+    }
+
+    const cursors = sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:')))
+    const delivery = createProjectorDelivery(source, [projector], cursors)
+
+    await Effect.runPromise(delivery.deliver('run_1'))
+    expect(initCalls).toBe(1)
+    expect(projectCalls).toBe(1)
+
+    await Effect.runPromise(delivery.deliver('run_1'))
+    expect(initCalls).toBe(1)
+    expect(projectCalls).toBe(1)
+  })
+
   test('projects each page in one call', async () => {
     const source = await Effect.runPromise(makeMemoryEventStore)
 

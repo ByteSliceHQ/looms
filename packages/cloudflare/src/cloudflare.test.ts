@@ -429,6 +429,64 @@ describe('@looms/cloudflare', () => {
       }
     }
   })
+
+  test('cold startRun does not await projector init', async () => {
+    let resolveInit: (() => void) | undefined
+    const initStarted = Promise.withResolvers<void>()
+    const initGate = new Promise<void>((resolve) => {
+      resolveInit = resolve
+    })
+    let projected = 0
+
+    const hangProjector = {
+      name: 'hang',
+      version: '1',
+      init: async () => {
+        initStarted.resolve()
+        await initGate
+      },
+      project: async () => {
+        projected += 1
+      },
+    }
+
+    const flow = defineWorkflow({
+      name: 'cold-start-flow',
+      nodes: [{ id: 'work', run: () => ({ ok: true }) }],
+    })
+
+    class ColdObject extends LoomsDurableObject {
+      override configure(): LoomsDurableObjectConfig {
+        return {
+          modules: [workflow({ definitions: [flow] })],
+          projectors: [hangProjector],
+        }
+      }
+    }
+
+    const ctx = objectContext('run_cold', sqliteStorage())
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error mock cold-start context in unit test
+    const object = new ColdObject(ctx, {})
+
+    const started = await object.startRun({
+      runId: 'run_cold',
+      kind: 'workflow',
+      definitionName: 'cold-start-flow',
+      input: null,
+    })
+
+    expect(started.state.status).toBe('completed')
+    expect(projected).toBe(0)
+
+    const run = await object.getRun()
+    expect(run.status).toBe('completed')
+
+    // Release init so deferred waitUntil delivery can project the log.
+    resolveInit?.()
+    await ctx.backgroundWork()
+    expect(projected).toBeGreaterThan(0)
+  })
 })
 
 const decodeCatalog = Schema.decodeUnknownSync(DefinitionCatalogSchema)
@@ -530,9 +588,15 @@ function sqliteStorage(): ObjectStorage {
 }
 
 function objectContext(name: string, storage: ObjectStorage) {
+  const background: Promise<unknown>[] = []
+
   return {
     id: { name, toString: () => name },
     storage,
+    waitUntil(promise: Promise<unknown>) {
+      background.push(promise)
+    },
+    backgroundWork: () => Promise.all(background),
   }
 }
 

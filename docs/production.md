@@ -18,6 +18,15 @@ append commits, so projector latency is not part of the run step. The cursor is
 durable. A delivery that fails, or an isolate that stops before `waitUntil`
 finishes, is retried on the next alarm or request.
 
+Cold cell creation uses the same pattern. Projector `recover` and `deliver`
+(and therefore `projector.init`, which may open Hyperdrive and apply schema)
+are scheduled with `waitUntil` before the first request handler runs. Alarm
+delivery is also deferred with `waitUntil`, so timer wakes are not blocked on
+Postgres. Delivery still serializes per run and projector; empty and caught-up
+logs skip `init` entirely. Hosts that already apply Looms DDL out of band
+(for example with drizzle) should pass `migrate: 'verify'` or `migrate: 'skip'`
+to `postgresEventLog` / `postgres` so init never takes table locks.
+
 `postgresEventLog` is the generic sink: one row per non-ephemeral envelope,
 keyed by `(run_id, seq)`, and a `looms_run_index` row with status, timestamps,
 the parent run, the launching effect, and the run's attributes as JSON. Pass

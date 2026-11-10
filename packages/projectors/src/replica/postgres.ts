@@ -27,7 +27,10 @@ import {
   appliedPostgresMigrationIds,
   applyPostgresMigrations,
   postgresReplicaMigrations,
+  type PostgresReplicaMigrate,
 } from './migrations'
+
+export type { PostgresReplicaMigrate }
 
 export type { NoAdditionalFields, ReplicaPurgeOptions } from './columns'
 
@@ -52,16 +55,15 @@ export interface ReplicaPurgeResult {
   readonly runs: number
 }
 
-export type PostgresReplicaMigrate = 'auto' | 'verify'
-
 export type PostgresReplicaOptions<Fields extends RunAttributeFields = NoAdditionalFields> = (
   | { readonly url: string }
   | { readonly sql: Sql }
 ) & {
   /**
-   * `auto` applies pending migrations on init.
+   * `auto` applies pending migrations on init (lock-free when nothing is pending).
    * `verify` refuses to start when a migration has not been applied, and names
    * `looms replica generate` so the host can commit the SQL.
+   * `skip` leaves schema ownership to the host (for example drizzle migrations).
    */
   readonly migrate: PostgresReplicaMigrate
   /**
@@ -260,15 +262,6 @@ export function postgresReplica<const Fields extends RunAttributeFields = NoAddi
 
   const migrate = (): Promise<void> => applyPostgresMigrations(sql, migrations)
 
-  const init = (): Promise<void> => {
-    ready ??= (options.migrate === 'verify' ? verify() : migrate()).catch((cause: unknown) => {
-      ready = undefined
-      throw cause
-    })
-
-    return ready
-  }
-
   const verify = async (): Promise<void> => {
     const pending = await pendingMigrations()
 
@@ -277,6 +270,19 @@ export function postgresReplica<const Fields extends RunAttributeFields = NoAddi
         `Looms replica is missing migrations: ${pending.join(', ')}. Generate them with \`looms replica generate\` and apply the files before starting.`,
       )
     }
+  }
+
+  const init = (): Promise<void> => {
+    if (options.migrate === 'skip') {
+      return Promise.resolve()
+    }
+
+    ready ??= (options.migrate === 'verify' ? verify() : migrate()).catch((cause: unknown) => {
+      ready = undefined
+      throw cause
+    })
+
+    return ready
   }
 
   const project = async (events: readonly EventEnvelope[]): Promise<void> => {
