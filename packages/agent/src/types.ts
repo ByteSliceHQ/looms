@@ -112,6 +112,11 @@ export interface AgentState {
    * rest of the turn's events so we do not schedule the next call before `agent.message`.
    */
   deferWake?: boolean
+  /**
+   * User/system lines that arrived after the LLM call began. Re-attached after compaction so a
+   * mid-call steer is not lost when `lines` are replaced.
+   */
+  midCallMessages?: Message[]
 }
 
 export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'

@@ -227,14 +227,6 @@ function runCallLlm(args: {
       },
     ]
 
-    const commitTurnSettled = (): void => {
-      events.push({
-        type: 'agent.turn.settled',
-        payload: { turn },
-        threadId,
-      })
-    }
-
     const executeTurn = (
       turnMessages: readonly Message[],
     ): Effect.Effect<AgentTurnResult, AgentExecutionError | LlmError> => {
@@ -348,34 +340,19 @@ function runCallLlm(args: {
       })
     }
 
-    if (shouldStop) {
-      if (!definition.conversational) {
-        const output = structuredOutput ?? result.output ?? { text: result.message.content }
-
+    if (!shouldStop) {
+      for (const toolCall of toolCalls) {
         events.push({
-          type: 'runtime.thread.completed',
-          payload: {
-            threadId,
-            output:
-              consumedSteerMessageIds.length === 0 ? output : { output, consumedSteerMessageIds },
-          },
+          type: 'agent.tool_call.requested',
+          payload: { turn, toolCall },
           threadId,
         })
       }
-
-      commitTurnSettled()
-      return events
     }
 
-    for (const toolCall of toolCalls) {
-      events.push({
-        type: 'agent.tool_call.requested',
-        payload: { turn, toolCall },
-        threadId,
-      })
-    }
+    const completeThread = !definition.conversational && (shouldStop || toolCalls.length === 0)
 
-    if (toolCalls.length === 0 && !definition.conversational) {
+    if (completeThread) {
       const output = structuredOutput ?? result.output ?? { text: result.message.content }
 
       events.push({
@@ -389,7 +366,12 @@ function runCallLlm(args: {
       })
     }
 
-    commitTurnSettled()
+    events.push({
+      type: 'agent.turn.settled',
+      payload: { turn },
+      threadId,
+    })
+
     return events
   })
 }

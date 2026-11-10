@@ -64,6 +64,11 @@ function attachToolCall(lines: readonly Message[], toolCall: ToolCall): Message[
   return lines.with(index, { ...line, toolCalls: [...(line.toolCalls ?? []), toolCall] })
 }
 
+/** Schedule another LLM turn only when no tool calls are still open. */
+function wakeIfIdle(state: Pick<AgentState, 'pendingToolCalls'>): boolean {
+  return state.pendingToolCalls.length === 0
+}
+
 /** Drop the turn in progress: answer its open tool calls and cancel the children they started. */
 function abandonTurn(state: AgentState): AgentState {
   return {
@@ -78,6 +83,7 @@ function abandonTurn(state: AgentState): AgentState {
     pendingEffectTools: {},
     needsLlmCall: false,
     deferWake: false,
+    midCallMessages: [],
     abandonedChildThreadIds: [
       ...(state.abandonedChildThreadIds ?? []),
       ...state.pendingSpawns.map((item) => item.childThreadId),
@@ -107,6 +113,8 @@ export const agentThread = agentModule.thread<AgentState>({
     output: null,
     pendingEffectTools: {},
     consumedSteerMessageIds: [],
+    deferWake: false,
+    midCallMessages: [],
   }),
   step(state, event, ctx) {
     switch (event.type) {
@@ -138,16 +146,19 @@ export const agentThread = agentModule.thread<AgentState>({
       case 'agent.turn.started': {
         // Mid-call steers are already in `lines` when this fires (first event of the batch).
         // Defer the wake until `agent.turn.settled` so we do not schedule the next LLM before
-        // `agent.message` / tool-call events from this same turn are applied.
+        // `agent.message` / tool-call events from this same turn are applied. Snapshot the
+        // extras so compaction can re-attach them instead of losing the steer.
         const messageCount = event.payload.messageCount ?? state.lines.length
-        const arrivedMidCall = state.lines.length > messageCount
+        const midCallMessages = state.lines.slice(messageCount)
+        const arrivedMidCall = midCallMessages.length > 0
 
         return {
           ...state,
           turn: event.payload.turn,
           needsLlmCall: false,
           deferWake: arrivedMidCall,
-          pendingSteer: arrivedMidCall ? state.pendingSteer : null,
+          midCallMessages: arrivedMidCall ? midCallMessages : [],
+          pendingSteer: null,
           abandonedChildThreadIds: [],
         }
       }
@@ -157,18 +168,17 @@ export const agentThread = agentModule.thread<AgentState>({
         return {
           ...state,
           deferWake: false,
-          needsLlmCall: deferWake && state.pendingToolCalls.length === 0,
+          midCallMessages: [],
+          needsLlmCall: deferWake && wakeIfIdle(state),
         }
       }
 
       case 'agent.message.received': {
         const message = event.payload.message
-        const lines = [...state.lines, message]
-        const needsLlmCall = state.pendingToolCalls.length === 0
         return {
           ...state,
-          lines,
-          needsLlmCall,
+          lines: [...state.lines, message],
+          needsLlmCall: wakeIfIdle(state),
         }
       }
 
@@ -215,7 +225,6 @@ export const agentThread = agentModule.thread<AgentState>({
           },
         ]
 
-        const needsLlmCall = pendingToolCalls.length === 0
         return {
           ...state,
           lines,
@@ -225,7 +234,7 @@ export const agentThread = agentModule.thread<AgentState>({
           pendingSpawns,
           pendingEffects,
           pendingEmits,
-          needsLlmCall,
+          needsLlmCall: wakeIfIdle({ pendingToolCalls }),
         }
       }
 
@@ -257,21 +266,26 @@ export const agentThread = agentModule.thread<AgentState>({
           ...state,
           lines: [...state.lines, message],
           pendingSteer: message,
-          needsLlmCall: state.pendingToolCalls.length === 0,
+          needsLlmCall: wakeIfIdle(state),
           consumedSteerMessageIds,
         }
       }
 
       case 'agent.context.compacted': {
         const compactedMessages = event.payload.messages
+        const midCallMessages = state.midCallMessages ?? []
 
         const alreadyCompactedTurns = state.alreadyCompactedTurns
           ? [...state.alreadyCompactedTurns, event.payload.turn]
           : [event.payload.turn]
 
+        const baseLines = compactedMessages ? [...compactedMessages] : state.lines
+
         return {
           ...state,
-          lines: compactedMessages ? [...compactedMessages] : state.lines,
+          // Compaction replaces `lines`; put mid-call steers back so the deferred wake still
+          // has something new to answer.
+          lines: midCallMessages.length > 0 ? [...baseLines, ...midCallMessages] : baseLines,
           alreadyCompactedTurns,
         }
       }
