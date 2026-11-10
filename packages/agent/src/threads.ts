@@ -234,10 +234,13 @@ export const agentThread = agentModule.thread<AgentState>({
           }
         }
 
+        // Queue for the next turn. If the agent is idle (no open tool calls), that turn
+        // starts now — otherwise the message rides along when tools finish.
         return {
           ...state,
           lines: [...state.lines, message],
           pendingSteer: message,
+          needsLlmCall: state.pendingToolCalls.length === 0,
           consumedSteerMessageIds,
         }
       }

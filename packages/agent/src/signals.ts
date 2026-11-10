@@ -31,11 +31,16 @@ export const userMessage = agentModule.signal({
 })
 
 /**
- * Build the `agent.steered` event: inject a user message mid-run, optionally
- * interrupting the current turn so the agent replans immediately.
+ * Build the `agent.steered` event: inject a user message mid-run.
+ *
+ * With `interrupt: true` (the default), the current turn is abandoned and a new
+ * LLM call starts immediately. With `interrupt: false`, the message is queued
+ * for the next turn — and if the agent is already idle, that next turn starts
+ * now so the steer cannot sit forever.
  */
 export const steer = agentModule.signal({
-  description: 'Inject a user message mid-run, optionally interrupting the current turn.',
+  description:
+    'Inject a user message mid-run. Interrupt abandons the current turn; otherwise the message waits for the next turn (which starts immediately if the agent is idle).',
   input: SteerInputSchema,
   build: ({ content, interrupt }) =>
     agentModule.input('steered', {
