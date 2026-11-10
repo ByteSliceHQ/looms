@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.11.2
+
+### Patch Changes
+
+- 58c214c: Rerun a conversational agent turn when a steer or user message arrives while the LLM call is in flight, so the late message is not lost after a final reply.
+
 ## 0.11.1
 
 ### Patch Changes
@@ -17,11 +23,11 @@
   ```ts
   const attributes = defineRunAttributes({
     tenantId: { required: true, index: true },
-  })
+  });
 
-  createLooms({ modules, attributes })
-  postgresReplica({ url, additionalFields: attributes })
-  loomsReplicaTables({ additionalFields: attributes })
+  createLooms({ modules, attributes });
+  postgresReplica({ url, additionalFields: attributes });
+  loomsReplicaTables({ additionalFields: attributes });
   ```
 
   - Each attribute is a text column named in snake_case unless `fieldName` is set. `index: true` adds an index. Each column and index is its own migration, and a new column is backfilled from the `attributes` JSON. `postgresEventLog` records these migrations in `looms_schema_migrations` and applies each one once.
