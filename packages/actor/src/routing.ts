@@ -22,6 +22,10 @@ const decodePayloadRecord = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)),
 )
 
+function isStartRunRequest(req: Request, pathname: string): boolean {
+  return req.method === 'POST' && (pathname === '/runs' || pathname === '/runs/launch')
+}
+
 /**
  * Extracts the target `runId` from a Looms HTTP request.
  * Inspects `x-looms-run-id` and `/runs/:runId/*`.
@@ -35,6 +39,10 @@ export function runIdFromRequest(req: Request): string | null {
 
   const url = new URL(req.url)
   const path = url.pathname
+
+  if (isStartRunRequest(req, path)) {
+    return null
+  }
 
   const runsMatch = path.match(/^\/runs\/([^/]+)(?:\/.*)?$/)
 
@@ -124,8 +132,8 @@ export class RunTargetError extends Data.TaggedError('RunTargetError')<{
 
 /**
  * Resolves the destination `runId` for routing to an actor cell.
- * For `POST /runs` without a `runId`, creates a fresh `runId`, injects it
- * into the body, and sets `x-looms-run-id`.
+ * For `POST /runs` and `POST /runs/launch` without a `runId`, creates a fresh
+ * `runId`, injects it into the body, and sets `x-looms-run-id`.
  */
 export function resolveRunTarget(req: Request): Promise<ResolvedRunTarget> {
   return Effect.runPromise(
@@ -154,7 +162,7 @@ export function resolveRunTarget(req: Request): Promise<ResolvedRunTarget> {
 
       const url = new URL(req.url)
 
-      if (req.method === 'POST' && url.pathname === '/runs') {
+      if (isStartRunRequest(req, url.pathname)) {
         const text = yield* Effect.promise(() => req.clone().text())
         const decoded = decodeRunTargetBody(text)
 

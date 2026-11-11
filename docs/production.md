@@ -112,7 +112,7 @@ const replica = postgresReplica({ url, additionalFields: attributes })
 const tables = loomsReplicaTables({ additionalFields: attributes })
 ```
 
-Once attributes are declared, `start`, `startRun`, `launchRun`, and the client
+Once attributes are declared, `start`, `launch`, `startRun`, `launchRun`, and the client
 only accept declared keys, and a start without a `required` key is a type error.
 The host checks the same rules at runtime and refuses a start with
 `InvalidRunAttributesError`; `POST /runs` answers 400 with the `issues`.

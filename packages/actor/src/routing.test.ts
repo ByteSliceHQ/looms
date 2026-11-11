@@ -93,6 +93,22 @@ describe('routing', () => {
     })
   })
 
+  test('resolveRunTarget treats POST /runs/launch as a start, not a run named launch', async () => {
+    const req = new Request('http://localhost:8787/runs/launch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'echo', definitionName: 'echo', runId: 'run_launched' }),
+    })
+
+    expect(runIdFromRequest(req)).toBeNull()
+
+    const { runId, request } = await resolveRunTarget(req)
+
+    expect(runId).toBe('run_launched')
+    expect(new URL(request.url).pathname).toBe('/runs/launch')
+    expect(request.headers.get('x-looms-run-id')).toBe('run_launched')
+  })
+
   test('resolveRunTarget uses explicit runId in POST /runs body', async () => {
     const req = new Request('http://localhost:8787/runs', {
       method: 'POST',

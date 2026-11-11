@@ -147,9 +147,20 @@ export interface Looms<Fields extends RunAttributeFields = RunAttributeFields> {
     definition: TDef,
     ...args: LoomsStartArgs<TDef, Fields>
   ): Promise<StartResult>
+  /**
+   * Like `start`, but answers once the start is committed and leaves the first wake to the
+   * scheduler.
+   */
+  launch<TDef extends DefinitionRef>(
+    definition: TDef,
+    ...args: LoomsStartArgs<TDef, Fields>
+  ): Promise<StartResult>
   /** Start a run by `{ kind, definitionName }` when you only have names (HTTP bodies, CLIs). */
   startRun(args: LoomsStartRunArgs<Fields>): Promise<StartResult>
-  /** Commit a run's start and schedule a wake without waiting for it. */
+  /**
+   * Like `startRun`, but answers once the start is committed and leaves the first wake to the
+   * scheduler.
+   */
   launchRun(args: LoomsStartRunArgs<Fields>): Promise<StartResult>
   getRun(runId: string): Promise<RunState>
   getEvents(runId: string, options?: { fromSeq?: number; limit?: number }): Promise<EventEnvelope[]>
@@ -308,6 +319,22 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
           definitionName: definition.name,
           definitionVersion: definition.version,
           // SAFETY: input is validated against the definition's schema inside startRun.
+          input: input,
+          runId: startOpts?.runId,
+          threadId: startOpts?.threadId,
+          idempotencyKey: startOpts?.idempotencyKey,
+          attributes: startOpts?.attributes,
+          secrets: startOpts?.secrets,
+          trace: startOpts?.trace,
+        }),
+      ),
+    launch: (definition, input?: DefinitionInput<DefinitionRef>, startOpts?: LoomsStartOptions) =>
+      runEffect((i) =>
+        i.runtime.launchRun({
+          kind: definition.kind,
+          definitionName: definition.name,
+          definitionVersion: definition.version,
+          // SAFETY: input is validated against the definition's schema inside launchRun.
           input: input,
           runId: startOpts?.runId,
           threadId: startOpts?.threadId,

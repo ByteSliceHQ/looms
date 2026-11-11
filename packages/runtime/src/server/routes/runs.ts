@@ -18,6 +18,7 @@ import {
 
 import type { LoomsRuntime } from '../../runtime'
 import { createEventStreamResponse } from '../../sse'
+import type { StartRunArgs } from '../../types'
 import {
   acceptsEventStream,
   EventInputBodySchema,
@@ -64,6 +65,33 @@ const CancelBodySchema = Schema.Struct({
 const ForkBodySchema = Schema.Struct({
   runId: Schema.optional(Schema.String),
 })
+
+function readStartRunArgs(req: Request) {
+  return Effect.gen(function* () {
+    const body = yield* readJson(req).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(StartRunBodySchema)),
+    )
+
+    const definitionName = body.definitionName ?? body.name
+    const kind = body.kind
+
+    if (!definitionName || !kind) {
+      return Response.json({ error: 'kind and definitionName required' }, { status: 400 })
+    }
+
+    return {
+      kind,
+      definitionName,
+      definitionVersion: body.definitionVersion,
+      input: body.input ?? null,
+      runId: body.runId ?? createRunId(),
+      idempotencyKey: extractIdempotencyKey(req, body.idempotencyKey),
+      attributes: body.attributes,
+      secrets: body.secrets,
+      trace: readTraceHeaders(req.headers),
+    } satisfies StartRunArgs & { readonly runId: string }
+  })
+}
 
 function wantsRunStream(req: Request, url: URL): boolean {
   return url.searchParams.get('stream') === 'true' || acceptsEventStream(req)
@@ -167,30 +195,10 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       access: 'write',
       handle: ({ req, url }) =>
         Effect.gen(function* () {
-          const body = yield* readJson(req).pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(StartRunBodySchema)),
-          )
+          const args = yield* readStartRunArgs(req)
 
-          const definitionName = body.definitionName ?? body.name
-          const kind = body.kind
-
-          if (!definitionName || !kind) {
-            return Response.json({ error: 'kind and definitionName required' }, { status: 400 })
-          }
-
-          const runId = body.runId ?? createRunId()
-          const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
-
-          const args = {
-            kind,
-            definitionName,
-            definitionVersion: body.definitionVersion,
-            input: body.input ?? null,
-            runId,
-            idempotencyKey,
-            attributes: body.attributes,
-            secrets: body.secrets,
-            trace: readTraceHeaders(req.headers),
+          if (args instanceof Response) {
+            return args
           }
 
           if (wantsRunStream(req, url)) {
@@ -198,6 +206,23 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
           }
 
           const result = yield* provideStore(runtime.startRun(args), store)
+          return Response.json(result)
+        }),
+    }),
+    route({
+      method: 'POST',
+      path: '/runs/launch',
+      name: 'runs.launch',
+      access: 'write',
+      handle: ({ req }) =>
+        Effect.gen(function* () {
+          const args = yield* readStartRunArgs(req)
+
+          if (args instanceof Response) {
+            return args
+          }
+
+          const result = yield* provideStore(runtime.launchRun(args), store)
           return Response.json(result)
         }),
     }),

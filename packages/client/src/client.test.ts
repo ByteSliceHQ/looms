@@ -45,6 +45,15 @@ describe('createLoomsClient', () => {
 
     await client.start({ kind: 'agent', name: 'echo' }, { text: 'hi' })
     expect(calls[0]).toBe('/runs')
+
+    await client.launch({ kind: 'agent', name: 'echo' }, { text: 'hi' })
+    expect(calls[1]).toBe('/runs/launch')
+
+    await client.startRun({ kind: 'agent', definitionName: 'echo' })
+    expect(calls[2]).toBe('/runs')
+
+    await client.launchRun({ kind: 'agent', definitionName: 'echo' })
+    expect(calls[3]).toBe('/runs/launch')
   })
 
   test('cancel posts the optional thread to the cancel route', async () => {

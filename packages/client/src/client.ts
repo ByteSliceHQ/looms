@@ -311,15 +311,39 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
     }
   }
 
-  const startRun = (args: ClientStartArgs<Fields> & { secrets?: SecretContext }) => {
+  const postStart = (
+    path: '/runs' | '/runs/launch',
+    args: ClientStartArgs<Fields> & { secrets?: SecretContext },
+  ) => {
     const { trace, ...body } = args
 
-    return request('/runs', StartResultSchema, {
+    return request(path, StartResultSchema, {
       method: 'POST',
       headers: traceHeaders(trace),
       body: stringifyJson(body),
     })
   }
+
+  const startRun = (args: ClientStartArgs<Fields> & { secrets?: SecretContext }) =>
+    postStart('/runs', args)
+
+  const launchRun = (args: ClientStartArgs<Fields> & { secrets?: SecretContext }) =>
+    postStart('/runs/launch', args)
+
+  const startFromDefinition = <TDef extends DefinitionRef>(
+    path: '/runs' | '/runs/launch',
+    definition: TDef,
+    input?: DefinitionInput<TDef>,
+  ) =>
+    request(path, StartResultSchema, {
+      method: 'POST',
+      body: stringifyJson({
+        kind: definition.kind,
+        definitionName: definition.name,
+        definitionVersion: definition.version,
+        input,
+      }),
+    })
 
   const workerHeaders = options.workerCallbackToken
     ? { authorization: `Bearer ${options.workerCallbackToken}` }
@@ -388,19 +412,25 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
   }
 
   return {
-    /** Start a run by `{ kind, definitionName }` when you only have names. */
+    /**
+     * Start a run by `{ kind, definitionName }` when you only have names. Answers after the first
+     * wake, so a short run can come back finished.
+     */
     startRun,
+    /**
+     * Like `startRun`, but answers once the start is committed and leaves the first wake to the
+     * host's scheduler. The returned state is the freshly started run; read or subscribe for progress.
+     */
+    launchRun,
     /** Start a run from a definition object (agent, workflow, or your own kind). */
     start: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>) =>
-      request('/runs', StartResultSchema, {
-        method: 'POST',
-        body: stringifyJson({
-          kind: definition.kind,
-          definitionName: definition.name,
-          definitionVersion: definition.version,
-          input,
-        }),
-      }),
+      startFromDefinition('/runs', definition, input),
+    /**
+     * Like `start`, but answers once the start is committed and leaves the first wake to the
+     * host's scheduler.
+     */
+    launch: <TDef extends DefinitionRef>(definition: TDef, input?: DefinitionInput<TDef>) =>
+      startFromDefinition('/runs/launch', definition, input),
     getRun: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
     getState: (runId: string) => request(`/runs/${encodeURIComponent(runId)}`, RunResultSchema),
     getEvents: (runId: string, opts?: { fromSeq?: number; limit?: number }) => {

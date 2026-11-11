@@ -44,6 +44,8 @@ class UnreadableStartBody extends Data.TaggedError('UnreadableStartBody')<{
 
 const noAttributes: RunAttributes = {}
 
+const START_ROUTES: ReadonlySet<string> = new Set(['runs.start', 'runs.launch'])
+
 function readRequestAttributes(req: Request): Effect.Effect<RunAttributes> {
   return Effect.tryPromise({
     try: () => req.clone().json(),
@@ -79,8 +81,7 @@ function authorizeRoute(
       ? yield* readStoredAttributes(runtime, store, runId)
       : noAttributes
 
-    const requested =
-      matched.route.name === 'runs.start' ? yield* readRequestAttributes(req) : noAttributes
+    const requested = START_ROUTES.has(name) ? yield* readRequestAttributes(req) : noAttributes
 
     const attributes = hasEntries(stored) ? stored : requested
 
