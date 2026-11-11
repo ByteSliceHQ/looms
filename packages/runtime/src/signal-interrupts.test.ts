@@ -52,7 +52,9 @@ describe('signal interrupts', () => {
 
     await waitFor(() => aborted)
     expect(aborted).toBe(true)
-    await starting.catch(() => undefined)
+    // The interrupting steer starts a follow-up turn that also waits on abort; stop the
+    // runtime instead of awaiting that hung turn.
+    void starting.catch(() => undefined)
     await looms.stop()
   })
 

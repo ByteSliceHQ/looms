@@ -61,7 +61,7 @@ import {
 import { createRunIngress } from './ingress'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import { createRuntimeRepository, type CommitPlan } from './repository'
-import { RunExecutionContexts } from './run-execution-context'
+import { requestWakeAgain, RunExecutionContexts } from './run-execution-context'
 import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
 import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
@@ -504,7 +504,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     withRunIngress(runId, signalAdmitted(runId, events, signalOpts)).pipe(
       Effect.flatMap((state) => {
         if (signalOpts?.coalesce && executionContexts.get(runId).waking) {
-          executionContexts.get(runId).wakeAgain = true
+          requestWakeAgain(executionContexts.get(runId))
           return Effect.succeed(state)
         }
 
