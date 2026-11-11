@@ -151,6 +151,62 @@ describe('ActorCell', () => {
     await cell.dispose()
   })
 
+  test('POST /runs/launch answers before the first wake', async () => {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const runId = 'run_launch'
+    const scheduled: Array<{ runId: string; at: number }> = []
+    let ran = 0
+
+    const scheduler: WakeScheduler = {
+      schedule: (id, at) =>
+        Effect.sync(() => scheduled.push({ runId: id, at })).pipe(Effect.asVoid),
+      cancel: () => Effect.void,
+    }
+
+    const flow = defineWorkflow({
+      name: 'launch-flow',
+      nodes: [
+        {
+          id: 'step1',
+          run: () => {
+            ran += 1
+            return { success: true }
+          },
+        },
+      ],
+    })
+
+    const cell = createActorCell({
+      runId,
+      store,
+      scheduler,
+      modules: [workflow({ definitions: [flow] })],
+    })
+
+    const launchRes = await cell.fetch(
+      new Request('http://localhost:8787/runs/launch', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-looms-run-id': runId,
+        },
+        body: JSON.stringify({ kind: 'workflow', definitionName: 'launch-flow', runId }),
+      }),
+    )
+
+    expect(launchRes.status).toBe(200)
+    expect(decodeRunResponse(await launchRes.json()).state.status).toBe('running')
+    expect(ran).toBe(0)
+    expect(scheduled.map((entry) => entry.runId)).toEqual([runId])
+
+    const woken = await cell.wake()
+
+    expect(woken.status).toBe('completed')
+    expect(ran).toBe(1)
+
+    await cell.dispose()
+  })
+
   test('dispatches worker effects when a worker is configured', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
     const runId = 'run_worker_cell'
