@@ -19,10 +19,13 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 import { createLooms } from './looms'
 import { DuplicateEffectDispatchError, MaxWakeIterationsError, RunTerminalError } from './runtime'
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+async function waitFor(
+  predicate: () => Promise<boolean> | boolean,
+  timeoutMs = 1_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs
 
-  while (!predicate() && Date.now() < deadline) {
+  while (!(await predicate()) && Date.now() < deadline) {
     await Bun.sleep(10)
   }
 }
@@ -55,8 +58,8 @@ describe('createLooms runtime', () => {
 
     const { runId } = await looms.start(sleeper, {})
 
-    // Wait for the automatic timer scheduler to fire wake(runId)
-    await waitFor(() => wokeUp)
+    // Forked local effects can set wokeUp before run.completed is folded; wait on status.
+    await waitFor(async () => (await looms.getRun(runId)).status === 'completed')
 
     const finalRun = await looms.getRun(runId)
     expect(wokeUp).toBe(true)

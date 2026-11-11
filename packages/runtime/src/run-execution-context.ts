@@ -1,4 +1,4 @@
-import type { Exit } from 'effect'
+import { Deferred, Effect, type Exit } from 'effect'
 
 import type { EventStore, RunState } from '@looms/core'
 
@@ -21,6 +21,8 @@ export interface RunExecutionContext {
   readonly activeEffects: Map<string, ActiveEffect>
   waking: boolean
   wakeAgain: boolean
+  /** Resolved when a joined wake or coalesced signal asks the owner to replan mid-flight. */
+  wakeSignal: Deferred.Deferred<void> | null
   wakeCompletion: Promise<WakeCompletion> | null
   resolveWakeCompletion: ((completion: WakeCompletion) => void) | null
   ingress: RunIngressState | null
@@ -33,6 +35,7 @@ function createRunExecutionContext(): RunExecutionContext {
     activeEffects: new Map(),
     waking: false,
     wakeAgain: false,
+    wakeSignal: null,
     wakeCompletion: null,
     resolveWakeCompletion: null,
     ingress: null,
@@ -41,10 +44,24 @@ function createRunExecutionContext(): RunExecutionContext {
   }
 }
 
+/** Mark the run for another wake pass and unblock any mid-flight wait on `wakeSignal`. */
+export function requestWakeAgain(context: RunExecutionContext): void {
+  context.wakeAgain = true
+  const signal = context.wakeSignal
+
+  if (!signal) {
+    return
+  }
+
+  context.wakeSignal = null
+  Deferred.doneUnsafe(signal, Effect.void)
+}
+
 function isIdle(context: RunExecutionContext): boolean {
   return (
     !context.waking &&
     !context.wakeAgain &&
+    context.wakeSignal === null &&
     context.wakeCompletion === null &&
     context.resolveWakeCompletion === null &&
     context.ingress === null &&

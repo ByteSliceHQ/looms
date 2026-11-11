@@ -120,7 +120,8 @@ describe('wake loop while a workflow node waits to retry', () => {
     const definition = defineWorkflow({
       name: 'parallel-sleep',
       nodes: [
-        { id: 'slow', run: (ctx) => ctx.sleep(30) },
+        // Long enough that start()'s wake cannot also consume the timer on a slow runner.
+        { id: 'slow', run: (ctx) => ctx.sleep(200) },
         { id: 'fast', run: () => 'done' },
       ],
       output: ({ results }) => results.fast ?? null,
@@ -134,7 +135,7 @@ describe('wake loop while a workflow node waits to retry', () => {
     const { runId, state } = await looms.start(definition, {})
     expect(state.status).toBe('running')
 
-    await waitFor(async () => (await looms.getRun(runId)).status !== 'running')
+    await waitFor(async () => (await looms.getRun(runId)).status !== 'running', 2_000)
     const finished = await looms.getRun(runId)
     await looms.stop()
 
@@ -180,7 +181,12 @@ describe('wake loop while a workflow node waits to retry', () => {
     const { runId, state } = await looms.start(definition, {})
     expect(state.status).toBe('running')
 
-    await waitFor(() => attempts >= 2)
+    // Forked local effects surface execute() side effects before their events are folded.
+    await waitFor(async () => {
+      const events = await looms.getEvents(runId)
+      return events.some((event) => event.type === 'recovering.called')
+    })
+
     const events = await looms.getEvents(runId)
     await looms.stop()
 
