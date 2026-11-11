@@ -188,11 +188,9 @@ describe('non-blocking wake', () => {
     })
 
     const looms = createLooms({ modules: [module] })
-    const starting = looms.start(
-      { kind: 'nb-session', name: 'nb-session', version: 'v1' },
-      null,
-      { runId: 'nb-run' },
-    )
+    const starting = looms.start({ kind: 'nb-session', name: 'nb-session', version: 'v1' }, null, {
+      runId: 'nb-run',
+    })
 
     await waitFor(() => slowStarted)
 
