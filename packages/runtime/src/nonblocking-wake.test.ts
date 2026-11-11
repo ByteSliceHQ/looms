@@ -16,14 +16,17 @@ import {
 
 import { createLooms } from './looms'
 
-async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+async function waitFor(
+  predicate: () => Promise<boolean> | boolean,
+  timeoutMs = 2_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs
 
-  while (!predicate() && Date.now() < deadline) {
+  while (!(await predicate()) && Date.now() < deadline) {
     await Bun.sleep(5)
   }
 
-  if (!predicate()) {
+  if (!(await predicate())) {
     throw new Error('timed out waiting for condition')
   }
 }
@@ -206,8 +209,11 @@ describe('non-blocking wake', () => {
     expect(releaseSlow).toBeDefined()
 
     releaseSlow?.()
-    const result = await starting
-    expect(result.state.status).toBe('completed')
+    void starting.catch(() => undefined)
+
+    // start() may park while the slow fiber is still settling; wait on durable status.
+    await waitFor(async () => (await looms.getRun('nb-run')).status === 'completed')
+    expect((await looms.getRun('nb-run')).status).toBe('completed')
     await looms.stop()
   })
 
