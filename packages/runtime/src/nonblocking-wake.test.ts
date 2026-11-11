@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Predicate, Schema } from 'effect'
 
 import { agent, defineAgent, steer } from '@looms/agent'
 import {
@@ -48,6 +48,7 @@ describe('non-blocking wake', () => {
           () =>
             new Promise<readonly { type: string; payload: {}; threadId: string }[]>((resolve) => {
               slowStarted = true
+
               releaseSlow = () =>
                 resolve([{ type: 'nb.slowDone', payload: {}, threadId: ctx.threadId }])
             }),
@@ -79,14 +80,17 @@ describe('non-blocking wake', () => {
           return { ...state, phase: 'poked' }
         }
 
-        if (event.type === 'runtime.wait.satisfied') {
-          const tag = (event.payload as { tag?: { kind?: string } } | null)?.tag
-
-          if (tag?.kind === 'fast') {
+        if (
+          event.type === 'runtime.wait.satisfied' &&
+          Predicate.isObject(event.payload) &&
+          Predicate.isObject(event.payload.tag) &&
+          Predicate.isString(event.payload.tag.kind)
+        ) {
+          if (event.payload.tag.kind === 'fast') {
             return { ...state, fastDone: true }
           }
 
-          if (tag?.kind === 'slow') {
+          if (event.payload.tag.kind === 'slow') {
             return { ...state, slowDone: true }
           }
         }
@@ -147,8 +151,9 @@ describe('non-blocking wake', () => {
 
     const worker = defineThread<{ mode: string; done: boolean }>({
       kind: 'nb-worker',
+      input: Schema.Struct({ mode: Schema.String }),
       initialState: (ctx) => ({
-        mode: String((ctx.input as { mode?: string } | null)?.mode ?? 'slow'),
+        mode: ctx.input?.mode ?? 'slow',
         done: false,
       }),
       step: (state, event) => {
@@ -188,6 +193,7 @@ describe('non-blocking wake', () => {
     })
 
     const looms = createLooms({ modules: [module] })
+
     const starting = looms.start({ kind: 'nb-session', name: 'nb-session', version: 'v1' }, null, {
       runId: 'nb-run',
     })
