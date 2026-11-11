@@ -64,7 +64,7 @@ type SettledGroup = {
 
 type InFlightGroup = {
   readonly groupKey: string
-  readonly fiber: Fiber.Fiber<void, never>
+  readonly fiber: Fiber.Fiber<void>
   readonly effectIds: ReadonlyArray<string>
 }
 
