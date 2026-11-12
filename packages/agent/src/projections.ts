@@ -1,7 +1,7 @@
 import { Predicate } from 'effect'
 
 import { agentModule } from './scope'
-import { closeOpenToolCalls } from './transcript'
+import { closeOpenToolCalls, insertToolResult } from './transcript'
 import {
   ConversationSchema,
   TokenUsageSchema,
@@ -80,9 +80,7 @@ export const conversation = agentModule.projection({
           toolCalls: undefined,
         }
 
-        return {
-          lines: [...state.lines, toolLine],
-        }
+        return { lines: insertToolResult(state.lines, toolLine) }
       }
 
       case 'agent.turn.stopped':
