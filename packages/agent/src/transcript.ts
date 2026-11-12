@@ -24,3 +24,32 @@ export function closeOpenToolCalls(lines: readonly Message[]): Message[] {
 
   return closing.length === 0 ? [...lines] : [...lines, ...closing]
 }
+
+/**
+ * Add a tool result directly after the assistant line that made the call, behind any results
+ * already there. A user message can arrive while the call is open (a non-interrupt steer); model
+ * APIs reject a transcript where that message sits between a tool call and its result, so the
+ * result goes ahead of it. A result with no open call (unknown or already answered) is appended.
+ */
+export function insertToolResult(lines: readonly Message[], result: Message): Message[] {
+  const callId = result.toolCallId
+  const answered = lines.some((line) => line.role === 'tool' && line.toolCallId === callId)
+
+  const callIndex = answered
+    ? -1
+    : lines.findLastIndex(
+        (line) => line.role === 'assistant' && line.toolCalls?.some((call) => call.id === callId),
+      )
+
+  if (callIndex === -1) {
+    return [...lines, result]
+  }
+
+  let index = callIndex + 1
+
+  while (lines[index]?.role === 'tool') {
+    index += 1
+  }
+
+  return [...lines.slice(0, index), result, ...lines.slice(index)]
+}
