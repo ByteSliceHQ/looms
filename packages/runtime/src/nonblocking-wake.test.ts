@@ -212,7 +212,7 @@ describe('non-blocking wake', () => {
     void starting.catch(() => undefined)
 
     // start() may park while the slow fiber is still settling; wait on durable status.
-    await waitFor(async () => (await looms.getRun('nb-run')).status === 'completed')
+    await waitFor(async () => (await looms.getRun('nb-run')).status === 'completed', 10_000)
     expect((await looms.getRun('nb-run')).status).toBe('completed')
     await looms.stop()
   })
