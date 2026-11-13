@@ -29,6 +29,7 @@ export {
   routeToDurableObject,
   type DurableObjectNamespaceLike,
   type DurableObjectStubLike,
+  type RouteAuthorize,
 } from './router'
 export { createMemoryQueue, type MemoryQueue, type MemoryQueueOptions } from './memory-queue'
 export {

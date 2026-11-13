@@ -1,13 +1,21 @@
-export { createFetchHandler, handlesPath, type FetchHandlerOptions } from './server/fetch-handler'
+export {
+  createFetchHandler,
+  describeRoute,
+  handlesPath,
+  type FetchHandlerOptions,
+} from './server/fetch-handler'
 export { isLoomsApiPath } from './server/http'
 export { mountDebugger, type DebuggerMount } from './server/debugger-host'
 export { runRouteInfo } from './server/run-route'
 export {
+  ACTOR_HEADER,
   authAllowed,
+  authAllowedAs,
   authDenied,
   authResponse,
   bearerAuth,
   defaultAuthorize,
+  forwardedActorAuth,
   type AuthDecision,
   type AuthorizedAccess,
   type Authorize,

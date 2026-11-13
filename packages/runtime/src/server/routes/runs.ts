@@ -12,6 +12,7 @@ import {
   stringifyJson,
   subscriptionFilter,
   subscriptionFromSeq,
+  type EventInput,
   type EventStore,
   type JsonValue,
 } from '@looms/core'
@@ -91,6 +92,16 @@ function readStartRunArgs(req: Request) {
       trace: readTraceHeaders(req.headers),
     } satisfies StartRunArgs & { readonly runId: string }
   })
+}
+
+/**
+ * Records `events` as sent by `actorId`. Whatever origin the caller wrote on them is replaced: the
+ * host's `authorize` decides who a request acts as, not the request.
+ */
+function sentBy(events: readonly EventInput[], actorId: string | undefined): readonly EventInput[] {
+  return actorId === undefined
+    ? events
+    : events.map((event) => ({ ...event, origin: { type: 'external', actorId } }))
 }
 
 function wantsRunStream(req: Request, url: URL): boolean {
@@ -325,7 +336,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       path: '/runs/:runId/events',
       name: 'runs.signal',
       access: 'write',
-      handle: ({ req, params }) =>
+      handle: ({ req, params, actorId }) =>
         Effect.gen(function* () {
           const body = yield* readJson(req).pipe(
             Effect.flatMap(Schema.decodeUnknownEffect(SignalBodySchema)),
@@ -340,7 +351,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
           const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
 
           const state = yield* provideStore(
-            runtime.signal(params.runId, events, { idempotencyKey }),
+            runtime.signal(params.runId, sentBy(events, actorId), { idempotencyKey }),
             store,
           )
 
@@ -352,7 +363,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       path: '/runs/:runId/signals/:namespace/:name',
       name: 'runs.signal.named',
       access: 'write',
-      handle: ({ req, params }): Effect.Effect<Response, Error> =>
+      handle: ({ req, params, actorId }): Effect.Effect<Response, Error> =>
         // SAFETY: Effect.gen residual R is never here; decode/run errors map to Error via route handlers.
         Effect.gen(function* () {
           const definition = findSignal(runtime.registry.modules, params.namespace, params.name)
@@ -372,7 +383,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
           const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
 
           const state = yield* provideStore(
-            runtime.signal(params.runId, events, { idempotencyKey }),
+            runtime.signal(params.runId, sentBy(events, actorId), { idempotencyKey }),
             store,
           )
 
