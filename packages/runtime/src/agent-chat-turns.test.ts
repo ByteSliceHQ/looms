@@ -16,47 +16,80 @@ import { createLooms } from './looms'
 
 const WORDS = ['one ', 'two ', 'three ', 'four ', 'five ', 'six']
 
+async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (!predicate() && Date.now() < deadline) {
+    await Bun.sleep(5)
+  }
+
+  if (!predicate()) {
+    throw new Error('timed out waiting for condition')
+  }
+}
+
+interface LlmProbe {
+  /** Calls that have emitted at least one delta. */
+  streaming: number
+  /** Calls that have returned or thrown. */
+  settled: number
+  aborts: unknown[]
+}
+
 /** Streams six words 20ms apart and checks the abort signal before each, like a real adapter. */
-function streamingLlm(aborts: unknown[] = []) {
-  return {
+function streamingLlm() {
+  const probe: LlmProbe = { streaming: 0, settled: 0, aborts: [] }
+
+  const llm = {
     async complete(args: {
       messages: readonly Message[]
       signal?: AbortSignal
       onTextDelta?: (delta: string) => void | Promise<void>
     }) {
-      args.signal?.addEventListener('abort', () => aborts.push(args.signal?.reason), {
+      args.signal?.addEventListener('abort', () => probe.aborts.push(args.signal?.reason), {
         once: true,
       })
 
       let content = ''
 
-      for (const word of WORDS) {
-        if (args.signal?.aborted) {
-          throw args.signal.reason
+      try {
+        for (const word of WORDS) {
+          if (args.signal?.aborted) {
+            throw args.signal.reason
+          }
+
+          await Bun.sleep(20)
+          content += word
+          await args.onTextDelta?.(word)
+
+          if (content === word) {
+            probe.streaming += 1
+          }
         }
 
-        await Bun.sleep(20)
-        content += word
-        await args.onTextDelta?.(word)
+        return { message: { role: 'assistant' as const, content: content.trim() }, done: true }
+      } finally {
+        probe.settled += 1
       }
-
-      return { message: { role: 'assistant' as const, content: content.trim() }, done: true }
     },
   }
+
+  return { llm, probe }
 }
 
 describe('conversational agent turns', () => {
   test('the turn after a stopped turn streams and replies', async () => {
     const chat = defineAgent({ name: 'chat', instructions: 'x', conversational: true })
-    const looms = createLooms({ modules: [agent({ definitions: [chat], llm: streamingLlm() })] })
+    const { llm, probe } = streamingLlm()
+    const looms = createLooms({ modules: [agent({ definitions: [chat], llm })] })
     const { runId, threadId } = await looms.start(chat, 'q1')
 
     const stoppedTurn = looms.signal(runId, [userMessage({ content: 'q2' })])
     stoppedTurn.catch(() => {})
-    await Bun.sleep(50)
+    await waitFor(() => probe.streaming === 2)
     await looms.signal(runId, [stopAgentTurn({ threadId })])
-    // Long enough for the stopped call to emit the delta it was already waiting to send.
-    await Bun.sleep(60)
+    // The stopped call emits the delta it was already waiting to send, then sees the abort.
+    await waitFor(() => probe.settled === 2)
 
     const answered = await looms.signal(runId, [userMessage({ content: 'q3' })])
     const events = await looms.getEvents(runId)
@@ -75,23 +108,19 @@ describe('conversational agent turns', () => {
   })
 
   test('stopAgentTurn() without a thread id aborts the root agent turn', async () => {
-    const aborts: unknown[] = []
     const chat = defineAgent({ name: 'chat', instructions: 'x', conversational: true })
-
-    const looms = createLooms({
-      modules: [agent({ definitions: [chat], llm: streamingLlm(aborts) })],
-    })
-
+    const { llm, probe } = streamingLlm()
+    const looms = createLooms({ modules: [agent({ definitions: [chat], llm })] })
     const { runId } = await looms.start(chat, 'q1')
 
     const stoppedTurn = looms.signal(runId, [userMessage({ content: 'q2' })])
     stoppedTurn.catch(() => {})
-    await Bun.sleep(50)
+    await waitFor(() => probe.streaming === 2)
     await looms.signal(runId, [stopAgentTurn()])
     await stoppedTurn.catch(() => {})
-    await Bun.sleep(150)
+    await waitFor(() => probe.settled === 2)
 
-    expect(aborts).toHaveLength(1)
+    expect(probe.aborts).toHaveLength(1)
 
     expect((await looms.project(runId, conversation)).lines.map((line) => line.content)).toEqual([
       'one two three four five six',
@@ -102,24 +131,21 @@ describe('conversational agent turns', () => {
   })
 
   test('stopAgentTurn() without a thread id aborts the active turn of an agent session', async () => {
-    const aborts: unknown[] = []
     const assistant = defineAgent({ name: 'session-chat', instructions: 'x' })
     const session = defineAgentSession({ name: 'chat-session', agent: assistant })
-
-    const looms = createLooms({
-      modules: [agent({ definitions: [assistant, session], llm: streamingLlm(aborts) })],
-    })
+    const { llm, probe } = streamingLlm()
+    const looms = createLooms({ modules: [agent({ definitions: [assistant, session], llm })] })
 
     const { runId } = await looms.start(session)
     const stoppedTurn = sendAgentSessionMessage(looms, runId, 'msg-1', 'q1')
-    await Bun.sleep(50)
+    await waitFor(() => probe.streaming === 1)
     const stopped = await looms.signal(runId, [stopAgentTurn()])
     await stoppedTurn
-    await Bun.sleep(150)
+    await waitFor(() => probe.settled === 1)
 
     const events = await looms.getEvents(runId)
 
-    expect(aborts).toHaveLength(1)
+    expect(probe.aborts).toHaveLength(1)
     expect(events.filter((event) => event.type === 'agent.message')).toEqual([])
     expect(stopped.status).toBe('running')
     await looms.stop()
