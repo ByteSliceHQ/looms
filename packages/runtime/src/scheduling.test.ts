@@ -112,7 +112,8 @@ describe('createLooms runtime', () => {
 
     // Wait for the restored timer to wake up in the second process
     await looms2.ready()
-    await waitFor(() => wokeUp)
+    // wokeUp flips when step2 runs, before run.completed is folded.
+    await waitFor(async () => (await looms2.getRun(runId)).status === 'completed', 2_000)
 
     const finalRun = await looms2.getRun(runId)
     expect(wokeUp).toBe(true)

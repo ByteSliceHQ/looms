@@ -178,12 +178,15 @@ describe('server HTTP idempotency', () => {
   })
 
   test('POST /runs/:id/wake reports how many events the wake appended', async () => {
+    // Far enough out that a slow start() cannot fire the timer before parking.
+    const dueAt = Date.now() + 250
+
     const flow = defineWorkflow({
       name: 'timer-flow',
       nodes: [
         {
           id: 'delay',
-          run: (ctx) => ctx.effects([wait({ waitId: 'delay', on: { timerAt: Date.now() + 10 } })]),
+          run: (ctx) => ctx.effects([wait({ waitId: 'delay', on: { timerAt: dueAt } })]),
         },
       ],
     })
@@ -194,7 +197,11 @@ describe('server HTTP idempotency', () => {
     })
 
     const { runId } = await looms.start(flow, {})
-    await Bun.sleep(15)
+    expect((await looms.getRun(runId)).waits.delay).toBeDefined()
+
+    while (Date.now() < dueAt) {
+      await Bun.sleep(10)
+    }
 
     const wake = async () => {
       const response = await looms.fetch(
