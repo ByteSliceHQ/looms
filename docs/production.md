@@ -328,6 +328,54 @@ Each configured level requires `Authorization: Bearer <token>`; levels without a
 token keep the default behavior. The client's `workerCallbackToken` option sends
 the worker token on `workerCallback` requests.
 
+An allowed decision can also say who the request acts as. Return
+`authAllowedAs(actorId)` and every event the request sends is recorded with
+`origin: { type: 'external', actorId }`, replacing any origin the request wrote
+itself. `route.signal` names the signal a `POST /runs/:runId/signals/...`
+request sends, as `namespace/name`, so a policy can allow some signals and not
+others:
+
+```ts
+createLooms({
+  modules,
+  authorize: (request, route) =>
+    Effect.gen(function* () {
+      const user = yield* signedInUser(request)
+
+      if (!user || (route.access === 'write' && route.signal !== 'chat/say')) {
+        return authDenied(403, 'Forbidden')
+      }
+
+      return authAllowedAs(user.id)
+    }),
+})
+```
+
+On Cloudflare the Worker usually knows who is signed in, not the Durable
+Object. Pass `authorize` to `routeToDurableObject` to decide in the Worker: a
+denied request never reaches an object, and the actor an allowed decision names
+travels to the object in a header that clients cannot set. Give the object
+`forwardedActorAuth()` so it records that actor. The Worker's `route` has no
+`attributes`, because the Worker does not read the run; `describeRoute(method,
+pathname)` returns the same description for any other front.
+
+```ts
+// Worker
+routeToDurableObject(env.RUNS, request, {
+  authorize: async (request, route) => {
+    const user = await signedInUser(request)
+    return user ? authAllowedAs(user.id) : authDenied(401, 'Unauthorized')
+  },
+})
+
+// Durable Object
+configure() {
+  return { modules, authorize: forwardedActorAuth() }
+}
+```
+
+Use `forwardedActorAuth` only on a host that clients cannot reach directly.
+
 Browsers cannot set headers on `EventSource` or `WebSocket`. `grantAuth` verifies
 a short-lived HMAC grant from the `grant` query parameter, or from a `v1.` value
 in `Sec-WebSocket-Protocol` when the query parameter is absent. The grant names

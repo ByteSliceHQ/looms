@@ -3,7 +3,14 @@ import { Data, Effect, Option, Predicate, Schema } from 'effect'
 import { hasEntries, RunAttributesSchema, type EventStore, type RunAttributes } from '@looms/core'
 
 import type { LoomsRuntime } from '../runtime'
-import { authResponse, defaultAuthorize, type Authorize } from './auth'
+import {
+  authAllowed,
+  authResponse,
+  defaultAuthorize,
+  type AuthDecision,
+  type Authorize,
+  type RouteInfo,
+} from './auth'
 import { debuggerPath, serveDebugger, type DebuggerMount } from './debugger-host'
 import { acceptsEventStream, isLoomsApiPath, toErrorResponse, type RouteOptions } from './http'
 import { matchRoute, type MatchedRoute, type Route } from './route-table'
@@ -61,20 +68,65 @@ function readRequestAttributes(req: Request): Effect.Effect<RunAttributes> {
   )
 }
 
+const NAMED_SIGNAL_ROUTE = 'runs.signal.named'
+
+/** What a matched route is about, before the run's attributes are known. */
+function matchedRouteInfo(matched: MatchedRoute): RouteInfo | null {
+  const { access, name } = matched.route
+
+  if (access === 'public') {
+    return null
+  }
+
+  const { runId, namespace, name: signalName } = matched.params
+
+  if (!Predicate.isString(runId)) {
+    return { access, name }
+  }
+
+  // Only a run's named signal route has these two parameters.
+  return name === NAMED_SIGNAL_ROUTE &&
+    Predicate.isString(namespace) &&
+    Predicate.isString(signalName)
+    ? { access, name, runId, signal: `${namespace}/${signalName}` }
+    : { access, name, runId }
+}
+
+let routeShapes: readonly Route[] | undefined
+
+/**
+ * Says which Looms route a request is for, without a runtime: the same access level, route name,
+ * run id and signal that `authorize` receives, but never the run's attributes. Returns null for a
+ * path Looms does not serve and for public routes.
+ *
+ * A front that forwards requests to a host, such as a Worker in front of Durable Objects, uses
+ * this to decide what to let through.
+ */
+export function describeRoute(method: string, pathname: string): RouteInfo | null {
+  // SAFETY: route handlers are the only code that reads the options, and they are never called
+  // here; only each route's method, path, name and access are used.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  routeShapes ??= createRoutes({} as RouteOptions)
+
+  const matched = matchRoute(routeShapes, method, pathname)
+
+  return matched ? matchedRouteInfo(matched) : null
+}
+
 function authorizeRoute(
   req: Request,
   matched: MatchedRoute,
   authorize: Authorize,
   runtime: LoomsRuntime,
   store: EventStore,
-): Effect.Effect<Response | null, Error> {
-  const { access, name } = matched.route
+): Effect.Effect<AuthDecision, Error> {
+  const info = matchedRouteInfo(matched)
 
-  if (access === 'public') {
-    return Effect.succeed(null)
+  if (!info) {
+    return Effect.succeed(authAllowed)
   }
 
-  const runId = matched.params.runId
+  const { name, runId } = info
 
   return Effect.gen(function* () {
     const stored = Predicate.isString(runId)
@@ -85,15 +137,7 @@ function authorizeRoute(
 
     const attributes = hasEntries(stored) ? stored : requested
 
-    const route = Predicate.isString(runId)
-      ? hasEntries(attributes)
-        ? { access, name, runId, attributes }
-        : { access, name, runId }
-      : hasEntries(attributes)
-        ? { access, name, attributes }
-        : { access, name }
-
-    return yield* authorize(req, route).pipe(Effect.map(authResponse))
+    return yield* authorize(req, hasEntries(attributes) ? { ...info, attributes } : info)
   })
 }
 
@@ -135,7 +179,7 @@ export function createFetchHandler(
           return new Response('Not Found', { status: 404 })
         }
 
-        const denied = yield* authorizeRoute(
+        const decision = yield* authorizeRoute(
           req,
           matched,
           authorize,
@@ -143,11 +187,19 @@ export function createFetchHandler(
           options.store,
         )
 
+        const denied = authResponse(decision)
+
         if (denied) {
           return denied
         }
 
-        return yield* matched.route.handle({ req, url, params: matched.params })
+        const context = { req, url, params: matched.params }
+
+        return yield* matched.route.handle(
+          decision.allowed && decision.actorId
+            ? { ...context, actorId: decision.actorId }
+            : context,
+        )
       }),
     )
   }

@@ -16,17 +16,31 @@ export interface RouteInfo {
   /** Stable route name, such as `runs.signal` or `effects.retry`. */
   readonly name: string
   readonly runId?: string
+  /** The signal a `runs.signal.named` request sends, as `namespace/name`. */
+  readonly signal?: string
   /** Present when the run has labels. Safe for the authorizer to branch on. */
   readonly attributes?: RunAttributes
 }
 
 export type AuthDecision =
-  | { readonly allowed: true }
+  | {
+      readonly allowed: true
+      /**
+       * Who the request acts as. Events the request sends are recorded with this as their
+       * `origin.actorId`, replacing anything the request claimed for itself.
+       */
+      readonly actorId?: string
+    }
   | { readonly allowed: false; readonly status: number; readonly error: string }
 
 export type Authorize = (request: Request, route: RouteInfo) => Effect.Effect<AuthDecision>
 
 export const authAllowed: AuthDecision = { allowed: true }
+
+/** Allows the request and names who it acts as; see `AuthDecision`. */
+export function authAllowedAs(actorId: string): AuthDecision {
+  return { allowed: true, actorId }
+}
 
 export function authDenied(status: number, error: string): AuthDecision {
   return { allowed: false, status, error }
@@ -59,6 +73,30 @@ export const defaultAuthorize: Authorize = (_request, route) =>
       ? notConfigured(route.access)
       : authAllowed,
   )
+
+/**
+ * The header a trusted front (such as `routeToDurableObject` with an `authorize` option) uses to
+ * tell the host behind it who a request acts as.
+ */
+export const ACTOR_HEADER = 'x-looms-actor-id'
+
+/**
+ * For a host that only a trusted front can reach, such as a Durable Object behind a Worker that
+ * routes with `routeToDurableObject`. Applies `inner`, then records the request as acting for the
+ * actor the front named in `ACTOR_HEADER`.
+ *
+ * Do not use this on a host that clients reach directly: they could name any actor.
+ */
+export function forwardedActorAuth(inner: Authorize = defaultAuthorize): Authorize {
+  return (request, route) =>
+    inner(request, route).pipe(
+      Effect.map((decision) => {
+        const actorId = request.headers.get(ACTOR_HEADER)
+
+        return decision.allowed && actorId ? { ...decision, actorId } : decision
+      }),
+    )
+}
 
 export interface BearerTokens {
   readonly read?: string

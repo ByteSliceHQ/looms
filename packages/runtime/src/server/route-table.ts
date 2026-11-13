@@ -49,6 +49,8 @@ export interface RouteContext<TParams> {
   readonly req: Request
   readonly url: URL
   readonly params: TParams
+  /** Who the request acts as, when `authorize` named someone. */
+  readonly actorId?: string
 }
 
 export interface RouteDefinition<TPath extends string, TDecoders extends ParamDecoders<TPath>> {
