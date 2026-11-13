@@ -30,6 +30,8 @@ import { MessageSchema, ToolCallSchema, type Message, type ToolCall } from './ty
 
 const CallLlmInput = Schema.Struct({
   turn: Schema.Finite,
+  /** Turns since the latest user message, this one included. */
+  messageTurn: Schema.optional(Schema.Finite),
   definitionName: Schema.optional(Schema.String),
   definitionVersion: Schema.String.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_DEFINITION_VERSION)),
@@ -130,6 +132,7 @@ export const callLlmEffect = agentModule.effect({
   execute: (input, ctx) =>
     runCallLlm({
       turn: input.turn,
+      messageTurn: input.messageTurn ?? input.turn,
       definitionName: input.definitionName,
       definitionVersion: input.definitionVersion,
       messages: [...(input.messages ?? [])],
@@ -146,6 +149,7 @@ export const callLlmEffect = agentModule.effect({
 
 function runCallLlm(args: {
   turn: number
+  messageTurn: number
   definitionName?: string
   definitionVersion: string
   messages: Message[]
@@ -193,7 +197,12 @@ function runCallLlm(args: {
       ]
     }
 
-    if (turn > (definition.maxTurns ?? 20)) {
+    // A conversation has no natural end, so its limits (`maxTurns`, and the turn `stopWhen`
+    // sees) count the turns spent answering one message. Any other agent runs one task and
+    // counts every turn against it.
+    const countedTurn = definition.conversational ? args.messageTurn : turn
+
+    if (countedTurn > (definition.maxTurns ?? 20)) {
       return [
         {
           type: 'runtime.thread.failed',
@@ -311,7 +320,7 @@ function runCallLlm(args: {
     const toolCalls = result.toolCalls ?? result.message.toolCalls ?? []
 
     const shouldStop = definition.stopWhen?.({
-      turn,
+      turn: countedTurn,
       maxTurns: definition.maxTurns ?? 20,
       messages: currentMessages,
       toolCalls,

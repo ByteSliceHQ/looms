@@ -117,6 +117,12 @@ export interface AgentState {
    * mid-call steer is not lost when `lines` are replaced.
    */
   midCallMessages?: Message[]
+  /**
+   * Value of `turn` when the latest user message arrived. A conversational agent counts
+   * `maxTurns` from here, so the limit bounds one message and not the whole conversation.
+   * Optional so snapshots taken before the count was per message still fold.
+   */
+  turnsBeforeMessage?: number
 }
 
 export type AgentMessageDelivery = 'steer' | 'followUp' | 'nextTurn'
