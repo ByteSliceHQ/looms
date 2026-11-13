@@ -928,12 +928,16 @@ describe('createLooms runtime', () => {
     })
 
     const { runId } = await looms.start(workerDef, {})
+
     // attempts hits 3 when the final execute starts, before success events are committed.
     await waitFor(async () =>
       (await looms.getEvents(runId)).some((e) => e.type === 'test.flaky.succeeded'),
     )
+
     expect(attempts).toBe(3)
+
     const events = await looms.getEvents(runId)
+
     expect(events.filter((e) => e.type === 'runtime.effect.retry.scheduled')).toHaveLength(2)
     expect(events.some((e) => e.type === 'test.flaky.succeeded')).toBe(true)
 
