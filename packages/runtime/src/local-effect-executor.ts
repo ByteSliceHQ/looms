@@ -193,18 +193,6 @@ export function executeLocalEffects(
             continue
           }
 
-          const appendLive = (eventInput: EventInput) =>
-            runInContext(
-              Effect.gen(function* () {
-                const validated = yield* validateEventInput(registry.catalogs, eventInput)
-                const liveEvent = createLiveEvent(input.runId, item, validated)
-
-                if (liveEvent) {
-                  yield* liveAppends.push(input.runId, liveEvent)
-                }
-              }),
-            )
-
           const retry = registry.effects.get(item.effect.type)?.retry
           const launched: EventEnvelope[] = []
           const attemptNumber = input.attempts.get(item.effectId) ?? 1
@@ -232,6 +220,25 @@ export function executeLocalEffects(
           }
 
           const controller = makeAbortController()
+          let attemptOpen = true
+
+          // A handler can outlive its attempt: an aborted model call may still have a delta in
+          // hand. Once the attempt is over its live events are dropped. Appending one after the
+          // wake has released the run fails, and that failure poisons the run's live appender
+          // for the next wake, which then fails the first live event of an unrelated attempt.
+          const appendLive = (eventInput: EventInput) =>
+            !attemptOpen || controller.signal.aborted
+              ? Promise.resolve()
+              : runInContext(
+                  Effect.gen(function* () {
+                    const validated = yield* validateEventInput(registry.catalogs, eventInput)
+                    const liveEvent = createLiveEvent(input.runId, item, validated)
+
+                    if (liveEvent) {
+                      yield* liveAppends.push(input.runId, liveEvent)
+                    }
+                  }),
+                )
 
           executionContext.activeEffects.set(item.effectId, {
             controller,
@@ -272,6 +279,7 @@ export function executeLocalEffects(
           ).pipe(
             Effect.ensuring(
               Effect.sync(() => {
+                attemptOpen = false
                 executionContext.activeEffects.delete(item.effectId)
               }),
             ),

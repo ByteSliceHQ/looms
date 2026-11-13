@@ -49,7 +49,7 @@ defineAgent({
 ```
 
 - `conversational: true` keeps the run open so the next user message starts another turn.
-- `maxTurns` is a hard cap.
+- `maxTurns` is a hard cap on model turns. A conversational agent counts from its latest user message, so the cap applies to each reply; other agents count every turn of the run.
 - `stopWhen` completes the run gracefully (for example after an `answer` tool).
 - Tools can be functions, other agents, workflows, evaluators, or `gate()` approvals.
 

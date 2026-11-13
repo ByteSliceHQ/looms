@@ -158,6 +158,11 @@ export const agentThread = agentModule.thread<AgentState>({
           needsLlmCall: false,
           deferWake: arrivedMidCall,
           midCallMessages: arrivedMidCall ? midCallMessages : [],
+          // This call never saw a user message that arrived while it ran, so that message's
+          // turn count starts after it.
+          turnsBeforeMessage: midCallMessages.some((line) => line.role === 'user')
+            ? event.payload.turn
+            : state.turnsBeforeMessage,
           pendingSteer: null,
           abandonedChildThreadIds: [],
         }
@@ -179,6 +184,7 @@ export const agentThread = agentModule.thread<AgentState>({
           ...state,
           lines: [...state.lines, message],
           needsLlmCall: wakeIfIdle(state),
+          turnsBeforeMessage: state.turn,
         }
       }
 
@@ -254,6 +260,7 @@ export const agentThread = agentModule.thread<AgentState>({
             pendingSteer: message,
             needsLlmCall: true,
             consumedSteerMessageIds,
+            turnsBeforeMessage: state.turn,
           }
         }
 
@@ -266,6 +273,7 @@ export const agentThread = agentModule.thread<AgentState>({
           pendingSteer: message,
           needsLlmCall: wakeIfIdle(state),
           consumedSteerMessageIds,
+          turnsBeforeMessage: state.turn,
         }
       }
 
@@ -484,6 +492,7 @@ export const agentThread = agentModule.thread<AgentState>({
           callLlmEffect,
           {
             turn: state.turn + 1,
+            messageTurn: state.turn + 1 - (state.turnsBeforeMessage ?? 0),
             definitionName: state.definitionName,
             definitionVersion: state.definitionVersion ?? DEFAULT_DEFINITION_VERSION,
             messages: state.lines,

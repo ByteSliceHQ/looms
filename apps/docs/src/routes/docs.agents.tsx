@@ -72,6 +72,12 @@ export LOOMS_MODEL=your-provider-model-id`}</CodeBlock>
       <CodeBlock lang="ts">{`import { stopAgentTurn } from '@swirls/looms/agent'
 
 await looms.signal(runId, [stopAgentTurn()])`}</CodeBlock>
+      <p>
+        Without a thread id the signal goes to the run's root thread and stops the turn there,
+        including any child threads working for it. Pass{' '}
+        <code>stopAgentTurn({'{ threadId }'})</code> to stop one child agent and leave the rest of
+        the run alone.
+      </p>
       <h2 id="agent-sessions">
         Agent sessions
         <a className="heading-anchor" href="#agent-sessions" aria-label="Link to this section">
@@ -139,6 +145,14 @@ await looms.signal(runId, [
         <code>stepCountIs</code> or a custom predicate. Turn limits are not token or spending
         limits. Enforce provider quotas and application budgets separately; current adapter usage
         should not be treated as a billing ledger.
+      </p>
+      <p>
+        <code>maxTurns</code> defaults to 20 and counts model turns. An agent that runs one task
+        counts every turn of its thread. A conversational agent counts from its latest user message
+        or steer, so the limit bounds the turns spent on one reply and a long conversation does not
+        run out. Exceeding the limit fails the thread with <code>Max turns exceeded</code>. The{' '}
+        <code>turn</code> that <code>stopWhen</code> receives still counts from the start of the
+        thread.
       </p>
       <p>
         Use <code>looms.cancel(runId, threadId?)</code> to request cancellation. External operations

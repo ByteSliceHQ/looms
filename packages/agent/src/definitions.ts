@@ -182,7 +182,12 @@ export interface AgentDefinition<
   ): Promise<readonly AgentToolEntry[]> | readonly AgentToolEntry[]
   /** Shrinks the conversation after the model reports a context overflow. */
   readonly compact?: AgentCompactor
+  /**
+   * Most model turns the agent may take before its thread fails. Default 20. A conversational
+   * agent counts from its latest user message, so the limit bounds one reply.
+   */
   readonly maxTurns?: number
+  /** Keep the run open after a reply so the next user message starts another turn. */
   readonly conversational?: boolean
   readonly stopWhen?: StopWhen
   runTurn?(

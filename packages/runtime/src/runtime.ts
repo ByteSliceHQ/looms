@@ -119,7 +119,10 @@ function interruptedThreadIds(
         ? [payload.threadId]
         : []
 
-    return [...cancelled, ...rules.flatMap((rule) => rule(event))]
+    // A signal without a thread id is delivered to the root thread, so the rules see it there.
+    const delivered = { ...event, threadId: event.threadId ?? state.rootThreadId }
+
+    return [...cancelled, ...rules.flatMap((rule) => rule(delivered))]
   })
 
   return new Set(named.flatMap((threadId) => [threadId, ...descendantThreadIds(state, threadId)]))
