@@ -928,7 +928,15 @@ describe('createLooms runtime', () => {
     })
 
     const { runId } = await looms.start(workerDef, {})
-    await waitFor(() => attempts === 3)
+
+    // Wait on the durable outcome: the counter reaches 3 when the third attempt starts, which
+    // is before its result is appended.
+    await waitFor(() =>
+      looms
+        .getEvents(runId)
+        .then((events) => events.some((e) => e.type === 'test.flaky.succeeded')),
+    )
+
     expect(attempts).toBe(3)
     const events = await looms.getEvents(runId)
     expect(events.filter((e) => e.type === 'runtime.effect.retry.scheduled')).toHaveLength(2)
