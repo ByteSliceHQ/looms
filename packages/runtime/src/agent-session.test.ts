@@ -283,12 +283,13 @@ describe('agent-session mailbox', () => {
     const session = defineAgentSession({
       name: 'parked-session',
       agent: assistant,
-      idleTimeoutMs: 20,
+      // Long enough that the post-restart assertion is not racing a second idle park.
+      idleTimeoutMs: 200,
     })
 
     const looms = createLooms({ modules: [agent({ definitions: [assistant, session] })] })
     const started = await looms.start(session)
-    await Bun.sleep(40)
+    await Bun.sleep(250)
     await looms.wake(started.runId)
 
     let state = await looms.getRun(started.runId)
@@ -296,6 +297,9 @@ describe('agent-session mailbox', () => {
     expect(state.status).toBe('running')
 
     await sendAgentSessionMessage(looms, started.runId, 'restart', 'wake up')
+
+    await waitFor(() => calls.includes('wake up'))
+
     state = await looms.getRun(started.runId)
     expect(calls).toEqual(['wake up'])
     expect(JSON.stringify(state.threads[started.threadId]?.state)).toContain('"parked":false')

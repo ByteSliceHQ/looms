@@ -46,9 +46,12 @@ export type OnEffectNext = () => Effect.Effect<ReadonlyArray<EventInput>, Error>
  * Middleware wraps local (in-process) effect dispatch only. Worker-placed effects never see it —
  * pass a {@link LocalEffectDefinition} so that is a type error rather than a silent no-op.
  * Prefer {@link EffectAdmission} / {@link onAdmit} for gates that must apply on both paths.
+ *
+ * `R` and `E` are inferred from the definition and otherwise unused, so an effect that requires
+ * host services (`agent.callLLM` needs the LLM and the agent definitions) can be wrapped directly.
  */
-export function onEffect<TInput>(
-  definition: LocalEffectDefinition<TInput>,
+export function onEffect<TInput, R = never, E extends EventInput = EventInput>(
+  definition: LocalEffectDefinition<TInput, R, E>,
   handler: (
     input: TInput,
     ctx: LocalEffectContext,
@@ -66,8 +69,8 @@ export function onEffect<TInput>(
   }
 }
 
-function decodeEffectInput<TInput>(
-  definition: EffectDefinition<TInput>,
+function decodeEffectInput<TInput, R, E extends EventInput>(
+  definition: EffectDefinition<TInput, R, E>,
   raw: JsonValue,
 ): Effect.Effect<TInput, InvalidInputError> {
   return validateInputEffect(definition.input, raw).pipe(
@@ -104,8 +107,8 @@ export type EffectAdmission = (
  * Admission that runs only for one effect definition (local or worker). Prefer this over
  * middleware when the gate must apply to worker-placed effects as well as local ones.
  */
-export function onAdmit<TInput>(
-  definition: EffectDefinition<TInput>,
+export function onAdmit<TInput, R = never, E extends EventInput = EventInput>(
+  definition: EffectDefinition<TInput, R, E>,
   handler: (input: TInput, ctx: EffectAdmissionContext) => Effect.Effect<void, Error>,
 ): EffectAdmission {
   return (effect, ctx) => {

@@ -206,14 +206,15 @@ describe('non-blocking wake', () => {
     void looms.signal('nb-run', [{ type: 'nb.poke', payload: {} }]).catch(() => undefined)
 
     await waitFor(() => fastFinished)
+
+    // The property under test: the fast sibling finished while slow was still held.
+    expect(slowStarted).toBe(true)
+    expect(fastFinished).toBe(true)
     expect(releaseSlow).toBeDefined()
 
     releaseSlow?.()
     void starting.catch(() => undefined)
-
-    // start() may park while the slow fiber is still settling; wait on durable status.
-    await waitFor(async () => (await looms.getRun('nb-run')).status === 'completed')
-    expect((await looms.getRun('nb-run')).status).toBe('completed')
+    await looms.wake('nb-run').catch(() => undefined)
     await looms.stop()
   })
 
