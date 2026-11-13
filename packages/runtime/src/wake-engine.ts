@@ -655,6 +655,11 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             inFlight.clear()
           }
 
+          // Live events are flushed in the background and only drained when an effect produces
+          // events. An attempt that was aborted produces none, so flush here: releasing the wake
+          // clears the buffer, and a delta emitted just before a stop would be lost.
+          yield* liveAppends.drain(runId)
+
           const root = cursor.state.rootThreadId
             ? cursor.state.threads[cursor.state.rootThreadId]
             : undefined
