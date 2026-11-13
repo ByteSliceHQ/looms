@@ -20,7 +20,7 @@ import {
 import { STRUCTURED_OUTPUT_TOOL_NAME } from './definitions'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
-import { closeOpenToolCalls } from './transcript'
+import { closeOpenToolCalls, insertToolResult } from './transcript'
 import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
@@ -215,15 +215,12 @@ export const agentThread = agentModule.thread<AgentState>({
             isJsonObject(result) && 'output' in result ? (result.output ?? null) : result
         }
 
-        const lines: Message[] = [
-          ...state.lines,
-          {
-            role: 'tool',
-            content,
-            toolCallId,
-            name: name ?? undefined,
-          },
-        ]
+        const lines = insertToolResult(state.lines, {
+          role: 'tool',
+          content,
+          toolCallId,
+          name: name ?? undefined,
+        })
 
         return {
           ...state,
@@ -261,7 +258,8 @@ export const agentThread = agentModule.thread<AgentState>({
         }
 
         // Queue for the next turn. If the agent is idle (no open tool calls), that turn
-        // starts now — otherwise the message rides along when tools finish.
+        // starts now. Otherwise the message waits: tool results are inserted ahead of it
+        // (`insertToolResult`), and the turn starts once the last one lands.
         return {
           ...state,
           lines: [...state.lines, message],

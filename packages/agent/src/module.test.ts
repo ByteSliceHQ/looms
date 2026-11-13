@@ -382,4 +382,136 @@ describe('@looms/agent module', () => {
     expect(threadState.needsLlmCall).toBe(false)
     expect(threadState.pendingSteer).toEqual({ role: 'user', content: 'after the tool' })
   })
+
+  test('a steer that arrives during an open tool call lands after the tool result', () => {
+    const registry = composeModules([agent()])
+    const runId = 'run_steer_order'
+    const threadId = 'thr_steer_order'
+    const origin = { type: 'thread', threadId } as const
+
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'agent',
+              definitionName: 'assistant',
+              input: 'hi',
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.turn.started',
+            payload: { turn: 1 },
+            threadId,
+            origin,
+          }),
+          seq: 2,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.message',
+            payload: {
+              turn: 1,
+              message: {
+                role: 'assistant',
+                content: '',
+                toolCalls: [
+                  { id: 'tc1', name: 'greet', arguments: { name: 'Dylan' } },
+                  { id: 'tc2', name: 'greet', arguments: { name: 'Ada' } },
+                ],
+              },
+            },
+            threadId,
+            origin,
+          }),
+          seq: 3,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.tool_call.requested',
+            payload: {
+              turn: 1,
+              toolCall: { id: 'tc1', name: 'greet', arguments: { name: 'Dylan' } },
+            },
+            threadId,
+            origin,
+          }),
+          seq: 4,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.tool_call.requested',
+            payload: {
+              turn: 1,
+              toolCall: { id: 'tc2', name: 'greet', arguments: { name: 'Ada' } },
+            },
+            threadId,
+            origin,
+          }),
+          seq: 5,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.steered',
+            payload: {
+              turn: 0,
+              interrupt: false,
+              messageId: 'msg_2',
+              message: { role: 'user', content: 'after the tool' },
+            },
+            threadId,
+            origin: { type: 'external' },
+          }),
+          seq: 6,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.tool.result',
+            payload: { turn: 1, toolCallId: 'tc2', name: 'greet', result: 'hello Ada' },
+            threadId,
+            origin,
+          }),
+          seq: 7,
+        },
+        {
+          ...createEvent(runId, {
+            type: 'agent.tool.result',
+            payload: { turn: 1, toolCallId: 'tc1', name: 'greet', result: 'hello Dylan' },
+            threadId,
+            origin,
+          }),
+          seq: 8,
+        },
+      ],
+      registry,
+    )
+
+    const threadState = Schema.decodeUnknownSync(
+      Schema.Struct({
+        needsLlmCall: Schema.Boolean,
+        lines: Schema.Array(
+          Schema.Struct({ role: Schema.String, toolCallId: Schema.optional(Schema.String) }),
+        ),
+      }),
+    )(state.threads[threadId]?.state)
+
+    // A user message between a tool call and its result is rejected by model APIs.
+    expect(threadState.lines.map((line) => line.toolCallId ?? line.role)).toEqual([
+      'user',
+      'assistant',
+      'tc2',
+      'tc1',
+      'user',
+    ])
+
+    expect(threadState.needsLlmCall).toBe(true)
+  })
 })
