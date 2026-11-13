@@ -7,6 +7,7 @@ import {
   defineAgentSession,
   defineTool,
   sendAgentSessionMessage,
+  stepCountIs,
   stopAgentTurn,
   userMessage,
 } from '@looms/agent'
@@ -212,6 +213,45 @@ describe('conversational agent turns', () => {
     expect(calls).toBe(5)
     expect(looped.status).toBe('failed')
     expect(looped.threads[threadId]?.error).toBe('Max turns exceeded (3)')
+    await looms.stop()
+  })
+
+  test('stopWhen counts steps from the latest user message', async () => {
+    let calls = 0
+    let toolRuns = 0
+
+    const noop = defineTool({
+      name: 'noop',
+      description: 'does nothing',
+      handler: () => {
+        toolRuns += 1
+        return {}
+      },
+    })
+
+    const chat = defineAgent({
+      name: 'stepped-chat',
+      instructions: 'x',
+      conversational: true,
+      stopWhen: stepCountIs(2),
+      tools: [noop],
+      runTurn: ({ messages }) => {
+        calls += 1
+        const loops = messages.findLast((line) => line.role === 'user')?.content === 'loop'
+        const toolCalls = loops ? [{ id: `call-${calls}`, name: 'noop', arguments: {} }] : []
+        return { message: { role: 'assistant', content: 'ok', toolCalls }, toolCalls }
+      },
+    })
+
+    const looms = createLooms({ modules: [agent({ definitions: [chat] })] })
+    const { runId } = await looms.start(chat, 'q1')
+    await looms.signal(runId, [userMessage({ content: 'q2' })])
+    const looped = await looms.signal(runId, [userMessage({ content: 'loop' })])
+
+    // The third message gets two steps of its own: one that runs the tool, one that stops.
+    expect(toolRuns).toBe(1)
+    expect(calls).toBe(4)
+    expect(looped.status).toBe('running')
     await looms.stop()
   })
 })

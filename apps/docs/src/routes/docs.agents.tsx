@@ -151,8 +151,8 @@ await looms.signal(runId, [
         counts every turn of its thread. A conversational agent counts from its latest user message
         or steer, so the limit bounds the turns spent on one reply and a long conversation does not
         run out. Exceeding the limit fails the thread with <code>Max turns exceeded</code>. The{' '}
-        <code>turn</code> that <code>stopWhen</code> receives still counts from the start of the
-        thread.
+        <code>turn</code> that <code>stopWhen</code> receives counts the same way, so{' '}
+        <code>stepCountIs(8)</code> on a conversational agent allows eight steps per message.
       </p>
       <p>
         Use <code>looms.cancel(runId, threadId?)</code> to request cancellation. External operations

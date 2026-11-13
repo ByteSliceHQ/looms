@@ -197,8 +197,9 @@ function runCallLlm(args: {
       ]
     }
 
-    // A conversation has no natural end, so its limit bounds the turns spent answering one
-    // message. Any other agent runs one task and counts every turn against it.
+    // A conversation has no natural end, so its limits (`maxTurns`, and the turn `stopWhen`
+    // sees) count the turns spent answering one message. Any other agent runs one task and
+    // counts every turn against it.
     const countedTurn = definition.conversational ? args.messageTurn : turn
 
     if (countedTurn > (definition.maxTurns ?? 20)) {
@@ -319,7 +320,7 @@ function runCallLlm(args: {
     const toolCalls = result.toolCalls ?? result.message.toolCalls ?? []
 
     const shouldStop = definition.stopWhen?.({
-      turn,
+      turn: countedTurn,
       maxTurns: definition.maxTurns ?? 20,
       messages: currentMessages,
       toolCalls,
