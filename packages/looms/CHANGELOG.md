@@ -1,5 +1,15 @@
 # @swirls/looms
 
+## 0.12.4
+
+### Patch Changes
+
+- b8b1759: Count `maxTurns` per user message for conversational agents. The turn counter ran over the whole conversation, so a chat with `maxTurns: 3` failed with "Max turns exceeded" on its fourth reply. A conversational agent now counts model turns from its latest user message (or steer), so the limit bounds the work spent on one reply. Agents that are not conversational still count every turn of the run.
+- b8b1759: Make `stopAgentTurn()` and an interrupting `steer()` abort the in-flight model call when sent without a thread id. The signal was recorded on the root thread, but the interrupt lookup only matched an explicit `threadId`, so the adapter's `signal` never aborted and the full reply was appended after the stop. A signal without a thread id now interrupts the root thread and its children, for conversational agents and agent sessions alike.
+- b8b1759: Count `stopWhen` steps per user message for conversational agents. `stopWhen` received the thread's lifetime turn number, so `stepCountIs(8)` on a conversational agent stopped every turn after the eighth and dropped its tool calls. The `turn` passed to `stopWhen` now counts from the latest user message for a conversational agent, the same way `maxTurns` does. Other agents are unchanged.
+- b8b1759: Keep text deltas that were streamed just before a turn was stopped. Live events are written in the background, and a wake whose only attempt was aborted released the run without flushing them, so a delta emitted moments before `stopAgentTurn()` could be missing from the log. The wake now flushes pending live events before it parks.
+- b8b1759: Keep a run alive when a message follows a stopped agent turn. A model call that was stopped mid-stream could emit one more text delta after its turn was abandoned. That late write failed, and the failure stuck to the run, so the next turn's first `onTextDelta` threw "Cannot append live events without a store" and the run failed. Live events from an attempt that has been aborted or has finished are now dropped.
+
 ## 0.12.3
 
 ### Patch Changes
