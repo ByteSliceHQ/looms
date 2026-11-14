@@ -5,10 +5,16 @@ import { Effect, Schema } from 'effect'
 
 import { createLocalActorHost } from '@looms/actor'
 import {
+  complete,
   createEvent,
+  defineEffect,
+  defineEventCatalog,
   DefinitionCatalogSchema,
+  defineRuntimeModule,
+  defineThread,
   emptyRunState,
   foldRun,
+  invoke,
   makeMemoryEventStore,
   type SubscriptionAttachment,
 } from '@looms/core'
@@ -978,10 +984,125 @@ describe('schedule durable objects', () => {
     }
 
     expect(pulseStorage.writes()).toBeGreaterThan(0)
-    expect(pulseStorage.writes()).toBeLessThanOrEqual(8)
+    // One of these is the liveness alarm held while the fire's in-process effect runs.
+    expect(pulseStorage.writes()).toBeLessThanOrEqual(9)
     expect(pulseStorage.alarmAt()).not.toBeNull()
 
     await pulseObject.signal([{ type: 'schedule.paused', payload: {} }])
     expect(pulseStorage.alarmAt()).toBeNull()
+  })
+})
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (!predicate() && Date.now() < deadline) {
+    await Bun.sleep(5)
+  }
+
+  if (!predicate()) {
+    throw new Error('timed out waiting for condition')
+  }
+}
+
+describe('in-process effect liveness', () => {
+  test('a run whose object is lost mid-effect wakes by its alarm and re-attempts', async () => {
+    const runId = 'run_lost_isolate'
+    let attempts = 0
+    // The first attempt never settles: its isolate is gone before the handler returns.
+    const lost = Promise.withResolvers<void>()
+
+    const work = defineEffect({
+      type: 'live.work',
+      placement: 'local',
+      execute: (_input, ctx) =>
+        Effect.promise(() => {
+          attempts += 1
+          const done = [{ type: 'live.done', payload: {}, threadId: ctx.threadId }]
+          return attempts === 1 ? lost.promise.then(() => done) : Promise.resolve(done)
+        }),
+    })
+
+    const module = defineRuntimeModule({
+      namespace: 'live',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('live', { done: Schema.Struct({}) }),
+      effects: { work },
+      threads: {
+        'live-job': defineThread<{ done: boolean }>({
+          kind: 'live-job',
+          initialState: () => ({ done: false }),
+          step: (state, event) => (event.type === 'live.done' ? { done: true } : state),
+          effects: (state) =>
+            state.done ? [complete({ ok: true })] : [invoke(work, null, 'work')],
+        }),
+      },
+      definitions: [{ kind: 'live-job', name: 'live-job', version: 'v1', input: Schema.Null }],
+    })
+
+    class LiveObject extends LoomsDurableObject {
+      override configure(): LoomsDurableObjectConfig {
+        return { modules: [module] }
+      }
+    }
+
+    const storage = sqliteStorage()
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error fake Durable Object state
+    const first = new LiveObject(objectContext(runId, storage), {})
+
+    await first.launch({ runId, kind: 'live-job', definitionName: 'live-job' })
+
+    // The platform clears an alarm as it fires; the fake storage needs telling.
+    const fire = (object: InstanceType<typeof LiveObject>) =>
+      storage.deleteAlarm().then(() => object.alarm())
+
+    const before = Date.now()
+    // This wake belongs to the isolate that is about to be lost, so it never completes.
+    const firstWake = fire(first).catch(() => undefined)
+    await waitFor(() => attempts === 1)
+
+    // The effect has no deadline of its own. The liveness alarm is the only thing pending.
+    await waitFor(() => storage.alarmAt() !== null)
+    expect(storage.alarmAt()).toBeGreaterThanOrEqual(before + 30_000)
+    expect(storage.alarmAt()).toBeLessThanOrEqual(Date.now() + 30_000)
+
+    // Firing in the live object joins the running wake. It must not start a second attempt.
+    const joined = fire(first).catch(() => undefined)
+    await Bun.sleep(25)
+    expect(attempts).toBe(1)
+    // The fired alarm is used up, so the running wake asks for another straight away.
+    expect(storage.alarmAt()).toBeGreaterThanOrEqual(before + 30_000)
+
+    // Lose the object: a new instance over the same storage, and no signal. Only the alarm runs.
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error fake Durable Object state
+    const second = new LiveObject(objectContext(runId, storage), {})
+    await fire(second)
+
+    const state = await second.getRun()
+    expect(state.status).toBe('completed')
+    expect(attempts).toBe(2)
+
+    const events = await Effect.runPromise(
+      durableObjectEventStore(objectContext(runId, storage)).read(runId),
+    )
+
+    const decodeAttempt = Schema.decodeUnknownSync(
+      Schema.Struct({ effectId: Schema.String, attempt: Schema.Finite }),
+    )
+
+    const workAttempts = events
+      .filter((event) => event.type === 'runtime.effect.attempt.started')
+      .map((event) => decodeAttempt(event.payload))
+      .filter((payload) => payload.effectId.endsWith(':work'))
+      .map((payload) => payload.attempt)
+
+    expect(workAttempts).toEqual([1, 2])
+    expect(storage.alarmAt()).toBeNull()
+
+    // Let the abandoned wake unwind so it does not outlive the test.
+    lost.resolve()
+    await Promise.all([firstWake, joined])
   })
 })

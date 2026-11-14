@@ -68,6 +68,8 @@ type InFlightGroup = {
   readonly effectIds: ReadonlyArray<string>
 }
 
+const DEFAULT_LIVENESS_LEASE_MS = 30_000
+
 function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
 }
@@ -80,6 +82,7 @@ export interface WakeEngineOptions {
   readonly repository: RuntimeRepository
   readonly snapshotEvery: number
   readonly maxWakeIterations: number
+  readonly livenessLeaseMs?: number
   readonly maxInFlightWorkerEffects?: number
   readonly worker?: EffectWorker
   readonly observer?: RuntimeObserver
@@ -107,6 +110,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
   const observe = (event: Parameters<RuntimeObserver['observe']>[0]) =>
     notifyObserver(options.observer, event)
+
+  const livenessLeaseMs = Math.max(1, options.livenessLeaseMs ?? DEFAULT_LIVENESS_LEASE_MS)
+  const livenessRenewMs = Math.max(1, Math.floor(livenessLeaseMs / 3))
 
   const closeLaunchedRuns = (store: EventStore, runId: string, cursor: RunCursor) =>
     Effect.gen(function* () {
@@ -185,6 +191,41 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
       executionContext.waking = true
       let released = false
+      // When the liveness deadline is next due for renewal; `null` while this wake holds none.
+      let livenessRenewAt: number | null = null
+
+      // In-process effects have no deadline of their own, so nothing would wake the run if this
+      // process were lost while they run. Where the scheduler supports it, keep a wake pending a
+      // short time ahead for as long as the wake waits on them. Never returns.
+      const holdLiveness = Effect.gen(function* () {
+        const scheduler = options.scheduler()
+
+        if (!scheduler.keepAlive) {
+          return yield* Effect.never
+        }
+
+        while (true) {
+          const now = yield* Clock.currentTimeMillis
+
+          if (livenessRenewAt !== null && now < livenessRenewAt) {
+            yield* Effect.sleep(livenessRenewAt - now)
+            continue
+          }
+
+          // Claimed before the write so a failed or interrupted write is still cleared on exit.
+          livenessRenewAt = now + livenessRenewMs
+          yield* scheduler.keepAlive(runId, now + livenessLeaseMs)
+        }
+      })
+
+      const releaseLiveness = Effect.suspend(() => {
+        if (livenessRenewAt === null) {
+          return Effect.void
+        }
+
+        livenessRenewAt = null
+        return options.scheduler().keepAlive?.(runId, null) ?? Effect.void
+      })
 
       const releaseWake = (): void => {
         released = true
@@ -618,10 +659,13 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             }
 
             const progress = yield* Effect.raceFirst(
-              Queue.take(settled).pipe(
-                Effect.map((item) => ({ _tag: 'settled' as const, ...item })),
+              Effect.raceFirst(
+                Queue.take(settled).pipe(
+                  Effect.map((item) => ({ _tag: 'settled' as const, ...item })),
+                ),
+                Deferred.await(wakeGate).pipe(Effect.as({ _tag: 'wake' as const })),
               ),
-              Deferred.await(wakeGate).pipe(Effect.as({ _tag: 'wake' as const })),
+              holdLiveness,
             )
 
             if (executionContext.wakeSignal === wakeGate) {
@@ -629,6 +673,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             }
 
             if (progress._tag === 'wake') {
+              // A joined wake may be the host's pending wake firing, which uses it up. Ask again
+              // on the next wait instead of at the next renewal.
+              if (livenessRenewAt !== null) {
+                livenessRenewAt = Number.NEGATIVE_INFINITY
+              }
+
               continue
             }
 
@@ -736,6 +786,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
         return finalState
       }).pipe(
+        // Before the claim is released, so a wake that starts next takes a fresh deadline after
+        // this one is cleared rather than having its own cleared.
+        Effect.onExit(() => releaseLiveness),
         Effect.onExit((exit) =>
           Effect.sync(() => {
             if (!released) {

@@ -39,6 +39,8 @@ export interface ActorCellOptions<
   readonly definitionResolver?: DefinitionResolver
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  /** See `CreateRuntimeOptions.livenessLeaseMs`. */
+  readonly livenessLeaseMs?: number
   readonly maxPendingRunOperations?: number
   readonly snapshotStore?: SnapshotStore
   readonly trimAfterSnapshot?: {
@@ -103,6 +105,7 @@ export function createActorCell<
     worker: options.worker,
     snapshotEvery: options.snapshotEvery,
     maxWakeIterations: options.maxWakeIterations,
+    livenessLeaseMs: options.livenessLeaseMs,
     maxPendingRunOperations: options.maxPendingRunOperations,
     snapshotStore: options.snapshotStore,
     trimAfterSnapshot: options.trimAfterSnapshot,

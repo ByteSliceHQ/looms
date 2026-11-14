@@ -65,6 +65,12 @@ export interface CreateRuntimeOptions<
    */
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  /**
+   * How far ahead a wake with in-process effects in flight keeps its `WakeScheduler.keepAlive`
+   * deadline, in milliseconds. Renewed every third of it. Default 30000. Only used when the
+   * scheduler implements `keepAlive`.
+   */
+  readonly livenessLeaseMs?: number
   /** Maximum concurrent in-flight worker effects dispatched per run (fairness guard). */
   readonly maxInFlightWorkerEffects?: number
   /** Maximum active and queued mutation operations per run. Default 256. */

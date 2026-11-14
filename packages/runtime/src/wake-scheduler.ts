@@ -3,6 +3,14 @@ import { Clock, Effect, Fiber } from 'effect'
 export interface WakeScheduler {
   schedule(runId: string, at: number): Effect.Effect<void>
   cancel(runId: string): Effect.Effect<void>
+  /**
+   * Optional. While a wake has in-process effects in flight it asks to be woken at `until`, renews
+   * that before it passes, and clears it with `null` when the wake ends. Implement it only where
+   * the wake outlives the process (a Durable Object alarm): if the process is lost mid-effect the
+   * deadline fires elsewhere and the run re-attempts the effect. It must not replace the deadline
+   * set through `schedule`; the host wakes at the earlier of the two.
+   */
+  keepAlive?(runId: string, until: number | null): Effect.Effect<void>
   dispose?(): void
 }
 
