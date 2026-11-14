@@ -18,9 +18,10 @@ it keeps the object's alarm a short time ahead (`livenessLeaseMs`, default 30
 seconds) and renews it every third of that. If the isolate is evicted,
 redeployed, or crashes mid-effect, the alarm fires in a new isolate and the run
 wakes and re-attempts the effect, as it does on any wake that finds an attempt
-still open. The re-attempt is not counted against the effect's `maxAttempts`,
-so an effect that takes its isolate down every time is retried at that interval
-until the run is cancelled. This costs one or two alarm writes per wake that
+still open. A lost attempt counts against the effect's `maxAttempts`, or
+against three attempts when the effect has no retry policy. Once none remain
+the effect fails, so an effect that takes its isolate down every time ends
+instead of repeating. This costs one or two alarm writes per wake that
 runs an in-process effect. Other hosts opt in by implementing
 `WakeScheduler.keepAlive`; the default in-process scheduler does not, because
 its timers are lost with the process.

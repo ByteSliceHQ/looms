@@ -15,6 +15,7 @@ import {
   deferredUntil,
   EventStoreTag,
   foldRun,
+  isPrimitiveEffect,
   isRunTerminal,
   type ComposedRegistry,
   type DefinitionResolver,
@@ -40,6 +41,7 @@ import {
 } from './errors'
 import {
   cascadedCancellations,
+  createEffectFailedEvent,
   groupOutstanding,
   stripSeq,
   synthesizedThreadFailed,
@@ -69,6 +71,9 @@ type InFlightGroup = {
 }
 
 const DEFAULT_LIVENESS_LEASE_MS = 30_000
+
+/** Attempts allowed for an effect with no retry policy when its attempts keep being lost. */
+const DEFAULT_LOST_ATTEMPT_LIMIT = 3
 
 function currentTimeMillis(): number {
   return Math.floor(performance.timeOrigin + performance.now())
@@ -191,6 +196,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
       executionContext.waking = true
       let released = false
+      // `effectId:attempt` of every attempt this wake started, across its passes. An attempt
+      // found running that is not here was started by a wake that never finished it.
+      const startedByThisWake = new Set<string>()
       // When the liveness deadline is next due for renewal; `null` while this wake holds none.
       let livenessRenewAt: number | null = null
 
@@ -553,13 +561,49 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               return yield* new DuplicateEffectDispatchError(runId, item.effectId, item.threadId)
             }
 
+            // An attempt left running by a wake that is gone (its process was lost, or the wake
+            // failed) is re-attempted below. That counts against the effect's attempts, so an
+            // effect that takes its process down every time fails instead of repeating forever.
+            const exhausted = outstanding.flatMap((item) => {
+              const execution = state.effectExecutions[item.effectId]
+
+              if (
+                execution?.status !== 'running' ||
+                isPrimitiveEffect(item.effect) ||
+                startedByThisWake.has(`${item.effectId}:${execution.attempt}`)
+              ) {
+                return []
+              }
+
+              const limit =
+                registry.effects.get(item.effect.type)?.retry?.maxAttempts ??
+                DEFAULT_LOST_ATTEMPT_LIMIT
+
+              return execution.attempt >= limit
+                ? [
+                    createEffectFailedEvent(
+                      runId,
+                      item,
+                      `attempt ${execution.attempt} was lost before it finished, and no attempts remain`,
+                    ),
+                  ]
+                : []
+            })
+
+            if (exhausted.length > 0) {
+              yield* foldProduced(exhausted)
+              continue
+            }
+
             const due = outstanding.filter((item) => !dispatchedEffectIds.has(dispatchKeyFor(item)))
 
             if (due.length > 0) {
               const attempts = new Map(due.map((item) => [item.effectId, attemptFor(item)]))
 
               for (const item of due) {
-                dispatchedEffectIds.add(`${item.effectId}:${attempts.get(item.effectId) ?? 1}`)
+                const key = `${item.effectId}:${attempts.get(item.effectId) ?? 1}`
+                dispatchedEffectIds.add(key)
+                startedByThisWake.add(key)
               }
 
               const attemptEvents = due.map((item) =>

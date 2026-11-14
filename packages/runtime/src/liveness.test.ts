@@ -4,6 +4,8 @@ import { Effect, Schema } from 'effect'
 
 import {
   complete,
+  makeMemoryEventStore,
+  type RetryPolicy,
   defineEffect,
   defineEventCatalog,
   defineRuntimeModule,
@@ -26,12 +28,13 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
   }
 }
 
-function slowModule(gate: Promise<void>, onStart: () => void) {
+function slowModule(gate: Promise<void>, onStart: () => void, retry?: RetryPolicy) {
   const catalog = defineEventCatalog('live', { done: Schema.Struct({}) })
 
   const work = defineEffect({
     type: 'live.work',
     placement: 'local',
+    retry,
     execute: (_input, ctx) =>
       Effect.promise(() => {
         onStart()
@@ -122,5 +125,84 @@ describe('in-process effect liveness', () => {
     expect(calls).toEqual(['cancel'])
 
     await looms.stop()
+  })
+
+  // Each lost process is a runtime whose wake never returns. The next one is a new runtime over
+  // the same store, woken with no signal, as a host's liveness wake would.
+  async function loseProcesses(retry: RetryPolicy | undefined) {
+    const store = await Effect.runPromise(makeMemoryEventStore)
+    const never = Promise.withResolvers<void>()
+    const abandoned: Promise<unknown>[] = []
+    const runId = 'run_lost_attempts'
+    let started = 0
+
+    const wakeInNewProcess = async () => {
+      const before = started
+
+      const looms = createLooms({
+        modules: [slowModule(never.promise, () => (started += 1), retry)],
+        store,
+      })
+
+      const wake =
+        before === 0
+          ? looms.start({ kind: 'live-job', name: 'live-job', version: 'v1' }, null, { runId })
+          : looms.wake(runId)
+
+      const settled = wake.then(
+        () => true,
+        () => true,
+      )
+
+      abandoned.push(settled)
+      await Promise.race([settled, waitFor(() => started > before)])
+      return looms
+    }
+
+    return {
+      wakeInNewProcess,
+      started: () => started,
+      finish: async () => {
+        never.resolve()
+        await Promise.all(abandoned)
+      },
+    }
+  }
+
+  test('lost attempts count against the retry policy', async () => {
+    const processes = await loseProcesses({ maxAttempts: 2 })
+
+    await processes.wakeInNewProcess()
+    await processes.wakeInNewProcess()
+    expect(processes.started()).toBe(2)
+
+    const last = await processes.wakeInNewProcess()
+    const state = await last.getRun('run_lost_attempts')
+    const events = await last.getEvents('run_lost_attempts')
+    const failed = events.filter((event) => event.type === 'runtime.effect.failed')
+
+    expect(processes.started()).toBe(2)
+    expect(state.status).toBe('failed')
+
+    expect(failed.map((event) => event.payload)).toMatchObject([
+      { error: 'attempt 2 was lost before it finished, and no attempts remain' },
+    ])
+
+    await processes.finish()
+  })
+
+  test('an effect with no retry policy is re-attempted twice after a lost process', async () => {
+    const processes = await loseProcesses(undefined)
+
+    await processes.wakeInNewProcess()
+    await processes.wakeInNewProcess()
+    await processes.wakeInNewProcess()
+    expect(processes.started()).toBe(3)
+
+    const last = await processes.wakeInNewProcess()
+    expect(processes.started()).toBe(3)
+    expect((await last.getRun('run_lost_attempts')).status).toBe('failed')
+
+    await processes.finish()
   })
 })
