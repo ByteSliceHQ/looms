@@ -25,7 +25,7 @@ import {
   type StartRunArgs,
 } from '@looms/runtime'
 
-import { durableObjectAlarms } from './alarm-scheduler'
+import { durableObjectAlarms, type DurableObjectAlarms } from './alarm-scheduler'
 import {
   deleteTerminalRunStorage,
   type DeleteTerminalRunStorageOptions,
@@ -45,6 +45,11 @@ export interface LoomsDurableObjectConfig {
   readonly blobs?: BlobStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
+  /**
+   * How far ahead the alarm is kept while in-process effects run, in milliseconds. If the isolate
+   * is lost mid-effect the run wakes and re-attempts within about this long. Default 30000.
+   */
+  readonly livenessLeaseMs?: number
   readonly maxPendingRunOperations?: number
   readonly trimAfterSnapshot?: {
     readonly keepSnapshots: number
@@ -73,6 +78,7 @@ export interface LoomsDurableObjectConfig {
 export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<Env> {
   private cellPromise?: Promise<ActorCell>
   private store?: DurableObjectEventStore
+  private alarms?: DurableObjectAlarms
   private authorize: Authorize = defaultAuthorize
 
   abstract configure(env: Env): LoomsDurableObjectConfig | Promise<LoomsDurableObjectConfig>
@@ -119,6 +125,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       })
 
       this.store = store
+      this.alarms = alarms
       this.authorize = config.authorize ?? defaultAuthorize
 
       const cell = createActorCell({
@@ -130,6 +137,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         attributes: config.attributes,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
+        livenessLeaseMs: config.livenessLeaseMs,
         maxPendingRunOperations: config.maxPendingRunOperations,
         trimAfterSnapshot: config.trimAfterSnapshot,
         authorize: config.authorize,
@@ -254,6 +262,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         deleteTerminalRunStorage(this.ctx.storage, store, runId, state, options).then(() => {
           this.cellPromise = undefined
           this.store = undefined
+          this.alarms = undefined
         }),
       )
     })
@@ -273,7 +282,9 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
           this.ctx.waitUntil(Effect.runPromise(delivery.deliver(runId)))
         }
 
-        return cell.wake()
+        // Otherwise a wake still running here would keep rearming for the deadline that just
+        // fired, alongside its liveness deadline, and the alarm would fire again at once.
+        return Effect.runPromise(this.alarms?.fired ?? Effect.void).then(() => cell.wake())
       })
       .then(() => undefined)
   }

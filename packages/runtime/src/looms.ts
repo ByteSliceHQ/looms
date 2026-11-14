@@ -64,6 +64,8 @@ export interface CreateLoomsOptions<Fields extends RunAttributeFields = RunAttri
   readonly store?: EventStore | Promise<EventStore> | (() => Promise<EventStore>)
   readonly serve?: boolean | { port?: number; hostname?: string }
   readonly maxWakeIterations?: number
+  /** See `CreateRuntimeOptions.livenessLeaseMs`. Only used when `scheduler` implements `keepAlive`. */
+  readonly livenessLeaseMs?: number
   /** Maximum active and queued mutation operations per run. Default 256. */
   readonly maxPendingRunOperations?: number
   /** Durable events between mid-wake snapshots. Default 200; `0` disables. Parking always snapshots. */
@@ -249,6 +251,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             modules,
             store,
             maxWakeIterations: options.maxWakeIterations,
+            livenessLeaseMs: options.livenessLeaseMs,
             maxPendingRunOperations: options.maxPendingRunOperations,
             snapshotEvery: options.snapshotEvery,
             snapshotStore: options.blobStore
