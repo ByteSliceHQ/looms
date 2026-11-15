@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect'
 
 import { DEFAULT_DEFINITION_VERSION, defineEventCatalog, RuntimeEffectSchema } from '@looms/core'
 
-import { MessageSchema, TokenUsageSchema, ToolCallSchema } from './types'
+import { AttachmentSchema, MessageSchema, TokenUsageSchema, ToolCallSchema } from './types'
 
 export const AgentMessageReceivedPayloadSchema = Schema.Struct({
   message: MessageSchema,
@@ -60,6 +60,7 @@ export const AgentTurnStoppedPayloadSchema = Schema.Struct({})
 export const AgentSessionMessageSubmittedPayloadSchema = Schema.Struct({
   messageId: Schema.String,
   text: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
   delivery: Schema.optional(AgentSessionDeliverySchema),
   activeChildThreadId: Schema.optional(Schema.String),
 })

@@ -21,6 +21,7 @@ import { STRUCTURED_OUTPUT_TOOL_NAME } from './definitions'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
 import { closeOpenToolCalls, insertToolResult } from './transcript'
+import { attachmentsFrom, userLine } from './types'
 import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
@@ -33,20 +34,15 @@ function inputToLine(input: JsonValue): Message | null {
   }
 
   if (Predicate.isObject(input)) {
-    if (Predicate.isString(input.text)) {
-      return { role: 'user', content: input.text }
-    }
+    // Input shaped `{ text, attachments }` starts the agent on a message with files.
+    const attachments = attachmentsFrom(input.attachments)
 
-    if (Predicate.isString(input.task)) {
-      return { role: 'user', content: input.task }
-    }
+    for (const key of ['text', 'task', 'topic', 'prompt'] as const) {
+      const content = input[key]
 
-    if (Predicate.isString(input.topic)) {
-      return { role: 'user', content: input.topic }
-    }
-
-    if (Predicate.isString(input.prompt)) {
-      return { role: 'user', content: input.prompt }
+      if (Predicate.isString(content)) {
+        return userLine(content, attachments)
+      }
     }
   }
 

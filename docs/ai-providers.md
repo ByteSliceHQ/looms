@@ -33,6 +33,35 @@ const looms = createLooms({
 
 Streaming tokens land on the run so a chat UI can render them as they arrive.
 
+## Attachments
+
+A message can carry files: images, recordings, documents. Store the bytes wherever suits the application (R2, S3, a database) and send a reference with the message. The run log holds only the reference.
+
+```ts
+import { steer, userMessage } from '@swirls/looms/agent'
+
+const screenshot = { id: 'uploads/7f3a', mediaType: 'image/png', name: 'checkout.png' }
+
+await looms.signal(runId, [
+  userMessage({ content: 'Why does this page overflow?', attachments: [screenshot] }),
+])
+```
+
+`steer`, agent session messages and thread input shaped `{ text, attachments }` take the same list. Tell the adapter how to read a reference when it builds a model call:
+
+```ts
+const llm = vercelLlm({
+  model,
+  resolveAttachment: async (attachment) => {
+    const object = await bucket.get(attachment.id)
+
+    return object ? new Uint8Array(await object.arrayBuffer()) : null
+  },
+})
+```
+
+Images are sent as image parts and everything else as file parts. Return `null` for a file the model should not be sent (one that is gone, too large, or of a type the model cannot read): it is sent by its `url` when the reference has one, and otherwise the message text names it so the model knows it exists. A custom adapter can do the same with `resolveAttachments` and `toModelMessages(messages, { attachments })`.
+
 ## Conversational agents and stopping
 
 ```ts

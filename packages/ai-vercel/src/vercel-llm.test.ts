@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { generateText, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
-import { toModelMessages } from './messages'
+import { resolveAttachments, toModelMessages } from './messages'
 import { vercelLlm } from './vercel-llm'
 
 function modelUsage(input: number, output: number) {
@@ -27,6 +27,65 @@ function finishReason(unified: 'stop' | 'tool-calls') {
 }
 
 describe('toModelMessages', () => {
+  test('sends resolved attachments as image and file parts beside the text', async () => {
+    const png = new Uint8Array([137, 80, 78, 71])
+    const pdf = new Uint8Array([37, 80, 68, 70])
+
+    const lines = [
+      {
+        role: 'user' as const,
+        content: 'What is in these?',
+        attachments: [
+          { id: 'a1', mediaType: 'image/png', name: 'shot.png' },
+          { id: 'a2', mediaType: 'application/pdf', name: 'spec.pdf' },
+        ],
+      },
+    ]
+
+    const attachments = await resolveAttachments(lines, (attachment) =>
+      attachment.id === 'a1' ? png : pdf,
+    )
+
+    expect(toModelMessages(lines, { attachments })).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is in these?' },
+          { type: 'image', image: png, mediaType: 'image/png' },
+          { type: 'file', data: pdf, mediaType: 'application/pdf', filename: 'spec.pdf' },
+        ],
+      },
+    ])
+  })
+
+  test('names an attachment it cannot send and falls back to its url', async () => {
+    const lines = [
+      {
+        role: 'user' as const,
+        content: 'Listen',
+        attachments: [
+          { id: 'gone', mediaType: 'audio/mpeg', name: 'memo.mp3' },
+          { id: 'hosted', mediaType: 'image/jpeg', url: 'https://example.com/cat.jpg' },
+        ],
+      },
+    ]
+
+    const attachments = await resolveAttachments(lines, () => null)
+
+    expect(toModelMessages(lines, { attachments })).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Listen\n\n[Attached, not shown to the model: memo.mp3 (audio/mpeg)]',
+          },
+          { type: 'image', image: new URL('https://example.com/cat.jpg'), mediaType: 'image/jpeg' },
+        ],
+      },
+    ])
+  })
+
   test('maps system, user, assistant tool calls, and tool results', () => {
     const messages = toModelMessages([
       { role: 'user', content: 'hi' },

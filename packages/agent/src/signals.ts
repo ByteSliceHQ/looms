@@ -4,14 +4,17 @@ import type { EventInput, JsonValue } from '@looms/core'
 
 import { AgentSessionMessageSubmittedPayloadSchema } from './events'
 import { agentModule } from './scope'
+import { AttachmentSchema, userLine } from './types'
 import type { AgentMessageDelivery, AgentSessionActiveTurn } from './types'
 
 const UserMessageInputSchema = Schema.Struct({
   content: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 
 const SteerInputSchema = Schema.Struct({
   content: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
   interrupt: Schema.optional(Schema.Boolean),
 })
 
@@ -26,8 +29,8 @@ const CancelAgentTurnInputSchema = Schema.Struct({
 export const userMessage = agentModule.signal({
   description: 'Append a user message to a conversational agent.',
   input: UserMessageInputSchema,
-  build: ({ content }) =>
-    agentModule.input('message.received', { message: { role: 'user', content } }),
+  build: ({ content, attachments }) =>
+    agentModule.input('message.received', { message: userLine(content, attachments) }),
 })
 
 /**
@@ -42,11 +45,11 @@ export const steer = agentModule.signal({
   description:
     'Inject a user message mid-run. Interrupt abandons the current turn; otherwise the message waits for the next turn (which starts immediately if the agent is idle).',
   input: SteerInputSchema,
-  build: ({ content, interrupt }) =>
+  build: ({ content, attachments, interrupt }) =>
     agentModule.input('steered', {
       turn: 0,
       interrupt: interrupt ?? true,
-      message: { role: 'user', content },
+      message: userLine(content, attachments),
     }),
 })
 
@@ -131,7 +134,7 @@ export const agentSessionMessageEvents = agentModule.signal({
           {
             turn: 0,
             messageId: input.messageId,
-            message: { role: 'user', content: input.text },
+            message: userLine(input.text, input.attachments),
             interrupt: true,
           },
           { threadId: input.activeChildThreadId },

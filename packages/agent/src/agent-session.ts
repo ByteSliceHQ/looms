@@ -16,7 +16,9 @@ import {
 
 import type { AgentSessionDefinition } from './definitions'
 import { agentModule } from './scope'
+import { attachmentsField, userLine } from './types'
 import type {
+  AgentSessionActiveTurn,
   AgentSessionClosure,
   AgentSessionMessage,
   AgentSessionSnapshot,
@@ -34,6 +36,7 @@ function messageFrom(value: JsonValue | undefined): AgentSessionMessage | null {
     ? {
         messageId: payload.messageId,
         text: payload.text,
+        ...attachmentsField(payload.attachments),
         delivery:
           payload.delivery === 'steer' ||
           payload.delivery === 'followUp' ||
@@ -165,20 +168,21 @@ export function createAgentSessionThread(
           const messageId = event.payload.messageId
           const admitted = state.pendingMessages.find((message) => message.messageId === messageId)
 
-          const text = [...state.nextTurnMessages, ...(admitted ? [admitted] : [])]
-            .map((message) => message.text)
-            .join('\n')
+          const turnMessages = [...state.nextTurnMessages, ...(admitted ? [admitted] : [])]
+          const text = turnMessages.map((message) => message.text).join('\n')
+          const attachments = turnMessages.flatMap((message) => message.attachments ?? [])
+
+          const activeTurn: AgentSessionActiveTurn =
+            attachments.length > 0
+              ? { messageId, childThreadId: event.payload.childThreadId, text, attachments }
+              : { messageId, childThreadId: event.payload.childThreadId, text }
 
           return {
             ...state,
             pendingMessages: state.pendingMessages.filter(
               (message) => message.messageId !== messageId,
             ),
-            activeTurn: {
-              messageId,
-              childThreadId: event.payload.childThreadId,
-              text,
-            },
+            activeTurn,
             nextTurnMessages: [],
             lastSequence: state.lastSequence + 1,
             cancelling: false,
@@ -286,7 +290,7 @@ export function createAgentSessionThread(
               {
                 turn: 0,
                 messageId: message.messageId,
-                message: { role: 'user', content: message.text },
+                message: userLine(message.text, message.attachments),
                 interrupt: true,
               },
               { threadId: state.activeTurn.childThreadId },
@@ -305,7 +309,7 @@ export function createAgentSessionThread(
       }
 
       if (state.activeTurn) {
-        const { childThreadId: turnThreadId, messageId, text } = state.activeTurn
+        const { childThreadId: turnThreadId, messageId, text, attachments } = state.activeTurn
         const definition = definitions.get(state.definitionName, state.definitionVersion)
 
         if (state.cancelling) {
@@ -317,7 +321,7 @@ export function createAgentSessionThread(
               kind: 'agent',
               definitionName: definition.agent.name,
               definitionVersion: definition.agent.version,
-              input: { text },
+              input: attachments ? { text, attachments: [...attachments] } : { text },
             }),
           )
         }
