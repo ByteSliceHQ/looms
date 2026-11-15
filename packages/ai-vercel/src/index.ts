@@ -5,4 +5,11 @@ export {
   type EvaluationModelProvider,
   type VercelEvaluatorOptions,
 } from './vercel-evaluator'
-export { toLoomsToolCalls, toModelMessages } from './messages'
+export {
+  resolveAttachments,
+  toLoomsToolCalls,
+  toModelMessages,
+  type AttachmentData,
+  type AttachmentResolver,
+  type ToModelMessagesOptions,
+} from './messages'

@@ -3,6 +3,7 @@ import { Predicate } from 'effect'
 import { agentModule } from './scope'
 import { closeOpenToolCalls, insertToolResult } from './transcript'
 import {
+  attachmentsField,
   ConversationSchema,
   TokenUsageSchema,
   TurnActivitySchema,
@@ -60,6 +61,7 @@ export const conversation = agentModule.projection({
           toolCallId: raw.toolCallId ?? undefined,
           name: raw.name ?? undefined,
           toolCalls,
+          ...attachmentsField(raw.attachments),
         }
 
         const interrupted = event.type === 'agent.steered' && event.payload.interrupt === true

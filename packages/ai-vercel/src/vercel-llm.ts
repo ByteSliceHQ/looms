@@ -11,7 +11,12 @@ import { Data, Effect, Option, Predicate, Stream } from 'effect'
 import type { AgentTurnResult, LlmAdapter, LlmToolSpec } from '@looms/agent'
 import { asJson, type JsonValue } from '@looms/core'
 
-import { toLoomsToolCalls, toModelMessages } from './messages'
+import {
+  resolveAttachments,
+  toLoomsToolCalls,
+  toModelMessages,
+  type AttachmentResolver,
+} from './messages'
 
 class VercelLlmError extends Data.TaggedError('VercelLlmError')<{
   readonly cause: unknown
@@ -53,6 +58,11 @@ export interface VercelLlmOptions {
   readonly model: LanguageModel
   /** Prefer streamText when the turn supplies `onTextDelta`. Default true. */
   readonly stream?: boolean
+  /**
+   * Reads the files attached to messages. Without it, an attachment is sent by its `url` when
+   * it has one and is only named to the model otherwise.
+   */
+  readonly resolveAttachment?: AttachmentResolver
 }
 
 function toolCallInput(call: { input?: unknown }): JsonValue {
@@ -67,7 +77,16 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
     complete: (args): Promise<AgentTurnResult> =>
       Effect.runPromise(
         Effect.gen(function* () {
-          const messages = toModelMessages(args.messages)
+          const { resolveAttachment } = options
+
+          const attachments = resolveAttachment
+            ? yield* Effect.tryPromise({
+                try: () => resolveAttachments(args.messages, resolveAttachment),
+                catch: (cause) => new VercelLlmError(cause),
+              })
+            : undefined
+
+          const messages = toModelMessages(args.messages, { attachments })
 
           const tools =
             args.toolSpecs && args.toolSpecs.length > 0 ? toAiTools(args.toolSpecs) : undefined

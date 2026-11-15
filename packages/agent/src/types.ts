@@ -22,9 +22,28 @@ export const MessageRoleSchema = Schema.Union([
 ])
 export type MessageRole = Schema.Schema.Type<typeof MessageRoleSchema>
 
+/**
+ * A file that travels with a message: an image, a recording, a document. The event log holds
+ * only this reference. The bytes stay wherever the application stored them, and the LLM adapter
+ * reads them back by `id` (or from `url`) when it builds a model call.
+ */
+export const AttachmentSchema = Schema.Struct({
+  /** The application's handle on the stored bytes. */
+  id: Schema.String,
+  /** IANA media type, e.g. `image/png`. */
+  mediaType: Schema.String,
+  name: Schema.optional(Schema.String),
+  /** Size in bytes. */
+  size: Schema.optional(Schema.Finite),
+  /** Where a model provider can fetch the bytes itself, when the application has such a URL. */
+  url: Schema.optional(Schema.String),
+})
+export type Attachment = Schema.Schema.Type<typeof AttachmentSchema>
+
 export const MessageSchema = Schema.Struct({
   role: MessageRoleSchema,
   content: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
   toolCallId: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
   toolCalls: Schema.optional(Schema.mutable(Schema.Array(ToolCallSchema))),
@@ -131,6 +150,7 @@ export type AgentSessionTurnStatus = 'completed' | 'failed' | 'cancelled'
 export interface AgentSessionMessage {
   readonly messageId: string
   readonly text: string
+  readonly attachments?: readonly Attachment[]
   readonly delivery?: AgentMessageDelivery
   readonly steeredIntoMessageId?: string
 }
@@ -139,6 +159,7 @@ export interface AgentSessionActiveTurn {
   readonly messageId: string
   readonly childThreadId: string
   readonly text: string
+  readonly attachments?: readonly Attachment[]
 }
 
 export interface AgentSessionClosure {
@@ -171,4 +192,25 @@ export interface AgentSessionSnapshot {
   readonly processedMessageIds: readonly string[]
   readonly lastSequence: number
   readonly parked: boolean
+}
+
+/** A user line, carrying `attachments` only when there are some. */
+export function userLine(content: string, attachments?: readonly Attachment[]): Message {
+  return attachments && attachments.length > 0
+    ? { role: 'user', content, attachments }
+    : { role: 'user', content }
+}
+
+const isAttachment = Schema.is(AttachmentSchema)
+
+/** The attachments in untyped JSON, dropping anything that is not one. */
+export function attachmentsFrom(value: JsonValue | undefined): Attachment[] {
+  return Array.isArray(value) ? value.filter((item) => isAttachment(item)) : []
+}
+
+/** `{ attachments }` when `value` holds any, for spreading into a record that omits empty lists. */
+export function attachmentsField(value: JsonValue | undefined): { attachments?: Attachment[] } {
+  const attachments = attachmentsFrom(value)
+
+  return attachments.length > 0 ? { attachments } : {}
 }

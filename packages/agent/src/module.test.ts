@@ -207,6 +207,52 @@ describe('@looms/agent module', () => {
     expect(threadState.lines[0]?.content).toBe('number of lakes in minnesota')
   })
 
+  test('a message keeps its attachments from input and from a steer', () => {
+    const registry = composeModules([agent()])
+    const runId = 'run_attachments'
+    const threadId = 'thr_attachments'
+    const screenshot = { id: 'a1', mediaType: 'image/png', name: 'shot.png', size: 4 }
+    const recording = { id: 'a2', mediaType: 'video/mp4' }
+
+    const state = foldRun(
+      [
+        {
+          ...createEvent(runId, {
+            type: 'runtime.thread.started',
+            payload: {
+              threadId,
+              kind: 'agent',
+              definitionName: 'echo',
+              input: { text: 'Fix this layout', attachments: [screenshot, { bogus: true }] },
+              parentThreadId: null,
+            },
+            threadId,
+            origin: { type: 'system' },
+          }),
+          seq: 1,
+        },
+        {
+          ...createEvent(runId, {
+            ...steer(
+              { content: 'And this', attachments: [recording], interrupt: false },
+              { threadId },
+            ),
+            origin: { type: 'external' },
+          }),
+          seq: 2,
+        },
+      ],
+      registry,
+    )
+
+    expect(state.threads[threadId]?.state).toMatchObject({
+      lines: [
+        { role: 'user', content: 'Fix this layout', attachments: [screenshot] },
+        { role: 'user', content: 'And this', attachments: [recording] },
+      ],
+    })
+  })
+
   test('registers a signal interrupt rule for interrupting steers', () => {
     const [rule] = composeModules([agent()]).interruptRules
 
