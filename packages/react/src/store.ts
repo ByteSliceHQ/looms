@@ -1,4 +1,4 @@
-import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
+import { Data, DateTime, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 
 import { absoluteHttpBase, type SubscriptionSocketConstructor } from '@looms/client'
 import {
@@ -15,9 +15,11 @@ import {
   type SubscriptionTransport,
 } from '@looms/core'
 
+import type { EventCache } from './cache'
 import { EventIndex, ProjectionCache, type LiveFoldDefinition } from './derived'
 import { materializeEvents } from './materialize'
 import { createNotifyScheduler, type CoalesceOption } from './notify'
+import type { StoreObservation, StoreObserver } from './observer'
 import { consumeSseStreamEffect } from './sse'
 import { emptyTables, type MaterializedTables } from './tables'
 
@@ -68,12 +70,17 @@ export interface CommitOptions {
 
 interface PendingCommit {
   readonly key: string
+  readonly startedAt: number
   readonly events: readonly EventEnvelope[]
   settle: Fiber.Fiber<void> | undefined
 }
 
 /** How long a filtered subscription's opening replay must be quiet to count as caught up. */
 const SYNC_QUIET_MS = 250
+
+function nowMs(): number {
+  return DateTime.toEpochMillis(DateTime.nowUnsafe())
+}
 
 class LoomsStoreError extends Data.TaggedError('LoomsStoreError')<{
   readonly cause?: unknown
@@ -113,6 +120,13 @@ export interface LoomsClientStoreOptions {
   fromSeq?: number
   /** Whether `commit` shows its events before the host confirms them. Defaults to false. */
   optimistic?: boolean
+  /**
+   * Keeps the run's durable events on the device. A store that has followed the run before starts
+   * from them and downloads only what was appended since. Not used together with `fromSeq`.
+   */
+  cache?: EventCache
+  /** Told how long the run took to show and how long each commit took. */
+  observer?: StoreObserver
 }
 
 export interface LoomsStoreQuery<TEvent extends AnyEventEnvelope = RegisteredEvent> {
@@ -189,6 +203,23 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   const seenIds = new Set<string>()
   const projectionCache = new ProjectionCache()
   const eventIndex = new EventIndex()
+  const createdAt = nowMs()
+
+  const observe = (observation: StoreObservation) => {
+    try {
+      options.observer?.observe(observation)
+    } catch {
+      // An observer must never break the store it watches.
+    }
+  }
+
+  // The cache holds a whole view of the run, so a store that starts partway through has none.
+  const cache = options.fromSeq === undefined || options.fromSeq <= 1 ? options.cache : undefined
+  const cacheKey = [endpoint, options.storeId, options.threadId ?? ''].join('|')
+  let cacheWrites: Promise<void> = Promise.resolve()
+  let cachedEvents = 0
+  let hydrated = cache === undefined
+  let hydrating: Promise<void> | undefined
 
   let eventsSnapshot: readonly RegisteredEvent[] = Object.freeze([])
   let eventsSnapshotDirty = false
@@ -267,11 +298,22 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     version += 1
   }
 
-  const dropPending = (commit: PendingCommit): boolean => {
+  const dropPending = (commit: PendingCommit, confirmed = false): boolean => {
     const index = pendingCommits.indexOf(commit)
 
     if (index === -1) {
       return false
+    }
+
+    if (confirmed) {
+      const at = nowMs()
+
+      observe({
+        type: 'commit.confirmed',
+        runId: options.storeId,
+        at,
+        durationMs: at - commit.startedAt,
+      })
     }
 
     pendingCommits.splice(index, 1)
@@ -299,6 +341,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
 
     status = next
+    observe({ type: 'store.connection', runId: options.storeId, at: nowMs(), status: next })
     version += 1
     notify.schedule()
   }
@@ -318,6 +361,18 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
 
     synced = true
+
+    const at = nowMs()
+
+    observe({
+      type: 'store.synced',
+      runId: options.storeId,
+      at,
+      durationMs: at - createdAt,
+      eventCount: events.length,
+      cachedEvents,
+    })
+
     version += 1
     notify.schedule()
   }
@@ -342,7 +397,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
   }
 
-  const applyBatch = (batch: EventEnvelope[]) => {
+  const applyBatch = (batch: EventEnvelope[], fromCache = false) => {
     const fresh: RegisteredEvent[] = []
 
     for (const event of batch) {
@@ -377,12 +432,40 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         : undefined
 
       if (confirmed) {
-        dropPending(confirmed)
+        dropPending(confirmed, true)
+      }
+    }
+
+    if (cache && !fromCache) {
+      const durable = fresh.filter((event) => !event.ephemeral)
+
+      if (durable.length > 0) {
+        cacheWrites = cacheWrites.then(() => cache.append(cacheKey, durable)).catch(() => undefined)
       }
     }
 
     notify.schedule()
     checkSynced()
+  }
+
+  /** Drops everything the store holds, when what the cache supplied is not the host's log. */
+  const forgetCache = () => {
+    events.length = 0
+    seenIds.clear()
+    eventIndex.clear()
+    projectionCache.clear()
+    tables = emptyTables()
+    eventsSnapshotDirty = true
+    cachedEvents = 0
+    synced = false
+    syncTail = undefined
+    version += 1
+
+    if (cache) {
+      cacheWrites = cacheWrites.then(() => cache.clear(cacheKey)).catch(() => undefined)
+    }
+
+    notify.schedule()
   }
 
   const applyLiveData = (data: string): 'continue' | 'resync' => {
@@ -396,6 +479,13 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         fromSeq = read.head
         return 'resync'
       case 'hello':
+        // The cache is ahead of the host's log, so it was kept from a different one.
+        if (cachedEvents > 0 && read.tail < fromSeq - 1) {
+          forgetCache()
+          fromSeq = 1
+          return 'resync'
+        }
+
         syncTail = read.tail
         checkSynced()
         return 'continue'
@@ -713,8 +803,36 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     liveAbort = undefined
   }
 
+  /** Starts following the run, after first loading whatever the device kept of it. */
+  const begin = () => {
+    if (hydrated || !cache) {
+      startLive()
+      return
+    }
+
+    hydrating ??= cache
+      .load(cacheKey)
+      .then((kept) => {
+        if (disposed || events.length > 0) {
+          return
+        }
+
+        applyBatch(kept.slice(), true)
+        cachedEvents = events.length
+      })
+      .catch(() => undefined)
+      .then(() => {
+        hydrated = true
+        hydrating = undefined
+
+        if (!disposed) {
+          startLive()
+        }
+      })
+  }
+
   if (options.storeId) {
-    startLive()
+    begin()
   }
 
   const readEvents = (filterOptions?: { threadId?: string }): readonly RegisteredEvent[] => {
@@ -761,7 +879,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       listener()
 
       if (disposed) {
-        startLive()
+        begin()
       }
 
       return () => {
@@ -784,6 +902,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
       const key = commitOptions?.idempotencyKey ?? (optimistic ? createEventId() : undefined)
 
+      const startedAt = nowMs()
       let shown: PendingCommit | undefined
 
       if (optimistic && key !== undefined && inputs.length > 0) {
@@ -791,6 +910,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
         shown = {
           key,
+          startedAt,
           settle: undefined,
           events: inputs.map((input) => {
             pendingSeq += 1
@@ -861,8 +981,18 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
           return undefined
         }).pipe(
-          Effect.tapError(() =>
+          Effect.tapError((error) =>
             Effect.sync(() => {
+              const at = nowMs()
+
+              observe({
+                type: 'commit.failed',
+                runId: options.storeId,
+                at,
+                durationMs: at - startedAt,
+                message: error.message,
+              })
+
               // Roll back: the events were never recorded.
               if (shown && dropPending(shown)) {
                 notify.schedule()
@@ -872,6 +1002,17 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
           ),
         ),
       ).then(() => {
+        const at = nowMs()
+
+        observe({
+          type: 'commit.acked',
+          runId: options.storeId,
+          at,
+          durationMs: at - startedAt,
+          eventCount: inputs.length,
+          optimistic: shown !== undefined,
+        })
+
         const accepted = shown
 
         if (accepted && pendingCommits.includes(accepted)) {

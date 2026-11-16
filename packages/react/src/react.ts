@@ -26,7 +26,9 @@ import {
   type ThreadTree,
 } from '@looms/core'
 
+import type { EventCache } from './cache'
 import { defineLiveFold, foldLive, type LiveFoldDefinition } from './derived'
+import type { StoreObserver } from './observer'
 import {
   createLoomsStore,
   isPendingEvent,
@@ -46,6 +48,10 @@ export interface LoomsProviderProps {
    * to five seconds.
    */
   retainMs?: number
+  /** Keeps each run's durable events on the device. See `indexedDbEventCache`. */
+  cache?: EventCache
+  /** Told how long each run took to show and how long each commit took. */
+  observer?: StoreObserver
 }
 
 interface ProviderContextValue {
@@ -53,6 +59,8 @@ interface ProviderContextValue {
   coalesce?: CoalesceOption
   transport?: SubscriptionTransport
   retainMs?: number
+  cache?: EventCache
+  observer?: StoreObserver
 }
 
 const LoomsContext = createContext<ProviderContextValue>({ endpoint: '' })
@@ -77,6 +85,8 @@ interface StoreIdentity {
   /** Only read when the store is created; a store already open keeps the cursor it started at. */
   readonly fromSeq?: number
   readonly retainMs?: number
+  readonly cache?: EventCache
+  readonly observer?: StoreObserver
 }
 
 function registryKey(runId: string, identity: StoreIdentity): string {
@@ -123,6 +133,8 @@ function peekStore(runId: string, identity: StoreIdentity): LoomsClientStore {
     threadId: identity.threadId,
     includeEphemeral: identity.includeEphemeral,
     fromSeq: identity.fromSeq,
+    cache: identity.cache,
+    observer: identity.observer,
   })
 
   const retainMs = Math.max(0, identity.retainMs ?? DEFAULT_RETAIN_MS)
@@ -177,10 +189,12 @@ export function LoomsProvider({
   coalesce,
   transport,
   retainMs,
+  cache,
+  observer,
 }: LoomsProviderProps) {
   const value = useMemo(
-    () => ({ endpoint, coalesce, transport, retainMs }),
-    [endpoint, coalesce, transport, retainMs],
+    () => ({ endpoint, coalesce, transport, retainMs, cache, observer }),
+    [endpoint, coalesce, transport, retainMs, cache, observer],
   )
 
   return createElement(LoomsContext.Provider, { value, children })
@@ -223,6 +237,8 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
     includeEphemeral,
     fromSeq,
     retainMs,
+    cache: context.cache,
+    observer: context.observer,
   }
 
   const store = peekStore(runId, identity)

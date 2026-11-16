@@ -16,6 +16,13 @@ export {
   eventThreadKey,
   type LiveFoldDefinition,
 } from './derived'
+export {
+  indexedDbEventCache,
+  memoryEventCache,
+  type EventCache,
+  type IndexedDbEventCacheOptions,
+} from './cache'
+export type { StoreObservation, StoreObserver } from './observer'
 export { materializeEvents } from './materialize'
 export { emptyTables, type MaterializedTables, type RunRow, type ThreadRow } from './tables'
 export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from '@looms/core'

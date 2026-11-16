@@ -315,7 +315,7 @@
     },
     "packages/looms": {
       "name": "@swirls/looms",
-      "version": "0.8.0",
+      "version": "0.15.0",
       "bin": {
         "looms": "dist/cli/cli.js",
       },
@@ -429,6 +429,7 @@
         "@types/bun": "^1.3.9",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.7",
+        "fake-indexeddb": "^6.2.8",
         "react": "19",
         "react-dom": "19",
         "typescript": "7.0.2",
@@ -1705,6 +1706,8 @@
     "exsolve": ["exsolve@1.1.1", "", {}, "sha512-9U/jZUgjnSGyntRr6y5Muu1MJcwFl6kPu7k8qLF0IMNfLqvw0NZ4nnVDq0RVoZ0RvCyumib4Ez3KYrVfilrw+g=="],
 
     "extendable-error": ["extendable-error@0.1.7", "", {}, "sha512-UOiS2in6/Q0FK0R0q6UY9vYpQ21mr/Qn1KOnte7vsACuNJf514WvCCUHSRCPcgjPT2bAhNIJdlE6bVap1GKmeg=="],
+
+    "fake-indexeddb": ["fake-indexeddb@6.2.8", "", {}, "sha512-mpVW/HLUqwKXJ6F/s0hMgdK1eQfM4ncTHDioNGHWL0WKV3VcZCoZq1NKgboBbAge07aRCO7L48yziKssL59XEQ=="],
 
     "fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
 

@@ -99,6 +99,43 @@ A commit the host accepts but never records under that key stops being shown aft
 
 `useRunStore(runId, { fromSeq })` starts the store at a later point in the log. Use it when you already hold state up to `fromSeq - 1`, such as a projection the host served, and fold only what follows. The store never sees earlier events, so its own projections and summary cover only the part it followed.
 
+## Local Cache
+
+Without a cache, a store downloads a run's whole log every time the page loads. Give the provider a cache and each store keeps the run's durable events on the device, starts from them the next time, and downloads only what was appended since:
+
+```tsx
+import { indexedDbEventCache, LoomsProvider } from '@swirls/looms/react'
+
+const cache = indexedDbEventCache()
+
+<LoomsProvider endpoint="" cache={cache}>
+  <App />
+</LoomsProvider>
+```
+
+Cached events show before the store connects, so `synced` stays false until the store has also caught up with the host. Ephemeral events are never kept. If the host's log turns out to be shorter than what was kept, the run was recreated: the store drops the cache and reads the log from the start. `indexedDbEventCache` keeps the 50 most recently opened runs by default (`maxRuns`), and any storage failure falls back to downloading. `EventCache` is a three-method interface if you want to keep events somewhere else; `memoryEventCache()` is one for tests. A store started with `fromSeq` does not use the cache.
+
+## Timing
+
+Pass an `observer` to the provider, or to `createLoomsStore`, to learn how the run felt to use:
+
+```tsx
+<LoomsProvider
+  endpoint=""
+  observer={{ observe: (observation) => report(observation) }}
+>
+```
+
+| Observation        | When                                                     | Carries                                    |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------ |
+| `store.synced`     | The store holds everything the log had when it connected | `durationMs`, `eventCount`, `cachedEvents` |
+| `store.connection` | The connection status changes                            | `status`                                   |
+| `commit.acked`     | The host answered a commit                               | `durationMs`, `eventCount`, `optimistic`   |
+| `commit.confirmed` | The host's copy of an optimistic commit arrived          | `durationMs` from the call to `commit`     |
+| `commit.failed`    | A commit was refused or could not be sent                | `durationMs`, `message`                    |
+
+An observer that throws is ignored. For the host side, see the runtime's `observer` option and `@swirls/looms/otel`.
+
 ## Client-Only Projections
 
 `useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)) unless you annotate the `event` parameter. This example assumes the agent module is registered:
