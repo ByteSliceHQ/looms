@@ -24,6 +24,7 @@ import {
   type RunSignalOptions,
   type StartResult,
   type StartRunArgs,
+  type RuntimeObserver,
 } from '@looms/runtime'
 
 import { durableObjectAlarms, type DurableObjectAlarms } from './alarm-scheduler'
@@ -41,6 +42,8 @@ export interface LoomsDurableObjectConfig {
   readonly definitionResolver?: DefinitionResolver
   /** Declared run attributes. Pass the same declaration to the replica. */
   readonly attributes?: RunAttributeFields
+  /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
+  readonly observer?: RuntimeObserver
   readonly projectors?: readonly Projector[]
   /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
   readonly blobs?: BlobStore
@@ -136,6 +139,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         modules: config.modules,
         definitionResolver: config.definitionResolver,
         attributes: config.attributes,
+        observer: config.observer,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         livenessLeaseMs: config.livenessLeaseMs,

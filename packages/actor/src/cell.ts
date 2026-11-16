@@ -25,6 +25,7 @@ import {
   type StartResult,
   type StartRunArgs,
   type WakeScheduler,
+  type RuntimeObserver,
 } from '@looms/runtime'
 
 import { runIdFromRequest } from './routing'
@@ -59,6 +60,8 @@ export interface ActorCellOptions<
   readonly worker?: EffectWorker
   /** Declared run attributes. See `CreateRuntimeOptions`. */
   readonly attributes?: RunAttributeFields
+  /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
+  readonly observer?: RuntimeObserver
 }
 
 export interface ActorCell<
@@ -105,6 +108,7 @@ export function createActorCell<
     snapshotStore: options.snapshotStore,
     trimAfterSnapshot: options.trimAfterSnapshot,
     attributes: options.attributes,
+    observer: options.observer,
   })
 
   const provide = <A, E>(effect: Effect.Effect<A, E, EventStoreTag>) =>
