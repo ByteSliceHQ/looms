@@ -60,6 +60,45 @@ Wrap your root in `LoomsProvider`:
 | `useLatestEvent(store, type)`               | Latest event of a given type.                                                                                     | When matching event arrives   |
 | `useLiveFold(store, fold)`                  | Live fold state, including ephemeral events such as text deltas.                                                  | When fold state changes       |
 
+## Optimistic Commits
+
+`store.commit` resolves once the host has committed the event. With `optimistic`, the event is shown before that: it is folded into every projection and live fold at once, after all confirmed events, and the host's own copy takes its place when it arrives. If the commit fails the event is removed and `commit` rejects, so the caller decides what to tell the person.
+
+```tsx
+const store = useRunStore(runId)
+
+async function send(content: string) {
+  try {
+    await store.commit(userMessage({ content }), { optimistic: true })
+  } catch (cause) {
+    // The message has already been taken back out of the conversation.
+    setError(cause)
+  }
+}
+```
+
+Set `optimistic` on `createLoomsStore` to make it the default for every commit. `store.pending()` lists the events still waiting, and `isPendingEvent(event)` tells a reducer or a row whether it is looking at one, for example to dim a message that has not been confirmed.
+
+An optimistic event is your guess at what the host will record. It is matched to the confirmed event by the commit's `idempotencyKey`, which is generated unless you pass one. When writes go through a route of your own, pass `send` and have that route signal the run with the same key:
+
+```ts
+await store.commit(say({ messageId, text }), {
+  optimistic: true,
+  idempotencyKey: messageId,
+  send: ({ signal }) => postMessage(runId, { messageId, text }, signal),
+})
+```
+
+A commit the host accepts but never records under that key stops being shown after ten seconds.
+
+## Loading State and Retention
+
+`useRunSummary(store).synced` is false until the store holds everything the log had when it connected. Until then an empty projection means the run is still loading, not that it is empty.
+
+`LoomsProvider` takes `retainMs`: how long a run's store stays connected after the last component using it unmounts. The default is five seconds. An app that moves between runs can raise it so going back to a run shows it at once.
+
+`useRunStore(runId, { fromSeq })` starts the store at a later point in the log. Use it when you already hold state up to `fromSeq - 1`, such as a projection the host served, and fold only what follows. The store never sees earlier events, so its own projections and summary cover only the part it followed.
+
 ## Client-Only Projections
 
 `useProjection` folds the events the browser already has, so a projection does not have to be registered on the host. Register it in a module when the host, the HTTP API, or the debugger needs it too. Reducers receive events from your registered catalog (see [Typed Event Catalogs](#typed-event-catalogs)) unless you annotate the `event` parameter. This example assumes the agent module is registered:

@@ -2,6 +2,8 @@ import { Data, Effect, Fiber, Option, Predicate, Schema } from 'effect'
 
 import { absoluteHttpBase, type SubscriptionSocketConstructor } from '@looms/client'
 import {
+  createEvent,
+  createEventId,
   decodeLoomsEvent,
   readSubscriptionData,
   stringifyJson,
@@ -25,6 +27,53 @@ export type { CoalesceOption } from './notify'
 export type StoreListener = () => void
 
 export type LoomsConnectionStatus = 'connecting' | 'live' | 'reconnecting'
+
+/**
+ * Sequence numbers at or above this belong to events the store is showing before the host has
+ * confirmed them. They sort after every confirmed event.
+ */
+const PENDING_SEQ_BASE = 2 ** 52
+
+/** How long a commit the host accepted may stay unconfirmed before the store stops showing it. */
+const PENDING_SETTLE_MS = 10_000
+
+/** True for an event shown optimistically that the host has not confirmed yet. */
+export function isPendingEvent(event: { readonly seq: number }): boolean {
+  return event.seq >= PENDING_SEQ_BASE
+}
+
+export interface CommitOptions {
+  /**
+   * Show the events at once, before the host confirms them. They are folded after every confirmed
+   * event, replaced by the host's own copies when those arrive, and removed if the commit fails,
+   * in which case `commit` rejects. Defaults to the store's `optimistic` option.
+   */
+  optimistic?: boolean
+  /**
+   * Identifies this commit to the host, which ignores a repeat of it. An optimistic commit is
+   * matched to its confirmed events by this key; one is generated when it is left out.
+   */
+  idempotencyKey?: string
+  /**
+   * Sends the commit somewhere other than the run's signal route, such as a route of your own that
+   * signs the events. It must signal the run with the `idempotencyKey` it is given, or an
+   * optimistic commit cannot be matched to what the host records.
+   */
+  send?: (commit: {
+    readonly events: readonly EventInput[]
+    readonly idempotencyKey: string | undefined
+    readonly signal: AbortSignal
+  }) => Promise<void>
+}
+
+interface PendingCommit {
+  readonly key: string
+  readonly events: readonly EventEnvelope[]
+  settle: Fiber.Fiber<void> | undefined
+}
+
+/** How long a filtered subscription's opening replay must be quiet to count as caught up. */
+const SYNC_QUIET_MS = 250
 
 class LoomsStoreError extends Data.TaggedError('LoomsStoreError')<{
   readonly cause?: unknown
@@ -56,6 +105,14 @@ export interface LoomsClientStoreOptions {
   threadId?: string
   includeEphemeral?: boolean
   webSocket?: SubscriptionSocketConstructor
+  /**
+   * First sequence number to follow. Use it with state you already hold up to `fromSeq - 1`, such
+   * as a projection the host served, so the store does not download the log behind it. Events
+   * before it are never seen: `events()`, projections and the run summary cover only what follows.
+   */
+  fromSeq?: number
+  /** Whether `commit` shows its events before the host confirms them. Defaults to false. */
+  optimistic?: boolean
 }
 
 export interface LoomsStoreQuery<TEvent extends AnyEventEnvelope = RegisteredEvent> {
@@ -73,6 +130,11 @@ export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEv
   storeId: string
   version: () => number
   status: () => LoomsConnectionStatus
+  /**
+   * True once the store holds everything the log had when the subscription opened. Until then an
+   * empty projection means "still loading", not "nothing there".
+   */
+  synced: () => boolean
   getState: () => MaterializedTables
   events: (options?: { threadId?: string }) => readonly TEvent[]
   query: LoomsStoreQuery<TEvent>
@@ -80,7 +142,9 @@ export interface LoomsClientStore<TEvent extends AnyEventEnvelope = RegisteredEv
   project<S>(definition: ProjectionDefinition<S>): S
   fold<S>(definition: LiveFoldDefinition<S, TEvent>): S
   flush: () => void
-  commit: (event: EventInput | readonly EventInput[]) => Promise<void>
+  /** Events shown optimistically that the host has not confirmed yet. */
+  pending: () => readonly TEvent[]
+  commit: (event: EventInput | readonly EventInput[], options?: CommitOptions) => Promise<void>
   sync: () => Promise<void>
   dispose: () => void
 }
@@ -131,7 +195,13 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let version = 0
   let status: LoomsConnectionStatus = 'connecting'
   let tables = emptyTables()
-  let fromSeq = 1
+  let fromSeq = Math.max(1, Math.trunc(options.fromSeq ?? 1))
+  // A filtered subscription may never be sent the event at the tail, so it also counts as caught
+  // up once the opening replay goes quiet.
+  const filtered = options.threadId !== undefined || options.includeEphemeral === false
+  let synced = false
+  let syncTail: number | undefined
+  let quietFiber: Fiber.Fiber<void> | undefined
   let disposed = false
   let live = false
   let liveStarted = false
@@ -141,7 +211,20 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let reconnectFiber: Fiber.Fiber<void> | undefined
   let syncing: Promise<void> | null = null
 
-  const publishedEvents = (): readonly RegisteredEvent[] => {
+  const pendingCommits: PendingCommit[] = []
+  let pendingEvents: readonly RegisteredEvent[] = Object.freeze([])
+  let pendingVersion = 0
+  let pendingSeq = PENDING_SEQ_BASE
+  interface VisibleEvents {
+    readonly base: readonly RegisteredEvent[]
+    readonly pending: number
+    readonly value: readonly RegisteredEvent[]
+  }
+
+  let visible: VisibleEvents | undefined
+  const visibleByThread = new Map<string, VisibleEvents>()
+
+  const confirmedEvents = (): readonly RegisteredEvent[] => {
     if (!eventsSnapshotDirty) {
       return eventsSnapshot
     }
@@ -149,6 +232,57 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     eventsSnapshot = Object.freeze(events.slice())
     eventsSnapshotDirty = false
     return eventsSnapshot
+  }
+
+  /** `base` with the pending events after it. Stable while neither has changed. */
+  const withPending = (
+    base: readonly RegisteredEvent[],
+    cached: VisibleEvents | undefined,
+    threadId?: string,
+  ): VisibleEvents => {
+    if (cached && cached.base === base && cached.pending === pendingVersion) {
+      return cached
+    }
+
+    const extra = threadId
+      ? pendingEvents.filter((event) => event.threadId === threadId)
+      : pendingEvents
+
+    return {
+      base,
+      pending: pendingVersion,
+      value: extra.length === 0 ? base : Object.freeze([...base, ...extra]),
+    }
+  }
+
+  /** What readers see: every confirmed event, then the ones still waiting to be confirmed. */
+  const publishedEvents = (): readonly RegisteredEvent[] => {
+    visible = withPending(confirmedEvents(), visible)
+    return visible.value
+  }
+
+  const setPending = () => {
+    pendingEvents = Object.freeze(pendingCommits.flatMap((commit) => commit.events))
+    pendingVersion += 1
+    version += 1
+  }
+
+  const dropPending = (commit: PendingCommit): boolean => {
+    const index = pendingCommits.indexOf(commit)
+
+    if (index === -1) {
+      return false
+    }
+
+    pendingCommits.splice(index, 1)
+
+    if (commit.settle !== undefined) {
+      Effect.runFork(Fiber.interrupt(commit.settle))
+      commit.settle = undefined
+    }
+
+    setPending()
+    return true
   }
 
   const notify = createNotifyScheduler(coalesce, () => {
@@ -169,6 +303,45 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     notify.schedule()
   }
 
+  const cancelQuiet = () => {
+    if (quietFiber !== undefined) {
+      Effect.runFork(Fiber.interrupt(quietFiber))
+      quietFiber = undefined
+    }
+  }
+
+  const markSynced = () => {
+    cancelQuiet()
+
+    if (synced) {
+      return
+    }
+
+    synced = true
+    version += 1
+    notify.schedule()
+  }
+
+  /** Called when the subscription reports its bounds and after each batch that follows. */
+  const checkSynced = () => {
+    if (synced || syncTail === undefined) {
+      return
+    }
+
+    if (fromSeq > syncTail) {
+      markSynced()
+      return
+    }
+
+    if (filtered) {
+      cancelQuiet()
+
+      quietFiber = Effect.runFork(
+        Effect.sleep(SYNC_QUIET_MS).pipe(Effect.andThen(Effect.sync(markSynced))),
+      )
+    }
+  }
+
   const applyBatch = (batch: EventEnvelope[]) => {
     const fresh: RegisteredEvent[] = []
 
@@ -183,6 +356,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
 
     if (fresh.length === 0) {
+      checkSynced()
       return
     }
 
@@ -196,7 +370,19 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     eventIndex.append(fresh)
     version += 1
 
+    // The host's copy of an optimistic commit takes the place of the provisional one.
+    for (const event of fresh) {
+      const confirmed = event.idempotencyKey
+        ? pendingCommits.find((commit) => commit.key === event.idempotencyKey)
+        : undefined
+
+      if (confirmed) {
+        dropPending(confirmed)
+      }
+    }
+
     notify.schedule()
+    checkSynced()
   }
 
   const applyLiveData = (data: string): 'continue' | 'resync' => {
@@ -210,6 +396,9 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         fromSeq = read.head
         return 'resync'
       case 'hello':
+        syncTail = read.tail
+        checkSynced()
+        return 'continue'
       case 'ignore':
         return 'continue'
 
@@ -529,8 +718,17 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const readEvents = (filterOptions?: { threadId?: string }): readonly RegisteredEvent[] => {
-    if (filterOptions?.threadId) {
-      return eventIndex.getByThread(filterOptions.threadId)
+    const threadId = filterOptions?.threadId
+
+    if (threadId) {
+      const slice = withPending(
+        eventIndex.getByThread(threadId),
+        visibleByThread.get(threadId),
+        threadId,
+      )
+
+      visibleByThread.set(threadId, slice)
+      return slice.value
     }
 
     return publishedEvents()
@@ -540,6 +738,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     storeId: options.storeId,
     version: () => version,
     status: () => status,
+    synced: () => synced,
     /**
      * Live mutable materialized tables. Re-read after each version bump;
      * do not hold Map/array references across notifies.
@@ -554,7 +753,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       bySeq: (seq: number) => eventIndex.getBySeq(seq),
       startedAt: () => eventIndex.getStartedAt(),
       latest: (type: string) => eventIndex.getLatest(type),
-      fold: <S>(def: LiveFoldDefinition<S>) => projectionCache.fold(def, publishedEvents()),
+      fold: <S>(def: LiveFoldDefinition<S>) =>
+        projectionCache.fold(def, confirmedEvents(), pendingEvents, pendingVersion),
     },
     subscribe: (listener) => {
       listeners.add(listener)
@@ -568,42 +768,146 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
         listeners.delete(listener)
       }
     },
-    project: (definition) => projectionCache.project(definition, publishedEvents()),
-    fold: (definition) => projectionCache.fold(definition, publishedEvents()),
+    project: (definition) =>
+      projectionCache.project(definition, confirmedEvents(), pendingEvents, pendingVersion),
+    fold: (definition) =>
+      projectionCache.fold(definition, confirmedEvents(), pendingEvents, pendingVersion),
+    pending: () => pendingEvents,
     flush: notify.flush,
     sync: () =>
       sync().then(() => {
         notify.flush()
       }),
-    commit: (event) =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const res = yield* Effect.tryPromise({
-            try: (signal) =>
-              fetchFn(`${endpoint}/runs/${encodeURIComponent(options.storeId)}/events`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: stringifyJson(Array.isArray(event) ? { events: event } : event),
-                signal,
-              }),
-            catch: (cause) => new LoomsStoreError('Run signal failed', cause),
-          })
+    commit: (event, commitOptions) => {
+      const inputs: readonly EventInput[] = Array.isArray(event) ? event : [event]
+      const optimistic = commitOptions?.optimistic ?? options.optimistic ?? false
 
-          if (!res.ok) {
-            const text = yield* Effect.promise(() => res.text())
-            return yield* new LoomsStoreError(`Run signal failed: ${res.status} ${text}`)
-          }
+      const key = commitOptions?.idempotencyKey ?? (optimistic ? createEventId() : undefined)
+
+      let shown: PendingCommit | undefined
+
+      if (optimistic && key !== undefined && inputs.length > 0) {
+        const rootThreadId = tables.runs.get(options.storeId)?.rootThreadId ?? null
+
+        shown = {
+          key,
+          settle: undefined,
+          events: inputs.map((input) => {
+            pendingSeq += 1
+
+            return createEvent(
+              options.storeId,
+              {
+                ...input,
+                threadId: input.threadId === undefined ? rootThreadId : input.threadId,
+                origin: input.origin ?? { type: 'external' },
+                idempotencyKey: input.idempotencyKey ?? key,
+              },
+              { seq: pendingSeq },
+            )
+          }),
+        }
+
+        pendingCommits.push(shown)
+        setPending()
+        notify.schedule()
+        notify.flush()
+      }
+
+      const post = (signal: AbortSignal): Promise<void> => {
+        if (commitOptions?.send) {
+          return commitOptions.send({ events: inputs, idempotencyKey: key, signal })
+        }
+
+        const body =
+          key === undefined
+            ? Array.isArray(event)
+              ? { events: inputs }
+              : event
+            : { events: inputs, idempotencyKey: key }
+
+        // The log is what the UI renders, so the answer is wanted as soon as the events are
+        // committed, not once the run has finished acting on them.
+        return fetchFn(
+          `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?respond=async`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: stringifyJson(body),
+            signal,
+          },
+        ).then((res) =>
+          res.ok
+            ? undefined
+            : res.text().then((text) => {
+                throw new LoomsStoreError(`Run signal failed: ${res.status} ${text}`)
+              }),
+        )
+      }
+
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          yield* Effect.tryPromise({
+            try: post,
+            catch: (cause) =>
+              cause instanceof LoomsStoreError
+                ? cause
+                : new LoomsStoreError('Run signal failed', cause),
+          })
 
           if (!live) {
             yield* Effect.promise(sync)
           }
 
-          notify.flush()
           return undefined
-        }),
-      ),
+        }).pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              // Roll back: the events were never recorded.
+              if (shown && dropPending(shown)) {
+                notify.schedule()
+                notify.flush()
+              }
+            }),
+          ),
+        ),
+      ).then(() => {
+        const accepted = shown
+
+        if (accepted && pendingCommits.includes(accepted)) {
+          // The host took the commit, so its events are on their way. If none ever carries this
+          // key (the host recorded something else, or nothing), stop showing ours.
+          accepted.settle = Effect.runFork(
+            Effect.sleep(PENDING_SETTLE_MS).pipe(
+              Effect.andThen(Effect.promise(sync)),
+              Effect.andThen(
+                Effect.sync(() => {
+                  accepted.settle = undefined
+
+                  if (dropPending(accepted)) {
+                    notify.schedule()
+                  }
+                }),
+              ),
+            ),
+          )
+        }
+
+        notify.flush()
+      })
+    },
     dispose: () => {
       disposed = true
+      cancelQuiet()
+
+      for (const commit of pendingCommits.splice(0)) {
+        if (commit.settle !== undefined) {
+          Effect.runFork(Fiber.interrupt(commit.settle))
+        }
+      }
+
+      pendingEvents = Object.freeze([])
+      visibleByThread.clear()
       notify.cancel()
       stopLive()
       listeners.clear()

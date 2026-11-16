@@ -15,6 +15,7 @@ import {
   type EventInput,
   type EventStore,
   type JsonValue,
+  type RunState,
 } from '@looms/core'
 
 import type { LoomsRuntime } from '../../runtime'
@@ -24,6 +25,7 @@ import {
   acceptsEventStream,
   EventInputBodySchema,
   extractIdempotencyKey,
+  prefersAsyncResponse,
   provideStore,
   readIntegerQuery,
   readJson,
@@ -44,6 +46,19 @@ const StartRunBodySchema = Schema.Struct({
   attributes: Schema.optional(RunAttributesSchema),
   secrets: Schema.optional(SecretContextSchema),
 })
+
+/**
+ * A signal that asks for an async response is answered `202` once its events are committed. The
+ * state is the one they were committed against; the run's progress arrives on the event stream.
+ */
+function signalResponse(runId: string, state: RunState, deferred: boolean): Response {
+  return deferred
+    ? Response.json(
+        { runId, state },
+        { status: 202, headers: { 'preference-applied': 'respond-async' } },
+      )
+    : Response.json({ runId, state })
+}
 
 const SignalBodySchema = Schema.Struct({
   events: Schema.optional(Schema.Array(EventInputBodySchema)),
@@ -350,12 +365,17 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
 
           const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
 
+          const deferred = prefersAsyncResponse(req)
+
           const state = yield* provideStore(
-            runtime.signal(params.runId, sentBy(events, actorId), { idempotencyKey }),
+            runtime.signal(params.runId, sentBy(events, actorId), {
+              idempotencyKey,
+              wake: deferred ? 'schedule' : 'await',
+            }),
             store,
           )
 
-          return Response.json({ runId: params.runId, state })
+          return signalResponse(params.runId, state, deferred)
         }),
     }),
     route({
@@ -382,12 +402,17 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
           const events = yield* runSignal(definition, body.input ?? null, body.threadId)
           const idempotencyKey = extractIdempotencyKey(req, body.idempotencyKey)
 
+          const deferred = prefersAsyncResponse(req)
+
           const state = yield* provideStore(
-            runtime.signal(params.runId, sentBy(events, actorId), { idempotencyKey }),
+            runtime.signal(params.runId, sentBy(events, actorId), {
+              idempotencyKey,
+              wake: deferred ? 'schedule' : 'await',
+            }),
             store,
           )
 
-          return Response.json({ runId: params.runId, state })
+          return signalResponse(params.runId, state, deferred)
         }) as Effect.Effect<Response, Error>,
     }),
     route({

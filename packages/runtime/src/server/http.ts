@@ -85,6 +85,21 @@ export function extractIdempotencyKey(req: Request, bodyKey?: string): string | 
   )
 }
 
+/**
+ * Whether the caller wants an answer once the write is committed, not once it has run. Asked with
+ * `Prefer: respond-async` (RFC 7240), or with `?respond=async` where a custom header would need
+ * a cross-origin allowance.
+ */
+export function prefersAsyncResponse(req: Request): boolean {
+  if (new URL(req.url).searchParams.get('respond') === 'async') {
+    return true
+  }
+
+  return (req.headers.get('prefer') ?? '')
+    .split(',')
+    .some((value) => value.split(';', 1)[0]?.trim().toLowerCase() === 'respond-async')
+}
+
 export function acceptsEventStream(req: Request): boolean {
   return (req.headers.get('accept') ?? '')
     .split(',')

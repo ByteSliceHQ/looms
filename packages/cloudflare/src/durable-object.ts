@@ -21,6 +21,7 @@ import {
   type Authorize,
   type EffectWorker,
   type LoomsRuntime,
+  type RunSignalOptions,
   type StartResult,
   type StartRunArgs,
 } from '@looms/runtime'
@@ -215,17 +216,11 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
     return this.getCell().then((cell) => cell.startRun(args))
   }
 
-  signal(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState> {
+  signal(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState> {
     return this.getCell().then((cell) => cell.signal(events, options))
   }
 
-  accept(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState> {
+  accept(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState> {
     return this.getCell().then((cell) => cell.accept(events, options))
   }
 
@@ -295,14 +290,8 @@ export interface DurableObjectRunStub {
   launch(args: LaunchRunArgs): Promise<void>
   status(): Promise<RunStatusSnapshot | null>
   startRun(args: StartRunArgs): Promise<StartResult>
-  signal(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState>
-  accept(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState>
+  signal(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
+  accept(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
   cancel(): Promise<void>
   getRun(): Promise<RunState>
   deleteTerminalRunStorage?(options?: DeleteTerminalRunStorageOptions): Promise<void>

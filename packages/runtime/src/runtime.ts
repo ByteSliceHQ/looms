@@ -93,6 +93,7 @@ export type {
   EffectWorkerDeadlines,
   EffectWorkerTask,
   LoomsRuntime,
+  RunSignalOptions,
   RunOperationalStatus,
   StartResult,
   StartRunArgs,
@@ -507,9 +508,20 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   const appendAndWake: LoomsRuntime<TModules>['accept'] = (runId, events, signalOpts) =>
     withRunIngress(runId, signalAdmitted(runId, events, signalOpts)).pipe(
       Effect.flatMap((state) => {
-        if (signalOpts?.coalesce && executionContexts.get(runId).waking) {
+        const waking = executionContexts.get(runId).waking
+        const scheduled = signalOpts?.wake === 'schedule'
+
+        if ((signalOpts?.coalesce || scheduled) && waking) {
           requestWakeAgain(executionContexts.get(runId))
           return Effect.succeed(state)
+        }
+
+        if (scheduled) {
+          // The caller is answered now. The scheduler owns the wake, so it survives the request.
+          return Clock.currentTimeMillis.pipe(
+            Effect.flatMap((now) => scheduler.schedule(runId, now)),
+            Effect.as(state),
+          )
         }
 
         return runtime.wake(runId)

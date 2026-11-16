@@ -1,5 +1,7 @@
 export {
   createLoomsStore,
+  isPendingEvent,
+  type CommitOptions,
   type LoomsClientStore,
   type LoomsClientStoreOptions,
   type LoomsConnectionStatus,

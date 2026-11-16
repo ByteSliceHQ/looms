@@ -29,6 +29,7 @@ import {
 import { defineLiveFold, foldLive, type LiveFoldDefinition } from './derived'
 import {
   createLoomsStore,
+  isPendingEvent,
   type CoalesceOption,
   type LoomsClientStore,
   type LoomsConnectionStatus,
@@ -39,20 +40,28 @@ export interface LoomsProviderProps {
   endpoint?: string
   coalesce?: CoalesceOption
   transport?: SubscriptionTransport
+  /**
+   * How long a run's store stays connected and in memory after the last component using it
+   * unmounts. Returning to the run within that time shows it at once, with no download. Defaults
+   * to five seconds.
+   */
+  retainMs?: number
 }
 
 interface ProviderContextValue {
   endpoint: string
   coalesce?: CoalesceOption
   transport?: SubscriptionTransport
+  retainMs?: number
 }
 
 const LoomsContext = createContext<ProviderContextValue>({ endpoint: '' })
-const GRACE_MS = 5_000
+const DEFAULT_RETAIN_MS = 5_000
 
 interface RegistryEntry {
   store: LoomsClientStore
   refs: number
+  retainMs: number
   disposal: Fiber.Fiber<void> | undefined
 }
 
@@ -65,6 +74,9 @@ interface StoreIdentity {
   readonly transport?: SubscriptionTransport
   readonly threadId?: string
   readonly includeEphemeral?: boolean
+  /** Only read when the store is created; a store already open keeps the cursor it started at. */
+  readonly fromSeq?: number
+  readonly retainMs?: number
 }
 
 function registryKey(runId: string, identity: StoreIdentity): string {
@@ -88,9 +100,9 @@ function disposeEntry(key: string): void {
   registry.delete(key)
 }
 
-function scheduleDisposal(key: string): Fiber.Fiber<void> {
+function scheduleDisposal(key: string, retainMs: number): Fiber.Fiber<void> {
   return Effect.runFork(
-    Effect.sleep(GRACE_MS).pipe(Effect.andThen(Effect.sync(() => disposeEntry(key)))),
+    Effect.sleep(retainMs).pipe(Effect.andThen(Effect.sync(() => disposeEntry(key)))),
   )
 }
 
@@ -110,12 +122,17 @@ function peekStore(runId: string, identity: StoreIdentity): LoomsClientStore {
     transport: identity.transport,
     threadId: identity.threadId,
     includeEphemeral: identity.includeEphemeral,
+    fromSeq: identity.fromSeq,
   })
+
+  const retainMs = Math.max(0, identity.retainMs ?? DEFAULT_RETAIN_MS)
 
   registry.set(key, {
     store,
     refs: 0,
-    disposal: scheduleDisposal(key),
+    retainMs,
+    // A store that is peeked at and never mounted is not kept for the full retention.
+    disposal: scheduleDisposal(key, Math.min(retainMs, DEFAULT_RETAIN_MS)),
   })
 
   return store
@@ -149,7 +166,7 @@ function releaseStore(runId: string, identity: StoreIdentity): void {
   entry.refs = Math.max(0, entry.refs - 1)
 
   if (entry.refs === 0 && entry.disposal === undefined) {
-    entry.disposal = scheduleDisposal(key)
+    entry.disposal = scheduleDisposal(key, entry.retainMs)
   }
 }
 
@@ -159,8 +176,13 @@ export function LoomsProvider({
   endpoint = '',
   coalesce,
   transport,
+  retainMs,
 }: LoomsProviderProps) {
-  const value = useMemo(() => ({ endpoint, coalesce, transport }), [endpoint, coalesce, transport])
+  const value = useMemo(
+    () => ({ endpoint, coalesce, transport, retainMs }),
+    [endpoint, coalesce, transport, retainMs],
+  )
+
   return createElement(LoomsContext.Provider, { value, children })
 }
 
@@ -171,6 +193,9 @@ export interface UseRunStoreOptions {
   transport?: SubscriptionTransport
   threadId?: string
   includeEphemeral?: boolean
+  /** See `LoomsClientStoreOptions.fromSeq`. Read once, when the store is first created. */
+  fromSeq?: number
+  retainMs?: number
 }
 
 /**
@@ -186,6 +211,8 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
   const transport = options?.transport ?? context.transport
   const threadId = options?.threadId
   const includeEphemeral = options?.includeEphemeral
+  const fromSeq = options?.fromSeq
+  const retainMs = options?.retainMs ?? context.retainMs
 
   const identity = {
     endpoint,
@@ -194,6 +221,8 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
     transport,
     threadId,
     includeEphemeral,
+    fromSeq,
+    retainMs,
   }
 
   const store = peekStore(runId, identity)
@@ -268,6 +297,8 @@ export interface RunSummary {
   readonly launchedBy: RunLaunchSource | undefined
   readonly attributes: RunAttributes
   readonly connection: LoomsConnectionStatus
+  /** False while the store is still catching up to the log, when empty state means "loading". */
+  readonly synced: boolean
 }
 
 function shallowEqualSummary(a: RunSummary, b: RunSummary): boolean {
@@ -279,7 +310,8 @@ function shallowEqualSummary(a: RunSummary, b: RunSummary): boolean {
     a.startedAt === b.startedAt &&
     a.launchedBy === b.launchedBy &&
     sameStringRecord(a.attributes, b.attributes) &&
-    a.connection === b.connection
+    a.connection === b.connection &&
+    a.synced === b.synced
   )
 }
 
@@ -302,6 +334,7 @@ export function useRunSummary<TEvent extends AnyEventEnvelope = RegisteredEvent>
       launchedBy: run?.launchedBy ?? undefined,
       attributes: run?.attributes ?? {},
       connection: s.status(),
+      synced: s.synced(),
     }
   }, [])
 
@@ -365,10 +398,11 @@ export function useLiveFold<S, TEvent extends AnyEventEnvelope = RegisteredEvent
   return useStoreSnapshot(store, getSnapshot)
 }
 
-export { createLoomsStore }
+export { createLoomsStore, isPendingEvent }
 export { defineLiveFold, foldLive }
 export type {
   LoomsClientStore,
+  CommitOptions,
   LoomsClientStoreOptions,
   LoomsConnectionStatus,
   LoomsStoreQuery,

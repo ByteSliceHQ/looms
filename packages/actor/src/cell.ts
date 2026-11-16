@@ -21,6 +21,7 @@ import {
   type Authorize,
   type EffectWorker,
   type LoomsRuntime,
+  type RunSignalOptions,
   type StartResult,
   type StartRunArgs,
   type WakeScheduler,
@@ -74,15 +75,9 @@ export interface ActorCell<
   launch(args: LaunchRunArgs): Promise<void>
   status(): Promise<RunStatusSnapshot | null>
   startRun(args: StartRunArgs): Promise<StartResult>
-  signal(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState>
+  signal(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
   /** Append runtime-originated events. Not the client signal path. */
-  accept(
-    events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
-  ): Promise<RunState>
+  accept(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
   cancel(): Promise<void>
   getRun(): Promise<RunState>
 }
