@@ -1,5 +1,15 @@
 # @swirls/looms
 
+## 0.15.0
+
+### Minor Changes
+
+- 890bacc: `store.commit` in `@swirls/looms/react` can show its events before the host confirms them. Pass `{ optimistic: true }`, or set `optimistic` on `createLoomsStore`: the events are folded into projections and live folds at once, after every confirmed event, replaced by the host's copies when those arrive, and removed if the commit fails, in which case `commit` rejects. `store.pending()` lists the events still waiting and `isPendingEvent` identifies one. `commit` also takes an `idempotencyKey` and a `send` function for writes that go through a route of your own. Events decoded from the wire now keep their `idempotencyKey`, which is how a pending event is matched to its confirmed one.
+
+  The store also reports when it has caught up: `store.synced()` and `useRunSummary(store).synced` are false until it holds everything the log had when it connected. `LoomsProvider` and `useRunStore` take `retainMs`, how long a store stays connected after its last component unmounts, and `useRunStore` and `createLoomsStore` take `fromSeq` to follow a run from a later point in its log.
+
+- 890bacc: A signal can be answered as soon as its events are committed, without waiting for the run to finish acting on them. Pass `{ wake: 'schedule' }` to `signal` on the runtime, `createLooms`, an actor host or a Durable Object stub: it resolves once the events are on the log and leaves the wake to the scheduler, as `launchRun` does. Over HTTP, `POST /runs/:id/events` and `POST /runs/:id/signals/:namespace/:name` do the same when sent with `Prefer: respond-async` or `?respond=async`, and answer `202`. The `state` in that answer is the one the events were committed against; follow the event stream for what the run does next. `store.commit` in `@swirls/looms/react` now asks for this, so it resolves when the event is committed and no longer stays open for the length of an agent turn.
+
 ## 0.14.0
 
 ### Minor Changes
