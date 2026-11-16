@@ -104,24 +104,67 @@ function advanceCache<D extends { readonly initialState: S }, S, E>(
   return state
 }
 
+type OverlayEntry<S> = { base: S; pending: number; state: S }
+
+/**
+ * Folds events not yet confirmed on top of the confirmed state. The confirmed fold stays
+ * incremental; the overlay is refolded only when the confirmed state or the pending set changes.
+ */
+function overlay<D extends object, S, E>(
+  cache: WeakMap<D, OverlayEntry<S>>,
+  definition: D,
+  base: S,
+  pending: readonly E[],
+  pendingVersion: number,
+  compute: (definition: D, events: readonly E[], from: S) => S,
+): S {
+  if (pending.length === 0) {
+    return base
+  }
+
+  const cached = cache.get(definition)
+
+  if (cached && cached.base === base && cached.pending === pendingVersion) {
+    return cached.state
+  }
+
+  const state = compute(definition, pending, base)
+  cache.set(definition, { base, pending: pendingVersion, state })
+  return state
+}
+
 export class ProjectionCache {
   private projectionCache = new WeakMap<ProjectionDefinition<any>, CacheEntry<any>>()
   private foldCache = new WeakMap<LiveFoldDefinition<any, any>, CacheEntry<any>>()
+  private projectionOverlay = new WeakMap<ProjectionDefinition<any>, OverlayEntry<any>>()
+  private foldOverlay = new WeakMap<LiveFoldDefinition<any, any>, OverlayEntry<any>>()
 
-  project<S>(definition: ProjectionDefinition<S>, events: readonly EventEnvelope[]): S {
-    return advanceCache(this.projectionCache, definition, events, project)
+  /** `pending` are events shown before the host confirms them; they fold after `events`. */
+  project<S>(
+    definition: ProjectionDefinition<S>,
+    events: readonly EventEnvelope[],
+    pending: readonly EventEnvelope[] = [],
+    pendingVersion = 0,
+  ): S {
+    const base = advanceCache(this.projectionCache, definition, events, project)
+    return overlay(this.projectionOverlay, definition, base, pending, pendingVersion, project)
   }
 
   /** A retry can supersede events already folded, so a batch containing one refolds from scratch. */
   fold<S, TEvent extends AnyEventEnvelope = RegisteredEvent>(
     definition: LiveFoldDefinition<S, TEvent>,
     events: readonly TEvent[],
+    pending: readonly TEvent[] = [],
+    pendingVersion = 0,
   ): S {
-    return advanceCache(this.foldCache, definition, events, foldFrom, hasNoRetries)
+    const base = advanceCache(this.foldCache, definition, events, foldFrom, hasNoRetries)
+    return overlay(this.foldOverlay, definition, base, pending, pendingVersion, foldFrom)
   }
 
   clear(): void {
     this.projectionCache = new WeakMap()
     this.foldCache = new WeakMap()
+    this.projectionOverlay = new WeakMap()
+    this.foldOverlay = new WeakMap()
   }
 }

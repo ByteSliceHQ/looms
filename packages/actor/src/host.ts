@@ -16,6 +16,7 @@ import {
   createTimeoutScheduler,
   isLoomsApiPath,
   type Authorize,
+  type RunSignalOptions,
   type StartResult,
   type StartRunArgs,
 } from '@looms/runtime'
@@ -85,7 +86,7 @@ export interface LocalActorHost<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: RunSignalOptions,
   ): Promise<RunState>
   getRun(runId: string): Promise<RunState>
   fetch(req: Request): Promise<Response | null>

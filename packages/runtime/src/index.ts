@@ -14,6 +14,7 @@ export {
   type EffectWorkerDeadlines,
   type EffectWorkerTask,
   type LoomsRuntime,
+  type RunSignalOptions,
   type RunOperationalStatus,
   type RegisteredDefinition,
   type StartRunArgs,

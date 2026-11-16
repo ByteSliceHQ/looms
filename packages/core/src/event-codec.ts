@@ -107,6 +107,10 @@ export function decodeLoomsEvent(raw: EventWireInput, runId: string): EventEnvel
         effectId: 'effectId' in raw && Predicate.isString(raw.effectId) ? raw.effectId : null,
         ephemeral,
         origin,
+        idempotencyKey:
+          'idempotencyKey' in raw && Predicate.isString(raw.idempotencyKey)
+            ? raw.idempotencyKey
+            : null,
       },
       { seq },
     )

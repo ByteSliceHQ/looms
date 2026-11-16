@@ -217,6 +217,20 @@ export interface RunOperationalStatus {
   }>
 }
 
+/** How a signal's caller learns the run moved on. */
+export interface RunSignalOptions {
+  idempotencyKey?: string
+  /** When the run is already waking, ask that wake to continue and return without joining it. */
+  coalesce?: boolean
+  /**
+   * `await` (the default) resolves once the run parks, so the returned state includes whatever the
+   * signal set in motion. `schedule` resolves as soon as the events are committed and leaves the
+   * wake to the scheduler, as `launchRun` does. The returned state is the one the events were
+   * committed against.
+   */
+  wake?: 'await' | 'schedule'
+}
+
 export interface LoomsRuntime<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
@@ -240,7 +254,7 @@ export interface LoomsRuntime<
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
+    options?: RunSignalOptions,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   /**
    * Append events the runtime itself produced for another run. Unlike `signal`, this does not
@@ -249,7 +263,7 @@ export interface LoomsRuntime<
   accept(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string; coalesce?: boolean },
+    options?: RunSignalOptions,
   ): Effect.Effect<RunState, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   wake(runId: string): Effect.Effect<RunState, WakeError, EventStoreTag>
   getRun(

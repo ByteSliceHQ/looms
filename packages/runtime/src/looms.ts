@@ -33,6 +33,7 @@ import {
   createRuntime,
   type EffectWorker,
   type LoomsRuntime,
+  type RunSignalOptions,
   type RunOperationalStatus,
   type StartRunArgs,
   type WakeScheduler,
@@ -169,7 +170,7 @@ export interface Looms<Fields extends RunAttributeFields = RunAttributeFields> {
   signal(
     runId: string,
     events: ReadonlyArray<EventInput>,
-    options?: { idempotencyKey?: string },
+    options?: RunSignalOptions,
   ): Promise<RunState>
   wake(runId: string): Promise<RunState>
   rescanTimers(): Promise<number>
