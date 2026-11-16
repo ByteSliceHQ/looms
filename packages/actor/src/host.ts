@@ -19,6 +19,7 @@ import {
   type RunSignalOptions,
   type StartResult,
   type StartRunArgs,
+  type RuntimeObserver,
 } from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
@@ -61,6 +62,8 @@ export interface LocalActorHostOptions<
   readonly definitionResolver?: DefinitionResolver
   /** Declared run attributes. See `CreateRuntimeOptions`. */
   readonly attributes?: RunAttributeFields
+  /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
+  readonly observer?: RuntimeObserver
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -146,6 +149,7 @@ export function createLocalActorHost<
           modules: options.modules,
           definitionResolver: options.definitionResolver,
           attributes: options.attributes,
+          observer: options.observer,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,
