@@ -28,6 +28,7 @@ export { emptyTables, type MaterializedTables, type RunRow, type ThreadRow } fro
 export type { LoomsRegister, RegisteredEvent, AnyEventEnvelope } from '@looms/core'
 export {
   LoomsProvider,
+  preloadRunStore,
   useRunStore,
   useProjection,
   useRunSelector,
@@ -39,6 +40,8 @@ export {
   useLatestEvent,
   useLiveFold,
   type LoomsProviderProps,
+  type PreloadRunStoreOptions,
+  type RunStoreOptions,
   type UseRunStoreOptions,
   type RunSummary,
 } from './react'
