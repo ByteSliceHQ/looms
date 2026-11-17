@@ -32,6 +32,7 @@ import type { RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
 import { planAttemptFailure } from './retry-policy'
 import type { RunExecutionContext } from './run-execution-context'
+import type { SecretAttempt, SecretChild } from './run-secrets'
 
 export interface LocalEffectExecutorOptions {
   readonly registry: ComposedRegistry
@@ -44,11 +45,16 @@ export interface LocalEffectExecutorOptions {
   readonly launcher: RunLauncher
 }
 
-/** Run-level values every effect sees. Runs the effects launch inherit them unless the launch overrides them. */
+/**
+ * Run-level values every effect sees. Runs the effects launch inherit the attributes and trace
+ * unless the launch overrides them. Secrets are never inherited: a launched run is supplied with
+ * what the launch passes, or else with what the secret provider decides.
+ */
 export interface RunContext {
   readonly correlationId: string
   readonly attributes: RunAttributes
-  readonly secrets: SecretContext
+  readonly secretsFor: (attempt: SecretAttempt) => Effect.Effect<SecretContext, Error>
+  readonly secretsForChild: (child: SecretChild) => Effect.Effect<SecretContext, Error>
   readonly trace: TraceContext | null
 }
 
@@ -100,33 +106,46 @@ function launcherFor(
   return {
     launch: (args) => {
       const targetRunId = args.runId ?? createRunId()
+      const attributes = args.attributes ?? context.attributes
 
-      return launcher
-        .launch({
-          ...args,
-          runId: targetRunId,
-          launchedBy,
-          correlationId: context.correlationId,
-          attributes: args.attributes ?? context.attributes,
-          secrets: args.secrets ?? context.secrets,
-          trace: args.trace ?? context.trace ?? undefined,
-        })
-        .pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              launched.push(
-                createEvent(runId, {
-                  type: 'runtime.run.launched',
-                  payload: runLaunchedPayload(args, targetRunId, item.effectId),
-                  threadId: item.threadId,
-                  causationId: item.causingEventId,
-                  correlationId: context.correlationId,
-                  origin: { type: 'thread', threadId: item.threadId },
-                }),
-              )
-            }),
-          ),
-        )
+      const supplied =
+        args.secrets === undefined
+          ? context.secretsForChild({
+              runId: targetRunId,
+              relation: 'launch',
+              kind: args.kind,
+              definitionName: args.definitionName,
+              attributes,
+            })
+          : Effect.succeed(args.secrets)
+
+      return supplied.pipe(
+        Effect.flatMap((secrets) =>
+          launcher.launch({
+            ...args,
+            runId: targetRunId,
+            launchedBy,
+            correlationId: context.correlationId,
+            attributes,
+            secrets,
+            trace: args.trace ?? context.trace ?? undefined,
+          }),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            launched.push(
+              createEvent(runId, {
+                type: 'runtime.run.launched',
+                payload: runLaunchedPayload(args, targetRunId, item.effectId),
+                threadId: item.threadId,
+                causationId: item.causingEventId,
+                correlationId: context.correlationId,
+                origin: { type: 'thread', threadId: item.threadId },
+              }),
+            )
+          }),
+        ),
+      )
     },
     status: launcher.status,
     signal: (targetRunId, events, options) => launcher.signal(targetRunId, events, options),
@@ -204,7 +223,12 @@ export function executeLocalEffects(
             attempt: attemptNumber,
             now: input.now,
             attributes: input.context.attributes,
-            secrets: input.context.secrets,
+            secrets: input.context.secretsFor({
+              effectId: item.effectId,
+              attempt: attemptNumber,
+              type: item.effect.type,
+              threadId: item.threadId,
+            }),
             trace: input.context.trace,
             retry,
           })
@@ -258,7 +282,7 @@ export function executeLocalEffects(
               threadId: item.threadId,
               causingEventId: item.causingEventId,
               attributes: input.context.attributes,
-              secrets: input.context.secrets,
+              secrets: admission.secrets,
               trace: input.context.trace,
               signal: controller.signal,
               heartbeat: () => Promise.resolve(),

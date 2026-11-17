@@ -193,18 +193,31 @@ function runAttempt(
           return Effect.succeed(result.secrets)
         }
 
+        // The host could not produce the secrets this time. The attempt fails under its retry
+        // policy, so a later attempt can ask again.
+        if (result.status === 'unavailable') {
+          return Effect.fail(
+            new QueueTaskError({ message: 'secrets are unavailable for this attempt' }),
+          )
+        }
+
         controller.abort()
 
-        return Effect.fail(new CallbackError({ message: `the attempt is ${result.status}` }))
+        return Effect.fail(
+          new QueueTaskError({
+            message: `the attempt is ${result.status}`,
+            nonRetryable: true,
+          }),
+        )
       }),
+      Effect.catchTag('CallbackError', (error) =>
+        Effect.fail(new QueueTaskError({ message: error.message, nonRetryable: true })),
+      ),
     )
 
   return taskInput(task, options.blobs).pipe(
     Effect.flatMap((input) =>
       loadSecrets().pipe(
-        Effect.mapError(
-          (error) => new QueueTaskError({ message: error.message, nonRetryable: true }),
-        ),
         Effect.flatMap((secrets) => {
           const ctx: WorkerEffectContext = {
             placement: 'worker',

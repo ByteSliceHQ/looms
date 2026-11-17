@@ -206,7 +206,11 @@ describe('run attributes and secret context', () => {
   })
 
   test('a different attribute or secret context conflicts without revealing the secret', async () => {
-    const looms = createLooms({ modules: [contextModule] })
+    // The run waits on a worker, so it still holds its secrets when the start is retried.
+    const looms = createLooms({
+      modules: [workerContextModule],
+      worker: { handles: ['context.seen'], dispatch: () => undefined },
+    })
 
     await looms.start(context, null, {
       runId: 'run_once',
@@ -335,7 +339,7 @@ describe('run attributes and secret context', () => {
     await looms.stop()
   })
 
-  test('a launched run and a fork inherit attributes and secrets without logging them', async () => {
+  test('a launched run and a fork inherit attributes and are supplied with no secrets', async () => {
     const looms = createLooms({ modules: [contextModule] })
 
     await looms.start({ kind: 'parent', name: 'parent', version: 'v1' }, null, {
@@ -362,9 +366,7 @@ describe('run attributes and secret context', () => {
     const store = await looms.store
 
     if (store.runSecrets) {
-      expect(await Effect.runPromise(store.runSecrets.get('run_parent-child'))).toEqual({
-        token: SECRET,
-      })
+      expect(await Effect.runPromise(store.runSecrets.get('run_parent-child'))).toEqual({})
     }
 
     const finished = Date.now() + 5_000
@@ -382,8 +384,19 @@ describe('run attributes and secret context', () => {
     expect(containsSecret(JSON.stringify(await looms.getEvents('run_fork')))).toBe(false)
 
     if (store.runSecrets) {
-      expect(hasEntries(await Effect.runPromise(store.runSecrets.get('run_fork')))).toBe(true)
-      expect(await Effect.runPromise(store.runSecrets.get('run_fork'))).toEqual({ token: SECRET })
+      // The parent finished, so what it held is gone and there is nothing to copy.
+      // The wake that finishes a run deletes them just after the final state becomes readable.
+      const released = Date.now() + 5_000
+
+      while (hasEntries(await Effect.runPromise(store.runSecrets.get('run_parent')))) {
+        if (Date.now() > released) {
+          throw new Error('the parent run still holds its secrets')
+        }
+
+        await Bun.sleep(5)
+      }
+
+      expect(hasEntries(await Effect.runPromise(store.runSecrets.get('run_fork')))).toBe(false)
     }
 
     await looms.stop()

@@ -25,6 +25,8 @@ import {
   type StartResult,
   type StartRunArgs,
   type RuntimeObserver,
+  type SecretProvider,
+  type SecretSealer,
 } from '@looms/runtime'
 
 import { durableObjectAlarms, type DurableObjectAlarms } from './alarm-scheduler'
@@ -44,6 +46,10 @@ export interface LoomsDurableObjectConfig {
   readonly attributes?: RunAttributeFields
   /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
   readonly observer?: RuntimeObserver
+  /** Decides what a run holds and what each attempt receives. See `CreateRuntimeOptions`. */
+  readonly secretProvider?: SecretProvider
+  /** Encrypts what a run holds before it is stored. See `secretSealer`. */
+  readonly secretSealer?: SecretSealer
   readonly projectors?: readonly Projector[]
   /** Content-addressed store for event and snapshot JSON over the inline byte limits. */
   readonly blobs?: BlobStore
@@ -140,6 +146,8 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         definitionResolver: config.definitionResolver,
         attributes: config.attributes,
         observer: config.observer,
+        secretProvider: config.secretProvider,
+        secretSealer: config.secretSealer,
         snapshotEvery: config.snapshotEvery,
         maxWakeIterations: config.maxWakeIterations,
         livenessLeaseMs: config.livenessLeaseMs,

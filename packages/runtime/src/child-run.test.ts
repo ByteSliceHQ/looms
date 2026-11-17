@@ -83,7 +83,7 @@ describe('child runs', () => {
     await looms.stop()
   })
 
-  test('a child run inherits the parent run attributes and secrets', async () => {
+  test('a child run inherits the parent run attributes and not its secrets', async () => {
     const looms = createLooms({ modules: [workflow({ definitions: [child, parent] })] })
 
     const started = await looms.start(
@@ -112,7 +112,7 @@ describe('child runs', () => {
 
     expect(
       await Effect.runPromise(store.runSecrets?.get(childRunId) ?? Effect.succeed({})),
-    ).toEqual({ token: 'parent-secret' })
+    ).toEqual({})
 
     await looms.stop()
   })

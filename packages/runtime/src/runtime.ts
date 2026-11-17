@@ -22,10 +22,7 @@ import {
   project,
   readTraceContext,
   replayTo,
-  sameStringRecord,
   summarizeRun,
-  type EventStore,
-  type SecretContext,
   type AnyRuntimeModule,
   type EventInput,
   type EventOrigin,
@@ -45,7 +42,6 @@ import {
   RunNotFoundError,
   RunTerminalError,
   RuntimeExecutionError,
-  SecretContextConflictError,
   StartRunConflictError,
 } from './errors'
 import {
@@ -62,6 +58,7 @@ import { createRunIngress } from './ingress'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import { createRuntimeRepository, type CommitPlan } from './repository'
 import { requestWakeAgain, RunExecutionContexts } from './run-execution-context'
+import { createRunSecrets, SEALED_SECRETS_KEY } from './run-secrets'
 import { assertSameDurableStart } from './run-start'
 import { createWakeEngine } from './wake-engine'
 import { createTimeoutScheduler, type WakeScheduler } from './wake-scheduler'
@@ -171,38 +168,6 @@ function startedPayload(input: StartedPayloadInput): RunStartedPayload {
   return payload
 }
 
-function reconcileRunSecrets(
-  store: EventStore,
-  runId: string,
-  requested: SecretContext | undefined,
-) {
-  const next = requested ?? {}
-
-  return Effect.gen(function* () {
-    const stored = store.runSecrets
-
-    if (!stored) {
-      if (hasEntries(next)) {
-        return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
-      }
-
-      return yield* Effect.void
-    }
-
-    const current = yield* stored.get(runId)
-
-    if (sameStringRecord(current, next) || requested === undefined) {
-      return yield* Effect.void
-    }
-
-    if (!hasEntries(current)) {
-      return yield* stored.put(runId, next)
-    }
-
-    return yield* new SecretContextConflictError(runId)
-  })
-}
-
 export function createRuntime<const TModules extends readonly AnyRuntimeModule[]>(
   options: CreateRuntimeOptions<TModules>,
 ): LoomsRuntime<TModules> {
@@ -211,6 +176,12 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
   }
 
   const registry = composeModules(options.modules)
+
+  const runSecrets = createRunSecrets({
+    provider: options.secretProvider,
+    sealer: options.secretSealer,
+    observer: options.observer,
+  })
 
   assertWorkerConfigured(registry, options.worker)
   assertWorkerClaimsExplicit(registry, options.worker)
@@ -414,6 +385,10 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
         return yield* new RuntimeExecutionError('This event store cannot persist a secret context')
       }
 
+      if (Object.hasOwn(args.secrets ?? {}, SEALED_SECRETS_KEY)) {
+        return yield* new RuntimeExecutionError(`A secret cannot be named "${SEALED_SECRETS_KEY}"`)
+      }
+
       const committed = yield* commit(
         store,
         runId,
@@ -455,14 +430,14 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               ),
       )
 
-      yield* reconcileRunSecrets(store, runId, args.secrets)
-
       if (!committed.append?.deduplicated) {
+        yield* runSecrets.provision(store, runId, committed.value.state, args.secrets)
         return committed.value
       }
 
       const durable = yield* loadCursor(store, runId)
       const rootThreadId = yield* assertSameDurableStart(runId, durable.state, requestedIdentity)
+      yield* runSecrets.provision(store, runId, durable.state, args.secrets)
       return { threadId: rootThreadId, state: durable.state }
     })
 
@@ -484,6 +459,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     definitionResolver,
     scheduler: () => scheduler,
     launcher: () => launcher,
+    runSecrets,
   })
 
   const workerCallbacks = createWorkerCallbacks({
@@ -492,6 +468,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     withRunIngress,
     observer: options.observer,
     wake: wakeEngine,
+    runSecrets,
   })
 
   const cancellation = createCancellation({
@@ -766,13 +743,21 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               : Effect.fail(new ForkConflictError(runId, sourceRunId))
           })
 
-          const parentSecrets = store.runSecrets ? yield* store.runSecrets.get(sourceRunId) : {}
+          // The source has finished, so it holds nothing. The provider decides what the fork is
+          // supplied with; without one the fork starts with no secrets.
+          const fork = yield* loadCursor(store, runId)
 
-          yield* reconcileRunSecrets(
-            store,
-            runId,
-            hasEntries(parentSecrets) ? parentSecrets : undefined,
-          )
+          const supplied =
+            forkOptions?.secrets ??
+            (yield* runSecrets.forChild(store, sourceRunId, source.state, {
+              runId,
+              relation: 'fork',
+              kind: fork.state.startIdentity?.kind ?? null,
+              definitionName: fork.state.startIdentity?.definitionName ?? null,
+              attributes: fork.state.attributes,
+            }))
+
+          yield* runSecrets.provision(store, runId, fork.state, supplied)
 
           return plan.rootThreadId
         }),

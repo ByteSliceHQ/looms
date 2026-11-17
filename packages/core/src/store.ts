@@ -333,6 +333,12 @@ export const makeMemoryEventStore = Effect.gen(function* () {
     get: (runId) =>
       Ref.get(secrets).pipe(Effect.map((map) => readSecretContext(map.get(runId) ?? {}))),
     put: (runId, value) => Ref.update(secrets, (map) => new Map(map).set(runId, value)),
+    delete: (runId) =>
+      Ref.update(secrets, (map) => {
+        const next = new Map(map)
+        next.delete(runId)
+        return next
+      }),
   }
 
   const getOrCreate = (map: Map<string, RunLog>, runId: string): RunLog => {

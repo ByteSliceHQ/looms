@@ -233,7 +233,7 @@ export interface EffectContextBase {
   /** Labels safe for every reader of the run. */
   readonly attributes: RunAttributes
   /**
-   * Bearer material for this run. Never copy it into an emitted event.
+   * Bearer material for this attempt. Never copy it into an emitted event.
    * On a durable worker transport this is loaded before the handler runs (same shape as local).
    */
   readonly secrets: SecretContext

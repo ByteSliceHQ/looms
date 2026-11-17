@@ -12,7 +12,6 @@ import {
   type OutstandingEffect,
   type RetryPolicy,
   type RunState,
-  type SecretContext,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
@@ -123,7 +122,6 @@ export function planWorkerEffects(input: {
   readonly worker?: EffectWorker
   readonly now: number
   readonly maxInFlightWorkerEffects?: number
-  readonly secrets?: SecretContext
 }): ReadonlyArray<WorkerEffectDispatchPlan> {
   const workerItems = input.state.outstandingEffects.filter((item) =>
     isWorkerEffect({ ...input, item, execution: input.state.effectExecutions[item.effectId] }),
@@ -178,7 +176,6 @@ export function planWorkerEffects(input: {
           }),
       task: workerTask(input.runId, item, attempt, {
         details: existing?.heartbeatDetails,
-        secrets: input.secrets,
         attributes: input.state.attributes,
         trace: input.state.startIdentity?.trace,
         retry,

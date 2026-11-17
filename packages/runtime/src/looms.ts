@@ -29,6 +29,7 @@ import {
 } from '@looms/core'
 
 import type { RuntimeObserver } from './observer'
+import type { SecretProvider, SecretSealer } from './run-secrets'
 import {
   createRuntime,
   type EffectWorker,
@@ -95,6 +96,10 @@ export interface CreateLoomsOptions<Fields extends RunAttributeFields = RunAttri
   readonly maxInFlightWorkerEffects?: number
   /** Failure-isolated runtime observation sink. */
   readonly observer?: RuntimeObserver
+  /** Decides what a run holds and what each attempt receives. See `CreateRuntimeOptions`. */
+  readonly secretProvider?: SecretProvider
+  /** Encrypts what a run holds before it is stored. See `secretSealer`. */
+  readonly secretSealer?: SecretSealer
   /**
    * Authorizes HTTP API requests. Without it, run reads and writes are open while worker callback
    * and operations routes return 503; `bearerAuth({ worker, operations })` enables them.
@@ -182,7 +187,10 @@ export interface Looms<Fields extends RunAttributeFields = RunAttributeFields> {
   replayTo(runId: string, seq: number): Promise<ReplayStep | null>
   cancel(runId: string, threadId?: string): Promise<RunState>
   /** Start a new run that continues where a finished run ended. */
-  fork(sourceRunId: string, options?: { runId?: string }): Promise<StartResult>
+  fork(
+    sourceRunId: string,
+    options?: { runId?: string; secrets?: StartRunArgs['secrets'] },
+  ): Promise<StartResult>
   workerCallback(runId: string, input: WorkerCallbackInput): Promise<WorkerCallbackResult>
   fetch(req: Request): Promise<Response | null>
   serve(options?: { port?: number; hostname?: string }): RunningServer
@@ -268,6 +276,8 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
             observer: options.observer,
             definitionResolver: options.definitionResolver,
             attributes: options.attributes,
+            secretProvider: options.secretProvider,
+            secretSealer: options.secretSealer,
           })
 
           if (options.rescanTimers !== false) {

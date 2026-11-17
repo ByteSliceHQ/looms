@@ -20,6 +20,7 @@ import type { RunIngress } from './ingress'
 import { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
 import { planAttemptFailure } from './retry-policy'
+import { SecretProviderError, type RunSecrets } from './run-secrets'
 import type { LoomsRuntime } from './types'
 
 const WORKER_ORIGIN = { type: 'external', actorId: 'worker' } as const
@@ -59,6 +60,7 @@ export interface WorkerCallbacksOptions {
   readonly withRunIngress: RunIngress
   readonly observer?: RuntimeObserver
   readonly wake: LoomsRuntime['wake']
+  readonly runSecrets: RunSecrets
 }
 
 interface WorkerCallbackPlan {
@@ -323,8 +325,30 @@ export function createWorkerCallbacks(options: WorkerCallbacksOptions) {
         return { status: 'stale' } satisfies WorkerSecretsResult
       }
 
-      const secrets = store.runSecrets ? yield* store.runSecrets.get(runId) : {}
-      return { status: 'accepted', secrets } satisfies WorkerSecretsResult
+      const item = state.outstandingEffects.find(
+        (candidate) => candidate.effectId === callback.effectId,
+      )
+
+      if (!item) {
+        return { status: 'stale' } satisfies WorkerSecretsResult
+      }
+
+      // A provider failure is not a transport failure: the worker fails this attempt and the
+      // retry policy decides whether another one asks again.
+      return yield* options.runSecrets
+        .forAttempt(store, runId, state, {
+          effectId: callback.effectId,
+          attempt: callback.attempt,
+          type: item.effect.type,
+          threadId: item.threadId,
+        })
+        .pipe(
+          Effect.map((secrets) => ({ status: 'accepted', secrets }) satisfies WorkerSecretsResult),
+          Effect.catchIf(
+            (error) => error instanceof SecretProviderError,
+            () => Effect.succeed({ status: 'unavailable' } satisfies WorkerSecretsResult),
+          ),
+        )
     })
 
   return { workerCallback: applyWorkerCallback, workerSecrets }

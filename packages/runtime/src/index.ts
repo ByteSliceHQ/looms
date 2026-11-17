@@ -63,3 +63,13 @@ export {
 export { filesystemBlobStore } from './filesystem-blob-store'
 export { createEventStreamResponse, type EventStreamOptions } from './sse'
 export { notifyObserver, type RuntimeObservation, type RuntimeObserver } from './observer'
+export {
+  SecretProviderError,
+  type AttemptSecrets,
+  type SecretAttempt,
+  type SecretChild,
+  type SecretProvider,
+  type SecretRun,
+  type SecretSealer,
+} from './run-secrets'
+export { secretSealer, SecretSealError, type SecretSealerOptions } from './secret-sealer'
