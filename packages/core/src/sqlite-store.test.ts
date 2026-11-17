@@ -314,4 +314,24 @@ describe('sqlite EventStore', () => {
     const events = await Effect.runPromise(store.read(runId))
     expect(events).toHaveLength(1)
   })
+
+  test("stores, replaces and deletes a run's secrets beside the log", async () => {
+    const store = bunSqliteEventStore()
+    const secrets = store.runSecrets
+
+    if (!secrets) {
+      throw new Error('the sqlite store keeps run secrets')
+    }
+
+    await Effect.runPromise(secrets.put('run_a', { token: 'first' }))
+    await Effect.runPromise(secrets.put('run_a', { token: 'second' }))
+    await Effect.runPromise(secrets.put('run_b', { token: 'other' }))
+    expect(await Effect.runPromise(secrets.get('run_a'))).toEqual({ token: 'second' })
+
+    await Effect.runPromise(secrets.delete('run_a'))
+    await Effect.runPromise(secrets.delete('run_a'))
+    expect(await Effect.runPromise(secrets.get('run_a'))).toEqual({})
+    expect(await Effect.runPromise(secrets.get('run_b'))).toEqual({ token: 'other' })
+    expect(await Effect.runPromise(store.read('run_a'))).toEqual([])
+  })
 })
