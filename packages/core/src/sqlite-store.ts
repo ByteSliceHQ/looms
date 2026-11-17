@@ -378,6 +378,14 @@ function createSqliteSecrets(exec: SqliteExec): RunSecretStore {
         },
         catch: (cause) => new EventStoreError(`Failed to store secret context for ${runId}`, cause),
       }),
+    delete: (runId) =>
+      Effect.try({
+        try: () => {
+          exec.run('DELETE FROM looms_run_secrets WHERE run_id = ?', [runId])
+        },
+        catch: (cause) =>
+          new EventStoreError(`Failed to delete secret context for ${runId}`, cause),
+      }),
   }
 }
 

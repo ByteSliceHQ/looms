@@ -36,6 +36,7 @@ import type { EventStoreTrimmedError } from '@looms/core'
 
 import type { DuplicateEffectDispatchError, MaxWakeIterationsError } from './errors'
 import type { RuntimeObserver } from './observer'
+import type { SecretProvider, SecretSealer } from './run-secrets'
 import type { WakeScheduler } from './wake-scheduler'
 
 export type WakeError =
@@ -112,6 +113,13 @@ export interface CreateRuntimeOptions<
    * undeclared one fails with `InvalidRunAttributesError` and writes no events.
    */
   readonly attributes?: RunAttributeFields
+  /**
+   * Decides what each run holds and what each attempt receives. Without one, a run holds the
+   * `secrets` its start supplied and every attempt receives them.
+   */
+  readonly secretProvider?: SecretProvider
+  /** Encrypts what a run holds before it is stored. See `secretSealer`. */
+  readonly secretSealer?: SecretSealer
 }
 
 export interface EffectWorkerTask {
@@ -133,8 +141,8 @@ export interface EffectWorkerTask {
   /** The attempt's deadlines from the effect's retry policy, when it sets any. */
   readonly deadlines?: EffectWorkerDeadlines
   /**
-   * Present only on the in-memory dispatch. A transport that persists the task must leave this out
-   * and let the worker read the secret context through an authenticated callback.
+   * This attempt's secrets. Present only on the in-memory dispatch. A transport that persists the
+   * task must leave this out and let the worker read them through an authenticated callback.
    */
   readonly secrets?: SecretContext
 }
@@ -182,8 +190,10 @@ export interface StartRunArgs {
   /** Immutable labels stored on the start event and the run summary. */
   attributes?: RunAttributes
   /**
-   * Bearer material stored beside the log. A retry that sends a different context conflicts.
-   * Omitting it on a retry keeps the context already stored.
+   * Bearer material the run holds, stored beside the log and deleted when the run finishes. With
+   * a `secretProvider` that has `provision`, this is what `provision` is supplied with. Without
+   * one it is stored as given: a retry that sends a different context conflicts, and omitting it
+   * on a retry keeps the context already stored.
    */
   secrets?: SecretContext
   /**
@@ -303,11 +313,12 @@ export interface LoomsRuntime<
   /**
    * Start a new run that continues where a finished run ended. The fork copies the source's
    * history up to the point it finished and re-issues the effects outstanding there. Retrying
-   * with the same `runId` returns the existing fork.
+   * with the same `runId` returns the existing fork. The source's secrets were deleted when it
+   * finished, so the fork holds `secrets` when given, or else what the secret provider decides.
    */
   fork(
     sourceRunId: string,
-    options?: { runId?: string },
+    options?: { runId?: string; secrets?: SecretContext },
   ): Effect.Effect<StartResult, Error | EventStoreAppendError | EventStoreError, EventStoreTag>
   /**
    * Applies a worker's report about one effect attempt. A report for another attempt, or one that
@@ -322,8 +333,9 @@ export interface LoomsRuntime<
     EventStoreTag
   >
   /**
-   * The run's secret context for a worker attempt that has started and not settled. Any other
-   * attempt is `stale`, so a redelivered or superseded message never sees the secrets.
+   * The secrets for a worker attempt that has started and not settled. Any other attempt is
+   * `stale`, so a redelivered or superseded message never sees them. `unavailable` means the
+   * secret provider failed this time.
    */
   workerSecrets(
     runId: string,

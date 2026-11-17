@@ -148,23 +148,114 @@ exposes the column under the attribute key, for example
 looms replica generate --out drizzle --config ./looms.attributes.ts
 ```
 
-`secrets` are bearer material for the run. The memory and SQLite stores keep
-them in a side table, `looms_run_secrets`, which is not part of the event log
-or a snapshot. Effect handlers read them on `ctx.secrets`. An in-process worker
-receives them on the dispatch task. A transport that persists that task must
-omit `secrets`. Its worker reads them with
+`secrets` are bearer material. Pass them to a start and effect handlers read them
+on `ctx.secrets`. A handler must not copy secrets into an emitted event.
+
+### What a run holds
+
+The memory and SQLite stores keep what a run holds in a side table,
+`looms_run_secrets`, which is not part of the event log or a snapshot. A store
+without `runSecrets` rejects a start that supplies secrets.
+
+What a run holds is deleted when the run finishes. A retry of the same start may
+omit `secrets` and keeps the stored context. Sending a different context while the
+run is still going conflicts, and the error does not include the secret values.
+
+Effect-launched runs and forks inherit the parent's attributes and not its
+secrets. A launch or a fork that needs them passes `secrets` itself, or the secret
+provider decides (see below).
+
+### What an attempt receives
+
+An in-process worker receives the attempt's secrets on the dispatch task. A
+transport that persists that task must omit `secrets`. Its worker reads them with
 `POST /runs/:runId/effects/:effectId/:attempt/secrets` (`client.workerSecrets`)
 after its `started` callback is accepted. The route uses `worker` access, so it
 returns 503 until the host configures worker auth. It answers
 `{ status: 'accepted', secrets }` only while that attempt is started and
 unsettled, and `{ status: 'stale' }` or `{ status: 'cancelled' }` otherwise.
-Responses are sent with `cache-control: no-store`. A handler must not copy
-secrets into an emitted event.
+`{ status: 'unavailable' }` means the secret provider failed; the worker fails
+the attempt and the retry policy decides whether another one asks again.
+Responses are sent with `cache-control: no-store`.
 
-A retry of the same start may omit `secrets` and keeps the stored context. Sending
-a different context conflicts, and the error does not include the secret values.
-Forks and effect-launched runs inherit the parent's attributes and secrets.
-A store without `runSecrets` rejects a start that supplies secrets.
+### Secret provider
+
+Without a provider, a run holds the secrets its start supplied and every attempt
+receives all of them. A `secretProvider` separates the two, so a run can hold a
+credential that is worth the whole run while each attempt gets one that is only
+worth that attempt.
+
+```ts
+import { createLooms, secretSealer, type SecretProvider } from '@swirls/looms'
+
+const secretProvider: SecretProvider = {
+  // What the run holds, decided once when it starts.
+  provision: async ({ run, supplied }) => ({
+    credential: await vault.mintForRun(run.runId, run.attributes.tenant),
+  }),
+
+  // What one attempt receives. `hold` replaces what the run holds.
+  forAttempt: async ({ run, held, attempt }) => {
+    const credential = expiresSoon(held.credential)
+      ? await vault.mintForRun(run.runId, run.attributes.tenant)
+      : held.credential
+
+    return {
+      secrets: { credential: narrow(credential, attempt.effectId, attempt.attempt) },
+      hold: { credential },
+    }
+  },
+
+  // What a run launched by this one, or forked from it, is supplied with.
+  forChild: () => ({}),
+
+  // Called when the run finishes, before what it holds is deleted.
+  revoke: ({ held }) => vault.revoke(held.credential),
+}
+
+const looms = createLooms({
+  modules,
+  secretProvider,
+  secretSealer: secretSealer({ key: env.LOOMS_SECRET_SEALING_KEY }),
+})
+```
+
+Every method is optional and may return a value, a promise, or an Effect.
+
+| Method       | Called                                            | Without it                                    |
+| ------------ | ------------------------------------------------- | --------------------------------------------- |
+| `provision`  | When a run starts and holds nothing yet           | The run holds what the start supplied         |
+| `forAttempt` | Each time an attempt is about to get its secrets  | The attempt receives everything the run holds |
+| `forChild`   | When an effect launches a run, or a run is forked | The new run is supplied with nothing          |
+| `revoke`     | When the run finishes                             | What the run holds is deleted                 |
+
+- A method can be called more than once for the same run or attempt. The host asks
+  `forAttempt` when it dispatches a worker attempt and the worker asks again once it
+  has started, so every method must be safe to repeat.
+- `forAttempt` is not asked about the runtime's own effects, such as the one that
+  completes a thread.
+- A `forAttempt` failure fails the attempt with `secrets are unavailable for this
+attempt`, under the effect's retry policy. The provider's own error message goes to
+  the observer as `secrets.failed` and is never written to the log.
+- A `revoke` failure is reported the same way and what the run holds is deleted
+  regardless, so anything a run holds must also expire by itself.
+- A launch that passes `secrets`, and a fork that is given them, do not ask
+  `forChild`. A fork's source has finished, so `forChild` sees `held` empty for it.
+- The observer is told `secrets.issued` with the names of the secrets an attempt
+  was given, never their values.
+
+### Sealing
+
+`secretSealer({ key })` encrypts what a run holds before it is stored, with
+AES-256-GCM under a key derived from `key` (at least 32 characters). The run id is
+authenticated with each record, so a record copied to another run does not open.
+To rotate, make the new key `key` and list the old one in `previousKeys` until the
+runs sealed with it have finished. Secrets stored before sealing was turned on are
+still read.
+
+Sealing protects a copy of the storage that leaves without the key, such as a
+backup or an export. It does not protect against code running in the host, which
+has the key. A secret cannot be named `looms.sealed`.
 
 ## Trace context
 

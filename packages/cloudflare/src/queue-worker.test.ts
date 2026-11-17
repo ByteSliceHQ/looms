@@ -15,7 +15,7 @@ import {
   type JsonValue,
   type RetryPolicy,
 } from '@looms/core'
-import { bearerAuth, createLooms, type Looms } from '@looms/runtime'
+import { bearerAuth, createLooms, type Looms, type SecretProvider } from '@looms/runtime'
 
 import { createMemoryQueue, type MemoryQueue } from './memory-queue'
 import {
@@ -80,6 +80,7 @@ function harness(
     producer?: (queue: MemoryQueue, sent: QueueEffectMessage[]) => QueueProducer
     blobs?: BlobStore
     maxRetries?: number
+    secretProvider?: SecretProvider
   } = {},
 ): Harness {
   const queue = createMemoryQueue({ maxRetries: options.maxRetries })
@@ -102,6 +103,7 @@ function harness(
       blobs: options.blobs,
     }),
     authorize: bearerAuth({ worker: WORKER_TOKEN }),
+    secretProvider: options.secretProvider,
   })
 
   const callbacks = createLoomsClient({
@@ -137,6 +139,55 @@ async function eventTypes(looms: Looms, runId: string) {
 }
 
 describe('Cloudflare Queues effect transport', () => {
+  test('a queue worker gets its attempt from the secret provider, and a provider failure retries', async () => {
+    let askedForFirstAttempt = 0
+
+    const { looms, queue, sent, callbacks } = harness({
+      secretProvider: {
+        forAttempt: ({ held, attempt }) => {
+          // The host asks once when it dispatches and the worker asks again once it has started.
+          // Fail the worker's ask for the first attempt.
+          if (attempt.attempt === 1) {
+            askedForFirstAttempt += 1
+
+            if (askedForFirstAttempt > 1) {
+              throw new Error('the provider is down')
+            }
+          }
+
+          return { secrets: { token: `attempt-${attempt.attempt}-of-${held.token?.length ?? 0}` } }
+        },
+      },
+    })
+
+    const received: string[] = []
+    const started = await looms.start(definition, { cmd: 'ls' }, { secrets: { token: SECRET } })
+
+    const consumer = createQueuePullConsumer({
+      source: queue,
+      callbacks,
+      handlers: {
+        'sandbox.exec': async (task, ctx) => {
+          received.push(ctx.secrets.token ?? '')
+
+          return done(task, ctx)
+        },
+      },
+    })
+
+    await waitFor(async () => (await status(looms, started.runId)) === 'completed')
+    await consumer.stop()
+
+    expect(received).toEqual([`attempt-2-of-${SECRET.length}`])
+    expect(JSON.stringify(sent)).not.toContain(SECRET)
+
+    const log = JSON.stringify(await looms.getEvents(started.runId))
+    expect(log).toContain('secrets are unavailable for this attempt')
+    expect(log).not.toContain('the provider is down')
+    expect(log).not.toContain(SECRET)
+    await looms.stop()
+  })
+
   test('runs an attempt over the queue and reads secrets only through the callback', async () => {
     const { looms, queue, sent, callbacks } = harness()
     let secret: string | undefined

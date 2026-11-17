@@ -5,6 +5,7 @@ import {
   DefinitionCatalogSchema,
   EffectCatalogSchema,
   EventEnvelopeSchema,
+  cleanUndefined,
   EventTypeCatalogSchema,
   JsonValueSchema,
   readSubscriptionData,
@@ -110,7 +111,13 @@ const WorkerCallbackResultSchema = Schema.Struct({
 
 const WorkerSecretsResultSchema = Schema.Union([
   Schema.Struct({ status: Schema.Literal('accepted'), secrets: SecretContextSchema }),
-  Schema.Struct({ status: Schema.Union([Schema.Literal('stale'), Schema.Literal('cancelled')]) }),
+  Schema.Struct({
+    status: Schema.Union([
+      Schema.Literal('stale'),
+      Schema.Literal('cancelled'),
+      Schema.Literal('unavailable'),
+    ]),
+  }),
 ])
 
 /** `appended` counts the events the run gained while the wake ran. */
@@ -362,7 +369,7 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
     })
   }
 
-  /** Read the run's secret context. Only the attempt that is currently running gets it. */
+  /** Read the secrets for one attempt. Only the attempt that is currently running gets them. */
   const workerSecrets = (runId: string, attempt: WorkerCallback): Promise<WorkerSecretsResult> =>
     request(`${attemptPath(runId, attempt)}/secrets`, WorkerSecretsResultSchema, {
       method: 'POST',
@@ -475,10 +482,12 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
         body: stringifyJson(threadId === undefined ? {} : { threadId }),
       }),
     /** Start a new run that continues where a finished run ended. */
-    fork: (sourceRunId: string, forkOptions?: { runId?: string }) =>
+    fork: (sourceRunId: string, forkOptions?: { runId?: string; secrets?: SecretContext }) =>
       request(`/runs/${encodeURIComponent(sourceRunId)}/fork`, StartResultSchema, {
         method: 'POST',
-        body: stringifyJson(forkOptions?.runId === undefined ? {} : { runId: forkOptions.runId }),
+        body: stringifyJson(
+          cleanUndefined({ runId: forkOptions?.runId, secrets: forkOptions?.secrets }),
+        ),
       }),
     workerCallback,
     workerSecrets,

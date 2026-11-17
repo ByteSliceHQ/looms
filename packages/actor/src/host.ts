@@ -20,6 +20,8 @@ import {
   type StartResult,
   type StartRunArgs,
   type RuntimeObserver,
+  type SecretProvider,
+  type SecretSealer,
 } from '@looms/runtime'
 
 import { createActorCell, type ActorCell } from './cell'
@@ -64,6 +66,10 @@ export interface LocalActorHostOptions<
   readonly attributes?: RunAttributeFields
   /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
   readonly observer?: RuntimeObserver
+  /** Decides what a run holds and what each attempt receives. See `CreateRuntimeOptions`. */
+  readonly secretProvider?: SecretProvider
+  /** Encrypts what a run holds before it is stored. See `secretSealer`. */
+  readonly secretSealer?: SecretSealer
   readonly snapshotStore?: SnapshotStore
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
@@ -150,6 +156,8 @@ export function createLocalActorHost<
           definitionResolver: options.definitionResolver,
           attributes: options.attributes,
           observer: options.observer,
+          secretProvider: options.secretProvider,
+          secretSealer: options.secretSealer,
           snapshotStore: options.snapshotStore,
           snapshotEvery: options.snapshotEvery,
           maxWakeIterations: options.maxWakeIterations,

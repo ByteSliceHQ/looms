@@ -9,8 +9,9 @@ import type { JsonValue } from './types'
 export type RunAttributes = { readonly [key: string]: string }
 
 /**
- * Bearer material for a run, such as an attenuated macaroon.
- * It is stored beside the log and is never written to an event, snapshot, or HTTP response.
+ * Bearer material, such as an attenuated macaroon. For a run it is stored beside the log, and it
+ * is never written to an event, snapshot, or HTTP response. For an attempt it is what the
+ * attempt's handler receives as `ctx.secrets`.
  */
 export type SecretContext = { readonly [key: string]: string }
 
@@ -96,7 +97,10 @@ const decodeSecretContext = Schema.decodeUnknownOption(SecretContextSchema)
 
 export interface RunSecretStore {
   readonly get: (runId: string) => Effect.Effect<SecretContext, Error>
+  /** Replaces what is stored for the run. */
   readonly put: (runId: string, secrets: SecretContext) => Effect.Effect<void, Error>
+  /** Removes what is stored for the run. Deleting a run that has nothing stored succeeds. */
+  readonly delete: (runId: string) => Effect.Effect<void, Error>
 }
 
 export function hasEntries(record: { readonly [key: string]: string }): boolean {

@@ -90,6 +90,7 @@ export interface EffectAdmissionContext {
   readonly threadId: string
   readonly causingEventId: string
   readonly attributes: RunAttributes
+  /** The secrets this attempt will receive. */
   readonly secrets: SecretContext
   readonly trace: TraceContext | null
 }

@@ -80,6 +80,7 @@ const CancelBodySchema = Schema.Struct({
 
 const ForkBodySchema = Schema.Struct({
   runId: Schema.optional(Schema.String),
+  secrets: Schema.optional(SecretContextSchema),
 })
 
 function readStartRunArgs(req: Request) {
@@ -455,7 +456,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
           )
 
           const result = yield* provideStore(
-            runtime.fork(params.runId, { runId: body.runId }),
+            runtime.fork(params.runId, { runId: body.runId, secrets: body.secrets }),
             store,
           )
 

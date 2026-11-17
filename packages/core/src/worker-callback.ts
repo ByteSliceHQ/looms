@@ -33,7 +33,10 @@ export interface WorkerCallbackResult {
   readonly cancelRequested: boolean
 }
 
-/** The run's secret context, released only to the attempt that is currently running. */
+/**
+ * The secrets for one attempt, released only to the attempt that is currently running.
+ * `unavailable` means the host could not produce them this time; the attempt can be retried.
+ */
 export type WorkerSecretsResult =
   | { readonly status: 'accepted'; readonly secrets: SecretContext }
-  | { readonly status: 'stale' | 'cancelled' }
+  | { readonly status: 'stale' | 'cancelled' | 'unavailable' }

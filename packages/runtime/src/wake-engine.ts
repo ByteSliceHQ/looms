@@ -16,6 +16,7 @@ import {
   EventStoreTag,
   foldRun,
   isPrimitiveEffect,
+  hasEntries,
   isRunTerminal,
   type ComposedRegistry,
   type DefinitionResolver,
@@ -47,7 +48,7 @@ import {
   synthesizedThreadFailed,
   waitSatisfiedEvents,
 } from './helpers'
-import { executeLocalEffects } from './local-effect-executor'
+import { executeLocalEffects, type RunContext } from './local-effect-executor'
 import { notifyObserver, type RuntimeObserver } from './observer'
 import type { RuntimeRepository } from './repository'
 import {
@@ -55,6 +56,7 @@ import {
   type RunExecutionContexts,
   type WakeCompletion,
 } from './run-execution-context'
+import type { RunSecrets } from './run-secrets'
 import type { LoomsRuntime, EffectWorker } from './types'
 import type { WakeScheduler } from './wake-scheduler'
 import { dispatchWorkerEffect, isWorkerEffect, planWorkerEffects } from './worker-effect-dispatch'
@@ -93,6 +95,7 @@ export interface WakeEngineOptions {
   readonly observer?: RuntimeObserver
   readonly scheduler: () => WakeScheduler
   readonly launcher: () => RunLauncher
+  readonly runSecrets: RunSecrets
 }
 
 export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake'] {
@@ -262,7 +265,6 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
       return yield* Effect.gen(function* () {
         const store = yield* EventStoreTag
-        const secrets = store.runSecrets ? yield* store.runSecrets.get(runId) : {}
         const runInContext = Effect.runPromiseWith(yield* Effect.context())
         executionContext.liveStore = store
 
@@ -293,6 +295,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             }
 
             cursor = yield* closeLaunchedRuns(store, runId, cursor)
+
+            // A finished run starts no more attempts, so nothing it holds is needed again.
+            yield* options.runSecrets.release(store, runId, cursor.state)
 
             const nextDeadline = nextRuntimeDeadline(cursor.state, now)
 
@@ -437,7 +442,6 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               worker: options.worker,
               now,
               maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
-              secrets,
             })
 
             if (workerPlans.length > 0) {
@@ -449,7 +453,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                   attempt: workerPlan.attempt,
                   now,
                   attributes: state.attributes ?? {},
-                  secrets,
+                  secrets: options.runSecrets.forAttempt(store, runId, state, {
+                    effectId: workerPlan.item.effectId,
+                    attempt: workerPlan.attempt,
+                    type: workerPlan.item.effect.type,
+                    threadId: workerPlan.item.threadId,
+                  }),
                   trace: state.startIdentity?.trace ?? null,
                   retry: workerPlan.retry,
                 })
@@ -492,9 +501,13 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                   )
                 }
 
+                // Only an in-memory transport passes these on. One that persists the task drops
+                // them, and its worker asks for the attempt's secrets once it has started.
                 const dispatchEvent = yield* dispatchWorkerEffect(
                   runId,
-                  workerPlan,
+                  hasEntries(admission.secrets)
+                    ? { ...workerPlan, task: { ...workerPlan.task, secrets: admission.secrets } }
+                    : workerPlan,
                   options.worker,
                   now,
                 )
@@ -653,11 +666,16 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 launcher: options.launcher(),
               }
 
-              const runContext = {
-                correlationId: cursor.state.startIdentity?.correlationId ?? runId,
-                attributes: cursor.state.attributes ?? {},
-                secrets,
-                trace: cursor.state.startIdentity?.trace ?? null,
+              const dispatchState = cursor.state
+
+              const runContext: RunContext = {
+                correlationId: dispatchState.startIdentity?.correlationId ?? runId,
+                attributes: dispatchState.attributes ?? {},
+                secretsFor: (attempt) =>
+                  options.runSecrets.forAttempt(store, runId, dispatchState, attempt),
+                secretsForChild: (child) =>
+                  options.runSecrets.forChild(store, runId, dispatchState, child),
+                trace: dispatchState.startIdentity?.trace ?? null,
               }
 
               // One fiber per (thread, causingSeq) group keeps in-group order and frees the
@@ -789,6 +807,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
           if (isRunTerminal(cursor.state)) {
             cursor = yield* closeLaunchedRuns(store, runId, cursor)
+            // The run finished in this wake. A wake of a run that had already finished does the
+            // same above, which covers a host that stopped between the two.
+            yield* options.runSecrets.release(store, runId, cursor.state)
           }
 
           // Snapshot on park: the next wake (on any instance) starts from here.

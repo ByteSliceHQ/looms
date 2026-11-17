@@ -26,6 +26,8 @@ import {
   type StartRunArgs,
   type WakeScheduler,
   type RuntimeObserver,
+  type SecretProvider,
+  type SecretSealer,
 } from '@looms/runtime'
 
 import { runIdFromRequest } from './routing'
@@ -62,6 +64,10 @@ export interface ActorCellOptions<
   readonly attributes?: RunAttributeFields
   /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
   readonly observer?: RuntimeObserver
+  /** Decides what a run holds and what each attempt receives. See `CreateRuntimeOptions`. */
+  readonly secretProvider?: SecretProvider
+  /** Encrypts what a run holds before it is stored. See `secretSealer`. */
+  readonly secretSealer?: SecretSealer
 }
 
 export interface ActorCell<
@@ -109,6 +115,8 @@ export function createActorCell<
     trimAfterSnapshot: options.trimAfterSnapshot,
     attributes: options.attributes,
     observer: options.observer,
+    secretProvider: options.secretProvider,
+    secretSealer: options.secretSealer,
   })
 
   const provide = <A, E>(effect: Effect.Effect<A, E, EventStoreTag>) =>

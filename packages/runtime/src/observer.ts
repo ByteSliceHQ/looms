@@ -43,6 +43,23 @@ export type RuntimeObservation =
       readonly attempt: number
       readonly detail?: string
     }
+  | {
+      /** An attempt was given secrets. `names` are their names, never their values. */
+      readonly type: 'secrets.issued'
+      readonly runId: string
+      readonly at: number
+      readonly effectId: string
+      readonly attempt: number
+      readonly names: ReadonlyArray<string>
+    }
+  | {
+      /** A secret provider or sealer failed. `detail` is the message of the error it threw. */
+      readonly type: 'secrets.failed'
+      readonly runId: string
+      readonly at: number
+      readonly step: 'provision' | 'forAttempt' | 'forChild' | 'revoke' | 'seal' | 'open'
+      readonly detail?: string
+    }
 
 export interface RuntimeObserver {
   observe(event: RuntimeObservation): void | Promise<void>

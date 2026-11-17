@@ -26,8 +26,11 @@ export type AdmissionDecision =
       readonly retryAfterMs?: number
     }
 
+/** Recorded on an attempt that could not be given its secrets. It names no cause on purpose. */
+export const SECRETS_UNAVAILABLE_ERROR = 'secrets are unavailable for this attempt'
+
 export type AdmitOrFailResult =
-  | { readonly _tag: 'admit' }
+  | { readonly _tag: 'admit'; readonly secrets: SecretContext }
   | {
       readonly _tag: 'reject'
       readonly event: EventEnvelope
@@ -84,8 +87,9 @@ export function runEffectAdmission(
 }
 
 /**
- * Gate an attempt, then turn a reject into the durable failure/retry event both the local
- * executor and the wake engine append. Call sites only append the event (and notify observer).
+ * Get the attempt's secrets and gate it, then turn a reject into the durable failure/retry event
+ * both the local executor and the wake engine append. Call sites only append the event (and
+ * notify observer). An attempt whose secrets cannot be produced is rejected and may be retried.
  */
 export function admitOrFailAttempt(input: {
   readonly registry: ComposedRegistry
@@ -94,14 +98,39 @@ export function admitOrFailAttempt(input: {
   readonly attempt: number
   readonly now: number
   readonly attributes: RunAttributes
-  readonly secrets: SecretContext
+  /** Produces this attempt's secrets. */
+  readonly secrets: Effect.Effect<SecretContext, Error>
   readonly trace: TraceContext | null
   readonly retry: RetryPolicy | undefined
 }): Effect.Effect<AdmitOrFailResult> {
-  return runEffectAdmission(input.registry, input.item, input).pipe(
-    Effect.map((decision) => {
+  // The runtime's own effects (complete, spawn, wait, ...) have no handler to receive secrets, so
+  // the provider is not asked about them.
+  const attemptSecrets: Effect.Effect<SecretContext, Error> = isPrimitiveEffect(input.item.effect)
+    ? Effect.succeed({})
+    : input.secrets
+
+  const decide = attemptSecrets.pipe(
+    Effect.matchEffect({
+      onFailure: () => {
+        const decision: AdmissionDecision = {
+          _tag: 'reject',
+          error: SECRETS_UNAVAILABLE_ERROR,
+          nonRetryable: false,
+        }
+
+        return Effect.succeed({ decision, secrets: {} })
+      },
+      onSuccess: (issued) =>
+        runEffectAdmission(input.registry, input.item, { ...input, secrets: issued }).pipe(
+          Effect.map((decision) => ({ decision, secrets: issued })),
+        ),
+    }),
+  )
+
+  return decide.pipe(
+    Effect.map(({ decision, secrets }) => {
       if (decision._tag === 'admit') {
-        return { _tag: 'admit' } as const
+        return { _tag: 'admit', secrets } as const
       }
 
       const failure = planAttemptFailure({
