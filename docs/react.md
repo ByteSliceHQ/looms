@@ -97,6 +97,29 @@ A commit the host accepts but never records under that key stops being shown aft
 
 `LoomsProvider` takes `retainMs`: how long a run's store stays connected after the last component using it unmounts. The default is five seconds. An app that moves between runs can raise it so going back to a run shows it at once.
 
+### Preloading outside React
+
+`preloadRunStore(runId, options)` opens a run's store from code that runs before a page renders, such as a route loader. It resolves with the store once the store is synced. A component that then calls `useRunStore` for the same run gets that store, already filled, so the page appears whole instead of connecting and replaying the log on screen.
+
+```tsx
+import { LoomsProvider, preloadRunStore, type RunStoreOptions } from '@swirls/looms/react'
+
+// One object for both, so the loader and the hooks agree on which store a run has.
+const looms: RunStoreOptions = { endpoint: '', transport: 'websocket', retainMs: 60_000 }
+
+// In a route loader, before the page shows:
+await preloadRunStore(params.runId, { ...looms, signal: AbortSignal.timeout(4_000) })
+
+// At the root:
+<LoomsProvider {...looms}>
+  <App />
+</LoomsProvider>
+```
+
+A store is found by its endpoint, run, transport, thread and `includeEphemeral`. Pass the same values the provider is given, or the hook opens a second store. `cache`, `observer` and `fromSeq` are taken from whichever opens the store first.
+
+The store is held while the call waits, then kept for `retainMs`, so the page has that long to take it over. Without a `signal` the call waits for as long as the log takes to arrive. When the signal aborts, the promise rejects with the signal's reason; catch it if the page should show anyway and fill in.
+
 `useRunStore(runId, { fromSeq })` starts the store at a later point in the log. Use it when you already hold state up to `fromSeq - 1`, such as a projection the host served, and fold only what follows. The store never sees earlier events, so its own projections and summary cover only the part it followed.
 
 ## Local Cache

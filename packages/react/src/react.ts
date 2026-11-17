@@ -213,6 +213,90 @@ export interface UseRunStoreOptions {
 }
 
 /**
+ * Everything that decides which store a run gets when there is no provider to supply part of
+ * it. Inside React the provider gives `endpoint`, `coalesce`, `transport`, `retainMs`, `cache`
+ * and `observer`; outside it the caller passes them.
+ */
+export interface RunStoreOptions extends UseRunStoreOptions {
+  /** Keeps the run's durable events on the device. See `indexedDbEventCache`. */
+  cache?: EventCache
+  /** Told how long the run took to show and how long each commit took. */
+  observer?: StoreObserver
+}
+
+export interface PreloadRunStoreOptions extends RunStoreOptions {
+  /** Stops waiting. The promise rejects with the signal's reason and the store is let go. */
+  signal?: AbortSignal
+}
+
+/**
+ * Opens a run's store outside React and resolves with it once it has caught up to the log,
+ * which is when `store.synced()` turns true.
+ *
+ * This is for code that runs before a page renders, such as a route loader: await it, and the
+ * components that then call `useRunStore` for the same run get this store, already filled,
+ * instead of connecting and replaying the log on screen.
+ *
+ * A store is found by its endpoint, run, transport, thread and `includeEphemeral`, so pass the
+ * same values the provider is given, or the hook will open a second store. Sharing one options
+ * object between `LoomsProvider` and this call is the simplest way. `cache`, `observer` and
+ * `fromSeq` are taken from whichever of the two opens the store first.
+ *
+ * The store is held while this waits and then kept for `retainMs`, like one whose last
+ * component unmounted, so a page has that long to take it over. With no `signal` it waits for
+ * as long as the log takes to arrive.
+ */
+export function preloadRunStore(
+  runId: string,
+  options: PreloadRunStoreOptions = {},
+): Promise<LoomsClientStore> {
+  const { signal, ...rest } = options
+  const identity: StoreIdentity = { ...rest, endpoint: rest.endpoint ?? '' }
+
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason)
+  }
+
+  const { promise, resolve, reject } = Promise.withResolvers<LoomsClientStore>()
+
+  retainStore(runId, identity)
+
+  const store = peekStore(runId, identity)
+
+  let done = false
+  // A store calls a new listener at once, which is before there is anything to unsubscribe.
+  let unsubscribe: (() => void) | undefined
+
+  const finish = (settle: () => void) => {
+    if (done) {
+      return
+    }
+
+    done = true
+    unsubscribe?.()
+    signal?.removeEventListener('abort', onAbort)
+    releaseStore(runId, identity)
+    settle()
+  }
+
+  const onAbort = () => finish(() => reject(signal?.reason))
+
+  unsubscribe = store.subscribe(() => {
+    if (store.synced()) {
+      finish(() => resolve(store))
+    }
+  })
+
+  if (done) {
+    unsubscribe()
+  }
+
+  signal?.addEventListener('abort', onAbort, { once: true })
+
+  return promise
+}
+
+/**
  * Acquires a non-subscribing handle to the run store.
  * Retains the store in memory while mounted; does NOT trigger component re-renders.
  * Use data hooks (`useRunEvents`, `useProjection`, `useRunSummary`, etc.) to subscribe.
