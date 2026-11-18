@@ -8,6 +8,7 @@ import {
   defineEffect,
   defineRuntimeModule,
   defineThread,
+  complete,
   createEvent,
   invoke,
   makeMemoryEventStore,
@@ -17,7 +18,7 @@ import {
 import { defineWorkflow, workflow } from '@looms/workflow'
 
 import { createLooms } from './looms'
-import { DuplicateEffectDispatchError, MaxWakeIterationsError, RunTerminalError } from './runtime'
+import { DuplicateEffectDispatchError, RunTerminalError } from './runtime'
 
 async function waitFor(
   predicate: () => Promise<boolean> | boolean,
@@ -460,16 +461,17 @@ describe('createLooms runtime', () => {
     await looms.stop()
   })
 
-  test('maxWakeIterations guard fails wake when iteration cap is hit', async () => {
+  test('a wake that reaches maxWakeIterations hands the rest of the run to a new wake', async () => {
     let stepCalls = 0
+    let wakes = 0
 
-    const pingPongDef = {
+    const stepperDef = {
       kind: 'pingpong',
       name: 'stepper',
     }
 
-    const pingPongModule = defineRuntimeModule({
-      definitions: [pingPongDef],
+    const stepperModule = defineRuntimeModule({
+      definitions: [stepperDef],
       namespace: 'pingpong',
       protocolVersion: '1.0.0',
       effects: {
@@ -501,36 +503,128 @@ describe('createLooms runtime', () => {
 
             return state
           },
-          effects: (state) => [
-            invoke('pingpong.step', { count: state.count }, `step_${state.count}`),
-          ],
+          effects: (state) =>
+            state.count >= 12
+              ? [complete({ count: state.count })]
+              : [invoke('pingpong.step', { count: state.count }, `step_${state.count}`)],
         }),
       },
     })
 
     const looms = createLooms({
-      modules: [pingPongModule],
+      modules: [stepperModule],
       maxWakeIterations: 5,
+      observer: {
+        observe: (event) => {
+          if (event.type === 'run.wake') {
+            wakes += 1
+          }
+        },
+      },
     })
 
-    let caughtError: Error | undefined
+    try {
+      // The first wake parks once it has used its iterations instead of failing.
+      const { runId, state } = await looms.start(stepperDef, {})
+      expect(state.status).toBe('running')
+      expect(stepCalls).toBeLessThanOrEqual(5)
+
+      // Its scheduler wakes the run again at once, and the run finishes over several wakes.
+      await waitFor(async () => (await looms.getRun(runId)).status === 'completed')
+
+      expect((await looms.getRun(runId)).status).toBe('completed')
+      expect(stepCalls).toBe(12)
+      expect(wakes).toBeGreaterThanOrEqual(3)
+    } finally {
+      await looms.stop()
+    }
+  })
+
+  test('a wake out of iterations lets an effect it started finish before handing over', async () => {
+    let releaseSlow!: () => void
+
+    // oxlint-disable-next-line effecttsgo/new-promise
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+
+    let slowCalls = 0
+
+    const pairDef = { kind: 'pair', name: 'pair' }
+
+    const pairModule = defineRuntimeModule({
+      definitions: [pairDef],
+      namespace: 'pair',
+      protocolVersion: '1.0.0',
+      effects: {
+        'pair.slow': defineEffect({
+          type: 'pair.slow',
+          placement: 'local',
+          input: Schema.Struct({}),
+          execute: async () => {
+            slowCalls += 1
+            await slowGate
+            return [{ type: 'pair.slowDone', payload: {}, threadId: null }]
+          },
+        }),
+        'pair.fast': defineEffect({
+          type: 'pair.fast',
+          placement: 'local',
+          input: Schema.Struct({ count: Schema.Finite }),
+          execute: (input) => [
+            { type: 'pair.fastDone', payload: { count: input.count + 1 }, threadId: null },
+          ],
+        }),
+      },
+      threads: {
+        pair: defineThread({
+          kind: 'pair',
+          shape: Schema.Struct({ count: Schema.Finite, slowDone: Schema.Boolean }),
+          initialState: () => ({ count: 0, slowDone: false }),
+          step: (state, event) => {
+            if (event.type === 'pair.fastDone' && Predicate.isObject(event.payload)) {
+              return { ...state, count: Number(event.payload.count) }
+            }
+
+            if (event.type === 'pair.slowDone') {
+              return { ...state, slowDone: true }
+            }
+
+            return state
+          },
+          effects: (state) => {
+            if (state.count >= 10 && state.slowDone) {
+              return [complete({ count: state.count })]
+            }
+
+            return [
+              ...(state.slowDone ? [] : [invoke('pair.slow', {}, 'slow')]),
+              ...(state.count < 10
+                ? [invoke('pair.fast', { count: state.count }, `fast_${state.count}`)]
+                : []),
+            ]
+          },
+        }),
+      },
+    })
+
+    const looms = createLooms({ modules: [pairModule], maxWakeIterations: 4 })
 
     try {
-      await looms.start(pingPongDef, {})
-    } catch (err) {
-      caughtError = err instanceof Error ? err : new Error(String(err))
+      const started = looms.start(pairDef, {})
+      await waitFor(() => slowCalls === 1)
+      releaseSlow()
+
+      const { runId } = await started
+      await waitFor(async () => (await looms.getRun(runId)).status === 'completed')
+
+      const run = await looms.getRun(runId)
+      expect(run.status).toBe('completed')
+      // The slow effect ran once: running out of iterations did not abandon it to be retried.
+      expect(slowCalls).toBe(1)
+    } finally {
+      await looms.stop()
     }
-
-    expect(caughtError).toBeDefined()
-    expect(caughtError).toBeInstanceOf(MaxWakeIterationsError)
-
-    if (caughtError instanceof MaxWakeIterationsError) {
-      expect(caughtError._tag).toBe('MaxWakeIterationsError')
-    }
-
-    expect(caughtError?.message).toContain('Max wake iterations exceeded (5)')
-    expect(stepCalls).toBeLessThanOrEqual(5)
-    await looms.stop()
   })
 
   test('multi-turn streamed agent performs at most two store reads', async () => {

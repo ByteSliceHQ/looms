@@ -35,11 +35,7 @@ import {
   planTerminalCancellationTransitions,
 } from './deadline-transition-planner'
 import { admitOrFailAttempt } from './effect-admission'
-import {
-  DuplicateEffectDispatchError,
-  MaxWakeIterationsError,
-  RuntimeExecutionError,
-} from './errors'
+import { DuplicateEffectDispatchError, RuntimeExecutionError } from './errors'
 import {
   cascadedCancellations,
   createEffectFailedEvent,
@@ -317,6 +313,8 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           const inFlight = new Map<string, InFlightGroup>()
           const settled = yield* Queue.unbounded<SettledGroup>()
           let guard = 0
+          // Set once this pass has used its iterations: the rest of the work goes to a new wake.
+          let yieldToNextWake = false
           // Deadlines at or before this instant were handled by the last loop iteration.
           let plannedAt = Number.NEGATIVE_INFINITY
 
@@ -368,11 +366,21 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             `${item.effectId}:${attemptFor(item)}`
 
           while (!isRunTerminal(cursor.state)) {
-            if (guard >= maxWakeIterations) {
-              return yield* new MaxWakeIterationsError(runId, maxWakeIterations)
+            // A pass that has used its iterations starts nothing new. It waits for the effects
+            // it already started, then parks and hands the rest to a new wake (see below). A
+            // long-lived run (an agent that keeps calling tools while siblings wait) does far
+            // more than one pass's worth of work, and failing here would leave it with nothing
+            // driving it until some request happened to wake it again.
+            const draining = guard >= maxWakeIterations
+
+            if (draining && inFlight.size === 0) {
+              yieldToNextWake = true
+              break
             }
 
-            guard += 1
+            if (!draining) {
+              guard += 1
+            }
 
             // A signal (or coalesced join) may have appended events while local effects ran.
             if (executionContext.wakeAgain) {
@@ -386,7 +394,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
             const deadlinePlan = planDeadlineTransitions({ runId, state, registry, now })
 
-            if (deadlinePlan.events.length > 0) {
+            if (!draining && deadlinePlan.events.length > 0) {
               for (const notice of deadlinePlan.timerNotices) {
                 observe({
                   type: 'timer.late',
@@ -444,7 +452,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               maxInFlightWorkerEffects: options.maxInFlightWorkerEffects,
             })
 
-            if (workerPlans.length > 0) {
+            if (!draining && workerPlans.length > 0) {
               for (const workerPlan of workerPlans) {
                 const admission = yield* admitOrFailAttempt({
                   registry,
@@ -603,14 +611,14 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 : []
             })
 
-            if (exhausted.length > 0) {
+            if (!draining && exhausted.length > 0) {
               yield* foldProduced(exhausted)
               continue
             }
 
             const due = outstanding.filter((item) => !dispatchedEffectIds.has(dispatchKeyFor(item)))
 
-            if (due.length > 0) {
+            if (!draining && due.length > 0) {
               const attempts = new Map(due.map((item) => [item.effectId, attemptFor(item)]))
 
               for (const item of due) {
@@ -814,7 +822,12 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
           // Snapshot on park: the next wake (on any instance) starts from here.
           cursor = yield* persistSnapshot(store, runId, cursor)
-          const nextDeadline = nextRuntimeDeadline(cursor.state, plannedAt)
+          const runtimeDeadline = nextRuntimeDeadline(cursor.state, plannedAt)
+
+          // Work this pass left for the next wake is due now.
+          const nextDeadline = yieldToNextWake
+            ? Math.min(runtimeDeadline ?? Number.POSITIVE_INFINITY, yield* Clock.currentTimeMillis)
+            : runtimeDeadline
 
           if (nextDeadline !== undefined) {
             yield* options.scheduler().schedule(runId, nextDeadline)

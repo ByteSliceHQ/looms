@@ -130,6 +130,10 @@ export class DuplicateEffectDispatchError extends Data.TaggedError('DuplicateEff
   }
 }
 
+/**
+ * @deprecated The runtime no longer raises this. A wake that reaches `maxWakeIterations` parks
+ * and hands the rest of its work to a new wake.
+ */
 export class MaxWakeIterationsError extends Data.TaggedError('MaxWakeIterationsError')<{
   readonly runId: string
   readonly maxIterations: number
