@@ -38,9 +38,9 @@ export function r2BlobStore(bucket: R2BucketLike): BlobStore {
   return blobStoreFromBytes(r2BlobBytes(bucket))
 }
 
-function r2BlobBytes(bucket: R2BucketLike): BlobBytes {
-  const keyFor = (key: string) => `${PREFIX}${key}`
+const keyFor = (key: string) => `${PREFIX}${key}`
 
+function r2BlobBytes(bucket: R2BucketLike): BlobBytes {
   return {
     read: (key) =>
       Effect.tryPromise({

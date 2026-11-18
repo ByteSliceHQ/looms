@@ -38,7 +38,7 @@
     "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260914.1",

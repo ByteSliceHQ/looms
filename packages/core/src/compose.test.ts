@@ -63,7 +63,7 @@ describe('composeModules', () => {
 
     const result = await Effect.runPromise(
       composeModulesEffect([a, a]).pipe(
-        Effect.map(() => 'ok'),
+        Effect.as('ok'),
         Effect.catchTag('ModuleCompositionError', (err) =>
           Effect.succeed(`caught: ${err.message}`),
         ),

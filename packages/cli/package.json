@@ -33,14 +33,14 @@
     "looms": "bun run src/cli.ts"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/platform-bun": "4.1.4",
     "@looms/agent": "workspace:*",
     "@looms/approval": "workspace:*",
     "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@looms/runtime": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9",

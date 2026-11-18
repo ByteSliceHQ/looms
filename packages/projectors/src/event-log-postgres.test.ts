@@ -122,20 +122,6 @@ describe('postgres event log', () => {
     await db?.close()
   }, SETUP_TIMEOUT_MS)
 
-  function requireSql(): Sql {
-    if (!sql) {
-      throw new Error('postgres client was not started')
-    }
-
-    return sql
-  }
-
-  function indexRow(runId: string): Promise<RunLogRow | null> {
-    return requireSql()<IndexRow[]>`SELECT * FROM looms_run_index WHERE run_id = ${runId}`.then(
-      ([row]) => (row ? fromIndexRow(row) : null),
-    )
-  }
-
   test('matches the memory sink for starts, steps, a replay, and a finish', async () => {
     const client = requireSql()
     const postgres = postgresEventLog({ sql: client })
@@ -308,3 +294,17 @@ describe('postgres event log', () => {
     await postgresEventLog({ sql: client, migrate: 'auto' }).init?.()
   })
 })
+
+function requireSql(): Sql {
+  if (!sql) {
+    throw new Error('postgres client was not started')
+  }
+
+  return sql
+}
+
+function indexRow(runId: string): Promise<RunLogRow | null> {
+  return requireSql()<IndexRow[]>`SELECT * FROM looms_run_index WHERE run_id = ${runId}`.then(
+    ([row]) => (row ? fromIndexRow(row) : null),
+  )
+}

@@ -38,7 +38,7 @@
     "@looms/debugger": "workspace:*",
     "@looms/react": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.1.4",
     "lucide-react": "^1.43.0"
   },
   "devDependencies": {

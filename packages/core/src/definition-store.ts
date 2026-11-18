@@ -64,9 +64,8 @@ export function makeDefinitionStore<TDefinition extends VersionedDefinition>(
       }
 
       if (!resolver) {
-        // Effect.void is Effect<void>, which is not a missing definition.
-        // oxlint-disable-next-line effecttsgo/effect-succeed-with-void
-        return Effect.succeed(undefined)
+        // Effect.undefined, not Effect.void: a missing definition is `undefined`, not `void`.
+        return Effect.undefined
       }
 
       return resolver

@@ -7,13 +7,12 @@ import type { JsonValue } from './types'
 
 export class DefinitionResolveError extends Data.TaggedError('DefinitionResolveError')<{
   readonly kind: string
-  readonly name: string
+  readonly definitionName: string
   readonly version: string
   readonly message: string
 }> {
-  constructor(kind: string, name: string, version: string, message: string) {
-    super({ kind, name, version, message })
-    this.name = 'DefinitionResolveError'
+  constructor(kind: string, definitionName: string, version: string, message: string) {
+    super({ kind, definitionName, version, message })
   }
 }
 

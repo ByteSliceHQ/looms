@@ -102,22 +102,20 @@ describe('withProjectors', () => {
       { onError: (error) => reported.push(error.message) },
     )
 
-    const result = await Effect.runPromise(
-      Effect.exit(
-        store.append('run_1', [
-          createEvent('run_1', {
-            type: 'runtime.run.started',
-            payload: {
-              rootThreadId: 'thr_e',
-              kind: 'agent',
-              definitionName: 'echo',
-              input: null,
-            },
-            threadId: null,
-            origin: { type: 'system' },
-          }),
-        ]),
-      ),
+    const result = await Effect.runPromiseExit(
+      store.append('run_1', [
+        createEvent('run_1', {
+          type: 'runtime.run.started',
+          payload: {
+            rootThreadId: 'thr_e',
+            kind: 'agent',
+            definitionName: 'echo',
+            input: null,
+          },
+          threadId: null,
+          origin: { type: 'system' },
+        }),
+      ]),
     )
 
     expect(result._tag).toBe('Success')

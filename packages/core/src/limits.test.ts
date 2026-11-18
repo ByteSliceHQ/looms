@@ -11,19 +11,17 @@ describe('storage byte and compaction safety', () => {
   test('rejects an oversized UTF-8 event before append', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
 
-    const exit = await Effect.runPromise(
-      Effect.exit(
-        store.append('run_limit', [
-          {
-            type: 'test.large',
-            payload: { text: '🧵'.repeat(300_000) },
-            threadId: null,
-            eventId: 'evt_limit',
-            timestamp: 1,
-            origin: { type: 'system' },
-          },
-        ]),
-      ),
+    const exit = await Effect.runPromiseExit(
+      store.append('run_limit', [
+        {
+          type: 'test.large',
+          payload: { text: '🧵'.repeat(300_000) },
+          threadId: null,
+          eventId: 'evt_limit',
+          timestamp: 1,
+          origin: { type: 'system' },
+        },
+      ]),
     )
 
     expect(Exit.isFailure(exit)).toBe(true)
@@ -59,13 +57,11 @@ describe('storage byte and compaction safety', () => {
   test('rejects projector coverage missing a required identity', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
 
-    const result = await Effect.runPromise(
-      Effect.exit(
-        trimEventStoreSafely(store, 'run_trim', 2, {
-          requiredProjectors: ['search', 'audit'],
-          projectorCursors: { search: 1 },
-        }),
-      ),
+    const result = await Effect.runPromiseExit(
+      trimEventStoreSafely(store, 'run_trim', 2, {
+        requiredProjectors: ['search', 'audit'],
+        projectorCursors: { search: 1 },
+      }),
     )
 
     expect(Exit.isFailure(result)).toBe(true)
@@ -74,13 +70,11 @@ describe('storage byte and compaction safety', () => {
   test('rejects lagging required projector coverage', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
 
-    const result = await Effect.runPromise(
-      Effect.exit(
-        trimEventStoreSafely(store, 'run_trim', 3, {
-          requiredProjectors: ['search', 'audit'],
-          projectorCursors: { search: 2, audit: 1 },
-        }),
-      ),
+    const result = await Effect.runPromiseExit(
+      trimEventStoreSafely(store, 'run_trim', 3, {
+        requiredProjectors: ['search', 'audit'],
+        projectorCursors: { search: 2, audit: 1 },
+      }),
     )
 
     expect(Exit.isFailure(result)).toBe(true)
@@ -100,13 +94,11 @@ describe('storage byte and compaction safety', () => {
   test('rejects an empty required projector set', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
 
-    const result = await Effect.runPromise(
-      Effect.exit(
-        trimEventStoreSafely(store, 'run_trim', 2, {
-          requiredProjectors: [],
-          projectorCursors: {},
-        }),
-      ),
+    const result = await Effect.runPromiseExit(
+      trimEventStoreSafely(store, 'run_trim', 2, {
+        requiredProjectors: [],
+        projectorCursors: {},
+      }),
     )
 
     expect(Exit.isFailure(result)).toBe(true)

@@ -1,6 +1,7 @@
 import type { RunAttributeFields, RunAttributes } from '@looms/core'
 
 /** Declared attributes with no fields. */
+// oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
 export type NoAdditionalFields = Record<never, never>
 
 export interface ReplicaPurgeOptions<Fields extends RunAttributeFields = RunAttributeFields> {

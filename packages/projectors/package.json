@@ -65,7 +65,7 @@
   },
   "dependencies": {
     "@looms/core": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.11",

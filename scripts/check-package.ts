@@ -2,6 +2,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
+import { Schema } from 'effect'
+
+const Dependencies = Schema.optional(Schema.Record(Schema.String, Schema.String))
+
+const DependencyManifest = Schema.Struct({
+  dependencies: Dependencies,
+  peerDependencies: Dependencies,
+})
+
 async function run(command: readonly string[], cwd: string): Promise<string> {
   const child = Bun.spawn(command, {
     cwd,
@@ -85,6 +94,20 @@ try {
     throw new Error(`Tarball is missing:\n${missing.join('\n')}`)
   }
 
+  // Packages whose values cross into the app must come from the app's own install.
+  const manifest = Schema.decodeUnknownSync(DependencyManifest)(
+    await Bun.file(join(packageRoot, 'package.json')).json(),
+  )
+
+  for (const name of ['effect']) {
+    if (
+      manifest.dependencies?.[name] !== undefined ||
+      manifest.peerDependencies?.[name] === undefined
+    ) {
+      throw new Error(`${name} must be a peer dependency of @swirls/looms, not a dependency`)
+    }
+  }
+
   const debuggerStyles = await readFile(join(packageRoot, 'dist/debugger/styles.css'), 'utf8')
 
   const debuggerSources = [...debuggerStyles.matchAll(/@source "([^"]+)";/g)].map(
@@ -128,6 +151,7 @@ try {
 
   const peerPackages = [
     '@cloudflare/workers-types',
+    'effect@^4.1.4',
     'ai@^7',
     'postgres@^3',
     'react@^19',
@@ -141,6 +165,17 @@ try {
     )
   } else {
     await run(['bun', 'add', '--ignore-scripts', tarball, ...peerPackages], fixture)
+  }
+
+  // Effect must be one copy shared with the app. A nested copy means Looms or one of its
+  // dependencies pinned its own, and the app's Effect values would not be Looms' values.
+  const nestedEffect = [
+    'node_modules/@swirls/looms/node_modules/effect',
+    'node_modules/@effect/platform-bun/node_modules/effect',
+  ].filter((path) => Bun.file(join(fixture, path, 'package.json')).size > 0)
+
+  if (nestedEffect.length > 0) {
+    throw new Error(`effect is installed more than once:\n${nestedEffect.join('\n')}`)
   }
 
   const imports = [

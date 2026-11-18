@@ -52,6 +52,8 @@ Definitions describe the work; modules register them with a runtime. This small 
 bun add @swirls/looms zod
 ```
 
+You don't need to write Effect code to use Looms. Looms is built on Effect, and Bun, npm, and pnpm install it for you; with Yarn, add `effect` (`^4.1.4`) yourself. If your app uses Effect too, Looms shares your copy.
+
 ```ts
 import { agent, defineAgent } from '@swirls/looms/agent'
 import { createLooms } from '@swirls/looms'
