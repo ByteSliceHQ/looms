@@ -65,6 +65,12 @@ export interface CreateRuntimeOptions<
    * after a crash inside one long wake.
    */
   readonly snapshotEvery?: number
+  /**
+   * How many times one wake may plan before it hands the run to a new wake. Default 100. A wake
+   * that reaches it starts nothing new, waits for the effects it already started, parks, and
+   * asks its scheduler to wake the run again at once. It bounds the work one wake does in a
+   * single host invocation; it does not stop a run.
+   */
   readonly maxWakeIterations?: number
   /**
    * How far ahead a wake with in-process effects in flight keeps its `WakeScheduler.keepAlive`
