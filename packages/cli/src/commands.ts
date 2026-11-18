@@ -12,8 +12,8 @@ import {
   Stream,
   Terminal,
 } from 'effect'
-import { Argument, CliError, Command, Flag } from 'effect/unstable/cli'
-import { ChildProcessSpawner } from 'effect/unstable/process'
+import { Argument, CliError, Command, Flag } from 'effect/cli'
+import { ChildProcessSpawner } from 'effect/process'
 
 import { steer as steerEvent } from '@looms/agent'
 import { decision } from '@looms/approval'
@@ -36,9 +36,9 @@ import { createLooms } from '@looms/runtime'
 
 const VERSION = '0.0.1'
 
-const urlFlag = Flag.string('url').pipe(
+const urlFlag = Flag.String('url').pipe(
   Flag.withDescription('Looms host base URL (env LOOMS_URL)'),
-  Flag.withFallbackConfig(Config.string('LOOMS_URL')),
+  Flag.withFallbackConfig(Config.String('LOOMS_URL')),
   Flag.withDefault('http://127.0.0.1:8787'),
   Flag.map((url) => url.replace(/\/$/, '')),
 )
@@ -72,9 +72,9 @@ function tryClient<A>(run: () => Promise<A>): Effect.Effect<A, CliError.UserErro
 const serve = Command.make(
   'serve',
   {
-    port: Flag.integer('port').pipe(
+    port: Flag.Int('port').pipe(
       Flag.withDescription('Port to listen on (env PORT)'),
-      Flag.withFallbackConfig(Config.int('PORT')),
+      Flag.withFallbackConfig(Config.Int('PORT')),
       Flag.withDefault(8787),
     ),
   },
@@ -97,11 +97,11 @@ const loomsBase = Command.make('looms').pipe(
 const start = Command.make(
   'start',
   {
-    kind: Argument.string('kind').pipe(
+    kind: Argument.String('kind').pipe(
       Argument.withDescription('Thread kind (e.g. agent, workflow)'),
     ),
-    name: Argument.string('name').pipe(Argument.withDescription('Definition name')),
-    json: Argument.string('json').pipe(
+    name: Argument.String('name').pipe(Argument.withDescription('Definition name')),
+    json: Argument.String('json').pipe(
       Argument.withDescription('Optional JSON input'),
       Argument.optional,
     ),
@@ -125,7 +125,7 @@ const start = Command.make(
 const events = Command.make(
   'events',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
   },
   Effect.fn('events')(function* ({ runId }) {
     const { url } = yield* loomsBase
@@ -140,7 +140,7 @@ const events = Command.make(
 const state = Command.make(
   'state',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
   },
   Effect.fn('state')(function* ({ runId }) {
     const { url } = yield* loomsBase
@@ -152,14 +152,14 @@ const state = Command.make(
 const approve = Command.make(
   'approve',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
-    approvalId: Argument.string('approvalId').pipe(Argument.withDescription('Pending approval id')),
-    accept: Flag.boolean('approve').pipe(
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
+    approvalId: Argument.String('approvalId').pipe(Argument.withDescription('Pending approval id')),
+    accept: Flag.Boolean('approve').pipe(
       Flag.withAlias('a'),
       Flag.withDescription('Approve the request'),
       Flag.withDefault(false),
     ),
-    reject: Flag.boolean('reject').pipe(
+    reject: Flag.Boolean('reject').pipe(
       Flag.withAlias('r'),
       Flag.withDescription('Reject the request'),
       Flag.withDefault(false),
@@ -191,8 +191,8 @@ const approve = Command.make(
 const replay = Command.make(
   'replay',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
-    seq: Argument.integer('seq').pipe(Argument.withDescription('Event sequence to replay through')),
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
+    seq: Argument.Int('seq').pipe(Argument.withDescription('Event sequence to replay through')),
   },
   Effect.fn('replay')(function* ({ runId, seq }) {
     const { url } = yield* loomsBase
@@ -207,9 +207,9 @@ const replay = Command.make(
 const signal = Command.make(
   'signal',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
-    type: Argument.string('type').pipe(Argument.withDescription('Event type')),
-    json: Argument.string('json').pipe(
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
+    type: Argument.String('type').pipe(Argument.withDescription('Event type')),
+    json: Argument.String('json').pipe(
       Argument.withDescription('Optional JSON payload'),
       Argument.optional,
     ),
@@ -231,12 +231,12 @@ const signal = Command.make(
 const steer = Command.make(
   'steer',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
-    message: Argument.string('message').pipe(
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
+    message: Argument.String('message').pipe(
       Argument.withDescription('Steering message'),
       Argument.variadic({ min: 1 }),
     ),
-    interrupt: Flag.boolean('interrupt').pipe(
+    interrupt: Flag.Boolean('interrupt').pipe(
       Flag.withDescription('Interrupt the current turn (use --no-interrupt to disable)'),
       Flag.withDefault(true),
     ),
@@ -258,7 +258,7 @@ const steer = Command.make(
 const tail = Command.make(
   'tail',
   {
-    runId: Argument.string('runId').pipe(Argument.withDescription('Run id')),
+    runId: Argument.String('runId').pipe(Argument.withDescription('Run id')),
   },
   Effect.fn('tail')(function* ({ runId }) {
     const { url } = yield* loomsBase
@@ -288,20 +288,20 @@ const tail = Command.make(
   Command.withShortDescription('Tail run events'),
 )
 
-const databaseFlag = Flag.string('database').pipe(
+const databaseFlag = Flag.String('database').pipe(
   Flag.withDescription(
     'Postgres connection string, or a SQLite file path with --dialect sqlite (env DATABASE_URL)',
   ),
-  Flag.withFallbackConfig(Config.string('DATABASE_URL')),
+  Flag.withFallbackConfig(Config.String('DATABASE_URL')),
 )
 
-const dialectFlag = Flag.string('dialect').pipe(
+const dialectFlag = Flag.String('dialect').pipe(
   Flag.withDescription('Replica dialect: postgres (default) or sqlite'),
   Flag.withDefault('postgres'),
 )
 
 const configFlag = Flag.optional(
-  Flag.string('config').pipe(
+  Flag.String('config').pipe(
     Flag.withDescription(
       'Module that exports the run attributes from defineRunAttributes, as `attributes` or default',
     ),
@@ -414,16 +414,16 @@ function openReplica(
 const generate = Command.make(
   'generate',
   {
-    out: Flag.string('out').pipe(Flag.withDescription('Directory of SQL migrations to write into')),
+    out: Flag.String('out').pipe(Flag.withDescription('Directory of SQL migrations to write into')),
     dialect: dialectFlag,
     journal: Flag.optional(
-      Flag.string('journal').pipe(
+      Flag.String('journal').pipe(
         Flag.withDescription(
           'Also update a migration journal. Only `drizzle` is supported, and only for Postgres',
         ),
       ),
     ),
-    check: Flag.boolean('check').pipe(
+    check: Flag.Boolean('check').pipe(
       Flag.withDescription('Exit non-zero when a migration is pending, and write nothing'),
       Flag.withDefault(false),
     ),
@@ -520,7 +520,7 @@ const status = Command.make(
     database: databaseFlag,
     dialect: dialectFlag,
     run: Flag.optional(
-      Flag.string('run').pipe(Flag.withDescription('Also print freshness for this run id')),
+      Flag.String('run').pipe(Flag.withDescription('Also print freshness for this run id')),
     ),
     config: configFlag,
   },
@@ -593,6 +593,7 @@ export const cliTestLayer = Layer.mergeAll(
     Terminal.make({
       columns: Effect.succeed(80),
       rows: Effect.succeed(24),
+      size: Effect.die('unused'),
       readInput: Effect.die('unused'),
       readLine: Effect.die('unused'),
       display: () => Effect.void,

@@ -37,7 +37,7 @@
     "@looms/core": "workspace:*",
     "@looms/projectors": "workspace:*",
     "@s2-dev/streamstore": "^0.23.0",
-    "effect": "4.0.0-rc.112"
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9",

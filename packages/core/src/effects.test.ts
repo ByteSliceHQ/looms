@@ -112,7 +112,7 @@ describe('defineEffect', () => {
 
     const result = await Effect.runPromise(
       validateInputEffect(schema, { name: 'Alice', age: 'invalid' }).pipe(
-        Effect.map(() => 'valid'),
+        Effect.as('valid'),
         Effect.catchTag('InvalidInputError', (err) =>
           Effect.succeed({ tag: err._tag, issues: err.issues.length, msg: err.message }),
         ),

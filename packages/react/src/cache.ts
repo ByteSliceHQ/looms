@@ -78,6 +78,12 @@ function eventsOf(key: string): IDBKeyRange {
   return IDBKeyRange.bound([key, 0], [key, Number.MAX_SAFE_INTEGER])
 }
 
+function touch(transaction: IDBTransaction, key: string) {
+  transaction
+    .objectStore(RUNS)
+    .put({ key, touchedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()) })
+}
+
 /**
  * An `EventCache` in the browser's IndexedDB. Every failure is swallowed: a cache that cannot be
  * read is an empty cache, and one that cannot be written is simply not written, so the store
@@ -137,12 +143,6 @@ export function indexedDbEventCache(options: IndexedDbEventCacheOptions = {}): E
 
       return settled(transaction)
     })
-  }
-
-  const touch = (transaction: IDBTransaction, key: string) => {
-    transaction
-      .objectStore(RUNS)
-      .put({ key, touchedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()) })
   }
 
   return {

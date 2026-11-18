@@ -37,7 +37,7 @@
     "@looms/core": "workspace:*",
     "@looms/debugger": "workspace:*",
     "@looms/react": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@looms/runtime": "workspace:*",

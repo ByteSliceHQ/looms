@@ -33,6 +33,7 @@ try {
         type: 'module',
         dependencies: {
           '@swirls/looms': requestedVersion,
+          effect: '^4.1.4',
           zod: '^4.0.0',
         },
       },

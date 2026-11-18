@@ -79,6 +79,7 @@ export interface Route {
 
 export function route<
   const TPath extends string,
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
   const TDecoders extends ParamDecoders<TPath> = Record<never, never>,
 >(definition: RouteDefinition<TPath, TDecoders>): Route {
   const decoders: Partial<Record<string, ParamDecoder<ParamValue>>> = definition.params ?? {}

@@ -127,48 +127,6 @@ describe('in-process effect liveness', () => {
     await looms.stop()
   })
 
-  // Each lost process is a runtime whose wake never returns. The next one is a new runtime over
-  // the same store, woken with no signal, as a host's liveness wake would.
-  async function loseProcesses(retry: RetryPolicy | undefined) {
-    const store = await Effect.runPromise(makeMemoryEventStore)
-    const never = Promise.withResolvers<void>()
-    const abandoned: Promise<unknown>[] = []
-    const runId = 'run_lost_attempts'
-    let started = 0
-
-    const wakeInNewProcess = async () => {
-      const before = started
-
-      const looms = createLooms({
-        modules: [slowModule(never.promise, () => (started += 1), retry)],
-        store,
-      })
-
-      const wake =
-        before === 0
-          ? looms.start({ kind: 'live-job', name: 'live-job', version: 'v1' }, null, { runId })
-          : looms.wake(runId)
-
-      const settled = wake.then(
-        () => true,
-        () => true,
-      )
-
-      abandoned.push(settled)
-      await Promise.race([settled, waitFor(() => started > before)])
-      return looms
-    }
-
-    return {
-      wakeInNewProcess,
-      started: () => started,
-      finish: async () => {
-        never.resolve()
-        await Promise.all(abandoned)
-      },
-    }
-  }
-
   test('lost attempts count against the retry policy', async () => {
     const processes = await loseProcesses({ maxAttempts: 2 })
 
@@ -206,3 +164,45 @@ describe('in-process effect liveness', () => {
     await processes.finish()
   })
 })
+
+// Each lost process is a runtime whose wake never returns. The next one is a new runtime over
+// the same store, woken with no signal, as a host's liveness wake would.
+async function loseProcesses(retry: RetryPolicy | undefined) {
+  const store = await Effect.runPromise(makeMemoryEventStore)
+  const never = Promise.withResolvers<void>()
+  const abandoned: Promise<unknown>[] = []
+  const runId = 'run_lost_attempts'
+  let started = 0
+
+  const wakeInNewProcess = async () => {
+    const before = started
+
+    const looms = createLooms({
+      modules: [slowModule(never.promise, () => (started += 1), retry)],
+      store,
+    })
+
+    const wake =
+      before === 0
+        ? looms.start({ kind: 'live-job', name: 'live-job', version: 'v1' }, null, { runId })
+        : looms.wake(runId)
+
+    const settled = wake.then(
+      () => true,
+      () => true,
+    )
+
+    abandoned.push(settled)
+    await Promise.race([settled, waitFor(() => started > before)])
+    return looms
+  }
+
+  return {
+    wakeInNewProcess,
+    started: () => started,
+    finish: async () => {
+      never.resolve()
+      await Promise.all(abandoned)
+    },
+  }
+}

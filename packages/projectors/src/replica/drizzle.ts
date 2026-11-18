@@ -107,6 +107,7 @@ type RunIndexColumns<Extra extends RunIndexExtras, Fields extends RunAttributeFi
   Extra
 
 export interface LoomsReplicaTablesOptions<
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
   Extra extends RunIndexExtras = Record<never, never>,
   Fields extends RunAttributeFields = NoAdditionalFields,
 > {
@@ -122,6 +123,7 @@ export interface LoomsReplicaTablesOptions<
  * (`input`, `error`, and so on); those are not in Looms migrations.
  */
 export function loomsReplicaTables<
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
   Extra extends RunIndexExtras = Record<never, never>,
   const Fields extends RunAttributeFields = NoAdditionalFields,
 >(options?: LoomsReplicaTablesOptions<Extra, Fields>) {
