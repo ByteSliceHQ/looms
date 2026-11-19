@@ -144,6 +144,7 @@ export function createFaultInjectingEventStore(
     tail: (runId) => inject('tail', runId).pipe(Effect.andThen(source.tail(runId))),
     subscribe: source.subscribe,
     listRuns: inject('listRuns', null).pipe(Effect.andThen(source.listRuns)),
+    runSecrets: source.runSecrets,
   }
 
   if (source.bounds) {

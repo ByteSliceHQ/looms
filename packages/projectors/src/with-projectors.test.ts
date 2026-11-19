@@ -47,6 +47,17 @@ function testEvent(): EventEnvelope {
 }
 
 describe('withProjectors', () => {
+  test('keeps the base store run secrets and readStream', async () => {
+    const base = await Effect.runPromise(makeMemoryEventStore)
+    const wrapped = withProjectors(base, [{ name: 'noop', version: '1', project: async () => {} }])
+
+    expect(wrapped.runSecrets).toBe(base.runSecrets)
+    expect(wrapped.readStream).toBeDefined()
+
+    await Effect.runPromise(wrapped.runSecrets!.put('run_secret', { token: 'held' }))
+    expect(await Effect.runPromise(base.runSecrets!.get('run_secret'))).toEqual({ token: 'held' })
+  })
+
   test('forwards appends to projectors', async () => {
     const seen: EventEnvelope[][] = []
 

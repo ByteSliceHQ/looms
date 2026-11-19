@@ -98,11 +98,15 @@ export function withProjectors(
         }),
       ),
     read: (runId, readOptions) => store.read(runId, readOptions),
+    readStream: store.readStream
+      ? (runId, readOptions) => store.readStream!(runId, readOptions)
+      : undefined,
     tail: (runId) => store.tail(runId),
     bounds: store.bounds ? (runId) => store.bounds!(runId) : undefined,
     trim: store.trim ? (runId, beforeSeq) => store.trim!(runId, beforeSeq) : undefined,
     subscribe: (runId, subscribeOptions) => store.subscribe(runId, subscribeOptions),
     listRuns: store.listRuns,
+    runSecrets: store.runSecrets,
   }
 
   const snapshots = snapshotStoreOf(store)
