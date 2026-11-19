@@ -9,6 +9,16 @@
       "curl": {
         "pkg-path": "curl"
       },
+      "nats-server": {
+        "pkg-path": "nats-server",
+        "pkg-group": "nats",
+        "version": "2.15.3",
+        "systems": [
+          "aarch64-darwin",
+          "aarch64-linux",
+          "x86_64-linux"
+        ]
+      },
       "nodejs": {
         "pkg-path": "nodejs"
       },
@@ -699,6 +709,93 @@
       },
       "system": "x86_64-linux",
       "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nats-server",
+      "broken": false,
+      "derivation": "/nix/store/mhi1w7104ai2b459fdy8imsms0dq86yp-nats-server-2.15.3.drv",
+      "description": "High-Performance server for NATS",
+      "install_id": "nats-server",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "name": "nats-server-2.15.3",
+      "pname": "nats-server",
+      "rev": "04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "rev_count": 1122823,
+      "rev_date": "2026-11-17T04:43:17Z",
+      "scrape_date": "2026-11-19T05:47:33.299936Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.15.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/yzyk48sbn7zgwcvsvw80hk81f3470ys1-nats-server-2.15.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "nats",
+      "priority": 5
+    },
+    {
+      "attr_path": "nats-server",
+      "broken": false,
+      "derivation": "/nix/store/5s8a18sc90zmigbm2jin2ky9i8a1cnqz-nats-server-2.15.3.drv",
+      "description": "High-Performance server for NATS",
+      "install_id": "nats-server",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "name": "nats-server-2.15.3",
+      "pname": "nats-server",
+      "rev": "04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "rev_count": 1122823,
+      "rev_date": "2026-11-17T04:43:17Z",
+      "scrape_date": "2026-11-19T06:14:10.605050Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.15.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8828b84b0ni0i70gwgibizidnzmzbaiq-nats-server-2.15.3"
+      },
+      "system": "aarch64-linux",
+      "group": "nats",
+      "priority": 5
+    },
+    {
+      "attr_path": "nats-server",
+      "broken": false,
+      "derivation": "/nix/store/yl9g92ac005l359vhbx0xcp3g4fxhmmd-nats-server-2.15.3.drv",
+      "description": "High-Performance server for NATS",
+      "install_id": "nats-server",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "name": "nats-server-2.15.3",
+      "pname": "nats-server",
+      "rev": "04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+      "rev_count": 1122823,
+      "rev_date": "2026-11-17T04:43:17Z",
+      "scrape_date": "2026-11-19T06:43:20.737547Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.15.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9hby6lgwink82zc5kj6hfkzr5d7z5fhc-nats-server-2.15.3"
+      },
+      "system": "x86_64-linux",
+      "group": "nats",
       "priority": 5
     }
   ]

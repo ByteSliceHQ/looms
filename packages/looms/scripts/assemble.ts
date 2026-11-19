@@ -17,6 +17,7 @@ const modules = [
   'core',
   'debugger',
   'evaluator',
+  'nats',
   'projectors',
   'react',
   'runtime',
