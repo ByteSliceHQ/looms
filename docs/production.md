@@ -44,8 +44,8 @@ to `postgresEventLog` / `postgres` so init never takes table locks.
 keyed by `(run_id, seq)`, and a `looms_run_index` row with status, timestamps,
 the parent run, the launching effect, and the run's attributes as JSON. Pass
 `additionalFields` (see [Run attributes](#run-attributes-and-secret-context)) to
-copy declared attributes into their own columns, so row-level security can use
-them:
+copy declared attributes into their own columns on both tables, so row-level
+security can use them without a join:
 
 ```ts
 const attributes = defineRunAttributes({ tenantId: { required: true, index: true } })
@@ -56,7 +56,14 @@ postgresEventLog({ url, additionalFields: attributes })
 ALTER TABLE looms_run_index ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON looms_run_index
   USING (tenant_id = current_setting('looms.tenant_id', true));
+
+ALTER TABLE looms_run_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON looms_run_events
+  USING (tenant_id = current_setting('looms.tenant_id', true));
 ```
+
+Looms writes with the role it connects as, so that role must own the tables or
+have `BYPASSRLS`; readers connect with a role the policies apply to.
 
 Pass Hyperdrive's connection string as `postgresEventLog({ url })`. Each
 delivered batch is one transaction of about three statements, however many
@@ -132,16 +139,28 @@ The host checks the same rules at runtime and refuses a start with
 Without a declaration, any string attributes are accepted.
 
 In a replica or `postgresEventLog`, each declared attribute is also a text
-column on `looms_run_index`, named in snake_case (`tenantId` becomes
-`tenant_id`) unless `fieldName` is set. `index: true` adds
-`looms_run_index_<column>`. Each column and index is its own migration
-(`column_tenant_id`, `index_tenant_id`), and adding a column backfills it from
-the `attributes` JSON of runs already copied. `postgresEventLog` applies these
-migrations itself on `init` and records them in `looms_schema_migrations`, so
-the backfill runs once. The replica applies them when `migrate` is `auto`, or
-refuses to start until they exist when it is `verify`. The Drizzle table
-exposes the column under the attribute key, for example
-`tables.loomsRunIndex.tenantId`. Pass the declaration to the CLI with
+column on `looms_run_index` and on `looms_run_events`, named in snake_case
+(`tenantId` becomes `tenant_id`) unless `fieldName` is set. Every event row
+carries its run's value, taken from the run's started event, or from the run's
+`looms_run_index` row when the started event was copied in an earlier batch.
+Attributes are immutable, so the two always agree. A run without the attribute
+gets `NULL`. `index: true` adds `looms_run_index_<column>` and
+`looms_run_event_<column>`. Column names must not collide with a Looms column on
+either table (`type`, `payload`, `status`, and so on); set `fieldName` if one
+does.
+
+Each column and index is its own migration (`column_tenant_id`,
+`index_tenant_id`, `event_column_tenant_id`, `event_index_tenant_id`). Adding a
+column backfills it: the run index column from the `attributes` JSON of runs
+already copied, and the event column from those runs' `looms_run_index` rows.
+On a large event table that backfill is one `UPDATE` over every copied event,
+so apply it out of band if it would hold locks too long. `postgresEventLog`
+applies these migrations itself on `init` when `migrate` is `auto` (the default)
+and records them in `looms_schema_migrations`, so the backfill runs once. With
+`verify`, the sink and the replica refuse to start until the migrations exist;
+with `skip`, the host owns the schema. The Drizzle tables expose the column under
+the attribute key, for example `tables.loomsRunIndex.tenantId` and
+`tables.loomsRunEvents.tenantId`. Pass the declaration to the CLI with
 `--config` so generated migrations match:
 
 ```sh

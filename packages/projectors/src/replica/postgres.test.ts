@@ -520,9 +520,17 @@ describe('postgres replica', () => {
       additionalFields: { projectId: { index: true } },
     })
 
-    expect(await copy.pendingMigrations()).toEqual(['column_project_id', 'index_project_id'])
+    expect(await copy.pendingMigrations()).toEqual([
+      'column_project_id',
+      'index_project_id',
+      'event_column_project_id',
+      'event_index_project_id',
+    ])
+
     await copy.project(finishedRun('run_fields_alpha', 'alpha'))
-    await copy.project(finishedRun('run_fields_beta', 'beta'))
+    const [betaStarted, betaCompleted] = finishedRun('run_fields_beta', 'beta')
+    await copy.project(betaStarted ? [betaStarted] : [])
+    await copy.project(betaCompleted ? [betaCompleted] : [])
 
     const rows = await client<{ run_id: string; project_id: string | null }[]>`
       SELECT run_id, project_id FROM looms_run_index
@@ -536,11 +544,29 @@ describe('postgres replica', () => {
       { run_id: 'run_fields_beta', project_id: 'beta' },
     ])
 
-    const indexes = await client<{ indexname: string }[]>`
-      SELECT indexname FROM pg_indexes WHERE tablename = 'looms_run_index'
+    const eventRows = await client<{ run_id: string; seq: string; project_id: string | null }[]>`
+      SELECT run_id, seq::text AS seq, project_id FROM looms_run_events
+      WHERE run_id LIKE 'run_fields_%'
+      ORDER BY run_id, seq
     `
 
-    expect(indexes.map((index) => index.indexname)).toContain('looms_run_index_project_id')
+    expect(eventRows.map((row) => ({ ...row }))).toEqual([
+      { run_id: 'run_fields_alpha', seq: '1', project_id: 'alpha' },
+      { run_id: 'run_fields_alpha', seq: '2', project_id: 'alpha' },
+      { run_id: 'run_fields_before', seq: '1', project_id: 'alpha' },
+      { run_id: 'run_fields_before', seq: '2', project_id: 'alpha' },
+      { run_id: 'run_fields_beta', seq: '1', project_id: 'beta' },
+      { run_id: 'run_fields_beta', seq: '2', project_id: 'beta' },
+    ])
+
+    const indexes = await client<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes
+      WHERE tablename IN ('looms_run_index', 'looms_run_events')
+    `
+
+    expect(indexes.map((index) => index.indexname)).toEqual(
+      expect.arrayContaining(['looms_run_index_project_id', 'looms_run_event_project_id']),
+    )
 
     const tables = loomsReplicaTables({ additionalFields: { projectId: { index: true } } })
     const config = getTableConfig(tables.loomsRunIndex)
@@ -558,6 +584,23 @@ describe('postgres replica', () => {
     expect(tables.loomsRunIndex.projectId.name).toBe('project_id')
 
     expect(config.indexes.map((index) => index.config.name)).toContain('looms_run_index_project_id')
+
+    const eventConfig = getTableConfig(tables.loomsRunEvents)
+
+    const eventColumns = await client<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'looms_run_events'
+    `
+
+    expect(eventColumns.map((column) => column.column_name).toSorted()).toEqual(
+      eventConfig.columns.map((column) => column.name).toSorted(),
+    )
+
+    expect(tables.loomsRunEvents.projectId.name).toBe('project_id')
+
+    expect(eventConfig.indexes.map((index) => index.config.name)).toContain(
+      'looms_run_event_project_id',
+    )
 
     expect(await copy.purge({ finishedBefore: cutoff, where: { projectId: 'alpha' } })).toEqual({
       runs: 2,

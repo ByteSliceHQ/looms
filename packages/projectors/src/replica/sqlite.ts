@@ -92,8 +92,9 @@ export type SqliteReplicaOptions<Fields extends RunAttributeFields = NoAdditiona
    */
   readonly migrate: SqliteReplicaMigrate
   /**
-   * Declared run attributes, from `defineRunAttributes`. Each one is a `looms_run_index`
-   * column, and each column and index is its own migration. `purge({ where })` filters on them.
+   * Declared run attributes, from `defineRunAttributes`. Each one is a column on `looms_run_index`
+   * and on `looms_run_events`, and each column and index is its own migration.
+   * `purge({ where })` filters on them.
    */
   readonly additionalFields?: Fields
 }
@@ -291,13 +292,26 @@ function sqlStatement(sql: string, params: readonly SqlValue[]): SqlStatement {
   return { sql, params }
 }
 
-function insertEvents(events: readonly EventEnvelope[]): SqlStatement[] {
+/**
+ * Declared attribute columns are copied from the run's `looms_run_index` row, so the run index
+ * statements for the same batch, which fill those columns from the started event, must run first.
+ */
+function insertEvents(
+  events: readonly EventEnvelope[],
+  columns: readonly ResolvedReplicaColumn[],
+): SqlStatement[] {
+  const hostNames = columns.map((column) => `, "${column.name}"`).join('')
+
+  const hostValues = columns
+    .map((column) => `, (SELECT "${column.name}" FROM looms_run_index WHERE run_id = ?)`)
+    .join('')
+
   return events.map((event) =>
     sqlStatement(
       `INSERT INTO looms_run_events (
          run_id, seq, event_id, ts, type, payload, thread_id, parent_thread_id,
-         causation_id, correlation_id, effect_id, origin, idempotency_key, ephemeral
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         causation_id, correlation_id, effect_id, origin, idempotency_key, ephemeral${hostNames}
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hostValues})
        ON CONFLICT (run_id, seq) DO NOTHING`,
       [
         event.runId,
@@ -314,6 +328,7 @@ function insertEvents(events: readonly EventEnvelope[]): SqlStatement[] {
         jsonText(event.origin),
         event.idempotencyKey ?? null,
         event.ephemeral === true ? 1 : 0,
+        ...columns.map(() => event.runId),
       ],
     ),
   )
@@ -599,14 +614,14 @@ export function sqliteReplica<const Fields extends RunAttributeFields = NoAdditi
       const durable = batch.filter((event) => !event.ephemeral)
       const last = batch.at(-1)
 
-      statements.push(...insertEvents(batch))
-
       statements.push(
         ...runIndexStatements(
           durable.flatMap((event) => eventLogOps(event)),
           columns,
         ),
       )
+
+      statements.push(...insertEvents(batch, columns))
 
       statements.push(...indexStatements(durable.flatMap(indexOpsFor)))
 

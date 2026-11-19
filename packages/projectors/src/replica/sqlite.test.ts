@@ -454,9 +454,17 @@ describe('sqlite replica', () => {
       additionalFields: { projectId: { index: true } },
     })
 
-    expect(await copy.pendingMigrations()).toEqual(['column_project_id', 'index_project_id'])
+    expect(await copy.pendingMigrations()).toEqual([
+      'column_project_id',
+      'index_project_id',
+      'event_column_project_id',
+      'event_index_project_id',
+    ])
+
     await copy.project(finishedRun('run_alpha', 'alpha'))
-    await copy.project(finishedRun('run_beta', 'beta'))
+    const [betaStarted, betaCompleted] = finishedRun('run_beta', 'beta')
+    await copy.project(betaStarted ? [betaStarted] : [])
+    await copy.project(betaCompleted ? [betaCompleted] : [])
 
     const rows = db
       .query<{ run_id: string; project_id: string | null }, []>(
@@ -470,11 +478,31 @@ describe('sqlite replica', () => {
       { run_id: 'run_beta', project_id: 'beta' },
     ])
 
-    const indexes = db
-      .query<{ name: string }, []>(`SELECT name FROM pragma_index_list('looms_run_index')`)
+    const eventRows = db
+      .query<{ run_id: string; seq: number; project_id: string | null }, []>(
+        `SELECT run_id, seq, project_id FROM looms_run_events ORDER BY run_id, seq`,
+      )
       .all()
 
-    expect(indexes.map((index) => index.name)).toContain('looms_run_index_project_id')
+    expect(eventRows).toEqual([
+      { run_id: 'run_alpha', seq: 1, project_id: 'alpha' },
+      { run_id: 'run_alpha', seq: 2, project_id: 'alpha' },
+      { run_id: 'run_before', seq: 1, project_id: 'alpha' },
+      { run_id: 'run_before', seq: 2, project_id: 'alpha' },
+      { run_id: 'run_beta', seq: 1, project_id: 'beta' },
+      { run_id: 'run_beta', seq: 2, project_id: 'beta' },
+    ])
+
+    const indexes = db
+      .query<{ name: string }, []>(
+        `SELECT name FROM pragma_index_list('looms_run_index')
+         UNION ALL SELECT name FROM pragma_index_list('looms_run_events')`,
+      )
+      .all()
+
+    expect(indexes.map((index) => index.name)).toEqual(
+      expect.arrayContaining(['looms_run_index_project_id', 'looms_run_event_project_id']),
+    )
 
     expect(await copy.purge({ finishedBefore: cutoff, where: { projectId: 'alpha' } })).toEqual({
       runs: 2,

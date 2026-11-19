@@ -106,6 +106,11 @@ type RunIndexColumns<Extra extends RunIndexExtras, Fields extends RunAttributeFi
   AttributeColumnBuilders<Fields> &
   Extra
 
+type RunEventsColumns<Fields extends RunAttributeFields> = ReturnType<
+  typeof loomsRunEventsColumns
+> &
+  AttributeColumnBuilders<Fields>
+
 export interface LoomsReplicaTablesOptions<
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
   Extra extends RunIndexExtras = Record<never, never>,
@@ -119,8 +124,9 @@ export interface LoomsReplicaTablesOptions<
 
 /**
  * Drizzle tables for the replica. `additionalFields` adds a column per declared attribute,
- * keyed by attribute name, with its index. `runIndex` adds columns the host owns
- * (`input`, `error`, and so on); those are not in Looms migrations.
+ * keyed by attribute name, with its index, to both `looms_run_index` and `looms_run_events`.
+ * `runIndex` adds columns the host owns (`input`, `error`, and so on); those are not in
+ * Looms migrations.
  */
 export function loomsReplicaTables<
   // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty record is the intended default: no extra fields
@@ -149,10 +155,24 @@ export function loomsReplicaTables<
     ]
   })
 
-  const loomsRunEvents = pgTable('looms_run_events', loomsRunEventsColumns(), (table) => [
-    primaryKey({ columns: [table.runId, table.seq] }),
-    index('looms_run_events_type_ts').on(table.type, table.ts),
-  ])
+  // SAFETY: resolveReplicaColumns returns one column for each key of Fields.
+  const eventColumns = {
+    ...loomsRunEventsColumns(),
+    ...Object.fromEntries(attributeColumns.map((column) => [column.key, text(column.name)])),
+  } as RunEventsColumns<Fields>
+
+  const loomsRunEvents = pgTable('looms_run_events', eventColumns, (table) => {
+    const byKey: { readonly [key: string]: ExtraConfigColumn | undefined } = table
+
+    return [
+      primaryKey({ columns: [table.runId, table.seq] }),
+      index('looms_run_events_type_ts').on(table.type, table.ts),
+      ...attributeColumns.flatMap((column) => {
+        const built = byKey[column.key]
+        return column.index && built ? [index(`looms_run_event_${column.name}`).on(built)] : []
+      }),
+    ]
+  })
 
   const loomsRunActors = pgTable('looms_run_actors', loomsRunActorsColumns(), (table) => [
     primaryKey({ columns: [table.runId, table.actorId] }),

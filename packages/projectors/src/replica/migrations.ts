@@ -152,18 +152,40 @@ export function postgresColumnIndexSql(column: ResolvedReplicaColumn): string {
 }
 
 /**
- * Attribute column and index migrations for Postgres.
+ * Adds one attribute column to `looms_run_events` and copies it from the run's
+ * `looms_run_index` attributes for events already in the table. Safe to repeat:
+ * the backfill only touches rows whose column is still empty.
+ */
+export function postgresEventColumnSql(column: ResolvedReplicaColumn): string {
+  const name = `"${column.name}"`
+  const attribute = sqlStringLiteral(column.key)
+
+  return `
+ALTER TABLE looms_run_events ADD COLUMN IF NOT EXISTS ${name} TEXT;
+
+UPDATE looms_run_events AS event SET ${name} = run.attributes ->> ${attribute}
+FROM looms_run_index AS run
+WHERE event.run_id = run.run_id AND event.${name} IS NULL AND run.attributes ? ${attribute};
+`.trim()
+}
+
+export function postgresEventColumnIndexSql(column: ResolvedReplicaColumn): string {
+  return `CREATE INDEX IF NOT EXISTS looms_run_event_${column.name} ON looms_run_events ("${column.name}");`
+}
+
+/**
+ * Attribute column and index migrations for Postgres, on `looms_run_index` and `looms_run_events`.
  * Each runs once when recorded in `looms_schema_migrations`, including the backfill UPDATE.
  */
 export function postgresAttributeMigrations(
   additionalFields?: RunAttributeFields,
 ): readonly ReplicaMigration[] {
-  return columnMigrations(
-    additionalFields,
-    (id, sql) => replicaMigration(id, [sql]),
-    postgresColumnSql,
-    postgresColumnIndexSql,
-  )
+  return columnMigrations(additionalFields, (id, sql) => replicaMigration(id, [sql]), {
+    runIndexColumn: postgresColumnSql,
+    runIndexIndex: postgresColumnIndexSql,
+    eventColumn: postgresEventColumnSql,
+    eventIndex: postgresEventColumnIndexSql,
+  })
 }
 
 /** Serializes Looms migrations across processes that share one database. */

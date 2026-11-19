@@ -88,6 +88,8 @@ describe('@looms/cli', () => {
         '0000_looms_0001_replica.sql',
         '0001_looms_column_tenant_id.sql',
         '0002_looms_index_tenant_id.sql',
+        '0003_looms_event_column_tenant_id.sql',
+        '0004_looms_event_index_tenant_id.sql',
       ])
     })
 

@@ -99,30 +99,45 @@ describe('replica migration generate', () => {
     expect(reread).toHaveLength(1)
   })
 
-  test('declared attributes add a column migration and, when indexed, an index migration', () => {
+  test('declared attributes add column migrations and, when indexed, index migrations', () => {
     const fields = { tenantId: { index: true }, region: { fieldName: 'home_region' } }
 
-    expect(postgresReplicaMigrations(fields).map((migration) => migration.id)).toEqual([
+    const ids = [
       '0001_replica',
       'column_tenant_id',
       'index_tenant_id',
+      'event_column_tenant_id',
+      'event_index_tenant_id',
       'column_home_region',
-    ])
+      'event_column_home_region',
+    ]
 
-    expect(sqliteReplicaMigrations(fields).map((migration) => migration.id)).toEqual([
-      '0001_replica',
-      'column_tenant_id',
-      'index_tenant_id',
-      'column_home_region',
-    ])
+    expect(postgresReplicaMigrations(fields).map((migration) => migration.id)).toEqual(ids)
+    expect(sqliteReplicaMigrations(fields).map((migration) => migration.id)).toEqual(ids)
 
     const postgres = postgresReplicaMigrations(fields)[1]?.sql ?? ''
     expect(postgres).toContain('ADD COLUMN IF NOT EXISTS "tenant_id" TEXT')
     expect(postgres).toContain("attributes ->> 'tenantId'")
 
-    const sqlite = sqliteReplicaMigrations(fields)[3]?.sql ?? ''
+    const postgresEvents = postgresReplicaMigrations(fields)[3]?.sql ?? ''
+
+    expect(postgresEvents).toContain(
+      'ALTER TABLE looms_run_events ADD COLUMN IF NOT EXISTS "tenant_id"',
+    )
+
+    expect(postgresEvents).toContain('FROM looms_run_index AS run')
+
+    expect(postgresReplicaMigrations(fields)[4]?.sql).toContain(
+      'CREATE INDEX IF NOT EXISTS looms_run_event_tenant_id ON looms_run_events ("tenant_id")',
+    )
+
+    const sqlite = sqliteReplicaMigrations(fields)[5]?.sql ?? ''
     expect(sqlite).toContain('ADD COLUMN "home_region" TEXT')
     expect(sqlite).toContain("key = 'region'")
+
+    const sqliteEvents = sqliteReplicaMigrations(fields)[6]?.sql ?? ''
+    expect(sqliteEvents).toContain('ALTER TABLE looms_run_events ADD COLUMN "home_region" TEXT')
+    expect(sqliteEvents).toContain("key = 'region'")
   })
 
   test('refuses column names that are invalid, reserved, or shared', () => {
@@ -133,6 +148,7 @@ describe('replica migration generate', () => {
     )
 
     expect(() => postgresReplicaMigrations({ runId: {} })).toThrow(/which Looms owns/)
+    expect(() => postgresReplicaMigrations({ type: {} })).toThrow(/which Looms owns/)
 
     expect(() => postgresReplicaMigrations({ tenantId: {}, tenant_id: {} })).toThrow(
       /both map to column "tenant_id"/,
@@ -151,6 +167,8 @@ describe('replica migration generate', () => {
     expect(result.written).toEqual([
       '0001_looms_column_tenant_id.sql',
       '0002_looms_index_tenant_id.sql',
+      '0003_looms_event_column_tenant_id.sql',
+      '0004_looms_event_index_tenant_id.sql',
     ])
   })
 })

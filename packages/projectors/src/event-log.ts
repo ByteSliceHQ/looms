@@ -2,10 +2,13 @@ import { DateTime, Effect } from 'effect'
 import createPostgresClient, { type Sql, type TransactionSql } from 'postgres'
 
 import {
+  isJsonObject,
+  readAttributes,
   type EventEnvelope,
   type EventStore,
   type EventStoreError,
   type RunAttributeFields,
+  type RunAttributes,
   type RunStatus,
 } from '@looms/core'
 
@@ -86,7 +89,7 @@ export function memoryEventLog(): MemoryEventLog {
 }
 
 export type PostgresEventLogOptions = ({ url: string } | { sql: Sql }) & {
-  /** Declared run attributes. Each one is a `looms_run_index` column. */
+  /** Declared run attributes. Each one is a column on `looms_run_index` and on `looms_run_events`. */
   readonly additionalFields?: RunAttributeFields
   /**
    * Schema ownership on init. Default `auto` applies pending versioned migrations
@@ -298,7 +301,10 @@ function postgresStore(
   }
 }
 
-/** Keeps each statement under Postgres's 65,535 bind parameters (13 per event row). */
+/** Postgres allows 65,535 bind parameters per statement. */
+const MAX_BIND_PARAMETERS = 65_535
+/** Bind parameters per event row before declared attribute columns. */
+const EVENT_ROW_PARAMETERS = 14
 const INSERT_CHUNK_ROWS = 1_000
 
 type StartOp = Extract<EventLogOp, { type: 'start' }>
@@ -353,9 +359,10 @@ export function applySqlOps(
 ): Promise<void> {
   const events = ops.flatMap((op) => (op.type === 'insert' ? [envelopeFromEntry(op.entry)] : []))
 
-  return Promise.all([insertRunEvents(sql, events), applyRunIndexOps(sql, ops, columns)]).then(
-    () => undefined,
-  )
+  return Promise.all([
+    insertRunEvents(sql, events, columns),
+    applyRunIndexOps(sql, ops, columns),
+  ]).then(() => undefined)
 }
 
 /** Fold run-summary ops. Event rows are written by {@link insertRunEvents}. */
@@ -380,18 +387,62 @@ export function applyRunIndexOps(
   return Promise.all(statements).then(() => undefined)
 }
 
-/** Insert event envelopes, including ephemeral ones. Durable callers pass events that are already filtered. */
-export function insertRunEvents(
+/**
+ * Insert event envelopes, including ephemeral ones. Durable callers pass events that are already filtered.
+ * Each declared attribute column is filled from the run's attributes: the started event when it is in
+ * `events`, otherwise the run's `looms_run_index` row, which an earlier batch wrote.
+ */
+export async function insertRunEvents(
   sql: TransactionSql,
   events: readonly EventEnvelope[],
+  columns: readonly ResolvedReplicaColumn[] = [],
 ): Promise<void> {
+  const attributes =
+    columns.length === 0 ? new Map<string, RunAttributes>() : await runAttributes(sql, events)
+
+  const chunkRows = Math.min(
+    INSERT_CHUNK_ROWS,
+    Math.floor(MAX_BIND_PARAMETERS / (EVENT_ROW_PARAMETERS + columns.length)),
+  )
+
   const statements: Promise<void>[] = []
 
-  for (let index = 0; index < events.length; index += INSERT_CHUNK_ROWS) {
-    statements.push(insertEventChunk(sql, events.slice(index, index + INSERT_CHUNK_ROWS)))
+  for (let index = 0; index < events.length; index += chunkRows) {
+    statements.push(
+      insertEventChunk(sql, events.slice(index, index + chunkRows), columns, attributes),
+    )
   }
 
-  return Promise.all(statements).then(() => undefined)
+  await Promise.all(statements)
+}
+
+/** Attributes for each run in `events`. They are immutable, so any source for a run agrees. */
+async function runAttributes(
+  sql: TransactionSql,
+  events: readonly EventEnvelope[],
+): Promise<ReadonlyMap<string, RunAttributes>> {
+  const found = new Map<string, RunAttributes>()
+
+  for (const event of events) {
+    if (event.type === 'runtime.run.started' && !event.ephemeral && !found.has(event.runId)) {
+      const payload = isJsonObject(event.payload) ? event.payload : {}
+      found.set(event.runId, readAttributes(payload.attributes))
+    }
+  }
+
+  const missing = [...new Set(events.map((event) => event.runId))].filter((id) => !found.has(id))
+
+  if (missing.length > 0) {
+    const rows = await sql<{ run_id: string; attributes: RunAttributes }[]>`
+      SELECT run_id, attributes FROM looms_run_index WHERE run_id IN ${sql(missing)}
+    `
+
+    for (const row of rows) {
+      found.set(row.run_id, row.attributes)
+    }
+  }
+
+  return found
 }
 
 function envelopeFromEntry(entry: EventLogEntry): EventEnvelope {
@@ -412,8 +463,14 @@ function envelopeFromEntry(entry: EventLogEntry): EventEnvelope {
   }
 }
 
-function insertEventChunk(sql: TransactionSql, events: readonly EventEnvelope[]): Promise<void> {
+function insertEventChunk(
+  sql: TransactionSql,
+  events: readonly EventEnvelope[],
+  columns: readonly ResolvedReplicaColumn[],
+  attributes: ReadonlyMap<string, RunAttributes>,
+): Promise<void> {
   const rows = events.map((event) => ({
+    ...hostColumnRow(columns, attributes.get(event.runId)),
     run_id: event.runId,
     seq: event.seq,
     event_id: event.id,
