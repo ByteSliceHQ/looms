@@ -24,6 +24,18 @@ jobs:
           bun-version: 1.3.14
       - name: Install
         run: bun install --frozen-lockfile
+      - name: Install nats-server
+        env:
+          # Keep in step with nats-server in .flox/env/manifest.lock.
+          NATS_SERVER_VERSION: v2.15.3
+          NATS_SERVER_SHA256: 32e18c1e78d7ef4f86e483070eef3abb2647c3d4d67e29668077c7ad81da0797
+        run: |
+          archive="nats-server-${NATS_SERVER_VERSION}-linux-amd64"
+          curl -fsSL -o "$RUNNER_TEMP/$archive.tar.gz" \
+            "https://github.com/nats-io/nats-server/releases/download/${NATS_SERVER_VERSION}/$archive.tar.gz"
+          echo "${NATS_SERVER_SHA256}  $RUNNER_TEMP/$archive.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$archive" >> "$GITHUB_PATH"
       - name: Check formatting
         run: bun run fmt:check
       - name: Check commit messages
@@ -51,6 +63,8 @@ jobs:
       - name: Lint
         run: bun run lint
       - name: Test
+        env:
+          LOOMS_REQUIRE_NATS: '1'
         run: bun run test
 
   deploy-docs:

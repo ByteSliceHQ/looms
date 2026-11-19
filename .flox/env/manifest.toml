@@ -8,6 +8,12 @@ postgresql.pkg-path = "postgresql"
 curl.pkg-path = "curl"
 unzip.pkg-path = "unzip"
 nodejs.pkg-path = "nodejs"
+# Keep in step with NATS_SERVER_VERSION in .github/workflows/ci.yml.
+# 2.15 has no x86_64-darwin build, so Intel Macs skip the NATS tests.
+nats-server.pkg-path = "nats-server"
+nats-server.version = "2.15.3"
+nats-server.pkg-group = "nats"
+nats-server.systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]
 
 [vars]
 LOOMS_HOST = "127.0.0.1"

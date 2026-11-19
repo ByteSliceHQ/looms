@@ -191,6 +191,7 @@ try {
     '@swirls/looms/debugger',
     '@swirls/looms/debugger/server',
     '@swirls/looms/evaluator',
+    '@swirls/looms/nats',
     '@swirls/looms/projectors',
     '@swirls/looms/react',
     '@swirls/looms/runtime',
