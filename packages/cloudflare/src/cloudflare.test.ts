@@ -16,8 +16,10 @@ import {
   foldRun,
   invoke,
   makeMemoryEventStore,
+  type SecretContext,
   type SubscriptionAttachment,
 } from '@looms/core'
+import { secretSealer, type SecretProvider } from '@looms/runtime'
 import { defineSchedule, ensureSchedule, every, once, schedule } from '@looms/schedule'
 import { defineWorkflow, workflow } from '@looms/workflow'
 
@@ -492,6 +494,82 @@ describe('@looms/cloudflare', () => {
 
     // Release init so deferred waitUntil delivery can project the log.
     resolveInit?.()
+    await ctx.backgroundWork()
+    expect(projected).toBeGreaterThan(0)
+  })
+
+  test('LoomsDurableObject with projectors hands provisioned secrets to an attempt', async () => {
+    const received: SecretContext[] = []
+
+    const use = defineEffect({
+      type: 'secrets.use',
+      placement: 'local',
+      retry: { maxAttempts: 1, backoffMs: 1 },
+      execute: (_input, ctx) => {
+        received.push(ctx.secrets)
+        return [{ type: 'secrets.used', payload: {}, threadId: ctx.threadId }]
+      },
+    })
+
+    const useOnce = defineThread({
+      kind: 'once',
+      initialState: () => ({ used: false }),
+      step: (state, event) => (event.type === 'secrets.used' ? { used: true } : state),
+      effects: (state) => (state.used ? [complete({ ok: true })] : [invoke(use, {}, 'use')]),
+    })
+
+    const secretsModule = defineRuntimeModule({
+      namespace: 'secrets',
+      protocolVersion: '1.0.0',
+      threads: { once: useOnce },
+      effects: { use },
+      definitions: [{ kind: 'once', name: 'once', version: 'v1' }],
+    })
+
+    const provider: SecretProvider = {
+      provision: () => ({ macaroon: 'held' }),
+      forAttempt: ({ held, attempt }) => ({
+        secrets: { macaroon: `${held.macaroon ?? 'missing'}:${attempt.effectId}` },
+      }),
+    }
+
+    let projected = 0
+
+    class SecretObject extends LoomsDurableObject {
+      override configure(): LoomsDurableObjectConfig {
+        return {
+          modules: [secretsModule],
+          projectors: [
+            {
+              name: 'replica',
+              version: '1',
+              project: async (events) => {
+                projected += events.length
+              },
+            },
+          ],
+          secretProvider: provider,
+          secretSealer: secretSealer({ key: 'a-sealing-key-of-at-least-32-characters' }),
+        }
+      }
+    }
+
+    const ctx = objectContext('run_secrets', sqliteStorage())
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error mock secrets context in unit test
+    const object = new SecretObject(ctx, {})
+
+    const started = await object.startRun({
+      runId: 'run_secrets',
+      kind: 'once',
+      definitionName: 'once',
+      input: null,
+    })
+
+    expect(started.state.status).toBe('completed')
+    expect(received).toHaveLength(1)
+    expect(received[0]?.macaroon).toStartWith('held:')
+
     await ctx.backgroundWork()
     expect(projected).toBeGreaterThan(0)
   })

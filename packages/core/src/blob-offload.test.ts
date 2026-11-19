@@ -51,6 +51,13 @@ function firstDigest(value: JsonValue): string | undefined {
 }
 
 describe('blob offload', () => {
+  test('keeps the base store run secrets', async () => {
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+    const store = withBlobOffload(inner, memoryBlobStore())
+
+    expect(store.runSecrets).toBe(inner.runSecrets)
+  })
+
   test('keeps small JSON inline and resolves values over the threshold', async () => {
     const inner = await Effect.runPromise(makeMemoryEventStore)
     const blobs = memoryBlobStore()
