@@ -114,6 +114,23 @@ function sqliteColumnIndexSql(column: ResolvedReplicaColumn): string {
   return `CREATE INDEX IF NOT EXISTS looms_run_index_${column.name} ON looms_run_index ("${column.name}");`
 }
 
+function sqliteEventColumnSql(column: ResolvedReplicaColumn): string {
+  const name = `"${column.name}"`
+
+  const value = `(SELECT value FROM looms_run_index AS run, json_each(run.attributes) WHERE run.run_id = looms_run_events.run_id AND key = ${sqlStringLiteral(column.key)})`
+
+  return `
+ALTER TABLE looms_run_events ADD COLUMN ${name} TEXT;
+
+UPDATE looms_run_events SET ${name} = ${value}
+WHERE ${name} IS NULL AND ${value} IS NOT NULL;
+`.trim()
+}
+
+function sqliteEventColumnIndexSql(column: ResolvedReplicaColumn): string {
+  return `CREATE INDEX IF NOT EXISTS looms_run_event_${column.name} ON looms_run_events ("${column.name}");`
+}
+
 /** Versioned DDL for the SQLite replica with no attribute columns, including D1. Looms only creates `looms_*` objects. */
 export const SQLITE_REPLICA_MIGRATIONS: readonly ReplicaMigration[] = [
   sqliteReplicaMigration('0001_replica', SQLITE_REPLICA_SCHEMA_SQL),
@@ -124,11 +141,11 @@ export function sqliteReplicaMigrations(
 ): readonly ReplicaMigration[] {
   return [
     ...SQLITE_REPLICA_MIGRATIONS,
-    ...columnMigrations(
-      additionalFields,
-      sqliteReplicaMigration,
-      sqliteColumnSql,
-      sqliteColumnIndexSql,
-    ),
+    ...columnMigrations(additionalFields, sqliteReplicaMigration, {
+      runIndexColumn: sqliteColumnSql,
+      runIndexIndex: sqliteColumnIndexSql,
+      eventColumn: sqliteEventColumnSql,
+      eventIndex: sqliteEventColumnIndexSql,
+    }),
   ]
 }

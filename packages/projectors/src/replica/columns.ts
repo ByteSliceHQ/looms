@@ -13,7 +13,7 @@ export interface ReplicaPurgeOptions<Fields extends RunAttributeFields = RunAttr
   readonly where?: { readonly [Key in keyof Fields & string]?: string }
 }
 
-/** A declared attribute and the `looms_run_index` column that stores it. */
+/** A declared attribute and the column that stores it on `looms_run_index` and `looms_run_events`. */
 export interface ResolvedReplicaColumn {
   /** Attribute name, and the property name on the Drizzle table. */
   readonly key: string
@@ -22,7 +22,7 @@ export interface ResolvedReplicaColumn {
   readonly index: boolean
 }
 
-/** Postgres caps identifiers at 63 bytes, and the index name adds `looms_run_index_`. */
+/** Postgres caps identifiers at 63 bytes, and index names add `looms_run_index_` or `looms_run_event_`. */
 const COLUMN_NAME = /^[a-z_][a-z0-9_]{0,46}$/
 
 const LOOMS_COLUMNS = new Set([
@@ -41,6 +41,18 @@ const LOOMS_COLUMNS = new Set([
   'completed_at',
   'replicated_seq',
   'purged_at',
+  'seq',
+  'event_id',
+  'ts',
+  'type',
+  'payload',
+  'thread_id',
+  'parent_thread_id',
+  'causation_id',
+  'effect_id',
+  'origin',
+  'idempotency_key',
+  'ephemeral',
 ])
 
 function snakeCase(key: string): string {
@@ -122,18 +134,27 @@ export interface ReplicaMigration {
   readonly sql: string
 }
 
+export interface ColumnMigrationSql {
+  readonly runIndexColumn: (column: ResolvedReplicaColumn) => string
+  readonly runIndexIndex: (column: ResolvedReplicaColumn) => string
+  readonly eventColumn: (column: ResolvedReplicaColumn) => string
+  readonly eventIndex: (column: ResolvedReplicaColumn) => string
+}
+
 /**
  * Migrations for declared attribute columns, after the Looms tables.
- * Each column and each index is its own migration, so declaring one later only adds that file.
+ * Each column and each index is its own migration, so declaring one later only adds those files.
+ * The `looms_run_index` column comes first; the `looms_run_events` column backfills from that table.
  */
 export function columnMigrations(
   fields: RunAttributeFields | undefined,
   migration: (id: string, sql: string) => ReplicaMigration,
-  columnSql: (column: ResolvedReplicaColumn) => string,
-  indexSql: (column: ResolvedReplicaColumn) => string,
+  sql: ColumnMigrationSql,
 ): readonly ReplicaMigration[] {
-  return resolveReplicaColumns(fields).flatMap((column) => {
-    const added = migration(`column_${column.name}`, columnSql(column))
-    return column.index ? [added, migration(`index_${column.name}`, indexSql(column))] : [added]
-  })
+  return resolveReplicaColumns(fields).flatMap((column) => [
+    migration(`column_${column.name}`, sql.runIndexColumn(column)),
+    ...(column.index ? [migration(`index_${column.name}`, sql.runIndexIndex(column))] : []),
+    migration(`event_column_${column.name}`, sql.eventColumn(column)),
+    ...(column.index ? [migration(`event_index_${column.name}`, sql.eventIndex(column))] : []),
+  ])
 }

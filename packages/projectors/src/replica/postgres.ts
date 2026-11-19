@@ -67,8 +67,9 @@ export type PostgresReplicaOptions<Fields extends RunAttributeFields = NoAdditio
    */
   readonly migrate: PostgresReplicaMigrate
   /**
-   * Declared run attributes, from `defineRunAttributes`. Each one is a `looms_run_index`
-   * column, and each column and index is its own migration. `purge({ where })` filters on them.
+   * Declared run attributes, from `defineRunAttributes`. Each one is a column on `looms_run_index`
+   * and on `looms_run_events`, and each column and index is its own migration.
+   * `purge({ where })` filters on them.
    */
   readonly additionalFields?: Fields
 }
@@ -310,7 +311,7 @@ export function postgresReplica<const Fields extends RunAttributeFields = NoAddi
         const durable = batch.filter((event) => !event.ephemeral)
         const last = batch.at(-1)
 
-        await insertRunEvents(tx, batch)
+        await insertRunEvents(tx, batch, columns)
 
         await applyRunIndexOps(
           tx,

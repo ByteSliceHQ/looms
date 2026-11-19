@@ -239,6 +239,101 @@ describe('postgres event log', () => {
     ])
   })
 
+  test('writes declared attributes on every event row and backfills earlier rows', async () => {
+    const client = requireSql()
+    const plain = postgresEventLog({ sql: client })
+    await plain.init?.()
+    await plain.project([started('run_rows_before'), step('run_rows_before', 2)])
+
+    const postgres = postgresEventLog({
+      sql: client,
+      additionalFields: { project: { fieldName: 'project_name', index: true } },
+    })
+
+    await postgres.init?.()
+
+    const lookups = (): string[] =>
+      statements.filter((query) => /SELECT run_id, attributes FROM looms_run_index/.test(query))
+
+    statements.length = 0
+    await postgres.project([started('run_rows_live')])
+    expect(lookups()).toEqual([])
+
+    await postgres.project([step('run_rows_live', 2), step('run_rows_before', 3)])
+    expect(lookups()).toHaveLength(1)
+
+    const rows = await client<{ run_id: string; seq: string; project_name: string | null }[]>`
+      SELECT run_id, seq::text AS seq, project_name FROM looms_run_events
+      WHERE run_id LIKE 'run_rows_%'
+      ORDER BY run_id, seq
+    `
+
+    expect(rows.map((row) => ({ ...row }))).toEqual([
+      { run_id: 'run_rows_before', seq: '1', project_name: 'billing' },
+      { run_id: 'run_rows_before', seq: '2', project_name: 'billing' },
+      { run_id: 'run_rows_before', seq: '3', project_name: 'billing' },
+      { run_id: 'run_rows_live', seq: '1', project_name: 'billing' },
+      { run_id: 'run_rows_live', seq: '2', project_name: 'billing' },
+    ])
+
+    const indexes = await client<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes WHERE tablename = 'looms_run_events'
+    `
+
+    expect(indexes.map((index) => index.indexname)).toContain('looms_run_event_project_name')
+  })
+
+  test('a host can apply row-level security to both tables with its own attribute', async () => {
+    const client = requireSql()
+
+    const postgres = postgresEventLog({
+      sql: client,
+      additionalFields: { tenant: { index: true } },
+    })
+
+    await postgres.init?.()
+    await postgres.project([started('run_rls'), step('run_rls', 2)])
+
+    await client.unsafe(`
+      DROP ROLE IF EXISTS looms_reader;
+      CREATE ROLE looms_reader;
+      GRANT SELECT ON looms_run_index, looms_run_events TO looms_reader;
+      ALTER TABLE looms_run_index ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE looms_run_events ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY tenant_isolation ON looms_run_index
+        USING (tenant = current_setting('looms.tenant', true));
+      CREATE POLICY tenant_isolation ON looms_run_events
+        USING (tenant = current_setting('looms.tenant', true));
+    `)
+
+    const visible = (tenant: string) =>
+      client.begin(async (tx) => {
+        await tx`SET LOCAL ROLE looms_reader`
+        await tx`SELECT set_config('looms.tenant', ${tenant}, true)`
+
+        const [counts] = await tx<{ runs: string; events: string }[]>`
+          SELECT (SELECT count(*) FROM looms_run_index WHERE run_id = 'run_rls')::text AS runs,
+                 (SELECT count(*) FROM looms_run_events WHERE run_id = 'run_rls')::text AS events
+        `
+
+        return counts
+      })
+
+    try {
+      expect(await visible('acme')).toEqual({ runs: '1', events: '2' })
+      expect(await visible('globex')).toEqual({ runs: '0', events: '0' })
+    } finally {
+      await client.unsafe(`
+        DROP POLICY tenant_isolation ON looms_run_index;
+        DROP POLICY tenant_isolation ON looms_run_events;
+        ALTER TABLE looms_run_index DISABLE ROW LEVEL SECURITY;
+        ALTER TABLE looms_run_events DISABLE ROW LEVEL SECURITY;
+        REVOKE ALL ON looms_run_index, looms_run_events FROM looms_reader;
+        DROP ROLE looms_reader;
+      `)
+    }
+  })
+
   test('migrate auto is lock-free when migrations are already applied', async () => {
     const client = requireSql()
     const first = postgresEventLog({ sql: client, migrate: 'auto' })
