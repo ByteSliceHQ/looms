@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.19.1
+
+### Patch Changes
+
+- 9f78e55: Keep `runSecrets` (and `readStream`) on event stores wrapped by `withProjectors`, `withBlobOffload`, and the testing fault injector, so a Durable Object configured with projectors can still provision and hand secrets to attempts instead of failing with "secrets are unavailable".
+
 ## 0.19.0
 
 ### Minor Changes
