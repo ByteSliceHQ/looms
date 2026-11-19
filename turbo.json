@@ -20,6 +20,8 @@
     "S2_ENDPOINT",
     "S2_LITE_PORT",
     "FLOX_ENV_CACHE",
+    "LOOMS_REQUIRE_NATS",
+    "NATS_SERVER_BIN",
     "PATH"
   ],
   "tasks": {
