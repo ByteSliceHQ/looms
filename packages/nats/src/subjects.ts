@@ -45,11 +45,64 @@ export function streamSubject(prefix: string): string {
   return `${prefix}.run.>`
 }
 
-/** `<prefix>.run.<runId>.>`: one run's events, in the order they were published. */
-export function runSubjectFilter(prefix: string, runId: string): string {
-  return `${prefix}.run.${encodeSubjectToken(runId)}.>`
+/**
+ * The tokens between `run` and the run id: one per name, in order, from the run's attributes.
+ * An attribute the run does not have is the empty token, `~`.
+ */
+export function attributeTokens(
+  names: readonly string[],
+  attributes: { readonly [key: string]: string } | undefined,
+): readonly string[] {
+  return names.map((name) => encodeSubjectToken(attributes?.[name] ?? ''))
 }
 
-export function eventSubject(prefix: string, runId: string, type: string): string {
-  return `${prefix}.run.${encodeSubjectToken(runId)}.${encodeEventType(type)}`
+/**
+ * The attribute tokens of a subject this projector published, given how many it carries.
+ * `undefined` when the subject is not one of them.
+ */
+export function attributeTokensOf(
+  subject: string,
+  prefix: string,
+  count: number,
+): readonly string[] | undefined {
+  const head = `${prefix}.run.`
+
+  if (!subject.startsWith(head)) {
+    return undefined
+  }
+
+  const tokens = subject.slice(head.length).split('.')
+
+  // The attributes, the run id, and at least one token of the event type.
+  return tokens.length >= count + 2 ? tokens.slice(0, count) : undefined
+}
+
+/** `count` tokens that match any attribute: `*` for each. */
+export function anyAttributeTokens(count: number): readonly string[] {
+  return Array.from({ length: count }, () => '*')
+}
+
+/**
+ * One run's events, in the order they were published.
+ *
+ * `scope` is the run's attribute tokens: `<prefix>.run.<tokens>.<runId>.>`. With
+ * `anyAttributeTokens` it finds the run whatever its attributes: `<prefix>.run.*.*.<runId>.>`.
+ * With no attributes in the subject it is `<prefix>.run.<runId>.>`.
+ */
+export function runSubjectFilter(
+  prefix: string,
+  runId: string,
+  scope: readonly string[] = [],
+): string {
+  return [prefix, 'run', ...scope, encodeSubjectToken(runId), '>'].join('.')
+}
+
+/** `<prefix>.run.<attribute tokens>.<runId>.<type tokens>`. */
+export function eventSubject(
+  prefix: string,
+  runId: string,
+  type: string,
+  scope: readonly string[] = [],
+): string {
+  return [prefix, 'run', ...scope, encodeSubjectToken(runId), encodeEventType(type)].join('.')
 }
