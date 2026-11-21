@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  anyAttributeTokens,
+  attributeTokens,
+  attributeTokensOf,
   encodeEventType,
   encodeSubjectToken,
   eventSubject,
@@ -37,6 +40,33 @@ describe('subject encoding', () => {
     )
 
     expect(runSubjectFilter('looms.prod', 'run.1')).toBe('looms.prod.run.run~2E1.>')
+  })
+
+  test('puts attribute tokens between `run` and the run id', () => {
+    const scope = attributeTokens(['orgId', 'projectId'], { orgId: 'org_1', projectId: 'a.b' })
+
+    expect(scope).toEqual(['org_1', 'a~2Eb'])
+
+    expect(eventSubject('looms', 'run_1', 'runtime.run.started', scope)).toBe(
+      'looms.run.org_1.a~2Eb.run_1.runtime.run.started',
+    )
+
+    expect(runSubjectFilter('looms', 'run_1', scope)).toBe('looms.run.org_1.a~2Eb.run_1.>')
+    expect(runSubjectFilter('looms', 'run_1', anyAttributeTokens(2))).toBe('looms.run.*.*.run_1.>')
+  })
+
+  test('gives a missing attribute the empty token', () => {
+    expect(attributeTokens(['orgId', 'projectId'], { orgId: 'org_1' })).toEqual(['org_1', '~'])
+    expect(attributeTokens(['orgId'], undefined)).toEqual(['~'])
+  })
+
+  test('reads attribute tokens back from a subject', () => {
+    const subject = 'looms.prod.run.org_1.~.run_1.runtime.run.started'
+
+    expect(attributeTokensOf(subject, 'looms.prod', 2)).toEqual(['org_1', '~'])
+    expect(attributeTokensOf(subject, 'looms.prod', 0)).toEqual([])
+    expect(attributeTokensOf(subject, 'looms', 2)).toBeUndefined()
+    expect(attributeTokensOf('looms.run.org_1.run_1', 'looms', 2)).toBeUndefined()
   })
 
   test('validates prefixes', () => {

@@ -18,7 +18,8 @@ import {
   withProjectors,
 } from '@looms/projectors'
 
-import { LoomsHeaders, NatsProjectorError, natsProjector } from './projector'
+import { LoomsHeaders, natsProjector } from './projector'
+import { NatsProjectorError } from './transport'
 
 function findNatsServer(): string | undefined {
   const explicit = process.env.NATS_SERVER_BIN
@@ -309,6 +310,59 @@ describe.skipIf(!binary)('natsProjector', () => {
     await Effect.runPromise(delivery.deliver('run_refill'))
 
     expect(seqsFor(await readStream(names.stream), 'run_refill')).toEqual([1, 2, 3, 4])
+  })
+
+  test('files a run under its attributes, from the started event and then from the stream', async () => {
+    const names = isolated()
+
+    const projector = natsProjector({
+      connection: nc,
+      ...names,
+      subjectAttributes: ['orgId', 'projectId'],
+    })
+
+    const started = (runId: string, attributes: { [key: string]: string }): EventEnvelope => ({
+      ...envelope(runId, 1, 'runtime.run.started'),
+      payload: { attributes },
+    })
+
+    await projector.project([started('run_attr', { orgId: 'org_1', projectId: 'p.1' })])
+    // A later batch has no started event: the run's subjects come from its last message.
+    await projector.project(range('run_attr', 2, 3))
+    await projector.project([started('run_other', { orgId: 'org_2' }), envelope('run_other', 2)])
+
+    const root = `${names.subjectPrefix}.run`
+
+    expect((await readStream(names.stream)).map((message) => message.subject)).toEqual([
+      `${root}.org_1.p~2E1.run_attr.runtime.run.started`,
+      `${root}.org_1.p~2E1.run_attr.test.event.happened`,
+      `${root}.org_1.p~2E1.run_attr.test.event.happened`,
+      `${root}.org_2.~.run_other.runtime.run.started`,
+      `${root}.org_2.~.run_other.test.event.happened`,
+    ])
+
+    expect(await projector.position?.('run_attr')).toBe(3)
+    expect(await projector.position?.('run_other')).toBe(2)
+    expect(await projector.position?.('org_1')).toBe(0)
+
+    const org1 = await jsm.streams.getMessage(names.stream, { last_by_subj: `${root}.org_1.>` })
+    expect(org1?.header.get(LoomsHeaders.runId)).toBe('run_attr')
+  })
+
+  test('keeps the hole and redelivery rules with attributes in the subject', async () => {
+    const names = isolated()
+    const projector = natsProjector({ connection: nc, ...names, subjectAttributes: ['orgId'] })
+
+    await projector.project(range('run_plain', 1, 2))
+    await projector.project(range('run_plain', 1, 3))
+
+    const failure = await rejection(projector.project(range('run_plain', 5, 6)))
+
+    expect(failure).toBeInstanceOf(ReplicaGapError)
+
+    expect((await readStream(names.stream)).map((message) => message.subject)).toEqual(
+      Array.from({ length: 3 }, () => `${names.subjectPrefix}.run.~.run_plain.test.event.happened`),
+    )
   })
 
   test('marks ephemeral events in a header', async () => {
