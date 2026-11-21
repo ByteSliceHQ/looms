@@ -16,6 +16,7 @@ import {
   foldRun,
   invoke,
   makeMemoryEventStore,
+  wait,
   type SecretContext,
   type SubscriptionAttachment,
 } from '@looms/core'
@@ -90,7 +91,7 @@ describe('@looms/cloudflare', () => {
 
   test('durableObjectAlarms preserves an earlier projector retry deadline', async () => {
     let projectorDeadline: number | null = 500
-    const storage = fakeAlarmStorage(500)
+    const storage = fakeAlarmStorage(null)
     const { scheduler } = durableObjectAlarms(storage, () => Effect.sync(() => projectorDeadline))
 
     await Effect.runPromise(scheduler.schedule('run_1', 1_000))
@@ -134,6 +135,43 @@ describe('@looms/cloudflare', () => {
 
     await Effect.runPromise(alarms.scheduleAtEarliest(3_000))
     expect(storage.current()).toBe(500)
+  })
+
+  test('durableObjectAlarms keeps an inherited earlier alarm when the runtime reports later', async () => {
+    // An earlier instance left a wake owed at 500. Run state only knows a deadline at 10_000.
+    const storage = fakeAlarmStorage(500)
+    const alarms = durableObjectAlarms(storage)
+
+    await Effect.runPromise(alarms.scheduler.schedule('run_1', 10_000))
+    expect(storage.current()).toBe(500)
+
+    await Effect.runPromise(alarms.scheduler.keepAlive?.('run_1', 9_000) ?? Effect.void)
+    await Effect.runPromise(alarms.scheduler.keepAlive?.('run_1', null) ?? Effect.void)
+    expect(storage.current()).toBe(500)
+
+    await Effect.runPromise(alarms.scheduler.cancel('run_1'))
+    expect(storage.current()).toBe(500)
+
+    // The platform clears the alarm as it fires. The wake that follows settles what was owed.
+    await storage.deleteAlarm()
+    await Effect.runPromise(alarms.fired)
+    await Effect.runPromise(alarms.scheduler.schedule('run_1', 10_000))
+    expect(storage.current()).toBe(10_000)
+  })
+
+  test('durableObjectAlarms drops an inherited alarm the runtime deadline covers', async () => {
+    const storage = fakeAlarmStorage(10_000)
+    const alarms = durableObjectAlarms(storage)
+
+    await Effect.runPromise(alarms.scheduler.schedule('run_1', 10_000))
+    expect(storage.current()).toBe(10_000)
+
+    // A wake parked later: the inherited alarm was the old runtime deadline, not a wake owed.
+    await Effect.runPromise(alarms.scheduler.schedule('run_1', 20_000))
+    expect(storage.current()).toBe(20_000)
+
+    await Effect.runPromise(alarms.scheduler.cancel('run_1'))
+    expect(storage.current()).toBeNull()
   })
 
   test('routeToDurableObject handles health and rejects global runs listing', async () => {
@@ -1182,5 +1220,86 @@ describe('in-process effect liveness', () => {
     // Let the abandoned wake unwind so it does not outlive the test.
     lost.resolve()
     await Promise.all([firstWake, joined])
+  })
+})
+
+describe('a wake owed by an alarm', () => {
+  test('survives an object rebuilt by a request before the alarm fires', async () => {
+    const runId = 'run_owed_wake'
+    // A deadline in run state long after the wake the signal asks for.
+    const farTimer = Date.now() + 900_000
+
+    const finish = defineEffect({
+      type: 'owed.finish',
+      placement: 'local',
+      execute: (_input, ctx) =>
+        Effect.succeed([{ type: 'owed.done', payload: {}, threadId: ctx.threadId }]),
+    })
+
+    const module = defineRuntimeModule({
+      namespace: 'owed',
+      protocolVersion: '1.0.0',
+      events: defineEventCatalog('owed', { go: Schema.Struct({}), done: Schema.Struct({}) }),
+      effects: { finish },
+      threads: {
+        'owed-job': defineThread<{ step: 'parked' | 'going' | 'done' }>({
+          kind: 'owed-job',
+          initialState: () => ({ step: 'parked' }),
+          step: (state, event) => {
+            if (event.type === 'owed.go') {
+              return { step: 'going' }
+            }
+
+            return event.type === 'owed.done' ? { step: 'done' } : state
+          },
+          effects: (state) => {
+            if (state.step === 'done') {
+              return [complete({ ok: true })]
+            }
+
+            const far = wait({ waitId: 'far', on: { timerAt: farTimer } })
+            return state.step === 'going' ? [far, invoke(finish, null, 'finish')] : [far]
+          },
+        }),
+      },
+      definitions: [{ kind: 'owed-job', name: 'owed-job', version: 'v1', input: Schema.Null }],
+    })
+
+    class OwedObject extends LoomsDurableObject {
+      override configure(): LoomsDurableObjectConfig {
+        return { modules: [module] }
+      }
+    }
+
+    const storage = sqliteStorage()
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error fake Durable Object state
+    const first = new OwedObject(objectContext(runId, storage), {})
+
+    await first.startRun({ runId, kind: 'owed-job', definitionName: 'owed-job' })
+    expect(storage.alarmAt()).toBe(farTimer)
+
+    // The signal is answered once committed. Its wake is left to the alarm, set for now.
+    const committedAt = Date.now()
+    await first.signal([{ type: 'owed.go', payload: {} }], { wake: 'schedule' })
+    expect(storage.alarmAt()).toBeLessThanOrEqual(Date.now())
+
+    // The object is evicted before that alarm fires, and a read builds the next one. The new
+    // object reads the run's deadlines back from state, which holds only the far timer.
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error fake Durable Object state
+    const second = new OwedObject(objectContext(runId, storage), {})
+    expect((await second.getRun()).status).toBe('running')
+
+    // The alarm is still the wake the signal was promised, not the far timer.
+    expect(storage.alarmAt()).toBeGreaterThanOrEqual(committedAt)
+    expect(storage.alarmAt()).toBeLessThanOrEqual(Date.now())
+
+    // The platform clears an alarm as it fires; the fake storage needs telling.
+    await storage.deleteAlarm()
+    await second.alarm()
+
+    expect((await second.getRun()).status).toBe('completed')
+    expect(storage.alarmAt()).toBeNull()
   })
 })
