@@ -8,6 +8,8 @@ export {
   anyAttributeTokens,
   attributeTokens,
   attributeTokensOf,
+  CURSOR_TYPE,
+  cursorSubject,
   encodeEventType,
   encodeSubjectToken,
   eventSubject,

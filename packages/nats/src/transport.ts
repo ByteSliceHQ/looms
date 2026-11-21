@@ -22,6 +22,11 @@ export interface NatsOutgoingMessage {
   readonly subject: string
   readonly payload: string
   readonly headers: { readonly [name: string]: string }
+  /**
+   * True when storing this message drops every earlier message on its subject, so the subject
+   * only ever holds the newest. The stream has to allow it (`allow_rollup_hdrs` on NATS).
+   */
+  readonly replaces?: boolean
 }
 
 /** A message the stream holds. */
@@ -97,6 +102,11 @@ export type NatsConnectionTransportOptions = NatsConnectionSource &
   NatsStreamSettings & {
     /** The subjects a stream made by `init` takes. */
     readonly subjects: readonly string[]
+    /**
+     * True when messages will be sent that replace the earlier ones on their subject. `init`
+     * then makes the stream with `allow_rollup_hdrs`, and refuses an existing one without it.
+     */
+    readonly replaces?: boolean
   }
 
 const CommitResponse = Schema.Union([
@@ -152,6 +162,10 @@ function wireMessage(
   if (batch.expected) {
     header.set('Nats-Expected-Last-Subject-Sequence', String(batch.expected.sequence))
     header.set('Nats-Expected-Last-Subject-Sequence-Subject', batch.expected.filter)
+  }
+
+  if (message.replaces) {
+    header.set('Nats-Rollup', 'sub')
   }
 
   if (batch.commit) {
@@ -232,14 +246,20 @@ export function natsConnectionTransport(
       ),
     )
 
-    if (info?.config.allow_atomic === true) {
-      return info
-    }
-
-    if (info) {
+    if (info && info.config.allow_atomic !== true) {
       return yield* new NatsProjectorError({
         message: `Stream ${stream} must set allow_atomic: true for the Looms NATS projector`,
       })
+    }
+
+    if (info && options.replaces === true && !info.config.allow_rollup_hdrs) {
+      return yield* new NatsProjectorError({
+        message: `Stream ${stream} must set allow_rollup_hdrs: true to leave ephemeral events out`,
+      })
+    }
+
+    if (info) {
+      return info
     }
 
     if (options.createStream === false) {
@@ -252,6 +272,7 @@ export function natsConnectionTransport(
         name: stream,
         subjects: [...options.subjects],
         allow_atomic: true,
+        ...(options.replaces === true ? { allow_rollup_hdrs: true } : undefined),
       }),
     )
   })

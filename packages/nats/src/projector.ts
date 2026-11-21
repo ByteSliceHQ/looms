@@ -7,6 +7,8 @@ import {
   anyAttributeTokens,
   attributeTokens,
   attributeTokensOf,
+  CURSOR_TYPE,
+  cursorSubject,
   eventSubject,
   isValidSubjectPrefix,
   runSubjectFilter,
@@ -30,6 +32,8 @@ export const LoomsHeaders = {
   type: 'Looms-Type',
   threadId: 'Looms-Thread-Id',
   ephemeral: 'Looms-Ephemeral',
+  /** Set to `true` on a run's cursor message, which is not an event. */
+  cursor: 'Looms-Cursor',
 } as const
 
 export interface NatsProjectorSettings {
@@ -47,6 +51,21 @@ export interface NatsProjectorSettings {
    * already in the stream under the old subjects.
    */
   readonly subjectAttributes?: readonly string[]
+  /**
+   * What happens to ephemeral events, such as the tokens of a model's answer. `publish`, the
+   * default, stores them like any other, marked by the `Looms-Ephemeral` header. `skip` leaves
+   * them out of the stream.
+   *
+   * Ephemeral events take sequence numbers in a run's log, and the projector finds its place
+   * from the run's last message. So with `skip`, a batch whose newest event is ephemeral ends
+   * with one small cursor message on `<run's subjects>.looms.cursor`, carrying that event's
+   * sequence in `Looms-Seq` and `Looms-Cursor: true`. It replaces the run's earlier cursor, so
+   * a run never holds more than one. A reader of the stream skips it: it is not an event.
+   *
+   * The stream has to allow a message to replace the earlier ones on its subject
+   * (`allow_rollup_hdrs` on NATS).
+   */
+  readonly ephemeral?: 'publish' | 'skip'
   /** Events per atomic batch. At most what the transport takes, which is also the default. */
   readonly maxBatch?: number
   /** Projector name for delivery cursors and diagnostics. Defaults to `nats`. */
@@ -160,6 +179,26 @@ function outgoing(
   }
 }
 
+/** The message that records how far a run has been read when its newest events were left out. */
+function cursorMessage(
+  prefix: string,
+  runId: string,
+  scope: readonly string[],
+  seq: number,
+): NatsOutgoingMessage {
+  return {
+    subject: cursorSubject(prefix, runId, scope),
+    payload: JSON.stringify({ runId, seq }),
+    headers: {
+      [LoomsHeaders.runId]: runId,
+      [LoomsHeaders.seq]: String(seq),
+      [LoomsHeaders.type]: CURSOR_TYPE,
+      [LoomsHeaders.cursor]: 'true',
+    },
+    replaces: true,
+  }
+}
+
 /**
  * Replicates committed events to a NATS JetStream stream, one subject per event:
  * `<prefix>.run.<runId>.<type tokens>`, with the run's `subjectAttributes` before the run id
@@ -184,8 +223,11 @@ export function natsProjector(options: NatsProjectorOptions): Projector {
     })
   }
 
+  const skips = options.ephemeral === 'skip'
+
   const transport =
-    options.transport ?? natsConnectionTransport({ ...options, subjects: [streamSubject(prefix)] })
+    options.transport ??
+    natsConnectionTransport({ ...options, subjects: [streamSubject(prefix)], replaces: skips })
 
   const limit = Math.min(transport.maxBatch ?? SERVER_BATCH_LIMIT, SERVER_BATCH_LIMIT)
   const maxBatch = Math.min(options.maxBatch ?? limit, limit)
@@ -245,12 +287,17 @@ export function natsProjector(options: NatsProjectorOptions): Projector {
       const filter = runSubjectFilter(prefix, runId, scope)
       let expected = tail.streamSeq
 
-      for (const batch of chunk(pending, maxBatch)) {
-        expected = yield* transport.commit({
-          filter,
-          expected,
-          messages: batch.map((event) => outgoing(prefix, runId, scope, event)),
-        })
+      const kept = skips ? pending.filter((event) => !event.ephemeral) : pending
+      const messages = kept.map((event) => outgoing(prefix, runId, scope, event))
+      const newest = pending.at(-1)
+
+      // Nothing stored says the run got this far, so a cursor does.
+      if (skips && newest?.ephemeral) {
+        messages.push(cursorMessage(prefix, runId, scope, newest.seq))
+      }
+
+      for (const batch of chunk(messages, maxBatch)) {
+        expected = yield* transport.commit({ filter, expected, messages: batch })
       }
     })
 
