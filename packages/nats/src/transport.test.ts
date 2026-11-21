@@ -35,6 +35,7 @@ function memoryTransport(maxBatch?: number) {
   const stored: NatsStoredMessage[] = []
   const commits: NatsCommit[] = []
   let inits = 0
+  let sequence = 0
 
   const last = (filter: string) =>
     stored.findLast((message) => matcher(filter).test(message.subject))
@@ -60,14 +61,16 @@ function memoryTransport(maxBatch?: number) {
         commits.push(batch)
 
         for (const message of batch.messages) {
-          stored.push({
-            subject: message.subject,
-            streamSeq: stored.length + 1,
-            headers: message.headers,
-          })
+          if (message.replaces) {
+            const kept = stored.filter((held) => held.subject !== message.subject)
+            stored.splice(0, stored.length, ...kept)
+          }
+
+          sequence += 1
+          stored.push({ subject: message.subject, streamSeq: sequence, headers: message.headers })
         }
 
-        return Effect.succeed(stored.length)
+        return Effect.succeed(sequence)
       }),
   }
 
@@ -173,6 +176,25 @@ describe('natsProjector over a host transport', () => {
 
     expect(memory.stored.at(-1)?.subject).toBe('looms.run.org_1.proj_1.run_a.test.event.happened')
     expect(await projector.position?.('run_a')).toBe(2)
+  })
+
+  test('asks the transport to replace a run’s cursor, not to keep each one', async () => {
+    const memory = memoryTransport()
+    const projector = natsProjector({ transport: memory.transport, ephemeral: 'skip' })
+    const live = (seq: number): EventEnvelope => ({ ...envelope('run_a', seq), ephemeral: true })
+
+    await projector.project([envelope('run_a', 1), live(2)])
+    await projector.project([live(3)])
+
+    expect(memory.stored.map((held) => [held.subject, held.headers[LoomsHeaders.seq]])).toEqual([
+      ['looms.run.run_a.test.event.happened', '1'],
+      ['looms.run.run_a.looms.cursor', '3'],
+    ])
+
+    const cursors = memory.commits.flatMap((commit) => commit.messages).filter((m) => m.replaces)
+
+    expect(cursors.map((message) => message.headers[LoomsHeaders.cursor])).toEqual(['true', 'true'])
+    expect(await projector.position?.('run_a')).toBe(3)
   })
 
   test('passes a refused commit on', async () => {

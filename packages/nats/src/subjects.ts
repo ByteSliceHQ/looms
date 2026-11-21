@@ -106,3 +106,19 @@ export function eventSubject(
 ): string {
   return [prefix, 'run', ...scope, encodeSubjectToken(runId), encodeEventType(type)].join('.')
 }
+
+/** The event type the cursor message is filed under. No event of a run has it. */
+export const CURSOR_TYPE = 'looms.cursor'
+
+/**
+ * `<prefix>.run.<attribute tokens>.<runId>.looms.cursor`: where a run's cursor is kept when
+ * ephemeral events are left out of the stream. It is on the run's subjects, so it is the
+ * run's last message whenever the run's newest events were ephemeral.
+ */
+export function cursorSubject(
+  prefix: string,
+  runId: string,
+  scope: readonly string[] = [],
+): string {
+  return eventSubject(prefix, runId, CURSOR_TYPE, scope)
+}

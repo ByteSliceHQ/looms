@@ -376,6 +376,79 @@ describe.skipIf(!binary)('natsProjector', () => {
     expect(message?.header.get(LoomsHeaders.type)).toBe('test.event.happened')
   })
 
+  test('leaves ephemeral events out, and keeps one cursor for a run whose newest were', async () => {
+    const names = isolated()
+    const projector = natsProjector({ connection: nc, ...names, ephemeral: 'skip' })
+    const live = (seq: number): EventEnvelope => ({ ...envelope('run_skip', seq), ephemeral: true })
+    const cursorOf = `${names.subjectPrefix}.run.run_skip.looms.cursor`
+
+    await projector.project([envelope('run_skip', 1), live(2), envelope('run_skip', 3), live(4)])
+
+    const first = await readStream(names.stream)
+
+    expect(
+      first.map((message) => [message.subject.split('.').slice(3).join('.'), message.seq]),
+    ).toEqual([
+      ['test.event.happened', 1],
+      ['test.event.happened', 3],
+      ['looms.cursor', 4],
+    ])
+
+    expect(await projector.position?.('run_skip')).toBe(4)
+
+    // More that is only ephemeral moves the cursor and stores nothing else.
+    await projector.project([live(5), live(6)])
+    await projector.project([live(7)])
+
+    const cursors = (await readStream(names.stream)).filter(
+      (message) => message.subject === cursorOf,
+    )
+
+    expect(cursors.map((message) => message.seq)).toEqual([7])
+    expect(await projector.position?.('run_skip')).toBe(7)
+
+    // Delivered again, nothing changes. A durable event after it is stored as usual.
+    await projector.project([live(5), live(6), live(7)])
+    await projector.project([envelope('run_skip', 8)])
+
+    const last = await jsm.streams.getMessage(names.stream, {
+      last_by_subj: `${names.subjectPrefix}.run.run_skip.>`,
+    })
+
+    expect(last?.header.get(LoomsHeaders.seq)).toBe('8')
+    expect(last?.header.get(LoomsHeaders.cursor)).toBe('')
+    expect(seqsFor(await readStream(names.stream), 'run_skip')).toEqual([1, 3, 7, 8])
+  })
+
+  test('still refuses a hole when ephemeral events are left out', async () => {
+    const names = isolated()
+    const projector = natsProjector({ connection: nc, ...names, ephemeral: 'skip' })
+
+    await projector.project([
+      envelope('run_hole', 1),
+      { ...envelope('run_hole', 2), ephemeral: true },
+    ])
+
+    const failure = await rejection(projector.project([envelope('run_hole', 4)]))
+
+    expect(failure).toBeInstanceOf(ReplicaGapError)
+    expect(failure).toMatchObject({ runId: 'run_hole', replicatedSeq: 2, batchFrom: 4 })
+  })
+
+  test('refuses an existing stream that cannot hold a cursor', async () => {
+    const names = isolated()
+
+    await jsm.streams.add({
+      name: names.stream,
+      subjects: [`${names.subjectPrefix}.run.>`],
+      allow_atomic: true,
+    })
+
+    const projector = natsProjector({ connection: nc, ...names, ephemeral: 'skip' })
+
+    expect((await rejection(projector.init?.()))?.message).toContain('allow_rollup_hdrs')
+  })
+
   test('refuses an existing stream without atomic batches', async () => {
     const names = isolated()
     await jsm.streams.add({ name: names.stream, subjects: [`${names.subjectPrefix}.run.>`] })
