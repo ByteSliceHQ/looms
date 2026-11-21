@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import type { SubscriptionSocketConstructor } from '@looms/client'
 import {
   isTerminalStatus,
   sameStringRecord,
@@ -52,9 +53,28 @@ export interface LoomsProviderProps {
   cache?: EventCache
   /** Told how long each run took to show and how long each commit took. */
   observer?: StoreObserver
+  /** Makes every HTTP request a run store sends. See `LoomsClientStoreOptions.fetch`. */
+  fetch?: typeof fetch
+  /** Opens a run store's live socket, in place of the global `WebSocket`. */
+  webSocket?: SubscriptionSocketConstructor
+  /**
+   * The read grant for a run, for a host on another origin than the page. Asked each time a
+   * store connects. See `LoomsClientStoreOptions.grant`.
+   */
+  grant?: RunGrantSource
 }
 
-interface ProviderContextValue {
+/** What gives a run's current read grant, or undefined when it has none. */
+export type RunGrantSource = (runId: string) => string | undefined
+
+/** How a store reaches its host. Not part of which store a run gets: the first to open it decides. */
+interface StoreReach {
+  readonly fetch?: typeof fetch
+  readonly webSocket?: SubscriptionSocketConstructor
+  readonly grant?: RunGrantSource
+}
+
+interface ProviderContextValue extends StoreReach {
   endpoint: string
   coalesce?: CoalesceOption
   transport?: SubscriptionTransport
@@ -75,7 +95,7 @@ interface RegistryEntry {
 
 const registry = new Map<string, RegistryEntry>()
 
-interface StoreIdentity {
+interface StoreIdentity extends StoreReach {
   readonly endpoint: string
   readonly reconnectDelayMs?: number
   readonly coalesce?: CoalesceOption
@@ -135,6 +155,9 @@ function peekStore(runId: string, identity: StoreIdentity): LoomsClientStore {
     fromSeq: identity.fromSeq,
     cache: identity.cache,
     observer: identity.observer,
+    fetch: identity.fetch,
+    webSocket: identity.webSocket,
+    grant: identity.grant === undefined ? undefined : () => identity.grant?.(runId),
   })
 
   const retainMs = Math.max(0, identity.retainMs ?? DEFAULT_RETAIN_MS)
@@ -191,10 +214,13 @@ export function LoomsProvider({
   retainMs,
   cache,
   observer,
+  fetch,
+  webSocket,
+  grant,
 }: LoomsProviderProps) {
   const value = useMemo(
-    () => ({ endpoint, coalesce, transport, retainMs, cache, observer }),
-    [endpoint, coalesce, transport, retainMs, cache, observer],
+    () => ({ endpoint, coalesce, transport, retainMs, cache, observer, fetch, webSocket, grant }),
+    [endpoint, coalesce, transport, retainMs, cache, observer, fetch, webSocket, grant],
   )
 
   return createElement(LoomsContext.Provider, { value, children })
@@ -215,9 +241,15 @@ export interface UseRunStoreOptions {
 /**
  * Everything that decides which store a run gets when there is no provider to supply part of
  * it. Inside React the provider gives `endpoint`, `coalesce`, `transport`, `retainMs`, `cache`
- * and `observer`; outside it the caller passes them.
+ * `observer`, `fetch`, `webSocket` and `grant`; outside it the caller passes them.
  */
 export interface RunStoreOptions extends UseRunStoreOptions {
+  /** Makes every HTTP request the store sends. See `LoomsClientStoreOptions.fetch`. */
+  fetch?: typeof fetch
+  /** Opens the store's live socket, in place of the global `WebSocket`. */
+  webSocket?: SubscriptionSocketConstructor
+  /** The read grant for a run. See `LoomsClientStoreOptions.grant`. */
+  grant?: RunGrantSource
   /** Keeps the run's durable events on the device. See `indexedDbEventCache`. */
   cache?: EventCache
   /** Told how long the run took to show and how long each commit took. */
@@ -323,6 +355,9 @@ export function useRunStore(runId: string, options?: UseRunStoreOptions): LoomsC
     retainMs,
     cache: context.cache,
     observer: context.observer,
+    fetch: context.fetch,
+    webSocket: context.webSocket,
+    grant: context.grant,
   }
 
   const store = peekStore(runId, identity)

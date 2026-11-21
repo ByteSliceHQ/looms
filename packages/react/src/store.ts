@@ -102,7 +102,19 @@ export interface LoomsClientStoreOptions {
   endpoint: string
   /** Backoff between reconnects. The delay stays fixed, matching the SSE client. */
   reconnectDelayMs?: number
+  /**
+   * Makes every HTTP request the store sends, so a host can add what its backend authenticates
+   * by. With one, the live stream is read through it too, in place of `EventSource`, which
+   * cannot carry headers.
+   */
   fetch?: typeof fetch
+  /**
+   * A read grant for this run (see `issueRunGrant`), or what gives the current one. Sent as
+   * `grant` on the requests that read the log, the WebSocket included, which has no other way
+   * to carry a credential across origins. Asked again on every connection, so a host can hand
+   * out short-lived grants and renew them. Never sent with a commit.
+   */
+  grant?: string | (() => string | undefined)
   coalesce?: CoalesceOption
   /**
    * `undefined` keeps the current SSE path. `websocket` and `auto` use a hibernating
@@ -499,8 +511,19 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
   }
 
+  /** Adds the run's read grant to a request that reads its log, when the host gave one. */
+  const withGrant = (params: URLSearchParams): URLSearchParams => {
+    const grant = Predicate.isFunction(options.grant) ? options.grant() : options.grant
+
+    if (grant !== undefined && grant !== '') {
+      params.set('grant', grant)
+    }
+
+    return params
+  }
+
   const liveUrl = () => {
-    const params = new URLSearchParams({ live: 'true', fromSeq: String(fromSeq) })
+    const params = withGrant(new URLSearchParams({ live: 'true', fromSeq: String(fromSeq) }))
 
     if (options.threadId) {
       params.set('threadId', options.threadId)
@@ -514,7 +537,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   }
 
   const pull = Effect.gen(function* () {
-    const url = `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?fromSeq=${fromSeq}`
+    const query = withGrant(new URLSearchParams({ fromSeq: String(fromSeq) }))
+    const url = `${endpoint}/runs/${encodeURIComponent(options.storeId)}/events?${query.toString()}`
 
     const res = yield* Effect.tryPromise({
       try: (signal) => fetchFn(url, { signal }),

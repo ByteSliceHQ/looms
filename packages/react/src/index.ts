@@ -41,6 +41,7 @@ export {
   useLiveFold,
   type LoomsProviderProps,
   type PreloadRunStoreOptions,
+  type RunGrantSource,
   type RunStoreOptions,
   type UseRunStoreOptions,
   type RunSummary,
