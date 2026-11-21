@@ -122,6 +122,35 @@ The store is held while the call waits, then kept for `retainMs`, so the page ha
 
 `useRunStore(runId, { fromSeq })` starts the store at a later point in the log. Use it when you already hold state up to `fromSeq - 1`, such as a projection the host served, and fold only what follows. The store never sees earlier events, so its own projections and summary cover only the part it followed.
 
+## A Host on Another Origin
+
+A page served from the host's own origin needs none of this: the browser sends its cookie on every request. A page on another origin gives the provider what the host authenticates by.
+
+```tsx
+const hostFetch: typeof fetch = (input, init) => {
+  const headers = new Headers(init?.headers)
+
+  headers.set('authorization', `Bearer ${token}`)
+
+  return fetch(input, { ...init, headers })
+}
+
+;<LoomsProvider
+  endpoint="https://engine.example"
+  transport="websocket"
+  fetch={hostFetch}
+  grant={(runId) => grants.get(runId)}
+>
+  <App />
+</LoomsProvider>
+```
+
+- `fetch` makes every HTTP request a store sends: the catch-up read, a commit, and the live stream when it is not a WebSocket. With one, the live stream is read through it in place of `EventSource`, which cannot carry headers.
+- `grant` gives a run's read grant (`issueRunGrant` in `@swirls/looms/runtime`). It is sent as `grant` on the requests that read the log, the WebSocket included, since a browser cannot put a header on the upgrade. It is asked again on every connection, so grants can be short-lived and renewed. It is never sent with a commit. The host verifies it with `grantAuth`, or reads it with `runGrantToken` inside its own `authorize`.
+- `webSocket` opens the live socket in place of the global `WebSocket`.
+
+`preloadRunStore` and `createLoomsStore` take the same three. They are not part of which store a run gets: whichever opens the store first decides them.
+
 ## Local Cache
 
 Without a cache, a store downloads a run's whole log every time the page loads. Give the provider a cache and each store keeps the run's durable events on the device, starts from them the next time, and downloads only what was appended since:
