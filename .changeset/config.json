@@ -22,6 +22,7 @@
     "@looms/react",
     "@looms/runtime",
     "@looms/schedule",
+    "@looms/swarm",
     "@looms/s2",
     "@looms/testing",
     "@looms/workflow",

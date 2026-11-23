@@ -198,6 +198,7 @@ try {
     '@swirls/looms/s2',
     '@swirls/looms/schedule',
     '@swirls/looms/schedule/debugger',
+    '@swirls/looms/swarm',
     '@swirls/looms/testing',
     '@swirls/looms/workflow',
     '@swirls/looms/workflow/debugger',

@@ -1,6 +1,6 @@
 # Modules
 
-Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, approvals, and evaluations. Add your own for domain work — charges, tickets, notifications — without forking Looms.
+Pick the capabilities your app needs and pass them into `createLooms`. Built-in modules cover agents, workflows, approvals, evaluations, schedules, and swarms. Add your own for domain work — charges, tickets, notifications — without forking Looms.
 
 ## Built-in
 
@@ -11,6 +11,7 @@ Pick the capabilities your app needs and pass them into `createLooms`. Built-in 
 | `@swirls/looms/approval`  | Human gates from agents or workflows    | `gate({ title })` parks the run until `approval.decided`                           |
 | `@swirls/looms/evaluator` | Typed questions that branch a run       | `defineEvaluator`, `evaluate()`, spawn as a child                                  |
 | `@swirls/looms/schedule`  | Cron, interval, or one-shot fires       | `defineSchedule`, `ensureSchedule`, `pause` / `resume` / `retire`                  |
+| `@swirls/looms/swarm`     | Agents that coordinate over a board     | `defineSwarm`, `memberTools`, `MessageBoard`; see [swarm.md](./swarm.md)           |
 
 Compose only what you need. A payments service might ship workflow + approval + a custom charges module, and skip agents entirely.
 

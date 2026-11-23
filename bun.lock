@@ -520,6 +520,21 @@
         "react-dom",
       ],
     },
+    "packages/swarm": {
+      "name": "@looms/swarm",
+      "version": "0.0.1",
+      "dependencies": {
+        "@looms/agent": "workspace:*",
+        "@looms/core": "workspace:*",
+        "effect": "4.1.4",
+      },
+      "devDependencies": {
+        "@looms/runtime": "workspace:*",
+        "@looms/testing": "workspace:*",
+        "@types/bun": "^1.3.9",
+        "typescript": "7.0.2",
+      },
+    },
     "packages/testing": {
       "name": "@looms/testing",
       "version": "0.0.1",
@@ -948,6 +963,8 @@
     "@looms/s2": ["@looms/s2@workspace:packages/s2"],
 
     "@looms/schedule": ["@looms/schedule@workspace:packages/schedule"],
+
+    "@looms/swarm": ["@looms/swarm@workspace:packages/swarm"],
 
     "@looms/testing": ["@looms/testing@workspace:packages/testing"],
 
