@@ -41,6 +41,7 @@ export const docsNav = [
       { to: '/docs/agents', label: 'Agents & models' },
       { to: '/docs/approvals', label: 'Human approvals' },
       { to: '/docs/schedules', label: 'Schedules' },
+      { to: '/docs/swarms', label: 'Swarms' },
       { to: '/docs/evaluator', label: 'Evaluations' },
       { to: '/docs/examples', label: 'Examples' },
       { to: '/docs/modules', label: 'Custom modules' },

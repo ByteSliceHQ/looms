@@ -33,6 +33,7 @@ import { Route as DocsReliabilityRouteImport } from './routes/docs.reliability'
 import { Route as DocsReplicaRouteImport } from './routes/docs.replica'
 import { Route as DocsSchedulesRouteImport } from './routes/docs.schedules'
 import { Route as DocsSecurityRouteImport } from './routes/docs.security'
+import { Route as DocsSwarmsRouteImport } from './routes/docs.swarms'
 import { Route as DocsTestingRouteImport } from './routes/docs.testing'
 import { Route as DocsTroubleshootingRouteImport } from './routes/docs.troubleshooting'
 import { Route as DocsVersioningRouteImport } from './routes/docs.versioning'
@@ -163,6 +164,11 @@ const DocsSecurityRoute = DocsSecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsSwarmsRoute = DocsSwarmsRouteImport.update({
+  id: '/swarms',
+  path: '/swarms',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsTestingRoute = DocsTestingRouteImport.update({
   id: '/testing',
   path: '/testing',
@@ -236,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
+  '/docs/swarms': typeof DocsSwarmsRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
   '/docs/versioning': typeof DocsVersioningRoute
@@ -269,6 +276,7 @@ export interface FileRoutesByTo {
   '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
+  '/docs/swarms': typeof DocsSwarmsRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
   '/docs/versioning': typeof DocsVersioningRoute
@@ -305,6 +313,7 @@ export interface FileRoutesById {
   '/docs/replica': typeof DocsReplicaRoute
   '/docs/schedules': typeof DocsSchedulesRoute
   '/docs/security': typeof DocsSecurityRoute
+  '/docs/swarms': typeof DocsSwarmsRoute
   '/docs/testing': typeof DocsTestingRoute
   '/docs/troubleshooting': typeof DocsTroubleshootingRoute
   '/docs/versioning': typeof DocsVersioningRoute
@@ -342,6 +351,7 @@ export interface FileRouteTypes {
     | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
+    | '/docs/swarms'
     | '/docs/testing'
     | '/docs/troubleshooting'
     | '/docs/versioning'
@@ -375,6 +385,7 @@ export interface FileRouteTypes {
     | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
+    | '/docs/swarms'
     | '/docs/testing'
     | '/docs/troubleshooting'
     | '/docs/versioning'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/docs/replica'
     | '/docs/schedules'
     | '/docs/security'
+    | '/docs/swarms'
     | '/docs/testing'
     | '/docs/troubleshooting'
     | '/docs/versioning'
@@ -598,6 +610,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSecurityRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/swarms': {
+      id: '/docs/swarms'
+      path: '/swarms'
+      fullPath: '/docs/swarms'
+      preLoaderRoute: typeof DocsSwarmsRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/testing': {
       id: '/docs/testing'
       path: '/testing'
@@ -705,6 +724,7 @@ interface DocsRouteChildren {
   DocsReplicaRoute: typeof DocsReplicaRoute
   DocsSchedulesRoute: typeof DocsSchedulesRoute
   DocsSecurityRoute: typeof DocsSecurityRoute
+  DocsSwarmsRoute: typeof DocsSwarmsRoute
   DocsTestingRoute: typeof DocsTestingRoute
   DocsTroubleshootingRoute: typeof DocsTroubleshootingRoute
   DocsVersioningRoute: typeof DocsVersioningRoute
@@ -733,6 +753,7 @@ const DocsRouteChildren: DocsRouteChildren = {
   DocsReplicaRoute: DocsReplicaRoute,
   DocsSchedulesRoute: DocsSchedulesRoute,
   DocsSecurityRoute: DocsSecurityRoute,
+  DocsSwarmsRoute: DocsSwarmsRoute,
   DocsTestingRoute: DocsTestingRoute,
   DocsTroubleshootingRoute: DocsTroubleshootingRoute,
   DocsVersioningRoute: DocsVersioningRoute,

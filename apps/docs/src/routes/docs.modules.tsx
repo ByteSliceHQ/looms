@@ -85,6 +85,15 @@ function Modules() {
           </tr>
           <tr>
             <td>
+              <code>@swirls/looms/swarm</code>
+            </td>
+            <td>Agents that coordinate over a message board</td>
+            <td>
+              <code>defineSwarm</code>, <code>memberTools</code>, <code>MessageBoard</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
               <code>@swirls/looms/evaluator</code>
             </td>
             <td>Typed questions that branch a run</td>
