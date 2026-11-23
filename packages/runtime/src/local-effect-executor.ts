@@ -2,7 +2,6 @@ import { Effect, Option, Predicate, type Context, type ManagedRuntime } from 'ef
 
 import {
   createEvent,
-  createRunId,
   DEFAULT_DEFINITION_VERSION,
   validateEventInput,
   withdrawnError,
@@ -17,6 +16,7 @@ import {
   type RunLaunchSource,
   type SecretContext,
   type TraceContext,
+  type LoomsIds,
 } from '@looms/core'
 
 import { dispatchEffect } from './dispatch-effect'
@@ -94,6 +94,7 @@ function launcherFor(
   context: RunContext,
   item: OutstandingEffect,
   launched: EventEnvelope[],
+  ids: LoomsIds,
 ): RunLauncher {
   const launchedBy: RunLaunchSource = {
     runId,
@@ -105,7 +106,7 @@ function launcherFor(
 
   return {
     launch: (args) => {
-      const targetRunId = args.runId ?? createRunId()
+      const targetRunId = args.runId ?? ids.create('run')
       const attributes = args.attributes ?? context.attributes
 
       const supplied =
@@ -134,14 +135,18 @@ function launcherFor(
         Effect.tap(() =>
           Effect.sync(() => {
             launched.push(
-              createEvent(runId, {
-                type: 'runtime.run.launched',
-                payload: runLaunchedPayload(args, targetRunId, item.effectId),
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                correlationId: context.correlationId,
-                origin: { type: 'thread', threadId: item.threadId },
-              }),
+              createEvent(
+                runId,
+                {
+                  type: 'runtime.run.launched',
+                  payload: runLaunchedPayload(args, targetRunId, item.effectId),
+                  threadId: item.threadId,
+                  causationId: item.causingEventId,
+                  correlationId: context.correlationId,
+                  origin: { type: 'thread', threadId: item.threadId },
+                },
+                { ids },
+              ),
             )
           }),
         ),
@@ -206,7 +211,9 @@ export function executeLocalEffects(
         for (const item of group) {
           if (failedEffectId && item.effect.type === 'runtime.wait') {
             produced.push(
-              createEffectFailedEvent(input.runId, item, withdrawnError(failedEffectId)),
+              createEffectFailedEvent(input.runId, item, withdrawnError(failedEffectId), {
+                ids: registry.ids,
+              }),
             )
 
             continue
@@ -256,7 +263,7 @@ export function executeLocalEffects(
               : runInContext(
                   Effect.gen(function* () {
                     const validated = yield* validateEventInput(registry.catalogs, eventInput)
-                    const liveEvent = createLiveEvent(input.runId, item, validated)
+                    const liveEvent = createLiveEvent(input.runId, item, validated, registry.ids)
 
                     if (liveEvent) {
                       yield* liveAppends.push(input.runId, liveEvent)
@@ -273,7 +280,7 @@ export function executeLocalEffects(
             registry,
             services,
             definitionResolver,
-            launcherFor(launcher, input.runId, input.context, item, launched),
+            launcherFor(launcher, input.runId, input.context, item, launched, registry.ids),
             item.effect,
             {
               placement: 'local',
@@ -285,6 +292,7 @@ export function executeLocalEffects(
               secrets: admission.secrets,
               trace: input.context.trace,
               signal: controller.signal,
+              ids: registry.ids,
               heartbeat: () => Promise.resolve(),
               emit: appendLive,
             },
@@ -331,18 +339,23 @@ export function executeLocalEffects(
             })
 
             produced.push(
-              createEvent(input.runId, {
-                type: 'runtime.effect.timed_out',
-                payload: {
-                  effectId: item.effectId,
-                  attempt: attemptNumber,
-                  timeout: 'start-to-close',
+              createEvent(
+                input.runId,
+                {
+                  type: 'runtime.effect.timed_out',
+                  payload: {
+                    effectId: item.effectId,
+                    attempt: attemptNumber,
+                    timeout: 'start-to-close',
+                  },
+                  threadId: item.threadId,
+                  causationId: item.causingEventId,
+                  origin: { type: 'system' },
                 },
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                origin: { type: 'system' },
-              }),
+                { ids: registry.ids },
+              ),
               planAttemptFailure({
+                ids: registry.ids,
                 runId: input.runId,
                 item,
                 attempt: attemptNumber,
@@ -367,14 +380,18 @@ export function executeLocalEffects(
             const attempt = input.attempts.get(item.effectId) ?? 1
 
             produced.push(
-              createEvent(input.runId, {
-                type: 'runtime.effect.completed',
-                payload: { effectId: item.effectId, attempt },
-                threadId: item.threadId,
-                effectId: item.effectId,
-                causationId: item.causingEventId,
-                origin: { type: 'system' },
-              }),
+              createEvent(
+                input.runId,
+                {
+                  type: 'runtime.effect.completed',
+                  payload: { effectId: item.effectId, attempt },
+                  threadId: item.threadId,
+                  effectId: item.effectId,
+                  causationId: item.causingEventId,
+                  origin: { type: 'system' },
+                },
+                { ids: registry.ids },
+              ),
             )
           }
 
@@ -386,6 +403,7 @@ export function executeLocalEffects(
               const retryAfterMs = payload.retryAfterMs
 
               const failure = planAttemptFailure({
+                ids: registry.ids,
                 runId: input.runId,
                 item,
                 attempt,
@@ -412,9 +430,7 @@ export function executeLocalEffects(
               }
             }
 
-            produced.push(
-              yield* materializeEffectOutcome(registry.catalogs, input.runId, item, outcome),
-            )
+            produced.push(yield* materializeEffectOutcome(registry, input.runId, item, outcome))
           }
 
           const itemOutcomes = produced.slice(before)

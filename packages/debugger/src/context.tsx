@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
 
 import { createLoomsClient, type LoomsClient } from '@looms/client'
+import type { LoomsIds } from '@looms/core'
 import { LoomsProvider } from '@looms/react'
 
 import type { DebuggerPlugin } from './plugin'
@@ -24,9 +25,12 @@ export function DebuggerProvider({
   endpoint = '',
   plugins,
   openRun,
+  ids,
   children,
 }: {
   endpoint?: string
+  /** The id format for runs and messages started here. Match the host's `ids`. */
+  ids?: LoomsIds
   plugins: readonly DebuggerPlugin[]
   openRun?: (runId: string, target?: OpenRunTarget) => void
   children: ReactNode
@@ -40,17 +44,17 @@ export function DebuggerProvider({
   }, [])
 
   const value = useMemo<DebuggerContextValue>(() => {
-    const client = createLoomsClient({ baseUrl: endpoint })
+    const client = createLoomsClient({ baseUrl: endpoint, ids })
 
     if (!hasOpenRun) {
       return { client, plugins }
     }
 
     return { client, plugins, openRun: stableOpenRun }
-  }, [endpoint, plugins, hasOpenRun, stableOpenRun])
+  }, [endpoint, ids, plugins, hasOpenRun, stableOpenRun])
 
   return (
-    <LoomsProvider endpoint={endpoint}>
+    <LoomsProvider endpoint={endpoint} ids={ids}>
       <DebuggerContext.Provider value={value}>{children}</DebuggerContext.Provider>
     </LoomsProvider>
   )

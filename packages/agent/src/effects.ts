@@ -1,7 +1,7 @@
 import { Data, Effect, Predicate, Schema } from 'effect'
 
 import {
-  createThreadId,
+  type LoomsIds,
   DEFAULT_DEFINITION_VERSION,
   validateInputEffect,
   type DefinitionResolveError,
@@ -142,6 +142,7 @@ export const callLlmEffect = agentModule.effect({
       consumedSteerMessageIds: [...(input.consumedSteerMessageIds ?? [])],
       runId: ctx.runId,
       threadId: ctx.threadId,
+      ids: ctx.ids,
       signal: ctx.signal,
       emit: (event) => ctx.emit(event),
     }),
@@ -159,6 +160,7 @@ function runCallLlm(args: {
   consumedSteerMessageIds: string[]
   runId: string
   threadId: string
+  ids: LoomsIds
   signal: AbortSignal
   emit: (event: EventInputOf<AgentEvent>) => Promise<void>
 }): Effect.Effect<
@@ -212,7 +214,7 @@ function runCallLlm(args: {
       ]
     }
 
-    const tools = yield* agentTools(definition, { threadId, turn, input })
+    const tools = yield* agentTools(definition, { threadId, turn, input, ids: args.ids })
 
     const instructions = definition.output
       ? `${definition.instructions}\n\n${buildStructuredOutputInstructions(STRUCTURED_OUTPUT_TOOL_NAME)}`
@@ -418,6 +420,7 @@ export const executeToolEffect = agentModule.effect({
         threadId,
         turn: input.turn,
         input: input.input ?? null,
+        ids: ctx.ids,
       }).pipe(
         Effect.match({
           onFailure: (error) => ({ ok: false as const, error: error.message }),
@@ -534,7 +537,7 @@ export const executeToolEffect = agentModule.effect({
           }
 
           const childInput = tool.mapInput ? tool.mapInput(validated.value) : validated.value
-          const childThreadId = createThreadId()
+          const childThreadId = ctx.ids.create('thread')
           return [
             {
               type: 'agent.spawn.requested',

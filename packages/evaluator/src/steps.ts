@@ -1,10 +1,22 @@
-import { createWaitId, invoke, wait, type JsonValue, type RuntimeEffect } from '@looms/core'
+import {
+  createWaitId,
+  invoke,
+  typeIds,
+  wait,
+  type JsonValue,
+  type LoomsIds,
+  type RuntimeEffect,
+} from '@looms/core'
 
 import type { EvaluatorDefinition } from './definitions'
 import { evaluateEffect } from './effects'
 
-export function evaluate(definition: EvaluatorDefinition, input: JsonValue): RuntimeEffect[] {
-  const evaluationId = createWaitId('evaluator')
+export function evaluate(
+  definition: EvaluatorDefinition,
+  input: JsonValue,
+  ids: LoomsIds = typeIds,
+): RuntimeEffect[] {
+  const evaluationId = ids.create('wait')
 
   return [
     invoke(

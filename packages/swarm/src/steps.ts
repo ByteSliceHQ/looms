@@ -1,6 +1,6 @@
 import type { Schema } from 'effect'
 
-import { createWaitId, invoke, wait, type RuntimeEffect } from '@looms/core'
+import { invoke, typeIds, wait, type LoomsIds, type RuntimeEffect } from '@looms/core'
 
 import {
   createTaskEffect,
@@ -22,8 +22,9 @@ export interface BoardBinding {
 export function post(
   binding: BoardBinding,
   args: Schema.Schema.Type<typeof PostArgsSchema>,
+  ids: LoomsIds = typeIds,
 ): RuntimeEffect[] {
-  const callId = createWaitId('swarm')
+  const callId = ids.create('wait')
 
   return [
     invoke(postEffect, { callId, ...binding, ...args }, `post_${callId}`),
@@ -38,8 +39,9 @@ export function post(
 export function createTask(
   binding: BoardBinding,
   args: Schema.Schema.Type<typeof CreateTaskArgsSchema>,
+  ids: LoomsIds = typeIds,
 ): RuntimeEffect[] {
-  const callId = createWaitId('swarm')
+  const callId = ids.create('wait')
 
   return [
     invoke(createTaskEffect, { callId, ...binding, ...args }, `task_${callId}`),

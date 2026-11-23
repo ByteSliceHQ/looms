@@ -1,6 +1,6 @@
 import { DateTime, Schema } from 'effect'
 
-import { createEventId } from './ids'
+import { typeIds, type LoomsIds } from './ids'
 import { cleanUndefined, type JsonValue } from './types'
 
 export const JsonValueSchema = Schema.Json
@@ -108,12 +108,12 @@ export function withAssignedSeq(
 export function createEvent<TType extends string, TPayload = JsonValue>(
   runId: string,
   input: EventInput<TType, TPayload>,
-  options?: { seq?: number },
+  options?: { seq?: number; ids?: LoomsIds },
 ): EventEnvelope<TType, TPayload> {
   const threadId = input.threadId ?? null
   const parentThreadId = input.parentThreadId ?? null
   return {
-    id: input.id ?? createEventId(),
+    id: input.id ?? (options?.ids ?? typeIds).create('event'),
     runId,
     seq: options?.seq ?? 0,
     ts: input.ts ?? DateTime.toEpochMillis(DateTime.nowUnsafe()),

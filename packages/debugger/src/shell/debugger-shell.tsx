@@ -2,7 +2,7 @@ import { Activity, GitBranch, ListTree } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useDefaultLayout } from 'react-resizable-panels'
 
-import type { DefinitionCatalog } from '@looms/core'
+import type { DefinitionCatalog, LoomsIds } from '@looms/core'
 
 import { DebuggerProvider, useDebugger } from '../context'
 import { errorMessage } from '../lib/cn'
@@ -189,16 +189,20 @@ export function DebuggerShell({
   selection,
   onSelectionChange,
   endpoint,
+  ids,
 }: {
   plugins: readonly DebuggerPlugin[]
   selection: DebuggerSelection
   onSelectionChange: (selection: DebuggerSelection) => void
   /** Looms host base URL. Defaults to the page origin. */
   endpoint?: string
+  /** The id format for runs started here. Match the host's `ids`. Defaults to `typeIds`. */
+  ids?: LoomsIds
 }) {
   return (
     <DebuggerProvider
       endpoint={endpoint}
+      ids={ids}
       plugins={plugins}
       openRun={(runId, target) => onSelectionChange({ run: runId, seq: target?.seq })}
     >

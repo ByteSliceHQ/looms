@@ -2,6 +2,7 @@ import type { Effect } from 'effect'
 
 import type {
   AnyRuntimeModule,
+  LoomsIds,
   ComposedRegistry,
   DefinitionResolver,
   EventEnvelope,
@@ -52,6 +53,12 @@ export interface CreateRuntimeOptions<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
 > {
   readonly modules: TModules
+  /**
+   * The id format for every event, run, thread, and wait this runtime names, and what reducers
+   * and effect handlers see as `ctx.ids`. Defaults to `typeIds` (TypeID). A custom format must
+   * return non-empty ids with no `:`, and its `derive` must be a pure function of its arguments.
+   */
+  readonly ids?: LoomsIds
   /**
    * Loads a definition that was not registered on a module. Registered definitions are checked
    * first. Lookups are cached, including misses. Start fails with `UnknownDefinitionError`

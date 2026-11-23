@@ -2,7 +2,7 @@ import { Option, Predicate, Schema, Stream, type Effect } from 'effect'
 
 import { isWithdrawnError, WaitConditionSchema, type RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
-import { createEffectId } from './ids'
+import { createEffectId, typeIds, type LoomsIds } from './ids'
 import { readRunLaunchSource } from './launcher'
 import { DEFAULT_DEFINITION_VERSION } from './module'
 import { readAttributes } from './run-context'
@@ -14,6 +14,8 @@ import { asJson, isJsonObject, type JsonValue } from './types'
 
 export interface FoldRegistry {
   readonly threads: ReadonlyMap<string, ThreadDefinition>
+  /** The id format reducers see as `ctx.ids`. Defaults to `typeIds`. */
+  readonly ids?: LoomsIds
 }
 
 const decodeWaitCondition = Schema.decodeUnknownOption(WaitConditionSchema)
@@ -221,6 +223,7 @@ function applyProtocol(state: RunState, event: EventEnvelope, registry: FoldRegi
               definitionName,
               definitionVersion,
               input,
+              ids: registry.ids ?? typeIds,
             })
           : {},
       }
@@ -772,6 +775,7 @@ function deliver(
     runId: state.runId,
     threadId,
     parentThreadId: record.parentThreadId,
+    ids: registry.ids ?? typeIds,
   }
 
   const nextState = definition.step(record.state, event, ctx)

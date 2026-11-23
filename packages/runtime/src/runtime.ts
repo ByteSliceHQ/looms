@@ -5,8 +5,6 @@ import {
   chainDefinitionResolvers,
   composeModules,
   createEvent,
-  createThreadId,
-  createRunId,
   DEFAULT_DEFINITION_VERSION,
   DEFAULT_SNAPSHOT_EVERY,
   staticDefinitionResolver,
@@ -175,7 +173,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     throw new Error('localLauncher requires options.store')
   }
 
-  const registry = composeModules(options.modules)
+  const registry = composeModules(options.modules, { ids: options.ids })
 
   const runSecrets = createRunSecrets({
     provider: options.secretProvider,
@@ -261,7 +259,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
           }
 
           const batch = yield* validateAndCreateEvents(
-            registry.catalogs,
+            registry,
             runId,
             filteredEvents.map((input) => ({
               ...input,
@@ -288,7 +286,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
               : batch
 
           const satisfiedEvents = waitSatisfiedEvents(folded, forWaits).map((input) =>
-            createEvent(runId, input),
+            createEvent(runId, input, { ids: registry.ids }),
           )
 
           return {
@@ -335,7 +333,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
       const store = yield* EventStoreTag
       observe({ type: 'run.start', runId, at: currentTimeMillis() })
 
-      const threadId = args.threadId ?? createThreadId()
+      const threadId = args.threadId ?? registry.ids.create('thread')
 
       const startedEvents = yield* threadStartedEvents(definitionResolver, {
         kind: args.kind,
@@ -406,7 +404,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
                 })),
               )
             : validateAndCreateEvents(
-                registry.catalogs,
+                registry,
                 runId,
                 [
                   {
@@ -618,18 +616,22 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
 
               const now = yield* Clock.currentTimeMillis
 
-              const retryEvent = createEvent(runId, {
-                type: 'runtime.effect.retry.scheduled',
-                payload: {
-                  effectId,
-                  attempt: execution.attempt,
-                  nextAttemptAt: now,
-                  error: `operator retry from ${execution.status}`,
+              const retryEvent = createEvent(
+                runId,
+                {
+                  type: 'runtime.effect.retry.scheduled',
+                  payload: {
+                    effectId,
+                    attempt: execution.attempt,
+                    nextAttemptAt: now,
+                    error: `operator retry from ${execution.status}`,
+                  },
+                  threadId: item.threadId,
+                  causationId: item.causingEventId,
+                  origin: { type: 'external', actorId: 'operator' },
                 },
-                threadId: item.threadId,
-                causationId: item.causingEventId,
-                origin: { type: 'external', actorId: 'operator' },
-              })
+                { ids: registry.ids },
+              )
 
               return { events: [retryEvent], value: undefined }
             }),
@@ -663,7 +665,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     recoverDeadlines: Effect.suspend(() => runtime.rescanTimers),
 
     startRun: (args) => {
-      const runId = args.runId ?? createRunId()
+      const runId = args.runId ?? registry.ids.create('run')
 
       return withRunIngress(runId, commitStart(args, runId)).pipe(
         Effect.flatMap((started) =>
@@ -679,7 +681,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     },
 
     launchRun: (args) => {
-      const runId = args.runId ?? createRunId()
+      const runId = args.runId ?? registry.ids.create('run')
 
       return withRunIngress(runId, commitStart(args, runId)).pipe(
         Effect.flatMap((started) =>
@@ -709,7 +711,7 @@ export function createRuntime<const TModules extends readonly AnyRuntimeModule[]
     cancel: cancellation,
 
     fork: (sourceRunId, forkOptions) => {
-      const runId = forkOptions?.runId ?? createRunId()
+      const runId = forkOptions?.runId ?? registry.ids.create('run')
 
       return withRunIngress(
         runId,

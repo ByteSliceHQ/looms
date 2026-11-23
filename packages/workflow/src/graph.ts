@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect'
 
-import { deterministicThreadId, isJsonString, utf8JsonBytes, type JsonValue } from '@looms/core'
+import { isJsonString, typeIds, utf8JsonBytes, type JsonValue, type LoomsIds } from '@looms/core'
 
 import type { NodeState, WorkflowDefinition, WorkflowNodeDefinition } from './definitions'
 
@@ -54,16 +54,18 @@ export function iterationChildWorkflowId(
   kind: 'map' | 'loop',
   attempt: number,
   index: number,
+  ids: LoomsIds = typeIds,
 ): string {
-  return deterministicThreadId(parentThreadId, nodeId, kind, attempt, index)
+  return ids.derive('thread', [parentThreadId, nodeId, kind, attempt, index])
 }
 
 export function nodeChildWorkflowId(
   parentThreadId: string,
   nodeId: string,
   attempt: number,
+  ids: LoomsIds = typeIds,
 ): string {
-  return deterministicThreadId(parentThreadId, nodeId, 'workflow', attempt)
+  return ids.derive('thread', [parentThreadId, nodeId, 'workflow', attempt])
 }
 
 export function assertJsonWithinLimit(

@@ -1,4 +1,12 @@
-import { createWaitId, invoke, wait, type JsonValue, type RuntimeEffect } from '@looms/core'
+import {
+  createWaitId,
+  invoke,
+  typeIds,
+  wait,
+  type JsonValue,
+  type LoomsIds,
+  type RuntimeEffect,
+} from '@looms/core'
 
 import { requestApprovalEffect } from './effects'
 import type { ApprovalAction } from './events'
@@ -11,8 +19,10 @@ export function gate(args: {
   schema?: JsonValue
   /** Absolute epoch milliseconds. Decision and timer waits race; the first wins. */
   timeoutAt?: number
+  /** The id format to draw `approvalId` from. Pass `ctx.ids`. Defaults to `typeIds`. */
+  ids?: LoomsIds
 }): RuntimeEffect[] {
-  const approvalId = args.approvalId ?? createWaitId('approval')
+  const approvalId = args.approvalId ?? (args.ids ?? typeIds).create('wait')
 
   const actions = args.actions ?? [
     { id: 'approve', label: 'Approve', outcome: 'approve' as const },

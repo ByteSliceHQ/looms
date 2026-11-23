@@ -2,6 +2,7 @@ import { Data, Effect, Predicate, Schema, type Context } from 'effect'
 
 import { DEFAULT_DEFINITION_VERSION } from './definition-version'
 import { EventInputSchema, type EventInput } from './envelope'
+import type { LoomsIds } from './ids'
 import type { RunAttributes, SecretContext } from './run-context'
 import {
   validateInputEffect,
@@ -239,6 +240,8 @@ export interface EffectContextBase {
   readonly secrets: SecretContext
   /** The W3C trace context of the caller that started the run, to parent spans the handler starts. */
   readonly trace: TraceContext | null
+  /** The id format the host was configured with. */
+  readonly ids: LoomsIds
 }
 
 /**

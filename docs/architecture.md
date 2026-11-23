@@ -15,6 +15,35 @@ A `Run` is the unit you start, list, and open in a debugger (`runId`). Inside it
 
 Status is `running`, `waiting` (parked on a timer, approval, or child), or terminal (`completed`, `failed`, `cancelled`).
 
+## Ids
+
+Runs, threads, events, and waits are named by an id format. The default is [TypeID](https://github.com/jetify-com/typeid): `run_`, `thr_`, `evt_`, or `wait_` followed by 26 characters that encode a UUID. Ids Looms draws carry a UUIDv7 and sort by creation time within a process. Ids a reducer derives for a child carry a UUIDv8 whose bits are SHA-256 over the parts, so replay names the same child every time. Effect ids are `<threadId>:<tag>`.
+
+Pass `ids` to change the format:
+
+```ts
+import type { LoomsIds } from '@swirls/looms/core'
+
+const ids: LoomsIds = {
+  create: (kind) => newId(kind), // 'event' | 'run' | 'thread' | 'wait'
+  derive: (kind, parts) => hashId(kind, parts), // 'run' | 'thread'
+}
+
+const looms = createLooms({ ids, modules })
+```
+
+The option is accepted by `createLooms`, `createRuntime`, `createActorCell`, `createLocalActorHost`, the Durable Object config, `routeToDurableObject`, the queue consumer, `createLoomsClient`, `LoomsProvider` / `createLoomsStore`, and `DebuggerShell`. Use one format per deployment. Reducers and effect handlers read it as `ctx.ids`.
+
+A custom format must keep these rules:
+
+- An id is a non-empty string.
+- An id contains no `:`.
+- `derive` is a pure function of `kind` and `parts`. Looms cannot check this one.
+
+The first two are checked when the option is given and for every id the format returns; a violation throws `InvalidIdFormatError`.
+
+Changing the format renames every derived child, so a run in flight across the change will not replay. Let in-flight runs finish first.
+
 ## Events, effects, and waits
 
 Facts go on the log as typed events. When a thread needs the host to do something — call an LLM, charge a card, wait for a human — it requests an **effect**. When it needs to pause, it registers a **wait** (on an event type, a payload match, or a timer).

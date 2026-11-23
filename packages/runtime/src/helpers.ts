@@ -17,7 +17,6 @@ import {
   type AnyRuntimeModule,
   type AppendableEvent,
   type EffectFailedPayload,
-  type EventCatalog,
   type EventEnvelope,
   type EventInput,
   type EventOrigin,
@@ -35,6 +34,8 @@ import {
   type VersionedDefinition,
   type RunState,
   type SnapshotStore,
+  type LoomsIds,
+  type ComposedRegistry,
 } from '@looms/core'
 
 import type { EffectWorkerDeadlines, EffectWorkerTask } from './types'
@@ -440,7 +441,7 @@ export function createEffectFailedEvent(
   runId: string,
   item: { effectId: string; causingEventId: string; threadId: string },
   error: string,
-  options: { readonly nonRetryable?: boolean } = {},
+  options: { readonly nonRetryable?: boolean; readonly ids: LoomsIds },
 ): EventEnvelope {
   const payload: Types.Mutable<EffectFailedPayload> = {
     effectId: item.effectId,
@@ -451,36 +452,44 @@ export function createEffectFailedEvent(
     payload.nonRetryable = true
   }
 
-  return createEvent(runId, {
-    type: 'runtime.effect.failed',
-    payload,
-    threadId: item.threadId,
-    effectId: item.effectId,
-    causationId: item.causingEventId,
-    origin: { type: 'system' },
-  })
+  return createEvent(
+    runId,
+    {
+      type: 'runtime.effect.failed',
+      payload,
+      threadId: item.threadId,
+      effectId: item.effectId,
+      causationId: item.causingEventId,
+      origin: { type: 'system' },
+    },
+    { ids: options.ids },
+  )
 }
 
 export function materializeEffectOutcome(
-  catalogs: readonly EventCatalog[],
+  { catalogs, ids }: Pick<ComposedRegistry, 'catalogs' | 'ids'>,
   runId: string,
   item: { effectId: string; causingEventId: string; threadId: string },
   input: EventInput,
 ): Effect.Effect<EventEnvelope> {
   return validateEventInput(catalogs, input).pipe(
     Effect.map((validated) =>
-      createEvent(runId, {
-        ...validated,
-        effectId: validated.effectId ?? item.effectId,
-        causationId: validated.causationId ?? item.causingEventId,
-        threadId: validated.threadId ?? item.threadId,
-        origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
-        id: validated.id,
-        ts: validated.ts,
-      }),
+      createEvent(
+        runId,
+        {
+          ...validated,
+          effectId: validated.effectId ?? item.effectId,
+          causationId: validated.causationId ?? item.causingEventId,
+          threadId: validated.threadId ?? item.threadId,
+          origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
+          id: validated.id,
+          ts: validated.ts,
+        },
+        { ids },
+      ),
     ),
     Effect.catchTag('InvalidEventError', (err) =>
-      Effect.succeed(createEffectFailedEvent(runId, item, err.message)),
+      Effect.succeed(createEffectFailedEvent(runId, item, err.message, { ids })),
     ),
   )
 }
@@ -489,17 +498,22 @@ export function createLiveEvent(
   runId: string,
   item: { effectId: string; causingEventId: string; threadId: string },
   validated: EventInput,
+  ids: LoomsIds,
 ): AppendableEvent | undefined {
   const targetThreadId = validated.threadId ?? item.threadId
 
-  const ephemeral = createEvent(runId, {
-    ...validated,
-    effectId: item.effectId,
-    causationId: item.causingEventId,
-    threadId: targetThreadId,
-    ephemeral: true,
-    origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
-  })
+  const ephemeral = createEvent(
+    runId,
+    {
+      ...validated,
+      effectId: item.effectId,
+      causationId: item.causingEventId,
+      threadId: targetThreadId,
+      ephemeral: true,
+      origin: validated.origin ?? { type: 'thread', threadId: item.threadId },
+    },
+    { ids },
+  )
 
   const [liveEvent] = stripSeq([ephemeral])
   return liveEvent
@@ -535,7 +549,7 @@ export function admitExternalEvents(
 }
 
 export function validateAndCreateEvents(
-  catalogs: readonly EventCatalog[],
+  { catalogs, ids }: Pick<ComposedRegistry, 'catalogs' | 'ids'>,
   runId: string,
   events: readonly EventInput[],
   defaults: { origin: EventOrigin; threadId?: string | null },
@@ -543,11 +557,15 @@ export function validateAndCreateEvents(
   return validateEventsEffect(catalogs, events).pipe(
     Effect.map((validated) =>
       validated.map((input) =>
-        createEvent(runId, {
-          ...input,
-          threadId: input.threadId !== undefined ? input.threadId : (defaults.threadId ?? null),
-          origin: input.origin ?? defaults.origin,
-        }),
+        createEvent(
+          runId,
+          {
+            ...input,
+            threadId: input.threadId !== undefined ? input.threadId : (defaults.threadId ?? null),
+            origin: input.origin ?? defaults.origin,
+          },
+          { ids },
+        ),
       ),
     ),
   )

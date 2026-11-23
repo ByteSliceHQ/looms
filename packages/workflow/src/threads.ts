@@ -5,7 +5,6 @@ import {
   cancelRun,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
-  deterministicRunId,
   EventInputSchema,
   emit,
   fail,
@@ -22,6 +21,7 @@ import {
   type RuntimeEffect,
   utf8JsonBytes,
   waitOutcome,
+  type ThreadContext,
 } from '@looms/core'
 
 import { NodeStateSchema, type NodeState, type WorkflowChildMode } from './definitions'
@@ -72,6 +72,13 @@ export const WorkflowPendingMapSchema = Schema.Struct({
 })
 export type WorkflowPendingMap = Schema.Schema.Type<typeof WorkflowPendingMapSchema>
 
+/** A child to cancel: a thread of this run, or a run of its own. */
+export const WorkflowPendingCancelSchema = Schema.Struct({
+  target: Schema.String,
+  execution: Schema.Union([Schema.Literal('thread'), Schema.Literal('run')]),
+})
+export type WorkflowPendingCancel = Schema.Schema.Type<typeof WorkflowPendingCancelSchema>
+
 export const WorkflowPendingSleepSchema = Schema.Struct({
   waitId: Schema.String,
   wakeAt: Schema.Finite,
@@ -108,7 +115,7 @@ export const WorkflowStateSchema = Schema.Struct({
   pendingEffects: Schema.mutable(Schema.Array(WorkflowPendingEffectsSchema)),
   pendingEmits: Schema.mutable(Schema.Array(WorkflowPendingEmitSchema)),
   /** Children of stopped nodes that were still running; each is cancelled once. */
-  pendingCancels: Schema.mutable(Schema.Array(Schema.String)).pipe(
+  pendingCancels: Schema.mutable(Schema.Array(WorkflowPendingCancelSchema)).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([])),
   ),
   status: Schema.Union([
@@ -151,8 +158,7 @@ function runNodeInvocation(state: WorkflowState, nodeId: string) {
 }
 
 function spawnAndWait(
-  runId: string,
-  threadId: string,
+  ctx: ThreadContext,
   child: Pick<
     WorkflowPendingSpawn,
     'kind' | 'definitionName' | 'definitionVersion' | 'execution' | 'close'
@@ -162,7 +168,7 @@ function spawnAndWait(
   tag: { readonly [key: string]: JsonValue },
 ): RuntimeEffect[] {
   if (child.execution === 'run') {
-    const childRunId = deterministicRunId(runId, childThreadId)
+    const childRunId = childTarget(ctx, childThreadId, 'run')
 
     return [
       launch({
@@ -175,7 +181,7 @@ function spawnAndWait(
         tag: `launch_${childRunId}`,
       }),
       wait({
-        waitId: createWaitId(threadId, `spawn_${childRunId}`),
+        waitId: createWaitId(ctx.threadId, `spawn_${childRunId}`),
         on: { type: 'runtime.child.settled', match: { runId: childRunId } },
         tag,
       }),
@@ -191,7 +197,7 @@ function spawnAndWait(
       input,
     }),
     wait({
-      waitId: createWaitId(threadId, `spawn_${childThreadId}`),
+      waitId: createWaitId(ctx.threadId, `spawn_${childThreadId}`),
       on: {
         type: ['runtime.thread.completed', 'runtime.thread.failed'],
         match: { threadId: childThreadId },
@@ -211,8 +217,8 @@ function childMode(
   }
 }
 
-function mapChildThreadId(threadId: string, map: WorkflowPendingMap, index: number): string {
-  return iterationChildWorkflowId(threadId, map.nodeId, 'map', map.attempt, index)
+function mapChildThreadId(ctx: ThreadContext, map: WorkflowPendingMap, index: number): string {
+  return iterationChildWorkflowId(ctx.threadId, map.nodeId, 'map', map.attempt, index, ctx.ids)
 }
 
 interface NodeEffect {
@@ -221,7 +227,7 @@ interface NodeEffect {
 }
 
 /** Every effect a node currently needs, attributed to that node. */
-function nodeEffects(state: WorkflowState, threadId: string, runId: string): NodeEffect[] {
+function nodeEffects(state: WorkflowState, ctx: ThreadContext): NodeEffect[] {
   const effects: NodeEffect[] = []
 
   const add = (nodeId: string, items: readonly RuntimeEffect[]) => {
@@ -239,7 +245,7 @@ function nodeEffects(state: WorkflowState, threadId: string, runId: string): Nod
 
     add(
       item.nodeId,
-      spawnAndWait(runId, threadId, item, item.childThreadId, item.input, {
+      spawnAndWait(ctx, item, item.childThreadId, item.input, {
         ...tag,
         loopIndex: item.loopIndex,
       }),
@@ -251,14 +257,11 @@ function nodeEffects(state: WorkflowState, threadId: string, runId: string): Nod
       if (!(String(index) in map.outputs)) {
         add(
           map.nodeId,
-          spawnAndWait(
-            runId,
-            threadId,
-            map,
-            mapChildThreadId(threadId, map, index),
-            map.items[index] ?? null,
-            { nodeId: map.nodeId, attempt: map.attempt, index },
-          ),
+          spawnAndWait(ctx, map, mapChildThreadId(ctx, map, index), map.items[index] ?? null, {
+            nodeId: map.nodeId,
+            attempt: map.attempt,
+            index,
+          }),
         )
       }
     }
@@ -279,12 +282,11 @@ function nodeEffects(state: WorkflowState, threadId: string, runId: string): Nod
 
 function nodeIdForEffect(
   state: WorkflowState,
-  threadId: string,
-  runId: string,
+  ctx: ThreadContext,
   effectId: string,
 ): string | null {
-  const match = nodeEffects(state, threadId, runId).find(
-    (item) => stableEffectId(threadId, item.effect) === effectId,
+  const match = nodeEffects(state, ctx).find(
+    (item) => stableEffectId(ctx.threadId, item.effect) === effectId,
   )
 
   return match?.nodeId ?? null
@@ -297,16 +299,19 @@ interface UnsettledChild {
   readonly close: 'terminate' | 'wait'
 }
 
-function childTarget(runId: string, childThreadId: string, execution: 'thread' | 'run'): string {
-  return execution === 'run' ? deterministicRunId(runId, childThreadId) : childThreadId
+function childTarget(
+  ctx: ThreadContext,
+  childThreadId: string,
+  execution: 'thread' | 'run',
+): string {
+  return execution === 'run' ? ctx.ids.derive('run', [ctx.runId, childThreadId]) : childThreadId
 }
 
 /** Children a node started that have not reported back yet. */
 function unsettledChildren(
   state: WorkflowState,
   nodeId: string,
-  threadId: string,
-  runId: string,
+  ctx: ThreadContext,
 ): UnsettledChild[] {
   const children: UnsettledChild[] = []
 
@@ -319,7 +324,7 @@ function unsettledChildren(
 
     children.push({
       key: item.childThreadId,
-      target: childTarget(runId, item.childThreadId, execution),
+      target: childTarget(ctx, item.childThreadId, execution),
       execution,
       close: item.close === 'wait' ? 'wait' : 'terminate',
     })
@@ -338,11 +343,11 @@ function unsettledChildren(
         continue
       }
 
-      const key = mapChildThreadId(threadId, map, index)
+      const key = mapChildThreadId(ctx, map, index)
 
       children.push({
         key,
-        target: childTarget(runId, key, execution),
+        target: childTarget(ctx, key, execution),
         execution,
         close,
       })
@@ -361,15 +366,18 @@ function unsettledChildren(
 function withoutPendingWork(
   state: WorkflowState,
   nodeId: string,
-  threadId: string,
-  runId: string,
+  ctx: ThreadContext,
   settled: string | null = null,
 ): WorkflowState {
-  const children = unsettledChildren(state, nodeId, threadId, runId)
+  const children = unsettledChildren(state, nodeId, ctx)
 
   const cancels = children
-    .map((child) => child.target)
-    .filter((target) => target !== settled && !state.pendingCancels.includes(target))
+    .filter(
+      (child) =>
+        child.target !== settled &&
+        !state.pendingCancels.some((pending) => pending.target === child.target),
+    )
+    .map((child) => ({ target: child.target, execution: child.execution }))
 
   return {
     ...state,
@@ -382,14 +390,9 @@ function withoutPendingWork(
   }
 }
 
-function stopNode(
-  state: WorkflowState,
-  nodeId: string,
-  threadId: string,
-  runId: string,
-): WorkflowState {
+function stopNode(state: WorkflowState, nodeId: string, ctx: ThreadContext): WorkflowState {
   return {
-    ...withoutPendingWork(state, nodeId, threadId, runId),
+    ...withoutPendingWork(state, nodeId, ctx),
     runningNodes: state.runningNodes.filter((id) => id !== nodeId),
   }
 }
@@ -400,8 +403,7 @@ function finishNode(
   nodeId: string,
   result: JsonValue | null,
   error: string | null,
-  threadId: string,
-  runId: string,
+  ctx: ThreadContext,
   settled: string | null = null,
 ): WorkflowState {
   const id = `finished_${nodeId}`
@@ -409,11 +411,11 @@ function finishNode(
   const event: EventInput = {
     type: 'workflow.node.finished',
     payload: { nodeId, result, error },
-    threadId,
+    threadId: ctx.threadId,
   }
 
   return {
-    ...withoutPendingWork(state, nodeId, threadId, runId, settled),
+    ...withoutPendingWork(state, nodeId, ctx, settled),
     pendingEmits: [...state.pendingEmits.filter((item) => item.id !== id), { id, event }],
   }
 }
@@ -423,26 +425,25 @@ function recordMapOutput(
   map: WorkflowPendingMap,
   index: number,
   output: JsonValue | null,
-  threadId: string,
-  runId: string,
+  ctx: ThreadContext,
 ): WorkflowState {
   if (String(index) in map.outputs) {
     return state
   }
 
-  const childThreadId = mapChildThreadId(threadId, map, index)
-  const settled = childTarget(runId, childThreadId, map.execution === 'run' ? 'run' : 'thread')
+  const childThreadId = mapChildThreadId(ctx, map, index)
+  const settled = childTarget(ctx, childThreadId, map.execution === 'run' ? 'run' : 'thread')
   const outputs = { ...map.outputs, [String(index)]: output }
   const size = utf8JsonBytes(outputs)
 
   if (size > map.limitBytes) {
     const error = new WorkflowValueTooLargeError(`Node ${map.nodeId} outputs`, size, map.limitBytes)
-    return finishNode(state, map.nodeId, null, error.message, threadId, runId, settled)
+    return finishNode(state, map.nodeId, null, error.message, ctx, settled)
   }
 
   if (Object.keys(outputs).length === map.items.length) {
     const ordered = map.items.map((_, i) => outputs[String(i)] ?? null)
-    return finishNode(state, map.nodeId, ordered, null, threadId, runId, settled)
+    return finishNode(state, map.nodeId, ordered, null, ctx, settled)
   }
 
   const nextIndex = Math.min(map.items.length, map.nextIndex + 1)
@@ -547,7 +548,7 @@ export const workflowThread = workflowModule.thread({
 
         const failed = Predicate.isString(error) && error.length > 0
         return {
-          ...stopNode(state, nodeId, ctx.threadId, ctx.runId),
+          ...stopNode(state, nodeId, ctx),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -567,7 +568,7 @@ export const workflowThread = workflowModule.thread({
       case 'workflow.node.skipped': {
         const { nodeId, reason, cause } = event.payload
         return {
-          ...stopNode(state, nodeId, ctx.threadId, ctx.runId),
+          ...stopNode(state, nodeId, ctx),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -681,9 +682,7 @@ export const workflowThread = workflowModule.thread({
 
         const effectId = event.payload.effectId
 
-        const nodeId = Predicate.isString(effectId)
-          ? nodeIdForEffect(state, ctx.threadId, ctx.runId, effectId)
-          : null
+        const nodeId = Predicate.isString(effectId) ? nodeIdForEffect(state, ctx, effectId) : null
 
         if (!nodeId) {
           return state
@@ -692,14 +691,7 @@ export const workflowThread = workflowModule.thread({
         const message = `Node ${nodeId} failed: ${error}`
 
         return {
-          ...finishNode(
-            stopNode(state, nodeId, ctx.threadId, ctx.runId),
-            nodeId,
-            null,
-            message,
-            ctx.threadId,
-            ctx.runId,
-          ),
+          ...finishNode(stopNode(state, nodeId, ctx), nodeId, null, message, ctx),
           nodes: {
             ...state.nodes,
             [nodeId]: {
@@ -729,7 +721,7 @@ export const workflowThread = workflowModule.thread({
         const map = state.pendingMaps.find((item) => item.nodeId === nodeId)
 
         if (error === null && map && Predicate.isNumber(tag.index)) {
-          return recordMapOutput(state, map, tag.index, result, ctx.threadId, ctx.runId)
+          return recordMapOutput(state, map, tag.index, result, ctx)
         }
 
         const node = state.nodes[nodeId]
@@ -756,7 +748,7 @@ export const workflowThread = workflowModule.thread({
               : null
           : null
 
-        return finishNode(state, nodeId, result, error, ctx.threadId, ctx.runId, settled)
+        return finishNode(state, nodeId, result, error, ctx, settled)
       }
 
       default:
@@ -770,7 +762,7 @@ export const workflowThread = workflowModule.thread({
       effects.push(scheduleInvocation(state))
     }
 
-    for (const item of nodeEffects(state, ctx.threadId, ctx.runId)) {
+    for (const item of nodeEffects(state, ctx)) {
       effects.push(item.effect)
     }
 
@@ -778,9 +770,11 @@ export const workflowThread = workflowModule.thread({
       effects.push(emit(emitReq.event))
     }
 
-    for (const childId of state.pendingCancels) {
+    for (const child of state.pendingCancels) {
       effects.push(
-        childId.startsWith('run_') ? cancelRun(childId, `cancel_${childId}`) : cancel(childId),
+        child.execution === 'run'
+          ? cancelRun(child.target, `cancel_${child.target}`)
+          : cancel(child.target),
       )
     }
 

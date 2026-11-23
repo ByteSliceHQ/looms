@@ -3,7 +3,8 @@ import { Data, DateTime, Effect, Fiber, Option, Predicate, Schema } from 'effect
 import { absoluteHttpBase, type SubscriptionSocketConstructor } from '@looms/client'
 import {
   createEvent,
-  createEventId,
+  resolveIds,
+  type LoomsIds,
   decodeLoomsEvent,
   readSubscriptionData,
   stringifyJson,
@@ -133,6 +134,10 @@ export interface LoomsClientStoreOptions {
   /** Whether `commit` shows its events before the host confirms them. Defaults to false. */
   optimistic?: boolean
   /**
+   * The id format for the event ids and idempotency keys of optimistic commits. Match the host's `ids`. Defaults to `typeIds` (TypeID).
+   */
+  ids?: LoomsIds
+  /**
    * Keeps the run's durable events on the device. A store that has followed the run before starts
    * from them and downloads only what was appended since. Not used together with `fromSeq`.
    */
@@ -208,6 +213,7 @@ function eventSourceCtor(): typeof EventSource | undefined {
 export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientStore {
   const endpoint = options.endpoint.replace(/\/$/, '')
   const fetchFn = options.fetch ?? fetch
+  const ids = resolveIds(options.ids)
   const reconnectDelayMs = options.reconnectDelayMs ?? 1_000
   const coalesce = options.coalesce ?? 'adaptive'
   const listeners = new Set<StoreListener>()
@@ -569,7 +575,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     const body = decodedBody.value
     const pulledEvents = 'events' in body && Array.isArray(body.events) ? body.events : []
 
-    applyBatch(pulledEvents.map((raw) => decodeLoomsEvent(raw, options.storeId)))
+    applyBatch(pulledEvents.map((raw) => decodeLoomsEvent(raw, options.storeId, ids)))
     return undefined
   }).pipe(
     Effect.catchIf(
@@ -924,7 +930,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
       const inputs: readonly EventInput[] = Array.isArray(event) ? event : [event]
       const optimistic = commitOptions?.optimistic ?? options.optimistic ?? false
 
-      const key = commitOptions?.idempotencyKey ?? (optimistic ? createEventId() : undefined)
+      const key = commitOptions?.idempotencyKey ?? (optimistic ? ids.create('event') : undefined)
 
       const startedAt = nowMs()
       let shown: PendingCommit | undefined
@@ -947,7 +953,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
                 origin: input.origin ?? { type: 'external' },
                 idempotencyKey: input.idempotencyKey ?? key,
               },
-              { seq: pendingSeq },
+              { seq: pendingSeq, ids },
             )
           }),
         }

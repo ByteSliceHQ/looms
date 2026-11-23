@@ -3,7 +3,6 @@ import { Predicate } from 'effect'
 import {
   cancel,
   createWaitId,
-  deterministicThreadId,
   emit,
   spawn,
   wait,
@@ -356,7 +355,7 @@ export function createAgentSessionThread(
               'session.turn.started',
               {
                 messageId: next.messageId,
-                childThreadId: deterministicThreadId(ctx.threadId, 'turn', next.messageId),
+                childThreadId: ctx.ids.derive('thread', [ctx.threadId, 'turn', next.messageId]),
               },
               { threadId: ctx.threadId },
             ),

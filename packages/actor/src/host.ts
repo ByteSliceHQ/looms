@@ -10,6 +10,7 @@ import type {
   RunLauncher,
   RunState,
   SnapshotStore,
+  LoomsIds,
 } from '@looms/core'
 import { createRemoteRunLauncher, EventStoreTag } from '@looms/core'
 import {
@@ -62,6 +63,8 @@ export interface LocalActorHostOptions<
   readonly modules: TModules
   /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
   readonly definitionResolver?: DefinitionResolver
+  /** The id format. See `CreateRuntimeOptions.ids`. */
+  readonly ids?: LoomsIds
   /** Declared run attributes. See `CreateRuntimeOptions`. */
   readonly attributes?: RunAttributeFields
   /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
@@ -154,6 +157,7 @@ export function createLocalActorHost<
           scheduler,
           modules: options.modules,
           definitionResolver: options.definitionResolver,
+          ids: options.ids,
           attributes: options.attributes,
           observer: options.observer,
           secretProvider: options.secretProvider,
@@ -225,7 +229,7 @@ export function createLocalActorHost<
       return Effect.runPromise(
         Effect.gen(function* () {
           const { runId, request } = yield* Effect.tryPromise({
-            try: () => resolveRunTarget(req),
+            try: () => resolveRunTarget(req, { ids: options.ids }),
             catch: (cause) => new ActorHostError(cause),
           })
 

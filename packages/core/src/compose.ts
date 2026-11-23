@@ -4,6 +4,7 @@ import type { CatalogEvent, EventCatalog } from './catalog'
 import type { EffectDefinition } from './effects'
 import type { EventEnvelope } from './envelope'
 import type { FoldRegistry } from './fold'
+import { resolveIds, type LoomsIds } from './ids'
 import type {
   AnyRuntimeModule,
   EffectAdmission,
@@ -35,9 +36,19 @@ export interface ComposedRegistry extends FoldRegistry {
   readonly middleware: readonly EffectMiddleware[]
   readonly admission: readonly EffectAdmission[]
   readonly interruptRules: readonly SignalInterruptRule[]
+  readonly ids: LoomsIds
 }
 
-export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRegistry {
+export interface ComposeModulesOptions {
+  /** The id format for everything this registry names. Defaults to `typeIds`. */
+  readonly ids?: LoomsIds
+}
+
+export function composeModules(
+  modules: readonly AnyRuntimeModule[],
+  options?: ComposeModulesOptions,
+): ComposedRegistry {
+  const ids = resolveIds(options?.ids)
   const definitions: RegisteredDefinition[] = []
   const definitionKeys = new Set<string>()
   const namespaces = new Set<string>()
@@ -163,14 +174,16 @@ export function composeModules(modules: readonly AnyRuntimeModule[]): ComposedRe
     middleware,
     admission,
     interruptRules,
+    ids,
   }
 }
 
 export function composeModulesEffect(
   modules: readonly AnyRuntimeModule[],
+  options?: ComposeModulesOptions,
 ): Effect.Effect<ComposedRegistry, ModuleCompositionError> {
   return Effect.try({
-    try: () => composeModules(modules),
+    try: () => composeModules(modules, options),
     catch: (cause) =>
       cause instanceof ModuleCompositionError
         ? cause

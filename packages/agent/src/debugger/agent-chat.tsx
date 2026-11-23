@@ -1,13 +1,7 @@
 import { Bot, CornerDownRight, GitFork, MessageSquare, Settings2, User, Wrench } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import {
-  createEventId,
-  isJsonObject,
-  isJsonString,
-  type JsonValue,
-  type RunStatus,
-} from '@looms/core'
+import { isJsonObject, isJsonString, type JsonValue, type RunStatus } from '@looms/core'
 import {
   Button,
   cn,
@@ -312,7 +306,7 @@ export function AgentChat(context: WorkspaceContext) {
             client.signal(
               started.runId,
               agentSessionMessageEvents(
-                { messageId: createEventId(), text: content },
+                { messageId: client.ids.create('event'), text: content },
                 { threadId: started.threadId },
               ),
             )
@@ -414,6 +408,7 @@ function ContinueRun({
 }
 
 function Reply({ runId, session, delivery, setDelivery, startError }: ReplyProps) {
+  const { client } = useDebugger()
   const store = useRunStore(runId)
   const { rootThreadId, status, finished } = useRunSummary(store)
   const turn = useProjection(store, turnActivity)
@@ -449,7 +444,7 @@ function Reply({ runId, session, delivery, setDelivery, startError }: ReplyProps
     const events = session
       ? agentSessionMessageEvents(
           {
-            messageId: createEventId(),
+            messageId: client.ids.create('event'),
             text: content,
             delivery,
             activeChildThreadId:

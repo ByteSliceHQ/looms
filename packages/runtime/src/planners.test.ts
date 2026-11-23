@@ -120,7 +120,12 @@ describe('deadline transition planner', () => {
     })
 
     expect(
-      planTerminalCancellationTransitions({ runId: state.runId, state, now: 1_000 }),
+      planTerminalCancellationTransitions({
+        runId: state.runId,
+        state,
+        registry: composeModules([]),
+        now: 1_000,
+      }),
     ).toHaveLength(1)
 
     expect(nextRuntimeDeadline(state, 1_000)).toBe(1_200)

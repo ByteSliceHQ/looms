@@ -1,7 +1,8 @@
 import { Data, Effect, Option, Predicate, Schema, Stream } from 'effect'
 
 import {
-  createRunId,
+  resolveIds,
+  type LoomsIds,
   DefinitionCatalogSchema,
   EffectCatalogSchema,
   EventEnvelopeSchema,
@@ -165,6 +166,10 @@ export interface LoomsClientOptions<Fields extends RunAttributeFields = RunAttri
   grant?: string
   /** Declared run attributes, from `defineRunAttributes`. Types `attributes` on starts. */
   attributes?: Fields
+  /**
+   * The id format for the run id of a `stream` started without one. Match the host's `ids`. Defaults to `typeIds` (TypeID).
+   */
+  ids?: LoomsIds
 }
 
 type ClientStartArgs<Fields extends RunAttributeFields> = {
@@ -201,6 +206,7 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
 ) {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
   const fetchImpl = options.fetch ?? fetch
+  const ids = resolveIds(options.ids)
 
   function request<T>(
     path: string,
@@ -379,7 +385,7 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
 
   const streamRun = (args: ClientStartArgs<Fields>): StreamHandle => {
     const { trace, ...body } = args
-    const runId = body.runId ?? createRunId()
+    const runId = body.runId ?? ids.create('run')
 
     const stream = Stream.unwrap(
       Effect.tryPromise({
@@ -419,6 +425,8 @@ export function createLoomsClient<const Fields extends RunAttributeFields = RunA
   }
 
   return {
+    /** The id format this client draws from. */
+    ids,
     /**
      * Start a run by `{ kind, definitionName }` when you only have names. Answers after the first
      * wake, so a short run can come back finished.

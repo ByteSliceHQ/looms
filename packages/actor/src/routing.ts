@@ -2,7 +2,8 @@ import { Data, Effect, Option, Predicate, Schema } from 'effect'
 
 import {
   composeModules,
-  createRunId,
+  resolveIds,
+  type LoomsIds,
   isJsonObject,
   publishDefinition,
   publishEffects,
@@ -133,9 +134,15 @@ export class RunTargetError extends Data.TaggedError('RunTargetError')<{
 /**
  * Resolves the destination `runId` for routing to an actor cell.
  * For `POST /runs` and `POST /runs/launch` without a `runId`, creates a fresh
- * `runId`, injects it into the body, and sets `x-looms-run-id`.
+ * `runId` in the `ids` format (default `typeIds`), injects it into the body, and sets
+ * `x-looms-run-id`.
  */
-export function resolveRunTarget(req: Request): Promise<ResolvedRunTarget> {
+export function resolveRunTarget(
+  req: Request,
+  options?: { readonly ids?: LoomsIds },
+): Promise<ResolvedRunTarget> {
+  const ids = resolveIds(options?.ids)
+
   return Effect.runPromise(
     Effect.gen(function* () {
       const existing = runIdFromRequest(req)
@@ -171,7 +178,7 @@ export function resolveRunTarget(req: Request): Promise<ResolvedRunTarget> {
         if (Option.isSome(decoded) && decoded.value.runId) {
           runId = decoded.value.runId
         } else {
-          runId = createRunId()
+          runId = ids.create('run')
         }
 
         const decodedRecord = decodePayloadRecord(text)

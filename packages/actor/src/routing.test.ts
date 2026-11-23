@@ -6,6 +6,14 @@ import { defineModule, EffectCatalogSchema } from '@looms/core'
 
 import { definitionsResponse, resolveRunTarget, runIdFromRequest } from './routing'
 
+function startRequest(): Request {
+  return new Request('http://localhost:8787/runs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'echo', definitionName: 'echo' }),
+  })
+}
+
 describe('routing', () => {
   test('definitionsResponse answers effect catalogs without a run', async () => {
     const modules = [
@@ -128,5 +136,23 @@ describe('routing', () => {
       definitionName: 'echo',
       runId: 'run_explicit',
     })
+  })
+
+  test('resolveRunTarget draws a missing runId from the ids option', async () => {
+    const ids = {
+      create: (kind: string) => `my-${kind}`,
+      derive: (kind: string, parts: readonly (string | number)[]) =>
+        `my-${kind}-${parts.join('.')}`,
+    }
+
+    const { runId, request } = await resolveRunTarget(startRequest(), { ids })
+
+    expect(runId).toBe('my-run')
+    expect(request.headers.get('x-looms-run-id')).toBe('my-run')
+    expect(await request.json()).toMatchObject({ runId: 'my-run' })
+
+    expect(() =>
+      resolveRunTarget(startRequest(), { ids: { ...ids, create: () => 'a:b' } }),
+    ).toThrow(/contains ":"/)
   })
 })

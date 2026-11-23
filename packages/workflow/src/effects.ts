@@ -1,7 +1,7 @@
 import { Clock, Data, Effect, Predicate, Schema } from 'effect'
 
 import {
-  createThreadId,
+  type LoomsIds,
   createWaitId,
   DEFAULT_DEFINITION_VERSION,
   type EventInputOf,
@@ -249,6 +249,7 @@ export const runNodeEffect = workflowModule.effect({
 
       const run: NodeRun = {
         threadId: ctx.threadId,
+        ids: ctx.ids,
         nodeId: input.nodeId,
         attempt: input.attempt,
         iteration: input.iteration,
@@ -266,6 +267,7 @@ export const runNodeEffect = workflowModule.effect({
 
 interface NodeRun {
   readonly threadId: string
+  readonly ids: LoomsIds
   readonly nodeId: string
   readonly attempt: number
   readonly iteration: WorkflowIteration | undefined
@@ -332,7 +334,7 @@ function nodeResultEvents(
   result: NodeResult,
 ) {
   return Effect.gen(function* () {
-    const { threadId, nodeId, attempt } = run
+    const { threadId, ids, nodeId, attempt } = run
     const outputLabel = `Node ${nodeId} output`
 
     switch (result.type) {
@@ -357,8 +359,8 @@ function nodeResultEvents(
         const childThreadId =
           result.childThreadId ??
           (nodeType === 'workflow'
-            ? nodeChildWorkflowId(threadId, nodeId, attempt)
-            : createThreadId())
+            ? nodeChildWorkflowId(threadId, nodeId, attempt, ids)
+            : ids.create('thread'))
 
         return spawnRequested(definition, run, childThreadId, result, result.input)
       }
@@ -423,7 +425,15 @@ function nodeResultEvents(
           return finished(run, run.iteration?.previous ?? null, null)
         }
 
-        const childThreadId = iterationChildWorkflowId(threadId, nodeId, 'loop', attempt, index)
+        const childThreadId = iterationChildWorkflowId(
+          threadId,
+          nodeId,
+          'loop',
+          attempt,
+          index,
+          ids,
+        )
+
         return spawnRequested(definition, run, childThreadId, result, result.input, index)
       }
 

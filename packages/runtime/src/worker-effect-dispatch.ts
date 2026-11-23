@@ -12,6 +12,7 @@ import {
   type OutstandingEffect,
   type RetryPolicy,
   type RunState,
+  type LoomsIds,
 } from '@looms/core'
 
 import { RuntimeExecutionError } from './errors'
@@ -167,13 +168,17 @@ export function planWorkerEffects(input: {
       dispatchTry: sameAttempt ? existing.dispatchTry + 1 : 1,
       queuedEvent: sameAttempt
         ? undefined
-        : createEvent(input.runId, {
-            type: 'runtime.effect.queued',
-            payload: { effectId: item.effectId, attempt, deadlineAt: null },
-            threadId: item.threadId,
-            causationId: item.causingEventId,
-            origin: { type: 'system' },
-          }),
+        : createEvent(
+            input.runId,
+            {
+              type: 'runtime.effect.queued',
+              payload: { effectId: item.effectId, attempt, deadlineAt: null },
+              threadId: item.threadId,
+              causationId: item.causingEventId,
+              origin: { type: 'system' },
+            },
+            { ids: input.registry.ids },
+          ),
       task: workerTask(input.runId, item, attempt, {
         details: existing?.heartbeatDetails,
         attributes: input.state.attributes,
@@ -229,28 +234,38 @@ export function dispatchWorkerEffect(
   plan: WorkerEffectDispatchPlan,
   worker: EffectWorker | undefined,
   now: number,
-  options: { readonly maxDispatchDeferrals?: number } = {},
+  options: { readonly ids: LoomsIds; readonly maxDispatchDeferrals?: number },
 ): Effect.Effect<EventEnvelope> {
-  const dispatched = createEvent(runId, {
-    type: 'runtime.effect.dispatched',
-    payload: {
-      effectId: plan.item.effectId,
-      attempt: plan.attempt,
-      deadlineAt: plan.scheduleToStartDeadlineAt,
-    },
-    threadId: plan.item.threadId,
-    causationId: plan.item.causingEventId,
-    origin: { type: 'system' },
-  })
+  const { ids } = options
 
-  const ambiguous = (error: string) =>
-    createEvent(runId, {
-      type: 'runtime.effect.ambiguous',
-      payload: { effectId: plan.item.effectId, attempt: plan.attempt, error },
+  const dispatched = createEvent(
+    runId,
+    {
+      type: 'runtime.effect.dispatched',
+      payload: {
+        effectId: plan.item.effectId,
+        attempt: plan.attempt,
+        deadlineAt: plan.scheduleToStartDeadlineAt,
+      },
       threadId: plan.item.threadId,
       causationId: plan.item.causingEventId,
       origin: { type: 'system' },
-    })
+    },
+    { ids },
+  )
+
+  const ambiguous = (error: string) =>
+    createEvent(
+      runId,
+      {
+        type: 'runtime.effect.ambiguous',
+        payload: { effectId: plan.item.effectId, attempt: plan.attempt, error },
+        threadId: plan.item.threadId,
+        causationId: plan.item.causingEventId,
+        origin: { type: 'system' },
+      },
+      { ids },
+    )
 
   if (!worker) {
     return Effect.succeed(
@@ -267,6 +282,7 @@ export function dispatchWorkerEffect(
       onFailure: (error) => {
         if (worker.dispatchSemantics === 'acknowledged') {
           return planAttemptFailure({
+            ids: ids,
             runId,
             item: plan.item,
             attempt: plan.attempt,
@@ -285,19 +301,23 @@ export function dispatchWorkerEffect(
           )
         }
 
-        return createEvent(runId, {
-          type: 'runtime.effect.dispatch.deferred',
-          payload: {
-            effectId: plan.item.effectId,
-            attempt: plan.attempt,
-            retryAt: now + retryBackoff(DISPATCH_BACKOFF, plan.dispatchTry),
-            error: `worker dispatch deferred: ${error.message}`,
-            try: plan.dispatchTry,
+        return createEvent(
+          runId,
+          {
+            type: 'runtime.effect.dispatch.deferred',
+            payload: {
+              effectId: plan.item.effectId,
+              attempt: plan.attempt,
+              retryAt: now + retryBackoff(DISPATCH_BACKOFF, plan.dispatchTry),
+              error: `worker dispatch deferred: ${error.message}`,
+              try: plan.dispatchTry,
+            },
+            threadId: plan.item.threadId,
+            causationId: plan.item.causingEventId,
+            origin: { type: 'system' },
           },
-          threadId: plan.item.threadId,
-          causationId: plan.item.causingEventId,
-          origin: { type: 'system' },
-        })
+          { ids },
+        )
       },
       onSuccess: () => dispatched,
     }),
