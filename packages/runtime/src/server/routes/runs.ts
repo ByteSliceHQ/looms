@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 
 import {
-  createRunId,
+  type LoomsIds,
   EventStoreTag,
   findSignal,
   JsonValueSchema,
@@ -83,7 +83,7 @@ const ForkBodySchema = Schema.Struct({
   secrets: Schema.optional(SecretContextSchema),
 })
 
-function readStartRunArgs(req: Request) {
+function readStartRunArgs(req: Request, ids: LoomsIds) {
   return Effect.gen(function* () {
     const body = yield* readJson(req).pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(StartRunBodySchema)),
@@ -101,7 +101,7 @@ function readStartRunArgs(req: Request) {
       definitionName,
       definitionVersion: body.definitionVersion,
       input: body.input ?? null,
-      runId: body.runId ?? createRunId(),
+      runId: body.runId ?? ids.create('run'),
       idempotencyKey: extractIdempotencyKey(req, body.idempotencyKey),
       attributes: body.attributes,
       secrets: body.secrets,
@@ -222,7 +222,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       access: 'write',
       handle: ({ req, url }) =>
         Effect.gen(function* () {
-          const args = yield* readStartRunArgs(req)
+          const args = yield* readStartRunArgs(req, runtime.registry.ids)
 
           if (args instanceof Response) {
             return args
@@ -243,7 +243,7 @@ export function runRoutes({ runtime, store }: RouteOptions): readonly Route[] {
       access: 'write',
       handle: ({ req }) =>
         Effect.gen(function* () {
-          const args = yield* readStartRunArgs(req)
+          const args = yield* readStartRunArgs(req, runtime.registry.ids)
 
           if (args instanceof Response) {
             return args

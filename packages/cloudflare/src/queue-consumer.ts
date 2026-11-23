@@ -12,6 +12,8 @@ import {
   type WorkerEffectContext,
   type WorkerEffectDefinition,
   type WorkerSecretsResult,
+  type LoomsIds,
+  resolveIds,
 } from '@looms/core'
 
 import {
@@ -94,6 +96,8 @@ export interface QueueConsumerOptions {
   readonly callbacks: WorkerCallbackClient
   /** Reads inputs the producer offloaded. Use the store the producer writes to. */
   readonly blobs?: BlobStore
+  /** The id format handlers see as `ctx.ids`. Match the host's `ids`. Defaults to `typeIds`. */
+  readonly ids?: LoomsIds
 }
 
 export interface QueueBatchLike {
@@ -229,6 +233,7 @@ function runAttempt(
             attributes: task.attributes ?? {},
             secrets,
             trace: task.trace ?? null,
+            ids: resolveIds(options.ids),
             heartbeat: (details) =>
               Effect.runPromise(
                 callback(() =>

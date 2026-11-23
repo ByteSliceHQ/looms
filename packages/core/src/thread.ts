@@ -1,5 +1,6 @@
 import type { RuntimeEffect } from './effects'
 import type { EventEnvelope } from './envelope'
+import type { LoomsIds } from './ids'
 import type { InferDefinedSchema, InferSchemaOutput, SchemaInput } from './schema'
 import type { ThreadStatus, JsonValue } from './types'
 
@@ -10,12 +11,19 @@ export interface StartContext<TInput = JsonValue> {
   readonly definitionName: string
   readonly definitionVersion: string
   readonly input: TInput
+  /** The id format this registry was composed with. */
+  readonly ids: LoomsIds
 }
 
 export interface ThreadContext {
   readonly runId: string
   readonly threadId: string
   readonly parentThreadId: string | null
+  /**
+   * The id format this registry was composed with. Name a child with `ids.derive`, never
+   * `ids.create`: a reducer runs again on every replay.
+   */
+  readonly ids: LoomsIds
 }
 
 export interface ThreadDefinition<S = any> {

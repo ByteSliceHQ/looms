@@ -26,6 +26,8 @@ import {
   type RunAttributesOption,
   type RunLauncher,
   type RunState,
+  type LoomsIds,
+  resolveIds,
 } from '@looms/core'
 
 import type { RuntimeObserver } from './observer'
@@ -58,6 +60,11 @@ export interface CreateLoomsOptions<Fields extends RunAttributeFields = RunAttri
    * A start that misses a `required` attribute or sends an undeclared one is rejected.
    */
   readonly attributes?: Fields
+  /**
+   * The id format for every event, run, thread, and wait. Defaults to `typeIds` (TypeID). See
+   * `CreateRuntimeOptions.ids` for the rules a custom format must keep.
+   */
+  readonly ids?: LoomsIds
   /**
    * Loads a definition that was not registered on a module. Registered definitions are checked
    * first. A run pins the resolved version on its start event.
@@ -224,6 +231,8 @@ export function createLooms<const Fields extends RunAttributeFields = RunAttribu
 
 export function createLooms(options: CreateLoomsOptions = {}): Looms {
   const modules = options.modules ?? []
+  // Checked here so a format that breaks a rule fails where it is configured.
+  const ids = resolveIds(options.ids)
 
   const debuggerMount = options.debugger ? mountDebugger(options.debugger) : undefined
   let initPromise: Promise<Initialized> | undefined
@@ -258,6 +267,7 @@ export function createLooms(options: CreateLoomsOptions = {}): Looms {
 
           const runtime = createRuntime({
             modules,
+            ids,
             store,
             maxWakeIterations: options.maxWakeIterations,
             livenessLeaseMs: options.livenessLeaseMs,

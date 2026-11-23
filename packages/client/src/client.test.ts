@@ -508,6 +508,27 @@ describe('createLoomsClient', () => {
 
     expect(types).toEqual(['agent.turn.text_delta', 'agent.message'])
   })
+
+  test('draws a stream run id from the ids option and rejects a format that breaks a rule', () => {
+    const ids = {
+      create: (kind: string) => `my-${kind}`,
+      derive: (kind: string, parts: readonly (string | number)[]) =>
+        `my-${kind}-${parts.join('.')}`,
+    }
+
+    const client = createLoomsClient({
+      ids,
+      fetch: () => Promise.resolve(new Response('not found', { status: 404 })),
+    })
+
+    expect(client.ids.create('run')).toBe('my-run')
+    expect(client.streamRun({ kind: 'agent', definitionName: 'echo' }).runId).toBe('my-run')
+    expect(createLoomsClient().ids.create('run')).toMatch(/^run_[0-7][0-9a-hjkmnp-tv-z]{25}$/)
+
+    expect(() => createLoomsClient({ ids: { ...ids, create: () => '' } })).toThrow(
+      /non-empty string/,
+    )
+  })
 })
 
 test('consumeSseStream cancels its reader when aborted', async () => {

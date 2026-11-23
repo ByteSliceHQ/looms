@@ -198,7 +198,7 @@ export function planFork(input: {
       threadId: null,
       origin: { type: 'system' },
     },
-    { seq: cut + 1 },
+    { seq: cut + 1, ids: registry.ids },
   )
 
   return Effect.succeed({

@@ -13,6 +13,7 @@ import {
   type WorkerCallbackInput,
   type WorkerSecretsResult,
   type WorkerCallbackResult,
+  type LoomsIds,
 } from '@looms/core'
 
 import { materializeEffectOutcome } from './helpers'
@@ -45,13 +46,18 @@ function workerStartedEvent(
   attempt: number,
   retry: RetryPolicy | undefined,
   now: number,
+  ids: LoomsIds,
 ): EventEnvelope {
-  return createEvent(runId, {
-    type: 'runtime.effect.worker.started',
-    payload: { effectId: item.effectId, attempt, deadlineAt: workerDeadline(retry, now, now) },
-    threadId: item.threadId,
-    origin: WORKER_ORIGIN,
-  })
+  return createEvent(
+    runId,
+    {
+      type: 'runtime.effect.worker.started',
+      payload: { effectId: item.effectId, attempt, deadlineAt: workerDeadline(retry, now, now) },
+      threadId: item.threadId,
+      origin: WORKER_ORIGIN,
+    },
+    { ids },
+  )
 }
 
 export interface WorkerCallbacksOptions {
@@ -149,7 +155,7 @@ function planWorkerCallback(input: {
     case 'started': {
       return Effect.succeed(
         item && (execution.status === 'dispatched' || execution.status === 'dispatch_wait')
-          ? accepted([workerStartedEvent(runId, item, callback.attempt, retry, now)])
+          ? accepted([workerStartedEvent(runId, item, callback.attempt, retry, now, registry.ids)])
           : STALE,
       )
     }
@@ -179,14 +185,18 @@ function planWorkerCallback(input: {
         accepted(
           [
             ...(implicitStart
-              ? [workerStartedEvent(runId, item, callback.attempt, retry, now)]
+              ? [workerStartedEvent(runId, item, callback.attempt, retry, now, registry.ids)]
               : []),
-            createEvent(runId, {
-              type: 'runtime.effect.heartbeat',
-              payload,
-              threadId: item.threadId,
-              origin: WORKER_ORIGIN,
-            }),
+            createEvent(
+              runId,
+              {
+                type: 'runtime.effect.heartbeat',
+                payload,
+                threadId: item.threadId,
+                origin: WORKER_ORIGIN,
+              },
+              { ids: registry.ids },
+            ),
           ],
           [notice('effect.heartbeat')],
         ),
@@ -199,19 +209,23 @@ function planWorkerCallback(input: {
       }
 
       return Effect.forEach(callback.events, (event) =>
-        materializeEffectOutcome(registry.catalogs, runId, item, event),
+        materializeEffectOutcome(registry, runId, item, event),
       ).pipe(
         Effect.map((outcomes) =>
           accepted([
             ...outcomes,
-            createEvent(runId, {
-              type: 'runtime.effect.completed',
-              payload: { effectId: item.effectId, attempt: callback.attempt },
-              threadId: item.threadId,
-              effectId: item.effectId,
-              causationId: item.causingEventId,
-              origin: WORKER_ORIGIN,
-            }),
+            createEvent(
+              runId,
+              {
+                type: 'runtime.effect.completed',
+                payload: { effectId: item.effectId, attempt: callback.attempt },
+                threadId: item.threadId,
+                effectId: item.effectId,
+                causationId: item.causingEventId,
+                origin: WORKER_ORIGIN,
+              },
+              { ids: registry.ids },
+            ),
           ]),
         ),
       )
@@ -223,6 +237,7 @@ function planWorkerCallback(input: {
       }
 
       const failure = planAttemptFailure({
+        ids: registry.ids,
         runId,
         item,
         attempt: callback.attempt,
@@ -257,13 +272,17 @@ function planWorkerCallback(input: {
       return Effect.succeed(
         accepted(
           [
-            createEvent(runId, {
-              type: 'runtime.effect.cancelled',
-              payload: { effectId: callback.effectId, attempt: callback.attempt },
-              threadId: item?.threadId ?? null,
-              effectId: callback.effectId,
-              origin: WORKER_ORIGIN,
-            }),
+            createEvent(
+              runId,
+              {
+                type: 'runtime.effect.cancelled',
+                payload: { effectId: callback.effectId, attempt: callback.attempt },
+                threadId: item?.threadId ?? null,
+                effectId: callback.effectId,
+                origin: WORKER_ORIGIN,
+              },
+              { ids: registry.ids },
+            ),
           ],
           [notice('effect.cancellation')],
           true,

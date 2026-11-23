@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { pageHead } from '../page-head'
 
@@ -69,6 +69,22 @@ function Page() {
         When a change is incompatible, keep the old implementation routed to old runs, migrate those
         runs with your own tools, or let them finish before retiring the old code. Do not rewrite
         historical events casually to make a new reducer accept them.
+      </p>
+      <h2 id="keep-the-id-format">
+        Keep the id format
+        <a className="heading-anchor" href="#keep-the-id-format" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Reducers name child threads and child runs by deriving an id from the parent. The{' '}
+        <Link to="/docs/concepts/runs-and-threads" hash="ids">
+          id format
+        </Link>{' '}
+        decides that name, so changing the <code>ids</code> option renames every derived child. A
+        run that started under one format will not replay under another: its reducers ask for
+        children the log does not contain. Finish or cancel in-flight runs before changing the
+        format, and deploy the same format to every process that folds the same runs.
       </p>
       <h2 id="a-deployment-procedure">
         A deployment procedure

@@ -134,6 +134,7 @@ export function admitOrFailAttempt(input: {
       }
 
       const failure = planAttemptFailure({
+        ids: input.registry.ids,
         runId: input.runId,
         item: input.item,
         attempt: input.attempt,

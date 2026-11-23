@@ -128,13 +128,17 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
         // every remaining child. Retries keep cancelling while launchedRuns is non-empty even after
         // childCloseSent, so a partial cancel failure cannot orphan the rest.
         if (!state.childCloseSent) {
-          const requested = createEvent(runId, {
-            type: 'runtime.child.close.requested',
-            payload: { policy: 'terminate' },
-            threadId: state.rootThreadId,
-            origin: { type: 'system' },
-            idempotencyKey: `child-close:${runId}`,
-          })
+          const requested = createEvent(
+            runId,
+            {
+              type: 'runtime.child.close.requested',
+              payload: { policy: 'terminate' },
+              threadId: state.rootThreadId,
+              origin: { type: 'system' },
+              idempotencyKey: `child-close:${runId}`,
+            },
+            { ids: registry.ids },
+          )
 
           const appended = yield* appendObserved(store, runId, stripSeq([requested]))
           next = yield* applyAppend(store, runId, next, stripSeq([requested]), appended)
@@ -271,7 +275,10 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           const closeEvents = childCloseCancellations(cursor.state)
 
           if (closeEvents.length > 0) {
-            const created = closeEvents.map((input) => createEvent(runId, input))
+            const created = closeEvents.map((input) =>
+              createEvent(runId, input, { ids: registry.ids }),
+            )
+
             const appended = yield* appendObserved(store, runId, stripSeq(created))
             cursor = yield* applyAppend(store, runId, cursor, stripSeq(created), appended)
           }
@@ -282,6 +289,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
             const events = planTerminalCancellationTransitions({
               runId,
               state: cursor.state,
+              registry,
               now,
             })
 
@@ -333,7 +341,9 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                 ...cascadedCancellations(intermediateState, produced),
               ]
 
-              const synthesizedEvents = synthesized.map((input) => createEvent(runId, input))
+              const synthesizedEvents = synthesized.map((input) =>
+                createEvent(runId, input, { ids: registry.ids }),
+              )
 
               const stateAfterSynth =
                 synthesizedEvents.length > 0
@@ -342,7 +352,11 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
 
               const allNewEvents = [...produced, ...synthesizedEvents]
               const satisfied = waitSatisfiedEvents(stateAfterSynth, allNewEvents)
-              const satisfiedEvents = satisfied.map((input) => createEvent(runId, input))
+
+              const satisfiedEvents = satisfied.map((input) =>
+                createEvent(runId, input, { ids: registry.ids }),
+              )
+
               const fullBatch = [...allNewEvents, ...satisfiedEvents]
 
               const appendResult = yield* appendObserved(store, runId, stripSeq(fullBatch))
@@ -518,6 +532,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                     : workerPlan,
                   options.worker,
                   now,
+                  { ids: registry.ids },
                 )
 
                 const dispatchAppend = yield* appendObserved(
@@ -606,6 +621,7 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
                       runId,
                       item,
                       `attempt ${execution.attempt} was lost before it finished, and no attempts remain`,
+                      { ids: registry.ids },
                     ),
                   ]
                 : []
@@ -628,15 +644,19 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
               }
 
               const attemptEvents = due.map((item) =>
-                createEvent(runId, {
-                  type: 'runtime.effect.attempt.started',
-                  payload: {
-                    effectId: item.effectId,
-                    attempt: attempts.get(item.effectId) ?? 1,
+                createEvent(
+                  runId,
+                  {
+                    type: 'runtime.effect.attempt.started',
+                    payload: {
+                      effectId: item.effectId,
+                      attempt: attempts.get(item.effectId) ?? 1,
+                    },
+                    threadId: item.threadId,
+                    origin: { type: 'system' },
                   },
-                  threadId: item.threadId,
-                  origin: { type: 'system' },
-                }),
+                  { ids: registry.ids },
+                ),
               )
 
               for (const item of due) {
@@ -793,21 +813,29 @@ export function createWakeEngine(options: WakeEngineOptions): LoomsRuntime['wake
           ) {
             const completed: EventEnvelope =
               root.status === 'cancelled'
-                ? createEvent(runId, {
-                    type: 'runtime.run.cancelled',
-                    payload: { reason: root.error ?? 'cancelled' },
-                    threadId: null,
-                    origin: { type: 'system' },
-                  })
-                : createEvent(runId, {
-                    type: 'runtime.run.completed',
-                    payload: {
-                      output: root.output,
-                      error: root.error,
+                ? createEvent(
+                    runId,
+                    {
+                      type: 'runtime.run.cancelled',
+                      payload: { reason: root.error ?? 'cancelled' },
+                      threadId: null,
+                      origin: { type: 'system' },
                     },
-                    threadId: null,
-                    origin: { type: 'system' },
-                  })
+                    { ids: registry.ids },
+                  )
+                : createEvent(
+                    runId,
+                    {
+                      type: 'runtime.run.completed',
+                      payload: {
+                        output: root.output,
+                        error: root.error,
+                      },
+                      threadId: null,
+                      origin: { type: 'system' },
+                    },
+                    { ids: registry.ids },
+                  )
 
             const appendResult = yield* appendObserved(store, runId, stripSeq([completed]))
             cursor = yield* applyAppend(store, runId, cursor, stripSeq([completed]), appendResult)

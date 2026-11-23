@@ -4,6 +4,7 @@ import { Schema } from 'effect'
 
 import { createEvent, JsonValueSchema, type EventEnvelope } from './envelope'
 import { foldRun, type FoldRegistry } from './fold'
+import type { LoomsIds } from './ids'
 import { utf8JsonBytes } from './limits'
 import { emptyRunState, RunStateSchema, type RunState } from './state'
 import { asJson, stringifyJson, type JsonValue } from './types'
@@ -53,6 +54,7 @@ export function buildSnapshotEvent(
 
   return buildSnapshotMarker(runId, last?.seq ?? 0, hashRunState(state), {
     state: options?.includeState ? state : undefined,
+    ids: registry.ids,
   })
 }
 
@@ -64,7 +66,7 @@ export function buildSnapshotMarker(
   runId: string,
   cursor: number,
   stateHash: string,
-  options?: { state?: RunState; maxInlineBytes?: number },
+  options?: { state?: RunState; maxInlineBytes?: number; ids?: LoomsIds },
 ): EventEnvelope {
   const maxInlineBytes = options?.maxInlineBytes ?? DEFAULT_MAX_INLINE_SNAPSHOT_BYTES
   let payload: JsonValue = asJson({ seq: cursor, stateHash })
@@ -78,12 +80,16 @@ export function buildSnapshotMarker(
     }
   }
 
-  return createEvent(runId, {
-    type: 'runtime.snapshot.taken',
-    payload,
-    threadId: null,
-    origin: { type: 'system' },
-  })
+  return createEvent(
+    runId,
+    {
+      type: 'runtime.snapshot.taken',
+      payload,
+      threadId: null,
+      origin: { type: 'system' },
+    },
+    { ids: options?.ids },
+  )
 }
 
 export function foldFromSnapshots(

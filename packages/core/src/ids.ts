@@ -1,81 +1,258 @@
-import { DateTime, Predicate } from 'effect'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { Data, DateTime, Predicate } from 'effect'
 
-let counter = 0
+/** The ids a format draws fresh: one per event, run, thread, or wait. */
+export type DrawnIdKind = 'event' | 'run' | 'thread' | 'wait'
 
-function token(): string {
-  counter += 1
-  const timestamp = DateTime.toEpochMillis(DateTime.nowUnsafe())
-  // Synchronous ID factories need process-independent entropy without an Effect runtime.
-  // oxlint-disable-next-line effecttsgo/crypto-random-uuid
-  const entropy = globalThis.crypto.randomUUID().replaceAll('-', '')
-  return `${timestamp.toString(36)}_${counter.toString(36)}_${entropy}`
+/** The ids a format derives from parts, so replay names the same child every time. */
+export type DerivedIdKind = 'run' | 'thread'
+
+export type IdPart = string | number
+
+/**
+ * How a process names events, runs, threads, and waits. The default is {@link typeIds}.
+ *
+ * Two rules hold for every id a format returns:
+ *
+ * - It is a non-empty string.
+ * - It contains no `:`. Effect ids are `<threadId>:<tag>`.
+ *
+ * `derive` must also be a pure function of `kind` and `parts`: reducers call it on every replay
+ * and must name the same child each time. Looms cannot check this.
+ */
+export interface LoomsIds {
+  /** A fresh id that no earlier call returned. */
+  create(kind: DrawnIdKind): string
+  /** The same id for the same `kind` and `parts`, on every call, in every process. */
+  derive(kind: DerivedIdKind, parts: readonly IdPart[]): string
 }
 
-export function createEventId(): string {
-  return `evt_${token()}`
-}
+export class InvalidIdFormatError extends Data.TaggedError('InvalidIdFormatError')<{
+  readonly message: string
+  readonly rule: 'non-empty' | 'no-colon'
+  readonly id: unknown
+}> {}
 
-export function createRunId(): string {
-  return `run_${token()}`
-}
+const TYPEID_PREFIX = {
+  event: 'evt',
+  run: 'run',
+  thread: 'thr',
+  wait: 'wait',
+} as const satisfies Record<DrawnIdKind, string>
 
-export function createThreadId(): string {
-  return `thr_${token()}`
-}
+const CROCKFORD = '0123456789abcdefghjkmnpqrstvwxyz'
 
-function fnv1a32(value: string, seed: number): string {
-  let hash = seed >>> 0
-
-  for (let index = 0; index < value.length; index++) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
+/** The 26-character TypeID suffix for a UUID's 16 bytes: 128 bits, left-padded to 130. */
+export function encodeTypeIdSuffix(uuid: Uint8Array): string {
+  if (uuid.length !== 16) {
+    throw new RangeError(`A TypeID suffix encodes 16 bytes, got ${uuid.length}`)
   }
 
-  return (hash >>> 0).toString(16).padStart(8, '0')
+  let value = 0n
+
+  for (const byte of uuid) {
+    value = (value << 8n) | BigInt(byte)
+  }
+
+  let suffix = ''
+
+  for (let index = 0; index < 26; index++) {
+    suffix = CROCKFORD.charAt(Number(value & 31n)) + suffix
+    value >>= 5n
+  }
+
+  return suffix
 }
 
-/** A stable `run_` id derived from `parts`, so a retry launches the same child run. */
-export function deterministicRunId(...parts: readonly (string | number)[]): string {
-  return `run_${deterministicThreadId(...parts).replaceAll('-', '')}`
+/** `<prefix>_<suffix>` for a UUID's 16 bytes, per TypeID 0.3. */
+export function typeId(prefix: string, uuid: Uint8Array): string {
+  return `${prefix}_${encodeTypeIdSuffix(uuid)}`
+}
+
+const RANDOM_BYTES = 10
+
+let lastTimestamp = -1
+const lastRandom = new Uint8Array(RANDOM_BYTES)
+
+/** How many bits of each `lastRandom` byte the UUID carries: 4 + 8 for rand_a, 6 + 56 for rand_b. */
+const RANDOM_MASKS = [0x0f, 0xff, 0x3f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff] as const
+
+function drawRandom(): void {
+  globalThis.crypto.getRandomValues(lastRandom)
+  lastRandom[2] = lastRandom[2]! & 0x3f
+  // Clear the top bit so a burst within one millisecond has room to count up.
+  lastRandom[0] = lastRandom[0]! & 0x07
+}
+
+/** Add one to the 74 random bits. Returns false when they wrap. */
+function incrementRandom(): boolean {
+  for (let index = RANDOM_BYTES - 1; index >= 0; index--) {
+    lastRandom[index] = (lastRandom[index]! + 1) & RANDOM_MASKS[index]!
+
+    if (lastRandom[index] !== 0) {
+      return true
+    }
+  }
+
+  return false
 }
 
 /**
- * A UUID-shaped id derived only from `parts`, so a reducer that replays the same events names the same
- * child thread every time.
+ * UUIDv7 bytes (RFC 9562): a 48-bit millisecond timestamp, then random bits. Ids drawn in the same
+ * millisecond, or after the clock steps back, increment the previous random bits (section 6.2,
+ * method 2), so every id this process draws sorts after the one before it.
  */
-export function deterministicThreadId(...parts: readonly (string | number)[]): string {
-  const source = parts.join(':')
-  let reversed = ''
+export function uuidV7(): Uint8Array {
+  const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 
-  for (let index = source.length - 1; index >= 0; index--) {
-    reversed += source.charAt(index)
+  if (now > lastTimestamp) {
+    lastTimestamp = now
+    drawRandom()
+  } else if (!incrementRandom()) {
+    lastTimestamp += 1
+    drawRandom()
   }
 
-  const hex = [
-    fnv1a32(source, 0x811c9dc5),
-    fnv1a32(source, 0x9e3779b9),
-    fnv1a32(reversed, 0x85ebca6b),
-    fnv1a32(reversed, 0xc2b2ae35),
-  ].join('')
+  const bytes = new Uint8Array(16)
+  let timestamp = lastTimestamp
 
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${(
-    (Number.parseInt(hex.slice(16, 18), 16) & 0x3f) |
-    0x80
-  )
-    .toString(16)
-    .padStart(2, '0')}${hex.slice(18, 20)}-${hex.slice(20)}`
+  for (let index = 5; index >= 0; index--) {
+    bytes[index] = timestamp % 256
+    timestamp = Math.floor(timestamp / 256)
+  }
+
+  bytes[6] = 0x70 | lastRandom[0]!
+  bytes[7] = lastRandom[1]!
+  bytes[8] = 0x80 | lastRandom[2]!
+  bytes.set(lastRandom.subarray(3), 9)
+  return bytes
 }
 
+const encoder = new TextEncoder()
+
+/**
+ * UUIDv8 bytes whose 122 free bits are the leading bits of SHA-256 over `kind` and `parts`. Parts
+ * are hashed as JSON, so `['a:b', 'c']` and `['a', 'b:c']` differ, and so do `1` and `'1'`.
+ */
+function derivedUuid(kind: DerivedIdKind, parts: readonly IdPart[]): Uint8Array {
+  const bytes = sha256(encoder.encode(`${kind}\n${JSON.stringify(parts)}`)).slice(0, 16)
+  bytes[6] = 0x80 | (bytes[6]! & 0x0f)
+  bytes[8] = 0x80 | (bytes[8]! & 0x3f)
+  return bytes
+}
+
+/**
+ * The default id format: [TypeID](https://github.com/jetify-com/typeid) 0.3. Ids are `evt_`,
+ * `run_`, `thr_`, or `wait_` followed by 26 characters. Drawn ids carry a UUIDv7 and sort by
+ * creation time within a process; derived ids carry a UUIDv8 hashed from their parts.
+ */
+export const typeIds: LoomsIds = {
+  create: (kind) => typeId(TYPEID_PREFIX[kind], uuidV7()),
+  derive: (kind, parts) => typeId(TYPEID_PREFIX[kind], derivedUuid(kind, parts)),
+}
+
+function checkId(id: string, source: string): string {
+  if (!Predicate.isString(id) || id.length === 0) {
+    throw new InvalidIdFormatError({
+      rule: 'non-empty',
+      id,
+      message: `Invalid id format: ${source} must return a non-empty string, got ${JSON.stringify(id)}`,
+    })
+  }
+
+  if (id.includes(':')) {
+    throw new InvalidIdFormatError({
+      rule: 'no-colon',
+      id,
+      message: `Invalid id format: ${source} returned ${JSON.stringify(id)}, which contains ":". Ids must not contain ":" because effect ids are "<threadId>:<tag>"`,
+    })
+  }
+
+  return id
+}
+
+const checked = new WeakSet<LoomsIds>([typeIds])
+
+const DRAWN_KINDS = ['event', 'run', 'thread', 'wait'] as const
+const DERIVED_KINDS = ['run', 'thread'] as const
+
+/**
+ * The format an `ids` option names, or {@link typeIds} without one. A custom format is tried once
+ * for every kind here, and every id it returns later is checked against the same rules; a
+ * violation throws {@link InvalidIdFormatError}.
+ */
+export function resolveIds(ids?: LoomsIds): LoomsIds {
+  if (ids === undefined) {
+    return typeIds
+  }
+
+  if (checked.has(ids)) {
+    return ids
+  }
+
+  const resolved: LoomsIds = {
+    create: (kind) => checkId(ids.create(kind), `ids.create('${kind}')`),
+    derive: (kind, parts) => checkId(ids.derive(kind, parts), `ids.derive('${kind}', parts)`),
+  }
+
+  for (const kind of DRAWN_KINDS) {
+    resolved.create(kind)
+  }
+
+  for (const kind of DERIVED_KINDS) {
+    resolved.derive(kind, ['looms', 0])
+  }
+
+  checked.add(resolved)
+  return resolved
+}
+
+/** A fresh event id in the default format. A configured format is `ids.create('event')`. */
+export function createEventId(): string {
+  return typeIds.create('event')
+}
+
+/** A fresh run id in the default format. A configured format is `ids.create('run')`. */
+export function createRunId(): string {
+  return typeIds.create('run')
+}
+
+/** A fresh thread id in the default format. A configured format is `ids.create('thread')`. */
+export function createThreadId(): string {
+  return typeIds.create('thread')
+}
+
+/**
+ * A stable run id in the default format, so a retry launches the same child run. A configured
+ * format is `ctx.ids.derive('run', parts)`.
+ */
+export function deterministicRunId(...parts: readonly IdPart[]): string {
+  return typeIds.derive('run', parts)
+}
+
+/**
+ * A thread id in the default format derived only from `parts`, so a reducer that replays the same
+ * events names the same child thread every time. A configured format is
+ * `ctx.ids.derive('thread', parts)`.
+ */
+export function deterministicThreadId(...parts: readonly IdPart[]): string {
+  return typeIds.derive('thread', parts)
+}
+
+/**
+ * A wait id. With `scope` and `tag` it is the composed key `wait_<scope>_<tag>` and draws nothing.
+ * Without a tag it draws from the default format; a configured format is `ids.create('wait')`.
+ */
 export function createWaitId(scope?: string, tag?: string | number): string {
   if (scope !== undefined && tag !== undefined) {
     return `wait_${scope}_${tag}`
   }
 
   if (scope !== undefined) {
-    return `wait_${scope}_${token()}`
+    return `wait_${scope}_${encodeTypeIdSuffix(uuidV7())}`
   }
 
-  return `wait_${token()}`
+  return typeIds.create('wait')
 }
 
 export function createEffectId(

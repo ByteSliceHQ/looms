@@ -4,7 +4,7 @@ import {
   resolveRunTarget,
   RunTargetError,
 } from '@looms/actor'
-import type { AnyRuntimeModule } from '@looms/core'
+import type { AnyRuntimeModule, LoomsIds } from '@looms/core'
 import {
   ACTOR_HEADER,
   authResponse,
@@ -67,6 +67,8 @@ export function routeToDurableObject(
   options?: {
     readonly modules?: readonly AnyRuntimeModule[] | (() => readonly AnyRuntimeModule[])
     readonly authorize?: RouteAuthorize
+    /** The id format for a run started without a `runId`. Match the Durable Object's `ids`. */
+    readonly ids?: LoomsIds
   },
 ): Promise<Response | null> {
   const url = new URL(req.url)
@@ -96,6 +98,7 @@ function forward(
   req: Request,
   options?: {
     readonly modules?: readonly AnyRuntimeModule[] | (() => readonly AnyRuntimeModule[])
+    readonly ids?: LoomsIds
   },
 ): Promise<Response | null> {
   const definitions = definitionsResponse(req, options?.modules)
@@ -110,7 +113,7 @@ function forward(
     return Promise.resolve(unsupported)
   }
 
-  return resolveRunTarget(req)
+  return resolveRunTarget(req, { ids: options?.ids })
     .then(({ runId, request }) => namespace.getByName(runId).fetch(request))
     .catch((error: Error) => {
       if (error instanceof RunTargetError) {

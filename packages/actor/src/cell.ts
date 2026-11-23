@@ -13,6 +13,7 @@ import {
   type RunState,
   type RunStatusSnapshot,
   type SnapshotStore,
+  type LoomsIds,
 } from '@looms/core'
 import {
   createFetchHandler,
@@ -41,6 +42,8 @@ export interface ActorCellOptions<
   readonly modules: TModules
   /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
   readonly definitionResolver?: DefinitionResolver
+  /** The id format. See `CreateRuntimeOptions.ids`. */
+  readonly ids?: LoomsIds
   readonly snapshotEvery?: number
   readonly maxWakeIterations?: number
   /** See `CreateRuntimeOptions.livenessLeaseMs`. */
@@ -103,6 +106,7 @@ export function createActorCell<
   const runtime = createRuntime({
     modules: options.modules,
     definitionResolver: options.definitionResolver,
+    ids: options.ids,
     store,
     scheduler,
     launcher: options.launcher,

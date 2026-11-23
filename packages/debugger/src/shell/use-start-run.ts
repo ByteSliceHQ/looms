@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { createRunId, type JsonValue } from '@looms/core'
+import type { JsonValue } from '@looms/core'
 
 import { useDebugger } from '../context'
 import { errorMessage } from '../lib/cn'
@@ -25,7 +25,7 @@ export function useStartRun({ definition, onStarted }: WorkspaceContext): StartR
   const [error, setError] = useState<string | null>(null)
 
   function start<T>(input: JsonValue, after?: (started: StartedRun) => Promise<T>) {
-    const runId = createRunId()
+    const runId = client.ids.create('run')
     setPending(true)
     setError(null)
     onStarted(runId)

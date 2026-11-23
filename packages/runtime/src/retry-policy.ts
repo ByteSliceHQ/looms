@@ -4,6 +4,7 @@ import {
   type EventOrigin,
   type OutstandingEffect,
   type RetryPolicy,
+  type LoomsIds,
 } from '@looms/core'
 
 import { createEffectFailedEvent } from './helpers'
@@ -43,6 +44,7 @@ export function planAttemptFailure(input: {
   readonly now: number
   readonly retry: RetryPolicy | undefined
   readonly origin: EventOrigin
+  readonly ids: LoomsIds
   /** Customer/domain failures must not be retried even when attempts remain. */
   readonly nonRetryable?: boolean
   readonly retryAfterMs?: number
@@ -53,6 +55,7 @@ export function planAttemptFailure(input: {
     return {
       event: createEffectFailedEvent(runId, item, error, {
         nonRetryable: input.nonRetryable === true,
+        ids: input.ids,
       }),
       retrying: false,
     }
@@ -60,17 +63,21 @@ export function planAttemptFailure(input: {
 
   return {
     retrying: true,
-    event: createEvent(runId, {
-      type: 'runtime.effect.retry.scheduled',
-      payload: {
-        effectId: item.effectId,
-        attempt,
-        nextAttemptAt: input.now + retryDelay(retry, attempt, input.retryAfterMs),
-        error,
+    event: createEvent(
+      runId,
+      {
+        type: 'runtime.effect.retry.scheduled',
+        payload: {
+          effectId: item.effectId,
+          attempt,
+          nextAttemptAt: input.now + retryDelay(retry, attempt, input.retryAfterMs),
+          error,
+        },
+        threadId: item.threadId,
+        causationId: item.causingEventId,
+        origin: input.origin,
       },
-      threadId: item.threadId,
-      causationId: item.causingEventId,
-      origin: input.origin,
-    }),
+      { ids: input.ids },
+    ),
   }
 }

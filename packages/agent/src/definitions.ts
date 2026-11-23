@@ -6,6 +6,7 @@ import {
   type JsonValue,
   type RuntimeEffect,
   type SchemaInput,
+  type LoomsIds,
 } from '@looms/core'
 
 import type { StopWhen } from './stop-when'
@@ -149,6 +150,8 @@ export interface AgentToolResolutionContext<TInput = JsonValue> {
   readonly threadId: string
   readonly turn: number
   readonly input: TInput
+  /** The id format the host was configured with. */
+  readonly ids: LoomsIds
 }
 
 export interface AgentTurnResult<TOutput extends JsonValue = JsonValue> {

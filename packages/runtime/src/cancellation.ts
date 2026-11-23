@@ -83,14 +83,18 @@ function planCancellation(input: {
 
     if (execution.status === 'retry_wait' || execution.status === 'dispatch_wait') {
       effectEvents.push(
-        createEvent(runId, {
-          type: 'runtime.effect.cancelled',
-          payload: { effectId: item.effectId, attempt: execution.attempt },
-          threadId: item.threadId,
-          effectId: item.effectId,
-          origin: { type: 'system' },
-          idempotencyKey,
-        }),
+        createEvent(
+          runId,
+          {
+            type: 'runtime.effect.cancelled',
+            payload: { effectId: item.effectId, attempt: execution.attempt },
+            threadId: item.threadId,
+            effectId: item.effectId,
+            origin: { type: 'system' },
+            idempotencyKey,
+          },
+          { ids: registry.ids },
+        ),
       )
 
       continue
@@ -100,17 +104,21 @@ function planCancellation(input: {
     workerCancellations.push({ item, execution })
 
     effectEvents.push(
-      createEvent(runId, {
-        type: 'runtime.effect.cancel.requested',
-        payload: {
-          effectId: item.effectId,
-          attempt: execution.attempt,
-          deadlineAt: timeoutMs ? now + timeoutMs : null,
+      createEvent(
+        runId,
+        {
+          type: 'runtime.effect.cancel.requested',
+          payload: {
+            effectId: item.effectId,
+            attempt: execution.attempt,
+            deadlineAt: timeoutMs ? now + timeoutMs : null,
+          },
+          threadId: item.threadId,
+          origin: { type: 'system' },
+          idempotencyKey,
         },
-        threadId: item.threadId,
-        origin: { type: 'system' },
-        idempotencyKey,
-      }),
+        { ids: registry.ids },
+      ),
     )
   }
 
@@ -119,19 +127,25 @@ function planCancellation(input: {
     .map((threadId): EventEnvelope => {
       const payload = { threadId, reason: 'cancelled' }
 
-      return createEvent(runId, {
-        type: 'runtime.thread.cancelled',
-        payload: threadId === targetThreadId ? { ...payload, resumeSeq: seq } : payload,
-        threadId,
-        origin: { type: 'external' },
-        idempotencyKey,
-      })
+      return createEvent(
+        runId,
+        {
+          type: 'runtime.thread.cancelled',
+          payload: threadId === targetThreadId ? { ...payload, resumeSeq: seq } : payload,
+          threadId,
+          origin: { type: 'external' },
+          idempotencyKey,
+        },
+        { ids: registry.ids },
+      )
     })
 
   const batch = [...effectEvents, ...threadEvents]
   const folded = foldRun(batch, registry, { runId, initial: state })
 
-  const satisfied = waitSatisfiedEvents(folded, batch).map((event) => createEvent(runId, event))
+  const satisfied = waitSatisfiedEvents(folded, batch).map((event) =>
+    createEvent(runId, event, { ids: registry.ids }),
+  )
 
   return { events: [...batch, ...satisfied], threadIds, workerCancellations }
 }
@@ -156,13 +170,17 @@ export function createCancellation(options: CancellationOptions): LoomsRuntime['
               current.state.launchedRuns.some((child) => child.close === 'wait')
 
             if (deferClose) {
-              const requested = createEvent(runId, {
-                type: 'runtime.child.close.requested',
-                payload: { policy: 'wait' },
-                threadId: current.state.rootThreadId,
-                origin: { type: 'system' },
-                idempotencyKey: `child-close:${current.state.rootThreadId ?? runId}`,
-              })
+              const requested = createEvent(
+                runId,
+                {
+                  type: 'runtime.child.close.requested',
+                  payload: { policy: 'wait' },
+                  threadId: current.state.rootThreadId,
+                  origin: { type: 'system' },
+                  idempotencyKey: `child-close:${current.state.rootThreadId ?? runId}`,
+                },
+                { ids: registry.ids },
+              )
 
               return Effect.succeed({
                 events: [requested],

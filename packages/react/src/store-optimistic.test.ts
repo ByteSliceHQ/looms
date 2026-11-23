@@ -198,4 +198,35 @@ describe('optimistic commit', () => {
     expect(store.project(notes).texts).toEqual(['routed'])
     store.dispose()
   })
+
+  test('draws pending event ids and the idempotency key from the ids option', async () => {
+    log = []
+    let next = 0
+
+    const store = createLoomsStore({
+      storeId: 'run_1',
+      endpoint,
+      fetch,
+      optimistic: true,
+      ids: {
+        create: (kind) => `my-${kind}-${++next}`,
+        derive: (kind, parts) => `my-${kind}-${parts.join('.')}`,
+      },
+    })
+
+    await waitFor(() => store.status() === 'live')
+
+    let key: string | undefined
+
+    onPost = (body) => {
+      key = body.idempotencyKey
+      return Response.json({ ok: true }, { status: 202 })
+    }
+
+    await store.commit({ type: 'test.note', payload: { text: 'named' } })
+
+    expect(key).toMatch(/^my-event-\d+$/)
+    expect(store.pending().map((event) => event.id)).toEqual([expect.stringMatching(/^my-event-/)])
+    store.dispose()
+  })
 })

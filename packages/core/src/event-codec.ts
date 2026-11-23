@@ -2,7 +2,7 @@ import { DateTime, Predicate, Schema } from 'effect'
 
 import type { AppendableEvent, EventEnvelope, EventOrigin } from './envelope'
 import { createEvent, payloadAsJson } from './envelope'
-import { createEventId } from './ids'
+import { typeIds, type LoomsIds } from './ids'
 import type { JsonValue } from './types'
 
 /** JSON-safe event envelope for SSE and pull responses. */
@@ -18,9 +18,12 @@ export function encodeLoomsEvent(event: EventEnvelope): EncodedLoomsEvent {
   }
 }
 
-export function encodeAppendableEvent(event: AppendableEvent): EncodedLoomsEvent {
+export function encodeAppendableEvent(
+  event: AppendableEvent,
+  ids: LoomsIds = typeIds,
+): EncodedLoomsEvent {
   return {
-    id: event.id ?? createEventId(),
+    id: event.id ?? ids.create('event'),
     runId: event.runId,
     seq: event.seq ?? 0,
     ts: event.ts ?? DateTime.toEpochMillis(DateTime.nowUnsafe()),
@@ -58,7 +61,11 @@ function readOrigin(raw: JsonValue | EventOrigin): EventOrigin {
   return { type: 'system' }
 }
 
-export function decodeLoomsEvent(raw: EventWireInput, runId: string): EventEnvelope {
+export function decodeLoomsEvent(
+  raw: EventWireInput,
+  runId: string,
+  ids: LoomsIds = typeIds,
+): EventEnvelope {
   if (!Predicate.isReadonlyObject(raw)) {
     throw new Error('Invalid event payload: expected object')
   }
@@ -66,7 +73,7 @@ export function decodeLoomsEvent(raw: EventWireInput, runId: string): EventEnvel
   if ('type' in raw && Predicate.isString(raw.type)) {
     const rawPayload = 'payload' in raw ? raw.payload : {}
     const payload = decodeJsonValue(rawPayload)
-    const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : createEventId()
+    const id = 'id' in raw && Predicate.isString(raw.id) ? raw.id : ids.create('event')
 
     const ts =
       'ts' in raw && Predicate.isNumber(raw.ts)
@@ -122,9 +129,10 @@ export function decodeLoomsEvent(raw: EventWireInput, runId: string): EventEnvel
 export function decodeAppendableEvent(
   raw: EventWireInput,
   runId: string,
+  ids: LoomsIds = typeIds,
 ): AppendableEvent | undefined {
   try {
-    const { seq: _seq, ...rest } = decodeLoomsEvent(raw, runId)
+    const { seq: _seq, ...rest } = decodeLoomsEvent(raw, runId, ids)
     return rest
   } catch {
     return undefined

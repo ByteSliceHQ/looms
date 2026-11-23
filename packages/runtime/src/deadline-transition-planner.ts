@@ -9,6 +9,7 @@ import {
   type EventEnvelope,
   type RetryPolicy,
   type RunState,
+  type LoomsIds,
 } from '@looms/core'
 
 import { waitSatisfiedEvents } from './helpers'
@@ -69,12 +70,16 @@ function planDueTimers(input: {
   const fired = due.flatMap((record) =>
     isWaitOnTimer(record.on)
       ? [
-          createEvent(input.runId, {
-            type: 'runtime.timer.fired',
-            payload: { timerId: record.waitId, waitId: record.waitId },
-            threadId: record.threadId,
-            origin: { type: 'system' },
-          }),
+          createEvent(
+            input.runId,
+            {
+              type: 'runtime.timer.fired',
+              payload: { timerId: record.waitId, waitId: record.waitId },
+              threadId: record.threadId,
+              origin: { type: 'system' },
+            },
+            { ids: input.registry.ids },
+          ),
         ]
       : [],
   )
@@ -85,7 +90,7 @@ function planDueTimers(input: {
   })
 
   const satisfied = waitSatisfiedEvents(stateAfterFired, fired).map((event) =>
-    createEvent(input.runId, event),
+    createEvent(input.runId, event, { ids: input.registry.ids }),
   )
 
   return {
@@ -129,7 +134,14 @@ function planExpiredExecutions(input: {
 
     if (!item) {
       if (execution.status === 'cancel_requested') {
-        events.push(cancellationAmbiguous(input.runId, execution.effectId, execution.attempt))
+        events.push(
+          cancellationAmbiguous(
+            input.runId,
+            execution.effectId,
+            execution.attempt,
+            input.registry.ids,
+          ),
+        )
       }
 
       continue
@@ -145,17 +157,22 @@ function planExpiredExecutions(input: {
     })
 
     events.push(
-      createEvent(input.runId, {
-        type: 'runtime.effect.timed_out',
-        payload: { effectId: item.effectId, attempt: execution.attempt, timeout },
-        threadId: item.threadId,
-        causationId: item.causingEventId,
-        origin: { type: 'system' },
-      }),
+      createEvent(
+        input.runId,
+        {
+          type: 'runtime.effect.timed_out',
+          payload: { effectId: item.effectId, attempt: execution.attempt, timeout },
+          threadId: item.threadId,
+          causationId: item.causingEventId,
+          origin: { type: 'system' },
+        },
+        { ids: input.registry.ids },
+      ),
     )
 
     events.push(
       planAttemptFailure({
+        ids: input.registry.ids,
         runId: input.runId,
         item,
         attempt: execution.attempt,
@@ -192,6 +209,7 @@ function timeoutKind(
 export function planTerminalCancellationTransitions(input: {
   readonly runId: string
   readonly state: RunState
+  readonly registry: ComposedRegistry
   readonly now: number
 }): ReadonlyArray<EventEnvelope> {
   if (!isRunTerminal(input.state)) {
@@ -205,7 +223,9 @@ export function planTerminalCancellationTransitions(input: {
         execution.deadlineAt !== null &&
         execution.deadlineAt <= input.now,
     )
-    .map((execution) => cancellationAmbiguous(input.runId, execution.effectId, execution.attempt))
+    .map((execution) =>
+      cancellationAmbiguous(input.runId, execution.effectId, execution.attempt, input.registry.ids),
+    )
 }
 
 /**
@@ -247,15 +267,24 @@ export function nextRuntimeDeadline(
   return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
 
-function cancellationAmbiguous(runId: string, effectId: string, attempt: number): EventEnvelope {
-  return createEvent(runId, {
-    type: 'runtime.effect.ambiguous',
-    payload: {
-      effectId,
-      attempt,
-      error: 'worker did not acknowledge cancellation',
+function cancellationAmbiguous(
+  runId: string,
+  effectId: string,
+  attempt: number,
+  ids: LoomsIds,
+): EventEnvelope {
+  return createEvent(
+    runId,
+    {
+      type: 'runtime.effect.ambiguous',
+      payload: {
+        effectId,
+        attempt,
+        error: 'worker did not acknowledge cancellation',
+      },
+      threadId: null,
+      origin: { type: 'system' },
     },
-    threadId: null,
-    origin: { type: 'system' },
-  })
+    { ids },
+  )
 }

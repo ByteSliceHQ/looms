@@ -14,6 +14,7 @@ import {
   type RunLauncher,
   type RunState,
   type RunStatusSnapshot,
+  type LoomsIds,
 } from '@looms/core'
 import type { Projector } from '@looms/projectors'
 import {
@@ -42,6 +43,8 @@ export interface LoomsDurableObjectConfig {
   readonly modules: readonly AnyRuntimeModule[]
   /** Loads definitions that were not registered on a module. See `CreateRuntimeOptions`. */
   readonly definitionResolver?: DefinitionResolver
+  /** The id format. See `CreateRuntimeOptions.ids`. */
+  readonly ids?: LoomsIds
   /** Declared run attributes. Pass the same declaration to the replica. */
   readonly attributes?: RunAttributeFields
   /** Told about wakes, appends, snapshots and effect attempts. See `CreateRuntimeOptions`. */
@@ -144,6 +147,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
         scheduler: alarms.scheduler,
         modules: config.modules,
         definitionResolver: config.definitionResolver,
+        ids: config.ids,
         attributes: config.attributes,
         observer: config.observer,
         secretProvider: config.secretProvider,
