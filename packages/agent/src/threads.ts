@@ -567,7 +567,10 @@ export const agentThread = agentModule.thread<AgentState>({
           wait({
             waitId: createWaitId(ctx.threadId, `effects_${effectReq.toolCallId}`),
             on: { type: effectReq.waitOn.type, match: effectReq.waitOn.match },
-            tag: { toolCallId: effectReq.toolCallId },
+            tag: {
+              toolCallId: effectReq.toolCallId,
+              name: state.pendingEffectTools[effectReq.toolCallId]?.name ?? 'tool',
+            },
           }),
         )
       }

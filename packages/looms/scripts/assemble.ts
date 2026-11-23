@@ -23,6 +23,7 @@ const modules = [
   'runtime',
   's2',
   'schedule',
+  'swarm',
   'testing',
   'workflow',
 ] as const

@@ -139,7 +139,8 @@
         "packages/agent/src/**/*.ts",
         "packages/workflow/src/**/*.ts",
         "packages/approval/src/**/*.ts",
-        "packages/schedule/src/**/*.ts"
+        "packages/schedule/src/**/*.ts",
+        "packages/swarm/src/**/*.ts"
       ],
       "excludeFiles": [
         "packages/agent/src/debugger/**",
