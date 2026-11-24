@@ -1,5 +1,29 @@
 # @swirls/looms
 
+## 0.27.0
+
+### Minor Changes
+
+- a72ee36: Board messages and tasks can carry files, so swarm members can send each other screenshots, recordings, and documents.
+
+  `post`, `reply`, and `createTask` on `MessageBoard` take `attachments`, a list of the agent module's `Attachment` references, and every `BoardMessage` now has an `attachments` list. The board keeps the references and never the bytes. A member that is woken by a message with files gets them on its first message, the new `board_view` tool shows it the files on any other message, and `board_post`, `board_reply`, and `board_create_task` accept `attachments`.
+
+  A tool result with an `attachments` list at its top level now shows those files to the model: the agent keeps them on the tool message, and the Vercel AI adapter sends them beside the result.
+
+  Breaking for board implementations: `BoardMessage.attachments` is required, `MessageQuery` gains `id`, and `boardConformance` checks both.
+
+- a72ee36: Swarms, agent tools, and the model adapter now know which run they work for, so a host with many tenants can keep each tenant's boards and files apart.
+
+  - `resolveAttachment(attachment, run)` receives the run the model call is made for: `runId`, `threadId`, `attributes`, and `secrets`. `LlmCompleteArgs` carries it as `run`.
+  - A tool's `handler(input, ctx)` and an agent's `resolveTools(ctx)` receive the same values.
+  - The swarm `boards` resolver is called as `boards(boardId, caller)`. Throw `BoardError` with the new code `board_denied` for a board the caller's tenant does not own. A swarm whose own board is refused fails.
+  - `ensureSwarm` takes `{ attributes }` as a fifth argument. Member runs inherit them.
+  - A member's run id is now derived in the host's id format, so it is a valid id under a custom format. It was `<swarm run id>:<member>:<n>`. `activationRunId` returns it.
+  - A board write's idempotency key now names the run as well as the effect, so two runs that share a board cannot collide.
+  - A swarm that cannot read its board tries again with a growing delay, up to 15 minutes. It used to stop reading after five attempts.
+
+  Breaking: `LlmCompleteArgs.run` is required, and `resolveAttachments` takes the run as a third argument.
+
 ## 0.26.0
 
 ### Minor Changes
