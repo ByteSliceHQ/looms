@@ -3,8 +3,17 @@ import { describe, expect, test } from 'bun:test'
 import { generateText, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
+import type { AgentRunContext, Message } from '@looms/agent'
+
 import { resolveAttachments, toModelMessages } from './messages'
 import { vercelLlm } from './vercel-llm'
+
+const run: AgentRunContext = {
+  runId: 'run_1',
+  threadId: 'thread_1',
+  attributes: { tenant: 'acme' },
+  secrets: {},
+}
 
 function modelUsage(input: number, output: number) {
   return {
@@ -42,8 +51,10 @@ describe('toModelMessages', () => {
       },
     ]
 
-    const attachments = await resolveAttachments(lines, (attachment) =>
-      attachment.id === 'a1' ? png : pdf,
+    const attachments = await resolveAttachments(
+      lines,
+      (attachment) => (attachment.id === 'a1' ? png : pdf),
+      run,
     )
 
     expect(toModelMessages(lines, { attachments })).toEqual([
@@ -70,7 +81,7 @@ describe('toModelMessages', () => {
       },
     ]
 
-    const attachments = await resolveAttachments(lines, () => null)
+    const attachments = await resolveAttachments(lines, () => null, run)
 
     expect(toModelMessages(lines, { attachments })).toEqual([
       {
@@ -120,6 +131,77 @@ describe('toModelMessages', () => {
   })
 })
 
+test('sends the files on a tool result beside its text', async () => {
+  const png = new Uint8Array([1, 2, 3])
+  const content = '{"attachments":[{"id":"a1","mediaType":"image/png","name":"shot.png"}]}'
+
+  const lines: Message[] = [
+    {
+      role: 'tool',
+      content,
+      toolCallId: 'tc1',
+      name: 'board_view',
+      attachments: [
+        { id: 'a1', mediaType: 'image/png', name: 'shot.png' },
+        { id: 'a2', mediaType: 'video/mp4', url: 'https://files.example/a2' },
+        { id: 'a3', mediaType: 'audio/mpeg' },
+      ],
+    },
+  ]
+
+  const attachments = await resolveAttachments(
+    lines,
+    (attachment) => (attachment.id === 'a1' ? png : null),
+    run,
+  )
+
+  expect(toModelMessages(lines, { attachments })).toEqual([
+    {
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: 'tc1',
+          toolName: 'board_view',
+          output: {
+            type: 'content',
+            value: [
+              { type: 'text', text: content },
+              {
+                type: 'file',
+                data: { type: 'data', data: png },
+                mediaType: 'image/png',
+                filename: 'shot.png',
+              },
+              {
+                type: 'file',
+                data: { type: 'url', url: new URL('https://files.example/a2') },
+                mediaType: 'video/mp4',
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ])
+})
+
+test('tells the resolver which run the files are read for', async () => {
+  const seen: Array<string | undefined> = []
+
+  await resolveAttachments(
+    [{ role: 'user', content: 'look', attachments: [{ id: 'a1', mediaType: 'image/png' }] }],
+    (attachment, caller) => {
+      seen.push(`${caller.attributes.tenant}/${attachment.id}`)
+
+      return null
+    },
+    run,
+  )
+
+  expect(seen).toEqual(['acme/a1'])
+})
+
 describe('vercelLlm', () => {
   test('maps generateText text and tool calls', async () => {
     const model = new MockLanguageModelV3({
@@ -142,6 +224,7 @@ describe('vercelLlm', () => {
     const adapter = vercelLlm({ model, stream: false })
 
     const result = await adapter.complete({
+      run,
       instructions: 'help',
       messages: [{ role: 'user', content: 'greet Ada' }],
       tools: [],
@@ -186,6 +269,7 @@ describe('vercelLlm', () => {
     const deltas: string[] = []
 
     const result = await adapter.complete({
+      run,
       instructions: 'help',
       messages: [{ role: 'user', content: 'hi' }],
       tools: [],

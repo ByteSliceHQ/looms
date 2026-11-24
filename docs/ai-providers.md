@@ -52,7 +52,12 @@ await looms.signal(runId, [
 ```ts
 const llm = vercelLlm({
   model,
-  resolveAttachment: async (attachment) => {
+  resolveAttachment: async (attachment, run) => {
+    // A model can be handed any id, so read only what belongs to the run's tenant.
+    if (!attachment.id.startsWith(`${run.attributes.tenant}/`)) {
+      return null
+    }
+
     const object = await bucket.get(attachment.id)
 
     return object ? new Uint8Array(await object.arrayBuffer()) : null
@@ -60,7 +65,11 @@ const llm = vercelLlm({
 })
 ```
 
+The second argument is the run the model call is made for: its `runId`, `threadId`, `attributes` and `secrets`. A tool's `handler(input, ctx)` and an agent's `resolveTools(ctx)` receive the same values.
+
 Images are sent as image parts and everything else as file parts. Return `null` for a file the model should not be sent (one that is gone, too large, or of a type the model cannot read): it is sent by its `url` when the reference has one, and otherwise the message text names it so the model knows it exists. A custom adapter can do the same with `resolveAttachments` and `toModelMessages(messages, { attachments })`.
+
+A tool can show the model a file too. When a tool result has an `attachments` list at its top level, the files are sent to the model beside the result. A file the adapter cannot read is left out, and the result's own JSON still names it. Whether a provider accepts files in a tool result depends on the provider and the media type.
 
 ## Conversational agents and stopping
 

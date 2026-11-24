@@ -81,7 +81,7 @@ export function vercelLlm(options: VercelLlmOptions): LlmAdapter {
 
           const attachments = resolveAttachment
             ? yield* Effect.tryPromise({
-                try: () => resolveAttachments(args.messages, resolveAttachment),
+                try: () => resolveAttachments(args.messages, resolveAttachment, args.run),
                 catch: (cause) => new VercelLlmError(cause),
               })
             : undefined

@@ -55,7 +55,7 @@ The swarm reads the board's event log and wakes a member when:
 
 `channels: ['support']` listens to one channel. `channels: ['support/']` listens to `support` and everything below it. A member with no channels is woken only by mentions and assigned tasks. A member is never woken by its own writes.
 
-Each wake is one **activation**: a separate run of the member's agent, with run id `<swarm run id>:<member>:<n>`. The agent's first message lists what happened on the board and names the other members. A member runs one activation at a time. Events that arrive while it is running are queued and delivered together in the next activation.
+Each wake is one **activation**: a separate run of the member's agent. Its run id is derived from the swarm's run id, the member, and the activation number, in the host's id format: `activationRunId(swarmRunId, member, n)` returns it. The agent's first message lists what happened on the board and names the other members. A member runs one activation at a time. Events that arrive while it is running are queued and delivered together in the next activation.
 
 Members keep no memory between activations. Whatever should outlive a turn belongs on the board.
 
@@ -66,6 +66,7 @@ Members keep no memory between activations. Whatever should outlive a turn belon
 | Tool                | What it does                                                             |
 | ------------------- | ------------------------------------------------------------------------ |
 | `board_read`        | Read a thread, a channel or subtree, or the messages that mention you    |
+| `board_view`        | Look at the files attached to one message or task                        |
 | `board_post`        | Start a thread in a channel                                              |
 | `board_reply`       | Reply in a thread                                                        |
 | `board_label`       | Set or unset `key=value` labels on a message, optionally compare-and-set |
@@ -89,6 +90,29 @@ run: (ctx) =>
     ),
   )
 ```
+
+## Attachments
+
+A message or a task can carry files: screenshots, recordings, documents. The board holds a reference to each file and never the bytes. A reference is the agent module's `Attachment`: an `id`, a `mediaType`, and optionally a `name`, a `size`, and a `url`.
+
+```ts
+await board.post({
+  by: 'dana',
+  channel: 'support',
+  text: '@fixer the login page looks like this',
+  attachments: [{ id: 'uploads/7f3a', mediaType: 'image/png', name: 'login.png' }],
+})
+```
+
+Store the bytes wherever suits the application, and tell the model adapter how to read a reference with `resolveAttachment` (see [AI providers](./ai-providers.md#attachments)). A member then meets files in three ways:
+
+- **When it is woken.** The files on the messages that woke it are attached to its first message, up to 10 per activation.
+- **When it reads.** `board_read` lists each message's references. `board_view` shows the files of one message or task to the model.
+- **When it writes.** `board_post`, `board_reply`, and `board_create_task` take `attachments`. A member passes on a reference it read from the board, or one that its own tool produced.
+
+A tool of your own can hand a member a new file. When a tool result has an `attachments` list at its top level, the agent shows those files to the model with the result. A screenshot tool that stores the image and returns `{ attachments: [reference] }` lets the member both see the screenshot and post it.
+
+A message carries at most 10 attachments. The board stores references as they are given, and a member can write any `id`. `resolveAttachment` is told which run it reads for, so make it refuse an id that does not belong to that run's tenant. See [Tenants](#tenants).
 
 ## Tasks
 
@@ -121,7 +145,55 @@ await looms.signal('swarm_acme', [nudge()])
 
 If every outside write nudges, set `pollIntervalMs: null` and the swarm stops polling. Each poll appends an event to the swarm's run, so a swarm that polls an idle board still grows its log.
 
+When the board cannot be read, the swarm tries again after 30 seconds and then less often, up to every 15 minutes, until a read works or a nudge arrives.
+
 `stop()` ends a swarm. It stops waking members and completes once the members that are mid-run have finished.
+
+## Tenants
+
+A host that serves many tenants starts each swarm with the tenant in its run attributes:
+
+```ts
+await ensureSwarm(
+  looms,
+  ops,
+  `swarm_${businessId}`,
+  { board: businessId },
+  { attributes: { orgId, businessId } },
+)
+```
+
+Every member run inherits those attributes, and so does anything a member launches. The host's own code receives them in four places, and each one is where a tenant boundary is enforced:
+
+| Where                                | What to do with the attributes                                      |
+| ------------------------------------ | ------------------------------------------------------------------- |
+| `boards(boardId, caller)`            | Return the tenant's board, and refuse an id the tenant does not own |
+| `resolveAttachment(attachment, run)` | Read only files that belong to the tenant                           |
+| A tool's `handler(input, ctx)`       | Build storage keys from the tenant, never from a tool argument      |
+| `resolveTools(ctx)`                  | Choose the tools the tenant may use                                 |
+
+A board resolver refuses by throwing `BoardError` with the code `board_denied`:
+
+```ts
+swarm({
+  definitions,
+  boards: (boardId, caller) => {
+    if (boardId !== caller.attributes.businessId) {
+      throw new BoardError({ code: 'board_denied', message: 'Not your board' })
+    }
+
+    return createPostgresBoard(sql, boardId)
+  },
+})
+```
+
+A swarm whose own board is refused fails. A member's or a workflow's call to a refused board comes back as a tool error or a failed step.
+
+Three more things to know:
+
+- `swarm({ board })` gives every swarm the same board. Use it only on a host with one tenant.
+- Secrets are not inherited. A member run gets what the host's secret provider decides for it.
+- Definition names are shared by the whole host. Give each tenant's swarm and agents names no other tenant can have.
 
 ## Status
 
@@ -131,7 +203,7 @@ The `swarmStatus` projection shows where the swarm is on the board and what each
 import { swarmStatus } from '@swirls/looms/swarm'
 
 const view = await looms.project('swarm_acme', swarmStatus)
-// view.members.fixer → { status: 'idle', activations: 3, runId: '…:fixer:3', lastOutcome: 'completed' }
+// view.members.fixer → { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }
 ```
 
 ## Bring your own board
@@ -165,6 +237,8 @@ The rules a board keeps:
 
 - Every write appends to one ordered event log. Cursors are opaque strings.
 - `post`, `reply`, and `createTask` are idempotent on `key`.
+- A message returns the attachments it was written with, in order, and an empty list when it had none. More than 10 is refused with `invalid_input`.
+- `messages({ id })` returns the one message with that id, whether it is a root or a reply.
 - At most one claim holds a task. A claim ends when it is settled, when its lease passes, or when the task is canceled, and its token stops working.
 - A task whose lease has passed is ready again, and the log gains a `task.ready` event no later than the next read of tasks or events.
 - Completing a task readies every waiting task whose needs are now all completed.

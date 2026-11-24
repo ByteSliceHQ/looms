@@ -1,5 +1,6 @@
 import { Option, Schema } from 'effect'
 
+import { AttachmentSchema } from '@looms/agent'
 import {
   DEFAULT_DEFINITION_VERSION,
   createKind,
@@ -104,6 +105,8 @@ export const ActivationSchema = Schema.Struct({
     activation: Schema.Finite,
   }),
   events: Schema.Array(BoardEventSchema),
+  /** Files on the messages that woke the member. They travel with its first user message. */
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 export type Activation = Schema.Schema.Type<typeof ActivationSchema>
 

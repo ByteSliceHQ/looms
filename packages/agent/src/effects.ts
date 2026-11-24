@@ -18,6 +18,7 @@ import {
   STRUCTURED_OUTPUT_TOOL_NAME,
   TEAM_MEMBER_MAX_DEPTH,
   type AgentDefinition,
+  type AgentRunContext,
   type AgentToolResolutionContext,
   type AgentTurnResult,
   type ToolLike,
@@ -140,7 +141,12 @@ export const callLlmEffect = agentModule.effect({
       structuredOutput: input.structuredOutput ?? null,
       alreadyCompacted: input.alreadyCompacted ?? false,
       consumedSteerMessageIds: [...(input.consumedSteerMessageIds ?? [])],
-      runId: ctx.runId,
+      run: {
+        runId: ctx.runId,
+        threadId: ctx.threadId,
+        attributes: ctx.attributes,
+        secrets: ctx.secrets,
+      },
       threadId: ctx.threadId,
       ids: ctx.ids,
       signal: ctx.signal,
@@ -158,7 +164,7 @@ function runCallLlm(args: {
   structuredOutput: JsonValue | null
   alreadyCompacted: boolean
   consumedSteerMessageIds: string[]
-  runId: string
+  run: AgentRunContext
   threadId: string
   ids: LoomsIds
   signal: AbortSignal
@@ -214,7 +220,7 @@ function runCallLlm(args: {
       ]
     }
 
-    const tools = yield* agentTools(definition, { threadId, turn, input, ids: args.ids })
+    const tools = yield* agentTools(definition, { ...args.run, turn, input, ids: args.ids })
 
     const instructions = definition.output
       ? `${definition.instructions}\n\n${buildStructuredOutputInstructions(STRUCTURED_OUTPUT_TOOL_NAME)}`
@@ -261,6 +267,7 @@ function runCallLlm(args: {
         messages: [{ role: 'system', content: instructions }, ...turnMessages],
         tools,
         toolSpecs: toolSpecs(tools),
+        run: args.run,
         signal,
         onTextDelta: (delta) =>
           emit({
@@ -396,6 +403,13 @@ export const executeToolEffect = agentModule.effect({
       const threadId = ctx.threadId
       const agents = yield* AgentDefinitionsTag
 
+      const run: AgentRunContext = {
+        runId: ctx.runId,
+        threadId,
+        attributes: ctx.attributes,
+        secrets: ctx.secrets,
+      }
+
       const definition = input.definitionName
         ? yield* agents.resolve(input.definitionName, input.definitionVersion)
         : undefined
@@ -417,7 +431,7 @@ export const executeToolEffect = agentModule.effect({
       }
 
       const resolved = yield* agentTools(definition, {
-        threadId,
+        ...run,
         turn: input.turn,
         input: input.input ?? null,
         ids: ctx.ids,
@@ -470,10 +484,7 @@ export const executeToolEffect = agentModule.effect({
           const result = yield* Effect.tryPromise({
             try: () =>
               Promise.resolve(
-                tool.handler(validated.value, {
-                  threadId,
-                  turn: input.turn,
-                }),
+                tool.handler(validated.value, { ...run, turn: input.turn, signal: ctx.signal }),
               ),
             catch: (cause) => new AgentExecutionError(`run tool ${tool.name}`, cause),
           }).pipe(

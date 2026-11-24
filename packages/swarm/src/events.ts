@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import { AttachmentSchema } from '@looms/agent'
 import { defineEventCatalog } from '@looms/core'
 
 import { BoardEventSchema, BoardMessageSchema, BoardTaskSchema, TaskClaimSchema } from './board'
@@ -47,6 +48,15 @@ export const swarmCatalog = defineEventCatalog('swarm', {
   'message.posted': Schema.Struct({ ...CallFields, message: BoardMessageSchema }),
   'message.labeled': Schema.Struct({ ...CallFields, message: BoardMessageSchema }),
   'messages.read': Schema.Struct({ ...CallFields, messages: Schema.Array(BoardMessageSchema) }),
+  /**
+   * The files on one message. `attachments` is at the top of the payload so that an agent's
+   * tool result shows them to the model.
+   */
+  'attachments.viewed': Schema.Struct({
+    ...CallFields,
+    message: Schema.String,
+    attachments: Schema.Array(AttachmentSchema),
+  }),
   'task.created': Schema.Struct({ ...CallFields, task: BoardTaskSchema }),
   'tasks.listed': Schema.Struct({ ...CallFields, tasks: Schema.Array(BoardTaskSchema) }),
   /** `claim` is null when the queue had nothing for the caller. */

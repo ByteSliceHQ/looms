@@ -40,6 +40,8 @@ export interface SwarmState {
   readonly cursor: string | null
   /** Completed pulls. Names the next pull, so each pull effect has its own tag. */
   readonly pulls: number
+  /** Pulls that have failed in a row since the last one that worked. */
+  readonly pullFailures: number
   /** Read the board as soon as possible. */
   readonly pullNow: boolean
   /** Otherwise read it at this time, or not until nudged when null. */
@@ -160,6 +162,15 @@ function requestPull(state: SwarmState): SwarmState {
   return state.pullNow ? { ...state, dirty: true } : { ...state, pullNow: true }
 }
 
+/** The longest a swarm waits before it tries an unreachable board again. */
+export const MAX_PULL_BACKOFF_MS = 15 * 60_000
+
+const PULL_BACKOFF_MS = 30_000
+
+function pullTag(state: SwarmState, when: string): string {
+  return `pull:${state.pulls}:${state.pullFailures}:${when}`
+}
+
 function activationTag(member: string, activation: number): string {
   return `activate:${member}:${activation}`
 }
@@ -182,6 +193,7 @@ export function createSwarmThread(
         board: config.board ?? ctx.runId,
         cursor: config.after ?? null,
         pulls: 0,
+        pullFailures: 0,
         pullNow: true,
         nextPullAt: null,
         dirty: false,
@@ -205,6 +217,7 @@ export function createSwarmThread(
             ...state,
             cursor: event.payload.cursor,
             pulls: state.pulls + 1,
+            pullFailures: 0,
             pullNow: state.dirty || event.payload.more,
             nextPullAt: event.payload.nextPullAt,
             dirty: false,
@@ -258,6 +271,23 @@ export function createSwarmThread(
 
         case 'runtime.effect.failed': {
           const tag = event.effectId ? parseEffectId(event.effectId)?.tag : undefined
+
+          if (event.threadId === ctx.threadId && tag?.startsWith(pullTag(state, ''))) {
+            // A board that refuses the swarm will refuse it again, so the swarm fails where
+            // someone will see it. An unreachable board is tried again, less and less often.
+            if (event.payload.nonRetryable) {
+              return { ...state, invalid: event.payload.error || 'the board refused the swarm' }
+            }
+
+            const backoff = Math.min(PULL_BACKOFF_MS * 2 ** state.pullFailures, MAX_PULL_BACKOFF_MS)
+
+            return {
+              ...state,
+              pullFailures: state.pullFailures + 1,
+              pullNow: false,
+              nextPullAt: event.ts + backoff,
+            }
+          }
 
           const entry = Object.entries(state.members).find(
             ([name, member]) =>
@@ -329,10 +359,10 @@ export function createSwarmThread(
       const pull = { ...definition, board: state.board, after: state.cursor, pull: state.pulls }
 
       if (state.pullNow) {
-        effects.push(invoke(pullEffect, pull, `pull:${state.pulls}:now`))
+        effects.push(invoke(pullEffect, pull, pullTag(state, 'now')))
       } else if (state.nextPullAt !== null) {
         effects.push(
-          invoke(pullEffect, pull, `pull:${state.pulls}:${state.nextPullAt}`, {
+          invoke(pullEffect, pull, pullTag(state, String(state.nextPullAt)), {
             at: state.nextPullAt,
           }),
         )

@@ -1,16 +1,19 @@
 import { Clock, Effect, Schema } from 'effect'
 
+import { AttachmentSchema } from '@looms/agent'
 import {
   DEFAULT_DEFINITION_VERSION,
   RunLauncherTag,
   cleanUndefined,
   failEffect,
+  typeIds,
   type EventInputOf,
+  type LoomsIds,
 } from '@looms/core'
 
-import { BoardEventSchema, BoardLabelsSchema, TaskStateSchema, type BoardError } from './board'
+import { BoardError, BoardEventSchema, BoardLabelsSchema, TaskStateSchema } from './board'
 import type { Activation } from './definitions'
-import { activationPrompt } from './prompt'
+import { activationAttachments, activationPrompt } from './prompt'
 import { swarmModule, type SwarmEvent } from './scope'
 import { BoardsTag, SwarmDefinitionsTag } from './services'
 
@@ -52,9 +55,16 @@ export const pullEffect = swarmModule.effect({
 
       const definition = yield* definitions.resolve(input.definitionName, input.definitionVersion)
 
-      const page = yield* boards.call(input.board, (board) =>
-        board.events({ after: input.after ?? undefined, limit: PULL_LIMIT }),
-      )
+      const page = yield* boards
+        .call(input.board, ctx, (board) =>
+          board.events({ after: input.after ?? undefined, limit: PULL_LIMIT }),
+        )
+        .pipe(
+          // The board will refuse the next attempt too, so fail now and let the swarm fail.
+          Effect.catchTag('BoardError', (refusal) =>
+            failEffect({ error: `${refusal.code}: ${refusal.message}`, nonRetryable: true }),
+          ),
+        )
 
       const interval = definition?.pollIntervalMs ?? null
 
@@ -75,9 +85,17 @@ export const pullEffect = swarmModule.effect({
     }),
 })
 
-/** The run id of a member's activation. Derived, so a retried activation starts the same run. */
-export function activationRunId(swarmRunId: string, member: string, activation: number): string {
-  return `${swarmRunId}:${member}:${activation}`
+/**
+ * The run id of a member's activation, in the host's id format. Derived from the swarm's run id,
+ * so a retried activation starts the same run and a host can find a member's run.
+ */
+export function activationRunId(
+  swarmRunId: string,
+  member: string,
+  activation: number,
+  ids: LoomsIds = typeIds,
+): string {
+  return ids.derive('run', [swarmRunId, member, activation])
 }
 
 export const activateEffect = swarmModule.effect({
@@ -101,10 +119,13 @@ export const activateEffect = swarmModule.effect({
         })
       }
 
-      const runId = activationRunId(ctx.runId, member.name, input.activation)
+      const runId = activationRunId(ctx.runId, member.name, input.activation, ctx.ids)
+
+      const attachments = activationAttachments(input.events)
 
       const activation: Activation = {
         prompt: activationPrompt(definition, member, input.events),
+        attachments: attachments.length > 0 ? attachments : undefined,
         swarm: {
           name: definition.name,
           runId: ctx.runId,
@@ -152,12 +173,19 @@ export const PostArgsSchema = Schema.Struct({
   channel: Schema.String,
   text: Schema.String,
   labels: Schema.optional(BoardLabelsSchema),
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 
 export const ReplyArgsSchema = Schema.Struct({
   /** Any message of the thread to reply in. */
   to: Schema.String,
   text: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
+})
+
+export const ViewArgsSchema = Schema.Struct({
+  /** The message whose files to look at. A task's id is the id of its root message. */
+  message: Schema.String,
 })
 
 export const ReadArgsSchema = Schema.Struct({
@@ -182,6 +210,7 @@ export const CreateTaskArgsSchema = Schema.Struct({
   text: Schema.String,
   for: Schema.optional(Schema.String),
   needs: Schema.optional(Schema.Array(Schema.String)),
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 
 export const ListTasksArgsSchema = Schema.Struct({
@@ -207,6 +236,14 @@ export const SettleTaskArgsSchema = Schema.Struct({
   ]),
   note: Schema.optional(Schema.String),
 })
+
+/**
+ * The idempotency key of a board write. An effect id is only unique within its run, and one
+ * board serves many runs, so the key names the run too.
+ */
+function writeKey(ctx: { readonly runId: string; readonly effectId: string }): string {
+  return `${ctx.runId}:${ctx.effectId}`
+}
 
 interface Caller {
   readonly callId: string
@@ -245,13 +282,14 @@ export const postEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const message = yield* boards.call(input.board, (board) =>
+        const message = yield* boards.call(input.board, ctx, (board) =>
           board.post({
             by: input.as,
             channel: input.channel,
             text: input.text,
             labels: input.labels,
-            key: ctx.effectId,
+            attachments: input.attachments,
+            key: writeKey(ctx),
           }),
         )
 
@@ -276,8 +314,14 @@ export const replyEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const message = yield* boards.call(input.board, (board) =>
-          board.reply({ by: input.as, to: input.to, text: input.text, key: ctx.effectId }),
+        const message = yield* boards.call(input.board, ctx, (board) =>
+          board.reply({
+            by: input.as,
+            to: input.to,
+            text: input.text,
+            attachments: input.attachments,
+            key: writeKey(ctx),
+          }),
         )
 
         return swarmModule.input(
@@ -301,7 +345,7 @@ export const readEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const messages = yield* boards.call(input.board, (board) =>
+        const messages = yield* boards.call(input.board, ctx, (board) =>
           board.messages({
             channel: input.channel,
             thread: input.thread,
@@ -321,6 +365,45 @@ export const readEffect = swarmModule.effect({
     ),
 })
 
+export const viewEffect = swarmModule.effect({
+  type: 'swarm.view',
+  placement: 'local',
+  input: Schema.Struct({ ...CallerFields, ...ViewArgsSchema.fields }),
+  retry: RETRY,
+  execute: (input, ctx) =>
+    answered(
+      input,
+      ctx.threadId,
+      Effect.gen(function* () {
+        const boards = yield* BoardsTag
+
+        const found = yield* boards.call(input.board, ctx, (board) =>
+          board.messages({ id: input.message }),
+        )
+
+        const message = found[0]
+
+        if (!message) {
+          return yield* new BoardError({
+            code: 'message_not_found',
+            message: `No message "${input.message}"`,
+          })
+        }
+
+        return swarmModule.input(
+          'attachments.viewed',
+          {
+            callId: input.callId,
+            board: input.board,
+            message: message.id,
+            attachments: message.attachments,
+          },
+          { threadId: ctx.threadId },
+        )
+      }),
+    ),
+})
+
 export const labelEffect = swarmModule.effect({
   type: 'swarm.label',
   placement: 'local',
@@ -333,7 +416,7 @@ export const labelEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const message = yield* boards.call(input.board, (board) =>
+        const message = yield* boards.call(input.board, ctx, (board) =>
           board.label({
             by: input.as,
             message: input.message,
@@ -364,14 +447,15 @@ export const createTaskEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const task = yield* boards.call(input.board, (board) =>
+        const task = yield* boards.call(input.board, ctx, (board) =>
           board.createTask({
             by: input.as,
             channel: input.channel,
             text: input.text,
             for: input.for,
             needs: input.needs,
-            key: ctx.effectId,
+            attachments: input.attachments,
+            key: writeKey(ctx),
           }),
         )
 
@@ -396,7 +480,7 @@ export const listTasksEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const tasks = yield* boards.call(input.board, (board) =>
+        const tasks = yield* boards.call(input.board, ctx, (board) =>
           board.tasks({ channel: input.channel, state: input.state, for: input.for }),
         )
 
@@ -425,7 +509,7 @@ export const claimTaskEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const claim = yield* boards.call(input.board, (board) =>
+        const claim = yield* boards.call(input.board, ctx, (board) =>
           board.claim({
             by: input.as,
             task: input.task,
@@ -455,7 +539,7 @@ export const settleTaskEffect = swarmModule.effect({
       Effect.gen(function* () {
         const boards = yield* BoardsTag
 
-        const task = yield* boards.call(input.board, (board) =>
+        const task = yield* boards.call(input.board, ctx, (board) =>
           board.settle({
             task: input.task,
             token: input.token,
