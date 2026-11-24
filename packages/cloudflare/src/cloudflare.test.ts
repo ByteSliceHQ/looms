@@ -512,7 +512,8 @@ describe('@looms/cloudflare', () => {
       }
     }
 
-    const ctx = objectContext('run_cold', sqliteStorage())
+    const storage = sqliteStorage()
+    const ctx = objectContext('run_cold', storage)
     // SAFETY: the test stands in for a Durable Object state.
     // @ts-expect-error mock cold-start context in unit test
     const object = new ColdObject(ctx, {})
@@ -530,8 +531,14 @@ describe('@looms/cloudflare', () => {
     const run = await object.getRun()
     expect(run.status).toBe('completed')
 
-    // Release init so deferred waitUntil delivery can project the log.
+    // Delivery waits for the alarm instead of riding on the request's waitUntil.
+    await ctx.backgroundWork()
+    expect(projected).toBe(0)
+    expect(storage.alarmAt()).not.toBeNull()
+
+    // Release init so the alarm's delivery can project the log.
     resolveInit?.()
+    await object.alarm()
     await ctx.backgroundWork()
     expect(projected).toBeGreaterThan(0)
   })
@@ -592,7 +599,8 @@ describe('@looms/cloudflare', () => {
       }
     }
 
-    const ctx = objectContext('run_secrets', sqliteStorage())
+    const storage = sqliteStorage()
+    const ctx = objectContext('run_secrets', storage)
     // SAFETY: the test stands in for a Durable Object state.
     // @ts-expect-error mock secrets context in unit test
     const object = new SecretObject(ctx, {})
@@ -607,7 +615,9 @@ describe('@looms/cloudflare', () => {
     expect(started.state.status).toBe('completed')
     expect(received).toHaveLength(1)
     expect(received[0]?.macaroon).toStartWith('held:')
+    expect(storage.alarmAt()).not.toBeNull()
 
+    await object.alarm()
     await ctx.backgroundWork()
     expect(projected).toBeGreaterThan(0)
   })
