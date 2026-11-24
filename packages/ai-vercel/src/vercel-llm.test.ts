@@ -3,10 +3,17 @@ import { describe, expect, test } from 'bun:test'
 import { generateText, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
-import type { Message } from '@looms/agent'
+import type { AgentRunContext, Message } from '@looms/agent'
 
 import { resolveAttachments, toModelMessages } from './messages'
 import { vercelLlm } from './vercel-llm'
+
+const run: AgentRunContext = {
+  runId: 'run_1',
+  threadId: 'thread_1',
+  attributes: { tenant: 'acme' },
+  secrets: {},
+}
 
 function modelUsage(input: number, output: number) {
   return {
@@ -44,8 +51,10 @@ describe('toModelMessages', () => {
       },
     ]
 
-    const attachments = await resolveAttachments(lines, (attachment) =>
-      attachment.id === 'a1' ? png : pdf,
+    const attachments = await resolveAttachments(
+      lines,
+      (attachment) => (attachment.id === 'a1' ? png : pdf),
+      run,
     )
 
     expect(toModelMessages(lines, { attachments })).toEqual([
@@ -72,7 +81,7 @@ describe('toModelMessages', () => {
       },
     ]
 
-    const attachments = await resolveAttachments(lines, () => null)
+    const attachments = await resolveAttachments(lines, () => null, run)
 
     expect(toModelMessages(lines, { attachments })).toEqual([
       {
@@ -140,8 +149,10 @@ test('sends the files on a tool result beside its text', async () => {
     },
   ]
 
-  const attachments = await resolveAttachments(lines, (attachment) =>
-    attachment.id === 'a1' ? png : null,
+  const attachments = await resolveAttachments(
+    lines,
+    (attachment) => (attachment.id === 'a1' ? png : null),
+    run,
   )
 
   expect(toModelMessages(lines, { attachments })).toEqual([
@@ -175,6 +186,22 @@ test('sends the files on a tool result beside its text', async () => {
   ])
 })
 
+test('tells the resolver which run the files are read for', async () => {
+  const seen: Array<string | undefined> = []
+
+  await resolveAttachments(
+    [{ role: 'user', content: 'look', attachments: [{ id: 'a1', mediaType: 'image/png' }] }],
+    (attachment, caller) => {
+      seen.push(`${caller.attributes.tenant}/${attachment.id}`)
+
+      return null
+    },
+    run,
+  )
+
+  expect(seen).toEqual(['acme/a1'])
+})
+
 describe('vercelLlm', () => {
   test('maps generateText text and tool calls', async () => {
     const model = new MockLanguageModelV3({
@@ -197,6 +224,7 @@ describe('vercelLlm', () => {
     const adapter = vercelLlm({ model, stream: false })
 
     const result = await adapter.complete({
+      run,
       instructions: 'help',
       messages: [{ role: 'user', content: 'greet Ada' }],
       tools: [],
@@ -241,6 +269,7 @@ describe('vercelLlm', () => {
     const deltas: string[] = []
 
     const result = await adapter.complete({
+      run,
       instructions: 'help',
       messages: [{ role: 'user', content: 'hi' }],
       tools: [],

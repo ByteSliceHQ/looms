@@ -7,6 +7,8 @@ import {
   type RuntimeEffect,
   type SchemaInput,
   type LoomsIds,
+  type RunAttributes,
+  type SecretContext,
 } from '@looms/core'
 
 import type { StopWhen } from './stop-when'
@@ -83,8 +85,20 @@ export function buildStructuredOutputInstructions(toolName = STRUCTURED_OUTPUT_T
   ].join(' ')
 }
 
-export interface ToolContext {
+/**
+ * The run an agent is working in. A host that serves many tenants reads the tenant from
+ * `attributes`, which a run is started with and which the runs it launches inherit.
+ */
+export interface AgentRunContext {
+  readonly runId: string
   readonly threadId: string
+  /** Labels safe for every reader of the run. */
+  readonly attributes: RunAttributes
+  /** Bearer material for this attempt. Never copy it into a tool result or an event. */
+  readonly secrets: SecretContext
+}
+
+export interface ToolContext extends AgentRunContext {
   readonly turn: number
   readonly signal?: AbortSignal
 }
@@ -146,8 +160,7 @@ export interface AgentTurnContext<TInput = JsonValue> {
 }
 
 /** What `resolveTools` sees. It runs before each model turn and again when a tool executes. */
-export interface AgentToolResolutionContext<TInput = JsonValue> {
-  readonly threadId: string
+export interface AgentToolResolutionContext<TInput = JsonValue> extends AgentRunContext {
   readonly turn: number
   readonly input: TInput
   /** The id format the host was configured with. */

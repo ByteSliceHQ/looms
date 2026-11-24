@@ -2,7 +2,7 @@ import { Context, Data, Effect, Layer } from 'effect'
 
 import type { DefinitionStore } from '@looms/core'
 
-import { BoardError, type BoardResolver, type MessageBoard } from './board'
+import { BoardError, type BoardCaller, type BoardResolver, type MessageBoard } from './board'
 import type { SwarmDefinition } from './definitions'
 import { createMemoryBoard } from './memory-board'
 
@@ -23,6 +23,7 @@ export interface Boards {
   /** Run one call against a board. Refusals fail with `BoardError`, faults with `BoardFaultError`. */
   readonly call: <A>(
     boardId: string,
+    caller: BoardCaller,
     run: (board: MessageBoard) => Promise<A>,
   ) => Effect.Effect<A, BoardError | BoardFaultError>
 }
@@ -40,9 +41,13 @@ function fault(cause: unknown): BoardError | BoardFaultError {
 
 export function makeBoards(resolve: BoardResolver): Boards {
   return {
-    call: (boardId, run) =>
+    call: (boardId, caller, run) =>
       Effect.tryPromise({
-        try: () => Promise.resolve(resolve(boardId)).then(run),
+        // Inside the promise so a resolver that throws is a refusal or a fault, not a defect.
+        try: () =>
+          Promise.resolve()
+            .then(() => resolve(boardId, caller))
+            .then(run),
         catch: fault,
       }),
   }

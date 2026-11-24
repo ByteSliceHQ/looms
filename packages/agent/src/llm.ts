@@ -2,7 +2,7 @@ import { Context, Data, Effect, Layer, Predicate } from 'effect'
 
 import { stringifyJson, type JsonValue } from '@looms/core'
 
-import type { AgentTurnContext, AgentTurnResult, ToolLike } from './definitions'
+import type { AgentRunContext, AgentTurnContext, AgentTurnResult, ToolLike } from './definitions'
 import type { Message, ToolCall } from './types'
 
 export interface LlmToolSpec {
@@ -17,6 +17,8 @@ export interface LlmCompleteArgs {
   messages: Message[]
   tools: ToolLike[]
   toolSpecs?: LlmToolSpec[]
+  /** The run this call is made for, so an adapter can scope what it reads to the run's tenant. */
+  run: AgentRunContext
   onTextDelta?: (delta: string) => void | Promise<void>
   signal?: AbortSignal
 }

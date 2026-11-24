@@ -1,6 +1,7 @@
 import { Data, Schema } from 'effect'
 
 import { AttachmentSchema, type Attachment } from '@looms/agent'
+import type { RunAttributes, SecretContext } from '@looms/core'
 
 /**
  * A message board is the only thing swarm members share. It holds channels of threaded messages,
@@ -123,6 +124,7 @@ export const MAX_LEASE_MS = 60 * 60_000
 
 export type BoardErrorCode =
   | 'invalid_input'
+  | 'board_denied'
   | 'message_not_found'
   | 'task_not_found'
   | 'duplicate_key'
@@ -306,8 +308,25 @@ export interface MessageBoard {
   events(query?: EventQuery): Promise<EventPage>
 }
 
-/** Looks a board up by id, so one host can serve a board per tenant. */
-export type BoardResolver = (boardId: string) => MessageBoard | Promise<MessageBoard>
+/** The run a board call is made from: the swarm's run, a member's run, or a run that used a step. */
+export interface BoardCaller {
+  readonly runId: string
+  readonly threadId: string
+  /** The labels the run was started with, such as its tenant. A swarm's members inherit them. */
+  readonly attributes: RunAttributes
+  /** Bearer material for this attempt. */
+  readonly secrets: SecretContext
+}
+
+/**
+ * Looks a board up by id, so one host can serve a board per tenant. A board id reaches the
+ * resolver from a run's input, so a host with tenants checks it against `caller.attributes` and
+ * throws {@link BoardError} with `board_denied` for a board the caller's tenant does not own.
+ */
+export type BoardResolver = (
+  boardId: string,
+  caller: BoardCaller,
+) => MessageBoard | Promise<MessageBoard>
 
 const MENTION = /(?:^|[^\w@])@([a-z][a-z0-9-]*)/gi
 

@@ -1,7 +1,7 @@
 import { type JSONValue, type ModelMessage } from 'ai'
 import { Option, Predicate, Schema } from 'effect'
 
-import type { Attachment, Message, ToolCall } from '@looms/agent'
+import type { AgentRunContext, Attachment, Message, ToolCall } from '@looms/agent'
 import type { JsonValue } from '@looms/core'
 
 const decodeJson = Schema.decodeOption(Schema.fromJsonString(Schema.Json))
@@ -39,6 +39,7 @@ export type AttachmentData = Uint8Array | ArrayBuffer | string | URL
  */
 export type AttachmentResolver = (
   attachment: Attachment,
+  run: AgentRunContext,
 ) => AttachmentData | null | Promise<AttachmentData | null>
 
 export interface ToModelMessagesOptions {
@@ -53,6 +54,7 @@ export interface ToModelMessagesOptions {
 export function resolveAttachments(
   messages: readonly Message[],
   resolve: AttachmentResolver,
+  run: AgentRunContext,
 ): Promise<Map<string, AttachmentData>> {
   const pending = new Map<string, Promise<AttachmentData | null>>()
 
@@ -62,7 +64,7 @@ export function resolveAttachments(
         // Called inside a promise so a resolver that throws rejects instead of throwing here.
         pending.set(
           attachment.id,
-          Promise.resolve().then(() => resolve(attachment)),
+          Promise.resolve().then(() => resolve(attachment, run)),
         )
       }
     }

@@ -96,11 +96,12 @@ await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })`}</CodeBlock>
         never woken by its own writes.
       </p>
       <p>
-        Each wake is one activation: a separate run of the member&apos;s agent, with run id{' '}
-        <code>{'<swarm run id>:<member>:<n>'}</code>. The agent&apos;s first message lists what
-        happened on the board and names the other members. A member runs one activation at a time.
-        Events that arrive while it is running are queued and delivered together in the next
-        activation.
+        Each wake is one activation: a separate run of the member&apos;s agent. Its run id is
+        derived from the swarm&apos;s run id, the member, and the activation number, in the
+        host&apos;s id format: <code>activationRunId(swarmRunId, member, n)</code> returns it. The
+        agent&apos;s first message lists what happened on the board and names the other members. A
+        member runs one activation at a time. Events that arrive while it is running are queued and
+        delivered together in the next activation.
       </p>
       <p>
         Members keep no memory between activations. Whatever should outlive a turn belongs on the
@@ -254,8 +255,9 @@ run: (ctx) =>
       </p>
       <p>
         A message carries at most 10 attachments. The board stores references as they are given, and
-        a member can write any <code>id</code>. Make <code>resolveAttachment</code> refuse an id
-        that does not belong to the swarm&apos;s tenant.
+        a member can write any <code>id</code>. <code>resolveAttachment</code> is told which run it
+        reads for, so make it refuse an id that does not belong to that run&apos;s tenant. See{' '}
+        <a href="#tenants">Tenants</a>.
       </p>
       <h2 id="tasks">
         Tasks
@@ -349,9 +351,101 @@ await looms.signal('swarm_acme', [nudge()])`}</CodeBlock>
         board still grows its log.
       </p>
       <p>
+        When the board cannot be read, the swarm tries again after 30 seconds and then less often,
+        up to every 15 minutes, until a read works or a nudge arrives.
+      </p>
+      <p>
         <code>stop()</code> ends a swarm. It stops waking members and completes once the members
         that are mid-run have finished.
       </p>
+      <h2 id="tenants">
+        Tenants
+        <a className="heading-anchor" href="#tenants" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        A host that serves many tenants starts each swarm with the tenant in its run attributes:
+      </p>
+      <CodeBlock lang="ts">{`await ensureSwarm(
+  looms,
+  ops,
+  \`swarm_\${businessId}\`,
+  { board: businessId },
+  { attributes: { orgId, businessId } },
+)`}</CodeBlock>
+      <p>
+        Every member run inherits those attributes, and so does anything a member launches. The
+        host&apos;s own code receives them in four places, and each one is where a tenant boundary
+        is enforced:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Where</th>
+            <th>What to do with the attributes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>boards(boardId, caller)</code>
+            </td>
+            <td>Return the tenant&apos;s board, and refuse an id the tenant does not own</td>
+          </tr>
+          <tr>
+            <td>
+              <code>resolveAttachment(attachment, run)</code>
+            </td>
+            <td>Read only files that belong to the tenant</td>
+          </tr>
+          <tr>
+            <td>
+              A tool&apos;s <code>handler(input, ctx)</code>
+            </td>
+            <td>Build storage keys from the tenant, never from a tool argument</td>
+          </tr>
+          <tr>
+            <td>
+              <code>resolveTools(ctx)</code>
+            </td>
+            <td>Choose the tools the tenant may use</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        A board resolver refuses by throwing <code>BoardError</code> with the code{' '}
+        <code>board_denied</code>:
+      </p>
+      <CodeBlock lang="ts">{`swarm({
+  definitions,
+  boards: (boardId, caller) => {
+    if (boardId !== caller.attributes.businessId) {
+      throw new BoardError({ code: 'board_denied', message: 'Not your board' })
+    }
+
+    return createPostgresBoard(sql, boardId)
+  },
+})`}</CodeBlock>
+      <p>
+        A swarm whose own board is refused fails. A member&apos;s or a workflow&apos;s call to a
+        refused board comes back as a tool error or a failed step.
+      </p>
+      <p>Three more things to know:</p>
+      <ul>
+        <li>
+          <code>swarm({'{ board }'})</code> gives every swarm the same board. Use it only on a host
+          with one tenant.
+        </li>
+        <li>
+          Secrets are not inherited. A member run gets what the host&apos;s secret provider decides
+          for it.
+        </li>
+        <li>
+          Definition names are shared by the whole host. Give each tenant&apos;s swarm and agents
+          names no other tenant can have.
+        </li>
+      </ul>
       <h2 id="status">
         Status
         <a className="heading-anchor" href="#status" aria-label="Link to this section">
@@ -367,7 +461,7 @@ await looms.signal('swarm_acme', [nudge()])`}</CodeBlock>
 
 const view = await looms.project('swarm_acme', swarmStatus)
 // view.members.fixer is
-// { status: 'idle', activations: 3, runId: 'swarm_acme:fixer:3', lastOutcome: 'completed' }`}</CodeBlock>
+// { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }`}</CodeBlock>
       <h2 id="bring-your-own-board">
         Bring your own board
         <a
