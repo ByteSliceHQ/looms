@@ -23,9 +23,10 @@ export interface DurableObjectEventStore extends EventStore {
 
 /**
  * Creates an EventStore backed by a Durable Object's embedded SQLite database (`ctx.storage.sql`).
- * Optionally attaches projectors. Their delivery is scheduled with `waitUntil`, so an append
- * returns when the log commits. A crashed delivery is retried from the durable cursor on the next
- * alarm or request.
+ * Optionally attaches projectors. With `scheduleProjectorRetry`, an append arms the alarm to
+ * deliver at once rather than delivering under the request's `waitUntil`, which kept the
+ * Durable Object's `fetch` response open for seconds of Hyperdrive/Postgres I/O after the handler
+ * returned. Delivery runs from durable cursors, so a crashed one is retried on the next alarm.
  */
 export function durableObjectEventStore(
   ctx: DurableObjectState,
@@ -54,6 +55,13 @@ export function durableObjectEventStore(
     const wrapped = withProjectors(store, options.projectors, {
       delivery,
       scheduleDelivery: (_runId, work) => {
+        // The alarm delivers instead of this request, so the append's response is not held
+        // open by projector I/O. Without an alarm to arm, fall back to waitUntil.
+        if (options.scheduleProjectorRetry) {
+          void Effect.runPromise(options.scheduleProjectorRetry(Date.now()))
+          return
+        }
+
         ctx.waitUntil(Effect.runPromise(work))
       },
     })

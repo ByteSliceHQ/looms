@@ -46,6 +46,49 @@ describe('projector delivery', () => {
     expect((await Effect.runPromise(delivery.status('run_1')))[0]?.cursor).toBe(1)
   })
 
+  test('reports when delivery is next due without initializing', async () => {
+    const source = await Effect.runPromise(makeMemoryEventStore)
+    let time = 1_000
+    let failures = 1
+    let inits = 0
+
+    const projector: Projector = {
+      name: 'search',
+      version: '1',
+      init: async () => {
+        inits += 1
+      },
+      project: async () => {
+        if (failures-- > 0) {
+          throw new Error('temporary outage')
+        }
+      },
+    }
+
+    const delivery = createProjectorDelivery(
+      source,
+      [projector],
+      sqliteProjectorCursorStore(bunSqliteExec(new Database(':memory:'))),
+      { now: () => time, initialRetryMs: 100 },
+    )
+
+    expect(await Effect.runPromise(delivery.nextDueAt('run_1'))).toBeNull()
+
+    await Effect.runPromise(source.append('run_1', [event('run_1', 1)]))
+
+    expect(await Effect.runPromise(delivery.nextDueAt('run_1'))).toBe(1_000)
+    expect(inits).toBe(0)
+
+    await Effect.runPromise(delivery.deliver('run_1'))
+
+    expect(await Effect.runPromise(delivery.nextDueAt('run_1'))).toBe(1_100)
+
+    time = 1_100
+    await Effect.runPromise(delivery.deliver('run_1'))
+
+    expect(await Effect.runPromise(delivery.nextDueAt('run_1'))).toBeNull()
+  })
+
   test('durably retries and recovers without advancing on failure', async () => {
     const source = await Effect.runPromise(makeMemoryEventStore)
     await Effect.runPromise(source.append('run_1', [event('run_1', 1), event('run_1', 2)]))

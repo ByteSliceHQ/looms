@@ -111,6 +111,12 @@ export interface ProjectorDelivery {
     version?: string,
   ): Effect.Effect<void, ProjectorDeliveryFailure | UnknownProjectorError>
   nextRetryAt(runId?: string): Effect.Effect<number | null, ProjectorCursorError>
+  /**
+   * When delivery for a run is next due: now if a projector is behind the log and not backing
+   * off, its retry deadline if it is, or null when every projector is caught up or dead-lettered.
+   * Reads only the cursors and the log tail, so it never runs `projector.init`.
+   */
+  nextDueAt(runId: string): Effect.Effect<number | null, ProjectorDeliveryFailure>
   inspect(
     runId?: string,
   ): Effect.Effect<readonly ProjectorOperationalStatus[], ProjectorDeliveryFailure>
@@ -405,6 +411,30 @@ export function createProjectorDelivery(
           return deadlines.length === 0 ? null : Math.min(...deadlines)
         }),
       ),
+    nextDueAt: (runId) =>
+      Effect.gen(function* () {
+        const sourceTail = yield* source.tail(runId)
+
+        const deadlines = yield* Effect.forEach(projectors, (projector) =>
+          cursors.get(runId, projector).pipe(
+            Effect.map((status) => {
+              if (status.state === 'dead-letter') {
+                return null
+              }
+
+              if (status.nextRetryAt !== null) {
+                return status.nextRetryAt
+              }
+
+              return sourceTail > status.cursor ? now() : null
+            }),
+          ),
+        )
+
+        const due = deadlines.filter((deadline): deadline is number => deadline !== null)
+
+        return due.length === 0 ? null : Math.min(...due)
+      }),
     inspect: (runId) =>
       cursors.list(runId).pipe(
         Effect.flatMap((statuses) =>

@@ -127,7 +127,7 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
       const alarms = durableObjectAlarms(
         this.ctx.storage,
         () =>
-          this.store?.projectorDelivery?.nextRetryAt(runId).pipe(Effect.orDie) ??
+          this.store?.projectorDelivery?.nextDueAt(runId).pipe(Effect.orDie) ??
           Effect.succeed(null),
       )
 
@@ -164,13 +164,16 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
 
       const delivery = store.projectorDelivery
 
-      // Projector recover/deliver opens Hyperdrive/Postgres and runs projector.init.
-      // That must not block the first request on a cold (or empty) cell. Schedule it
-      // the same way post-append delivery uses waitUntil; deliverExclusive still
-      // serializes per run and projector, and alarms retry from durable cursors.
+      // Projector delivery can open Hyperdrive/Postgres. Started from this request, even under
+      // waitUntil, that I/O kept the caller's stub.fetch open for seconds after the handler
+      // returned. Leave it to the alarm instead: the alarm deadline already includes when
+      // delivery is next due, so arming it once here covers work left by an earlier instance.
       if (delivery) {
-        this.ctx.waitUntil(
-          Effect.runPromise(delivery.recover(runId).pipe(Effect.andThen(delivery.deliver(runId)))),
+        void Effect.runPromise(
+          delivery.nextDueAt(runId).pipe(
+            Effect.orDie,
+            Effect.flatMap((at) => (at === null ? Effect.void : alarms.scheduleAtEarliest(at))),
+          ),
         )
       }
 
