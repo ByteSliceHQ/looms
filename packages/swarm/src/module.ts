@@ -13,6 +13,7 @@ import {
   readEffect,
   replyEffect,
   settleTaskEffect,
+  viewEffect,
 } from './effects'
 import { swarmStatus } from './projections'
 import { swarmModule } from './scope'
@@ -47,6 +48,7 @@ export function swarm(options: SwarmModuleOptions = {}) {
       post: postEffect,
       reply: replyEffect,
       read: readEffect,
+      view: viewEffect,
       label: labelEffect,
       createTask: createTaskEffect,
       listTasks: listTasksEffect,
@@ -78,6 +80,7 @@ export function swarm(options: SwarmModuleOptions = {}) {
                   re: null,
                   mentions: ['triage'],
                   labels: {},
+                  attachments: [],
                   createdAt: 1_000,
                 },
               },

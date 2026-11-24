@@ -1,5 +1,6 @@
 import { Clock, Effect, Schema } from 'effect'
 
+import { AttachmentSchema } from '@looms/agent'
 import {
   DEFAULT_DEFINITION_VERSION,
   RunLauncherTag,
@@ -8,9 +9,9 @@ import {
   type EventInputOf,
 } from '@looms/core'
 
-import { BoardEventSchema, BoardLabelsSchema, TaskStateSchema, type BoardError } from './board'
+import { BoardError, BoardEventSchema, BoardLabelsSchema, TaskStateSchema } from './board'
 import type { Activation } from './definitions'
-import { activationPrompt } from './prompt'
+import { activationAttachments, activationPrompt } from './prompt'
 import { swarmModule, type SwarmEvent } from './scope'
 import { BoardsTag, SwarmDefinitionsTag } from './services'
 
@@ -103,8 +104,11 @@ export const activateEffect = swarmModule.effect({
 
       const runId = activationRunId(ctx.runId, member.name, input.activation)
 
+      const attachments = activationAttachments(input.events)
+
       const activation: Activation = {
         prompt: activationPrompt(definition, member, input.events),
+        attachments: attachments.length > 0 ? attachments : undefined,
         swarm: {
           name: definition.name,
           runId: ctx.runId,
@@ -152,12 +156,19 @@ export const PostArgsSchema = Schema.Struct({
   channel: Schema.String,
   text: Schema.String,
   labels: Schema.optional(BoardLabelsSchema),
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 
 export const ReplyArgsSchema = Schema.Struct({
   /** Any message of the thread to reply in. */
   to: Schema.String,
   text: Schema.String,
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
+})
+
+export const ViewArgsSchema = Schema.Struct({
+  /** The message whose files to look at. A task's id is the id of its root message. */
+  message: Schema.String,
 })
 
 export const ReadArgsSchema = Schema.Struct({
@@ -182,6 +193,7 @@ export const CreateTaskArgsSchema = Schema.Struct({
   text: Schema.String,
   for: Schema.optional(Schema.String),
   needs: Schema.optional(Schema.Array(Schema.String)),
+  attachments: Schema.optional(Schema.Array(AttachmentSchema)),
 })
 
 export const ListTasksArgsSchema = Schema.Struct({
@@ -251,6 +263,7 @@ export const postEffect = swarmModule.effect({
             channel: input.channel,
             text: input.text,
             labels: input.labels,
+            attachments: input.attachments,
             key: ctx.effectId,
           }),
         )
@@ -277,7 +290,13 @@ export const replyEffect = swarmModule.effect({
         const boards = yield* BoardsTag
 
         const message = yield* boards.call(input.board, (board) =>
-          board.reply({ by: input.as, to: input.to, text: input.text, key: ctx.effectId }),
+          board.reply({
+            by: input.as,
+            to: input.to,
+            text: input.text,
+            attachments: input.attachments,
+            key: ctx.effectId,
+          }),
         )
 
         return swarmModule.input(
@@ -315,6 +334,45 @@ export const readEffect = swarmModule.effect({
         return swarmModule.input(
           'messages.read',
           { callId: input.callId, board: input.board, messages },
+          { threadId: ctx.threadId },
+        )
+      }),
+    ),
+})
+
+export const viewEffect = swarmModule.effect({
+  type: 'swarm.view',
+  placement: 'local',
+  input: Schema.Struct({ ...CallerFields, ...ViewArgsSchema.fields }),
+  retry: RETRY,
+  execute: (input, ctx) =>
+    answered(
+      input,
+      ctx.threadId,
+      Effect.gen(function* () {
+        const boards = yield* BoardsTag
+
+        const found = yield* boards.call(input.board, (board) =>
+          board.messages({ id: input.message }),
+        )
+
+        const message = found[0]
+
+        if (!message) {
+          return yield* new BoardError({
+            code: 'message_not_found',
+            message: `No message "${input.message}"`,
+          })
+        }
+
+        return swarmModule.input(
+          'attachments.viewed',
+          {
+            callId: input.callId,
+            board: input.board,
+            message: message.id,
+            attachments: message.attachments,
+          },
           { threadId: ctx.threadId },
         )
       }),
@@ -371,6 +429,7 @@ export const createTaskEffect = swarmModule.effect({
             text: input.text,
             for: input.for,
             needs: input.needs,
+            attachments: input.attachments,
             key: ctx.effectId,
           }),
         )

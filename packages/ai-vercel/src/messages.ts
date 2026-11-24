@@ -188,7 +188,7 @@ export function toModelMessages(
               type: 'tool-result',
               toolCallId: message.toolCallId ?? message.name ?? 'unknown',
               toolName: message.name ?? 'unknown',
-              output: parseToolOutput(message.content),
+              output: toolOutput(message, options.attachments),
             },
           ],
         })
@@ -205,11 +205,50 @@ export function toModelMessages(
   return converted
 }
 
-function parseToolOutput(
-  content: string,
-): { type: 'json'; value: JSONValue } | { type: 'text'; value: string } {
-  return Option.match(decodeJson(content), {
-    onNone: () => ({ type: 'text', value: content }),
+type ToolFilePart = {
+  type: 'file'
+  data: { type: 'data'; data: Uint8Array | ArrayBuffer | string } | { type: 'url'; url: URL }
+  mediaType: string
+  filename?: string
+}
+
+type ToolOutput =
+  | { type: 'json'; value: JSONValue }
+  | { type: 'text'; value: string }
+  | { type: 'content'; value: Array<{ type: 'text'; text: string } | ToolFilePart> }
+
+/**
+ * A tool result as the model reads it. Files on the result are sent beside its text. A file
+ * that cannot be read is left out: the result's own text already names it.
+ */
+function toolOutput(
+  message: Message,
+  attachments: ReadonlyMap<string, AttachmentData> | undefined,
+): ToolOutput {
+  const files: ToolFilePart[] = []
+
+  for (const attachment of message.attachments ?? []) {
+    const found =
+      attachments?.get(attachment.id) ?? (attachment.url ? new URL(attachment.url) : null)
+
+    if (found !== null) {
+      const data: ToolFilePart['data'] =
+        found instanceof URL ? { type: 'url', url: found } : { type: 'data', data: found }
+
+      files.push(
+        attachment.name
+          ? { type: 'file', data, mediaType: attachment.mediaType, filename: attachment.name }
+          : { type: 'file', data, mediaType: attachment.mediaType },
+      )
+    }
+  }
+
+  if (files.length > 0) {
+    return { type: 'content', value: [{ type: 'text', text: message.content }, ...files] }
+  }
+
+  return Option.match(decodeJson(message.content), {
+    onNone: () => ({ type: 'text', value: message.content }),
     onSome: (value) => ({ type: 'json', value: toAiJson(value) }),
   })
 }

@@ -1,7 +1,10 @@
+import type { Attachment } from '@looms/agent'
+
 import {
   BOARD_ACTOR,
   BoardError,
   DEFAULT_LEASE_MS,
+  MAX_ATTACHMENTS,
   MAX_LEASE_MS,
   RESERVED_LABEL_PREFIX,
   TASK_LABEL,
@@ -47,8 +50,23 @@ function checkLabels(labels: BoardLabels | undefined): BoardLabels {
   return labels ?? {}
 }
 
+function checkAttachments(attachments: readonly Attachment[] | undefined): Attachment[] {
+  const files = attachments ?? []
+
+  if (files.length > MAX_ATTACHMENTS) {
+    refuse('invalid_input', `A message carries at most ${MAX_ATTACHMENTS} attachments`)
+  }
+
+  if (files.some((file) => file.id === '' || file.mediaType === '')) {
+    refuse('invalid_input', 'An attachment needs an id and a media type')
+  }
+
+  return [...files]
+}
+
 function matchesMessage(message: BoardMessage, query: MessageQuery): boolean {
   return (
+    (query.id === undefined || message.id === query.id) &&
     (query.channel === undefined || channelMatches(query.channel, message.channel)) &&
     (query.thread === undefined || message.id === query.thread || message.re === query.thread) &&
     (query.by === undefined || message.by === query.by) &&
@@ -144,6 +162,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
     readonly text: string
     readonly re: string | null
     readonly labels: BoardLabels | undefined
+    readonly attachments: readonly Attachment[] | undefined
     readonly key: string | undefined
   }): Written {
     if (input.by === '' || input.text === '') {
@@ -155,6 +174,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
     }
 
     const labels = checkLabels(input.labels)
+    const attachments = checkAttachments(input.attachments)
 
     const existing = input.key === undefined ? undefined : messages.get(keys.get(input.key) ?? '')
 
@@ -176,6 +196,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
       re: input.re,
       mentions: parseMentions(input.text),
       labels,
+      attachments,
       createdAt: now(),
     }
 
@@ -251,6 +272,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
           text: input.text,
           re: null,
           labels: input.labels,
+          attachments: input.attachments,
           key: input.key,
         })
 
@@ -271,6 +293,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
           text: input.text,
           re: target.re ?? target.id,
           labels: input.labels,
+          attachments: input.attachments,
           key: input.key,
         })
 
@@ -336,6 +359,7 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
           text: input.text,
           re: null,
           labels: input.labels,
+          attachments: input.attachments,
           key: input.key,
         })
 

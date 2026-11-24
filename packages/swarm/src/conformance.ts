@@ -1,6 +1,9 @@
+import type { Attachment } from '@looms/agent'
+
 import {
   BOARD_ACTOR,
   BoardError,
+  MAX_ATTACHMENTS,
   TASK_LABEL,
   type BoardErrorCode,
   type MessageBoard,
@@ -35,6 +38,13 @@ async function refused(attempt: Promise<unknown>, code: BoardErrorCode): Promise
   }
 
   throw new Mismatch(`expected a BoardError with code "${code}", but the call succeeded`)
+}
+
+function sameFiles(
+  actual: readonly Attachment[] | undefined,
+  expected: readonly Attachment[],
+): boolean {
+  return JSON.stringify(actual) === JSON.stringify(expected)
 }
 
 const checks = {
@@ -96,6 +106,77 @@ const checks = {
 
     expect(latest.map((item) => item.text).join(',') === '2,3', 'limit must keep the latest')
     expect(after.map((item) => item.text).join(',') === '2', 'after must page forward')
+  },
+
+  'attachments are read back with their message': async (board) => {
+    const shot = { id: 'files/1', mediaType: 'image/png', name: 'login.png', size: 2_048 }
+    const clip = { id: 'files/2', mediaType: 'video/mp4', url: 'https://files.example/2' }
+
+    const root = await board.post({
+      by: 'ada',
+      channel: 'ops',
+      text: 'see these',
+      attachments: [shot, clip],
+    })
+
+    const reply = await board.reply({
+      by: 'bo',
+      to: root.id,
+      text: 'and this',
+      attachments: [clip],
+    })
+
+    const plain = await board.reply({ by: 'bo', to: root.id, text: 'no files' })
+
+    const task = await board.createTask({
+      by: 'ada',
+      channel: 'ops',
+      text: 'fix',
+      attachments: [shot],
+    })
+
+    const [read] = await board.messages({ id: root.id })
+    const [taskRoot] = await board.messages({ id: task.id })
+    const page = await board.events()
+    const created = page.events.find((event) => event.type === 'task.created')
+
+    expect(
+      sameFiles(root.attachments, [shot, clip]),
+      'a post did not return its attachments in order',
+    )
+
+    expect(
+      sameFiles(read?.attachments, [shot, clip]),
+      'a post was not read back with its attachments',
+    )
+
+    expect(sameFiles(reply.attachments, [clip]), 'a reply did not keep its attachments')
+    expect(sameFiles(plain.attachments, []), 'a message without files must have an empty list')
+    expect(sameFiles(taskRoot?.attachments, [shot]), "a task's root message lost its attachments")
+    expect(sameFiles(created?.message?.attachments, [shot]), 'task.created lost the attachments')
+
+    await refused(
+      board.post({
+        by: 'ada',
+        channel: 'ops',
+        text: 'too many',
+        attachments: Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, index) => ({
+          id: `files/many-${index}`,
+          mediaType: 'image/png',
+        })),
+      }),
+      'invalid_input',
+    )
+  },
+
+  'a message is read by its id': async (board) => {
+    const root = await board.post({ by: 'ada', channel: 'ops', text: 'root' })
+    const reply = await board.reply({ by: 'bo', to: root.id, text: 'reply' })
+    const one = await board.messages({ id: reply.id })
+    const none = await board.messages({ id: 'missing' })
+
+    expect(one.length === 1 && one[0]?.text === 'reply', 'a reply was not read by its id')
+    expect(none.length === 0, 'an unknown id must match nothing')
   },
 
   'labels compare and set': async (board) => {

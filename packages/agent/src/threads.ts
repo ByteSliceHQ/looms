@@ -21,7 +21,7 @@ import { STRUCTURED_OUTPUT_TOOL_NAME } from './definitions'
 import { callLlmEffect, executeToolEffect } from './effects'
 import { agentModule } from './scope'
 import { closeOpenToolCalls, insertToolResult } from './transcript'
-import { attachmentsFrom, userLine } from './types'
+import { attachmentsField, attachmentsFrom, userLine } from './types'
 import type { AgentState, Message, ToolCall } from './types'
 
 function inputToLine(input: JsonValue): Message | null {
@@ -217,11 +217,15 @@ export const agentThread = agentModule.thread<AgentState>({
             isJsonObject(result) && 'output' in result ? (result.output ?? null) : result
         }
 
+        // A result shaped `{ attachments }` shows those files to the model with the result.
+        const files = !error && isJsonObject(result) ? result.attachments : undefined
+
         const lines = insertToolResult(state.lines, {
           role: 'tool',
           content,
           toolCallId,
           name: name ?? undefined,
+          ...attachmentsField(files),
         })
 
         return {

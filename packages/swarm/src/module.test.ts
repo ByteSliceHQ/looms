@@ -234,6 +234,101 @@ describe('swarm module', () => {
     }
   })
 
+  test('members see and pass on the files attached to messages', async () => {
+    const shot = { id: 'files/login', mediaType: 'image/png', name: 'login.png' }
+    const seen: Array<{ role: string; files: string[] }> = []
+
+    const viewer = defineAgent({
+      name: 'viewer',
+      instructions: 'viewer',
+      resolveTools: memberTools,
+    })
+
+    const desk = defineSwarm({
+      name: 'desk',
+      pollIntervalMs: null,
+      members: [{ name: 'viewer', agent: viewer }],
+    })
+
+    const board = createMemoryBoard()
+
+    const looms = createLooms({
+      maxWakeIterations: 2_000,
+      modules: [
+        agent({
+          definitions: [viewer],
+          llmPolicy: {
+            toolCallsFor: (ctx) => {
+              const results = ctx.messages.filter((message) => message.role === 'tool')
+
+              seen.length = 0
+
+              for (const message of ctx.messages) {
+                if (message.attachments) {
+                  seen.push({
+                    role: message.role,
+                    files: message.attachments.map((file) => file.id),
+                  })
+                }
+              }
+
+              if (results.length === 0) {
+                return [{ id: 'view_1', name: 'board_view', arguments: { message: 'msg_1' } }]
+              }
+
+              return results.length === 1
+                ? [
+                    {
+                      id: 'reply_1',
+                      name: 'board_reply',
+                      arguments: { to: 'msg_1', text: 'annotated', attachments: [shot] },
+                    },
+                  ]
+                : undefined
+            },
+          },
+        }),
+        swarm({ definitions: [desk], board }),
+      ],
+    })
+
+    try {
+      await ensureSwarm(looms, desk, 'swarm_desk')
+
+      await board.post({
+        by: 'dana',
+        channel: 'support',
+        text: '@viewer what is wrong here?',
+        attachments: [shot],
+      })
+
+      await looms.signal('swarm_desk', [nudge()])
+
+      await until(
+        () => board.messages({ thread: 'msg_1' }).then((thread) => thread.length === 2),
+        'the viewer replied',
+      )
+
+      const [, reply] = await board.messages({ thread: 'msg_1' })
+
+      expect(reply).toMatchObject({ by: 'viewer', text: 'annotated', attachments: [shot] })
+
+      // The file came with the wake-up message and again with the board_view result.
+      expect(seen).toEqual([
+        { role: 'user', files: ['files/login'] },
+        { role: 'tool', files: ['files/login'] },
+      ])
+
+      const run = await looms.getEvents(activationRunId('swarm_desk', 'viewer', 1))
+      const start = readActivation(run[0]?.payload.input)
+
+      expect(start?.attachments).toEqual([shot])
+      expect(start?.prompt).toContain('login.png (image/png, id "files/login")')
+    } finally {
+      await looms.stop()
+    }
+  })
+
   test('polls the board when nothing nudges it', async () => {
     const board = createMemoryBoard()
     const lone = defineAgent({ name: 'poller', instructions: 'poller' })

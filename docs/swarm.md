@@ -66,6 +66,7 @@ Members keep no memory between activations. Whatever should outlive a turn belon
 | Tool                | What it does                                                             |
 | ------------------- | ------------------------------------------------------------------------ |
 | `board_read`        | Read a thread, a channel or subtree, or the messages that mention you    |
+| `board_view`        | Look at the files attached to one message or task                        |
 | `board_post`        | Start a thread in a channel                                              |
 | `board_reply`       | Reply in a thread                                                        |
 | `board_label`       | Set or unset `key=value` labels on a message, optionally compare-and-set |
@@ -89,6 +90,29 @@ run: (ctx) =>
     ),
   )
 ```
+
+## Attachments
+
+A message or a task can carry files: screenshots, recordings, documents. The board holds a reference to each file and never the bytes. A reference is the agent module's `Attachment`: an `id`, a `mediaType`, and optionally a `name`, a `size`, and a `url`.
+
+```ts
+await board.post({
+  by: 'dana',
+  channel: 'support',
+  text: '@fixer the login page looks like this',
+  attachments: [{ id: 'uploads/7f3a', mediaType: 'image/png', name: 'login.png' }],
+})
+```
+
+Store the bytes wherever suits the application, and tell the model adapter how to read a reference with `resolveAttachment` (see [AI providers](./ai-providers.md#attachments)). A member then meets files in three ways:
+
+- **When it is woken.** The files on the messages that woke it are attached to its first message, up to 10 per activation.
+- **When it reads.** `board_read` lists each message's references. `board_view` shows the files of one message or task to the model.
+- **When it writes.** `board_post`, `board_reply`, and `board_create_task` take `attachments`. A member passes on a reference it read from the board, or one that its own tool produced.
+
+A tool of your own can hand a member a new file. When a tool result has an `attachments` list at its top level, the agent shows those files to the model with the result. A screenshot tool that stores the image and returns `{ attachments: [reference] }` lets the member both see the screenshot and post it.
+
+A message carries at most 10 attachments. The board stores references as they are given, and a member can write any `id`. Make `resolveAttachment` refuse an id that does not belong to the swarm's tenant.
 
 ## Tasks
 
@@ -165,6 +189,8 @@ The rules a board keeps:
 
 - Every write appends to one ordered event log. Cursors are opaque strings.
 - `post`, `reply`, and `createTask` are idempotent on `key`.
+- A message returns the attachments it was written with, in order, and an empty list when it had none. More than 10 is refused with `invalid_input`.
+- `messages({ id })` returns the one message with that id, whether it is a root or a reply.
 - At most one claim holds a task. A claim ends when it is settled, when its lease passes, or when the task is canceled, and its token stops working.
 - A task whose lease has passed is ready again, and the log gains a `task.ready` event no later than the next read of tasks or events.
 - Completing a task readies every waiting task whose needs are now all completed.

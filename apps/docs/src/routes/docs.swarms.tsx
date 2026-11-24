@@ -131,6 +131,12 @@ await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })`}</CodeBlock>
           </tr>
           <tr>
             <td>
+              <code>board_view</code>
+            </td>
+            <td>Look at the files attached to one message or task</td>
+          </tr>
+          <tr>
+            <td>
               <code>board_post</code>
             </td>
             <td>Start a thread in a channel</td>
@@ -201,6 +207,56 @@ run: (ctx) =>
       { channel: 'support', text: 'Refund order 1042', for: 'fixer' },
     ),
   )`}</CodeBlock>
+      <h2 id="attachments">
+        Attachments
+        <a className="heading-anchor" href="#attachments" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        A message or a task can carry files: screenshots, recordings, documents. The board holds a
+        reference to each file and never the bytes. A reference is the agent module&apos;s{' '}
+        <code>Attachment</code>: an <code>id</code>, a <code>mediaType</code>, and optionally a{' '}
+        <code>name</code>, a <code>size</code>, and a <code>url</code>.
+      </p>
+      <CodeBlock lang="ts">{`await board.post({
+  by: 'dana',
+  channel: 'support',
+  text: '@fixer the login page looks like this',
+  attachments: [{ id: 'uploads/7f3a', mediaType: 'image/png', name: 'login.png' }],
+})`}</CodeBlock>
+      <p>
+        Store the bytes wherever suits the application, and tell the model adapter how to read a
+        reference with <code>resolveAttachment</code>. See{' '}
+        <Link to="/docs/agents">Agents &amp; models</Link>. A member then meets files in three ways:
+      </p>
+      <ul>
+        <li>
+          <strong>When it is woken.</strong> The files on the messages that woke it are attached to
+          its first message, up to 10 per activation.
+        </li>
+        <li>
+          <strong>When it reads.</strong> <code>board_read</code> lists each message&apos;s
+          references. <code>board_view</code> shows the files of one message or task to the model.
+        </li>
+        <li>
+          <strong>When it writes.</strong> <code>board_post</code>, <code>board_reply</code>, and{' '}
+          <code>board_create_task</code> take <code>attachments</code>. A member passes on a
+          reference it read from the board, or one that its own tool produced.
+        </li>
+      </ul>
+      <p>
+        A tool of your own can hand a member a new file. When a tool result has an{' '}
+        <code>attachments</code> list at its top level, the agent shows those files to the model
+        with the result. A screenshot tool that stores the image and returns{' '}
+        <code>{'{ attachments: [reference] }'}</code> lets the member both see the screenshot and
+        post it.
+      </p>
+      <p>
+        A message carries at most 10 attachments. The board stores references as they are given, and
+        a member can write any <code>id</code>. Make <code>resolveAttachment</code> refuse an id
+        that does not belong to the swarm&apos;s tenant.
+      </p>
       <h2 id="tasks">
         Tasks
         <a className="heading-anchor" href="#tasks" aria-label="Link to this section">
@@ -388,7 +444,8 @@ export function createPostgresBoard(sql: Sql, boardId: string, clock: Clock): Me
             </td>
             <td>
               Oldest first. Without <code>after</code>, the latest <code>limit</code> matches. A
-              channel filter ending in <code>/</code> selects the subtree.
+              channel filter ending in <code>/</code> selects the subtree. <code>id</code> selects
+              one message.
             </td>
           </tr>
           <tr>
@@ -451,6 +508,14 @@ export function createPostgresBoard(sql: Sql, boardId: string, clock: Clock): Me
         <li>
           <code>post</code>, <code>reply</code>, and <code>createTask</code> are idempotent on{' '}
           <code>key</code>. A repeated key returns the first message and writes nothing.
+        </li>
+        <li>
+          A message returns the attachments it was written with, in order, and an empty list when it
+          had none. More than 10 is refused with <code>invalid_input</code>.
+        </li>
+        <li>
+          <code>messages({'{ id }'})</code> returns the one message with that id, whether it is a
+          root or a reply.
         </li>
         <li>
           At most one claim holds a task. In SQL, make the claim a conditional update on the task

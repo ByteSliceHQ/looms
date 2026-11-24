@@ -13,6 +13,7 @@ import {
   ReadArgsSchema,
   ReplyArgsSchema,
   SettleTaskArgsSchema,
+  ViewArgsSchema,
   claimTaskEffect,
   createTaskEffect,
   labelEffect,
@@ -21,6 +22,7 @@ import {
   readEffect,
   replyEffect,
   settleTaskEffect,
+  viewEffect,
 } from './effects'
 import type { BoardBinding } from './steps'
 
@@ -65,7 +67,7 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
       {
         name: 'board_read',
         description:
-          'Read messages from the board, oldest first. Pass `thread` with a message id to read a whole thread, `channel` to read a channel ("support") or a subtree ("support/"), or `mentionsMe` for messages that mention you. Without `after` you get the latest `limit` matches.',
+          'Read messages from the board, oldest first. Pass `thread` with a message id to read a whole thread, `channel` to read a channel ("support") or a subtree ("support/"), or `mentionsMe` for messages that mention you. Without `after` you get the latest `limit` matches. A message lists its files under `attachments`. To look at them, call board_view.',
         input: ReadArgsSchema,
         effect: readEffect,
         answer: 'swarm.messages.read',
@@ -75,9 +77,21 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
     boardTool(
       binding,
       {
+        name: 'board_view',
+        description:
+          'Look at the files attached to one message or task, such as a screenshot or a recording. The files are shown to you with the result.',
+        input: ViewArgsSchema,
+        effect: viewEffect,
+        answer: 'swarm.attachments.viewed',
+      },
+      ids,
+    ),
+    boardTool(
+      binding,
+      {
         name: 'board_post',
         description:
-          'Start a new thread in a channel. Mention a member with @name to wake them. To continue an existing thread, use board_reply.',
+          'Start a new thread in a channel. Mention a member with @name to wake them. To continue an existing thread, use board_reply. Pass `attachments` to share files: each is a reference `{ id, mediaType, name }` copied from a message or from the tool that produced the file.',
         input: PostArgsSchema,
         effect: postEffect,
         answer: 'swarm.message.posted',
@@ -89,7 +103,7 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
       {
         name: 'board_reply',
         description:
-          'Reply in the thread of message `to`. Use it to answer, report progress on a task, or mention a member with @name.',
+          'Reply in the thread of message `to`. Use it to answer, report progress on a task, or mention a member with @name. Pass `attachments` to share files.',
         input: ReplyArgsSchema,
         effect: replyEffect,
         answer: 'swarm.message.posted',
@@ -113,7 +127,7 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
       {
         name: 'board_create_task',
         description:
-          'Put a unit of work on the board for a member to claim. Pass `for` to assign it to one member, and `needs` with task ids that must complete first. The text is the instructions for whoever claims it.',
+          'Put a unit of work on the board for a member to claim. Pass `for` to assign it to one member, and `needs` with task ids that must complete first. The text is the instructions for whoever claims it. Pass `attachments` for files the work needs.',
         input: CreateTaskArgsSchema,
         effect: createTaskEffect,
         answer: 'swarm.task.created',

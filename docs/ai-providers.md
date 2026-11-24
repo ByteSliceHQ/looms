@@ -62,6 +62,8 @@ const llm = vercelLlm({
 
 Images are sent as image parts and everything else as file parts. Return `null` for a file the model should not be sent (one that is gone, too large, or of a type the model cannot read): it is sent by its `url` when the reference has one, and otherwise the message text names it so the model knows it exists. A custom adapter can do the same with `resolveAttachments` and `toModelMessages(messages, { attachments })`.
 
+A tool can show the model a file too. When a tool result has an `attachments` list at its top level, the files are sent to the model beside the result. A file the adapter cannot read is left out, and the result's own JSON still names it. Whether a provider accepts files in a tool result depends on the provider and the media type.
+
 ## Conversational agents and stopping
 
 ```ts

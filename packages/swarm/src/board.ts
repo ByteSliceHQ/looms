@@ -1,5 +1,7 @@
 import { Data, Schema } from 'effect'
 
+import { AttachmentSchema, type Attachment } from '@looms/agent'
+
 /**
  * A message board is the only thing swarm members share. It holds channels of threaded messages,
  * tasks that members claim under a lease, and one ordered event log that a swarm follows.
@@ -23,6 +25,11 @@ export const BoardMessageSchema = Schema.Struct({
   mentions: Schema.Array(Schema.String),
   /** `key=value` state. Keys under `board.` belong to the board. */
   labels: BoardLabelsSchema,
+  /**
+   * Files that travel with the message: screenshots, recordings, documents. The board holds
+   * these references and never the bytes, which stay wherever the application stored them.
+   */
+  attachments: Schema.Array(AttachmentSchema),
   createdAt: Schema.Finite,
 })
 export type BoardMessage = Schema.Schema.Type<typeof BoardMessageSchema>
@@ -108,6 +115,9 @@ export const TASK_LABEL = 'board.task'
 /** Label keys with this prefix are written only by the board. */
 export const RESERVED_LABEL_PREFIX = 'board.'
 
+/** The most files one message can carry. */
+export const MAX_ATTACHMENTS = 10
+
 export const DEFAULT_LEASE_MS = 15 * 60_000
 export const MAX_LEASE_MS = 60 * 60_000
 
@@ -140,6 +150,8 @@ export interface PostInput {
   readonly channel: string
   readonly text: string
   readonly labels?: BoardLabels
+  /** At most {@link MAX_ATTACHMENTS}. Stored and returned as given. */
+  readonly attachments?: readonly Attachment[]
   /**
    * Idempotency key. Posting the same key again returns the first message and writes nothing.
    * The same key in a different channel or thread fails with `duplicate_key`.
@@ -153,6 +165,7 @@ export interface ReplyInput {
   readonly to: string
   readonly text: string
   readonly labels?: BoardLabels
+  readonly attachments?: readonly Attachment[]
   readonly key?: string
 }
 
@@ -169,6 +182,8 @@ export interface LabelInput {
 }
 
 export interface MessageQuery {
+  /** Only the message with this id. */
+  readonly id?: string
   /** `support` matches that channel. `support/` matches it and every channel below it. */
   readonly channel?: string
   /** Only the thread with this root: the root itself and its replies. */
@@ -190,6 +205,8 @@ export interface CreateTaskInput {
   readonly for?: string
   readonly needs?: readonly string[]
   readonly labels?: BoardLabels
+  /** Kept on the task's root message. */
+  readonly attachments?: readonly Attachment[]
   readonly key?: string
 }
 
@@ -258,6 +275,8 @@ export interface EventPage {
  *
  * - Every write appends to one totally ordered event log, in the order the writes took effect.
  * - `post`, `reply` and `createTask` are idempotent on `key`.
+ * - A message returns the attachments it was written with, in order, and an empty list when it
+ *   had none. More than {@link MAX_ATTACHMENTS} is refused with `invalid_input`.
  * - At most one claim holds a task. `claim` on a held task fails with `task_claimed`.
  * - A claim ends when it is settled, when its lease passes, or when the task is canceled. After
  *   that its token fails with `claim_lost` and changes nothing, so a member that stalled cannot
