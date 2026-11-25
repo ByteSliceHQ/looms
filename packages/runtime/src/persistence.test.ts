@@ -25,6 +25,18 @@ import { defineWorkflow, workflow } from '@looms/workflow'
 import { createLooms } from './looms'
 import { type WakeScheduler } from './runtime'
 
+function logOf(runId: string, count: number) {
+  return Array.from({ length: count }, (_, i) =>
+    createEvent(runId, {
+      type: i === 0 ? 'runtime.run.started' : 'probe.event',
+      payload:
+        i === 0 ? { rootThreadId: 't', kind: 'echo', definitionName: 'e', input: null } : { i },
+      threadId: null,
+      origin: { type: 'system' },
+    }),
+  )
+}
+
 describe('createLooms runtime', () => {
   test('createLooms defaults a snapshot store so trim recovery works without one being passed', async () => {
     const store = await Effect.runPromise(makeMemoryEventStore)
@@ -242,6 +254,66 @@ describe('createLooms runtime', () => {
 
     const after = await looms.getRun(runId)
     expect(after.status).toBe('running')
+    await looms.stop()
+  })
+
+  test('a cold load folds the log in bounded pages', async () => {
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+    const limits: Array<number | undefined> = []
+    const offsets: number[] = []
+
+    const store: EventStore = {
+      ...inner,
+      read: (runId, options) => {
+        limits.push(options?.limit)
+        offsets.push(options?.fromSeq ?? 1)
+        return inner.read(runId, options)
+      },
+    }
+
+    const runId = 'run_paged_replay'
+
+    await Effect.runPromise(inner.append(runId, logOf(runId, 150)))
+
+    const echo = defineAgent({ name: 'paged-echo', instructions: 'echo' })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })], store })
+
+    const state = await looms.getRun(runId)
+    expect(state.status).toBe('running')
+    // The last page starts at 129 and reaches seq 150, so the replay folded every event.
+    expect([...new Set(offsets)]).toEqual([1, 65, 129])
+    expect(limits.every((limit) => limit !== undefined && limit <= 64)).toBe(true)
+    await looms.stop()
+  })
+
+  test('a replay continues past a short page while the log holds more events', async () => {
+    const inner = await Effect.runPromise(makeMemoryEventStore)
+    const offsets: number[] = []
+
+    const store: EventStore = {
+      ...inner,
+      read: (runId, options) =>
+        Effect.gen(function* () {
+          offsets.push(options?.fromSeq ?? 1)
+
+          return yield* inner.read(runId, {
+            fromSeq: options?.fromSeq,
+            limit: Math.min(options?.limit ?? 10, 10),
+          })
+        }),
+    }
+
+    const runId = 'run_capped_replay'
+
+    await Effect.runPromise(inner.append(runId, logOf(runId, 150)))
+
+    const echo = defineAgent({ name: 'capped-echo', instructions: 'echo' })
+    const looms = createLooms({ modules: [agent({ definitions: [echo] })], store })
+
+    const state = await looms.getRun(runId)
+    expect(state.status).toBe('running')
+    expect(offsets[0]).toBe(1)
+    expect(offsets[offsets.length - 1]).toBe(141)
     await looms.stop()
   })
 
