@@ -60,38 +60,17 @@ export interface CommitResult<A> {
   readonly append: AppendResult | null
 }
 
-function readRemaining(
-  store: EventStore,
-  runId: string,
-  events: EventEnvelope[],
-  expectedTail?: number,
-): Effect.Effect<EventEnvelope[], EventStoreError> {
-  return Effect.gen(function* () {
-    let collected = events
+/**
+ * Events folded per read while a log is replayed. A replay holds one page at a time, so its
+ * memory does not grow with the length of the log on a host with an isolate memory limit.
+ */
+const REPLAY_PAGE_SIZE = 64
 
-    while (collected.length > 0) {
-      const lastSeq = collected[collected.length - 1]!.seq
-      const target = expectedTail ?? (yield* store.tail(runId))
-
-      if (lastSeq >= target) {
-        break
-      }
-
-      const more = yield* store.read(runId, {
-        fromSeq: lastSeq + 1,
-        limit: expectedTail !== undefined ? Math.max(0, target - lastSeq) : undefined,
-      })
-
-      if (more.length === 0 || more[0]!.seq <= lastSeq) {
-        break
-      }
-
-      collected = [...collected, ...more]
-    }
-
-    return collected
-  })
-}
+type ReplayError =
+  | EventStoreTruncationError
+  | EventStoreTrimmedError
+  | EventStoreError
+  | DefinitionResolveError
 
 export interface RuntimeRepositoryOptions {
   readonly registry: ComposedRegistry
@@ -201,47 +180,76 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
     )
   })
 
+  const replay = (
+    store: EventStore,
+    runId: string,
+    cursor: RunCursor,
+    window: { readonly throughSeq?: number | undefined; readonly checkGap: boolean },
+  ): Effect.Effect<RunCursor, ReplayError> =>
+    Effect.gen(function* () {
+      let next = cursor
+      let first = true
+
+      while (window.throughSeq === undefined || next.seq < window.throughSeq) {
+        const fromSeq = next.seq + 1
+
+        const limit =
+          window.throughSeq === undefined
+            ? REPLAY_PAGE_SIZE
+            : Math.min(REPLAY_PAGE_SIZE, window.throughSeq - next.seq)
+
+        const page = yield* store.read(runId, { fromSeq, limit })
+
+        if (page.length === 0) {
+          break
+        }
+
+        const firstSeq = page[0]!.seq
+
+        if ((first ? window.checkGap : true) && firstSeq > fromSeq) {
+          if (store.bounds) {
+            const bounds = yield* store.bounds(runId)
+
+            if (bounds.head > fromSeq) {
+              return yield* new EventStoreTrimmedError(runId, bounds.head, fromSeq)
+            }
+          } else {
+            return yield* new EventStoreTrimmedError(runId, firstSeq, fromSeq)
+          }
+        }
+
+        first = false
+
+        const before = next.seq
+
+        yield* primePinnedDefinitions(definitionResolver, page)
+        next = advanceCursor(next, page, registry)
+
+        if (next.seq <= before) {
+          break
+        }
+
+        // A short page can mean the store applied its own batch cap, so confirm the tail
+        // before ending the replay.
+        if (page.length < limit) {
+          const tail = yield* store.tail(runId)
+
+          if (next.seq >= tail) {
+            break
+          }
+        }
+      }
+
+      return next
+    })
+
   const catchUp = (
     store: EventStore,
     runId: string,
     cursor: RunCursor,
     expectedTail?: number,
-  ): Effect.Effect<
-    RunCursor,
-    EventStoreTruncationError | EventStoreTrimmedError | EventStoreError | DefinitionResolveError
-  > =>
-    Effect.gen(function* () {
-      if (expectedTail !== undefined && cursor.seq === expectedTail) {
-        return cursor
-      }
-
-      const fromSeq = cursor.seq + 1
-      const limit = expectedTail !== undefined ? Math.max(0, expectedTail - cursor.seq) : undefined
-      let delta = yield* store.read(runId, { fromSeq, limit })
-
-      if (delta.length === 0) {
-        return cursor
-      }
-
-      const firstSeq = delta[0]!.seq
-
-      if (firstSeq > fromSeq) {
-        if (store.bounds) {
-          const bounds = yield* store.bounds(runId)
-
-          if (bounds.head > fromSeq) {
-            return yield* new EventStoreTrimmedError(runId, bounds.head, fromSeq)
-          }
-        } else {
-          return yield* new EventStoreTrimmedError(runId, firstSeq, fromSeq)
-        }
-      }
-
-      delta = yield* readRemaining(store, runId, delta, expectedTail)
-      yield* primePinnedDefinitions(definitionResolver, delta)
-
-      return advanceCursor(cursor, delta, registry)
-    })
+  ): Effect.Effect<RunCursor, ReplayError> =>
+    replay(store, runId, cursor, { throughSeq: expectedTail, checkGap: true })
 
   const loadCursorCold = (
     store: EventStore,
@@ -306,28 +314,7 @@ export function createRuntimeRepository(options: RuntimeRepositoryOptions) {
         }
       }
 
-      const fromSeq = cursor.seq + 1
-      let delta = yield* store.read(runId, { fromSeq })
-
-      if (cursor.seq === 0 && delta[0] && delta[0].seq > 1) {
-        if (store.bounds) {
-          const bounds = yield* store.bounds(runId)
-
-          if (bounds.head > 1) {
-            return yield* new EventStoreTrimmedError(runId, bounds.head, 1)
-          }
-        } else {
-          return yield* new EventStoreTrimmedError(runId, delta[0].seq, 1)
-        }
-      }
-
-      if (delta.length > 0) {
-        delta = yield* readRemaining(store, runId, delta)
-      }
-
-      yield* primePinnedDefinitions(definitionResolver, delta)
-
-      return advanceCursor(cursor, delta, registry)
+      return yield* replay(store, runId, cursor, { checkGap: cursor.seq === 0 })
     })
 
   const loadCursor = (
