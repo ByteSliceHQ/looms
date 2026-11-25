@@ -559,6 +559,8 @@ export interface SubscribeEventsOptions {
 export interface SubscriptionSocket {
   addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void
   close(code?: number, reason?: string): void
+  /** Writes a frame. The store sends `ping` on an idle socket, which the host answers with `pong`. */
+  send?(data: string): void
 }
 
 export interface SubscriptionSocketConstructor {

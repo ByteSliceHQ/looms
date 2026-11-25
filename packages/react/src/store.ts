@@ -104,6 +104,12 @@ export interface LoomsClientStoreOptions {
   /** Backoff between reconnects. The delay stays fixed, matching the SSE client. */
   reconnectDelayMs?: number
   /**
+   * How often an idle socket writes a `ping`. The host answers it with `pong` without waking the
+   * run. A socket that never writes is dropped by the hops between the browser and the run, and
+   * the store then reconnects for as long as the page stays open. Defaults to 25 seconds.
+   */
+  socketHeartbeatMs?: number
+  /**
    * Makes every HTTP request the store sends, so a host can add what its backend authenticates
    * by. With one, the live stream is read through it too, in place of `EventSource`, which
    * cannot carry headers.
@@ -215,6 +221,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   const fetchFn = options.fetch ?? fetch
   const ids = resolveIds(options.ids)
   const reconnectDelayMs = options.reconnectDelayMs ?? 1_000
+  const socketHeartbeatMs = options.socketHeartbeatMs ?? 25_000
   const coalesce = options.coalesce ?? 'adaptive'
   const listeners = new Set<StoreListener>()
   const events: EventEnvelope[] = []
@@ -257,6 +264,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   let liveAbort: AbortController | undefined
   let eventSource: EventSource | undefined
   let socket: { close(code?: number, reason?: string): void } | undefined
+  /** Stops the heartbeat of the socket in hand, when that socket is replaced or let go. */
+  let stopSocketHeartbeat: (() => void) | undefined
   let reconnectFiber: Fiber.Fiber<void> | undefined
   let syncing: Promise<void> | null = null
 
@@ -759,11 +768,37 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
     }
 
     const ws = new Ctor(url)
+    const send = ws.send?.bind(ws)
+    let heartbeat: ReturnType<typeof setInterval> | undefined
+
+    const stopHeartbeat = () => {
+      if (heartbeat !== undefined) {
+        clearInterval(heartbeat)
+        heartbeat = undefined
+      }
+    }
+
+    // A replaced socket may close after the one that took its place opened, so this socket keeps
+    // its own heartbeat and stops only that one.
+    stopSocketHeartbeat?.()
+    stopSocketHeartbeat = stopHeartbeat
     socket = ws
 
     ws.addEventListener('open', () => {
       live = true
       setStatus('live')
+
+      if (send === undefined || heartbeat !== undefined) {
+        return
+      }
+
+      heartbeat = setInterval(() => {
+        try {
+          send('ping')
+        } catch {
+          // A socket that refuses the write is closing; its close event stops the heartbeat.
+        }
+      }, socketHeartbeatMs)
     })
 
     ws.addEventListener('message', (event) => {
@@ -778,6 +813,7 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
 
     ws.addEventListener('close', () => {
       live = false
+      stopHeartbeat()
 
       if (socket === ws) {
         socket = undefined
@@ -819,6 +855,8 @@ export function createLoomsStore(options: LoomsClientStoreOptions): LoomsClientS
   const stopLive = () => {
     liveStarted = false
     live = false
+    stopSocketHeartbeat?.()
+    stopSocketHeartbeat = undefined
 
     if (reconnectFiber !== undefined) {
       Effect.runFork(Fiber.interrupt(reconnectFiber))
