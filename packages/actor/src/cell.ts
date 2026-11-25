@@ -1,13 +1,16 @@
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 
 import {
   EventStoreTag,
+  cleanUndefined,
   type AnyRuntimeModule,
   type DefinitionResolver,
   type EventInput,
   type EventStore,
   type EventStoreTrimCoverage,
+  type JsonValue,
   type LaunchRunArgs,
+  type ProjectionDefinition,
   type RunAttributeFields,
   type RunLauncher,
   type RunState,
@@ -32,6 +35,16 @@ import {
 } from '@looms/runtime'
 
 import { runIdFromRequest } from './routing'
+
+/** A projection was read by a name no module registered. */
+export class UnknownProjectionError extends Data.TaggedError('UnknownProjectionError')<{
+  readonly projection: string
+  readonly message: string
+}> {
+  constructor(projection: string) {
+    super({ projection, message: `Unknown projection: ${projection}` })
+  }
+}
 
 export interface ActorCellOptions<
   TModules extends readonly AnyRuntimeModule[] = readonly AnyRuntimeModule[],
@@ -92,6 +105,13 @@ export interface ActorCell<
   accept(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
   cancel(): Promise<void>
   getRun(): Promise<RunState>
+  /**
+   * Fold a registered projection over this cell's run, typed by its definition. Rejects with
+   * {@link UnknownProjectionError} when no module registered a projection of that name.
+   */
+  project<S>(definition: ProjectionDefinition<S>): Promise<S>
+  /** The same, by the projection's registered name, as JSON. For callers across a boundary. */
+  projection(name: string): Promise<JsonValue>
 }
 
 /**
@@ -178,5 +198,18 @@ export function createActorCell<
     cancel: () => provide(runtime.cancel(runId).pipe(Effect.asVoid)),
 
     getRun: () => provide(runtime.getRun(runId)),
+
+    project: (definition) =>
+      runtime.registry.projections.has(definition.name)
+        ? provide(runtime.project(runId, definition))
+        : Promise.reject(new UnknownProjectionError(definition.name)),
+
+    projection: (name) => {
+      const definition = runtime.registry.projections.get(name)
+
+      return definition
+        ? provide(runtime.project(runId, definition).pipe(Effect.map(cleanUndefined)))
+        : Promise.reject(new UnknownProjectionError(name))
+    },
   }
 }

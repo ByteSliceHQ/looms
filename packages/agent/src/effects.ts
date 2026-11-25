@@ -263,6 +263,9 @@ function runCallLlm(args: {
 
       return llm.complete({
         model: definition.model,
+        agent: { name: definition.name, version: definition.version },
+        turn,
+        input,
         instructions,
         messages: [{ role: 'system', content: instructions }, ...turnMessages],
         tools,

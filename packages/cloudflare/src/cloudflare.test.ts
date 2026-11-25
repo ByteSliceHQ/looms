@@ -22,7 +22,7 @@ import {
 } from '@looms/core'
 import { secretSealer, type SecretProvider } from '@looms/runtime'
 import { defineSchedule, ensureSchedule, every, once, schedule } from '@looms/schedule'
-import { defineWorkflow, workflow } from '@looms/workflow'
+import { defineWorkflow, nodes, workflow } from '@looms/workflow'
 
 // Mock cloudflare:workers for bun test runtime before importing durable-object
 void mock.module('cloudflare:workers', () => ({
@@ -40,7 +40,7 @@ void mock.module('cloudflare:workers', () => ({
   },
 }))
 
-const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost } =
+const { LoomsDurableObject, durableObjectLauncher, durableObjectScheduleHost, readProjection } =
   await import('./durable-object')
 
 const { durableObjectAlarms } = await import('./alarm-scheduler')
@@ -376,6 +376,46 @@ describe('@looms/cloudflare', () => {
 
     const fetchRes = await doInstance.fetch(new Request('http://localhost/health'))
     expect(fetchRes.status).toBe(200)
+  })
+
+  test('LoomsDurableObject reads a registered projection of its run', async () => {
+    const flow = defineWorkflow({
+      name: 'projected-flow',
+      nodes: [{ id: 'work', run: () => ({ ok: true }) }],
+    })
+
+    class ProjectingObject extends LoomsDurableObject {
+      override configure(): LoomsDurableObjectConfig {
+        return { modules: [workflow({ definitions: [flow] })] }
+      }
+    }
+
+    // SAFETY: the test stands in for a Durable Object state.
+    // @ts-expect-error mock context in unit test
+    const object = new ProjectingObject(objectContext('run_projected', sqliteStorage()), {})
+
+    await object.startRun({
+      runId: 'run_projected',
+      kind: 'workflow',
+      definitionName: 'projected-flow',
+      input: null,
+    })
+
+    // Inside the object, typed by the definition; from a stub, by name and typed again.
+    const inside = await object.project(nodes)
+    const viaStub = await readProjection(object, nodes)
+
+    expect(Object.keys(inside).length).toBeGreaterThan(0)
+    expect(viaStub).toEqual(inside)
+    expect(await object.projection('nodes')).toEqual(inside)
+
+    expect(object.projection('missing')).rejects.toMatchObject({
+      _tag: 'UnknownProjectionError',
+    })
+
+    expect(object.project({ ...nodes, name: 'unregistered' })).rejects.toMatchObject({
+      _tag: 'UnknownProjectionError',
+    })
   })
 
   test('LoomsDurableObject replays a run over a hibernating socket', async () => {

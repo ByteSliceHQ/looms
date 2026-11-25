@@ -6,6 +6,7 @@ import type {
   EventInput,
   EventStore,
   EventStoreTrimCoverage,
+  ProjectionDefinition,
   RunAttributeFields,
   RunLauncher,
   RunState,
@@ -101,6 +102,8 @@ export interface LocalActorHost<
     options?: RunSignalOptions,
   ): Promise<RunState>
   getRun(runId: string): Promise<RunState>
+  /** Fold a registered projection over a run, typed by its definition. */
+  project<S>(runId: string, definition: ProjectionDefinition<S>): Promise<S>
   fetch(req: Request): Promise<Response | null>
   dispose(): Promise<void>
 }
@@ -202,6 +205,7 @@ export function createLocalActorHost<
     signal: (runId, events, signalOptions) =>
       getCell(runId).then((cell) => cell.signal(events, signalOptions)),
     getRun: (runId) => getCell(runId).then((cell) => cell.getRun()),
+    project: (runId, definition) => getCell(runId).then((cell) => cell.project(definition)),
 
     fetch: (req: Request): Promise<Response | null> => {
       const url = new URL(req.url)

@@ -11,8 +11,21 @@ export interface LlmToolSpec {
   readonly inputJsonSchema: JsonValue
 }
 
+/** The agent a model call is made for. */
+export interface LlmAgentRef {
+  readonly name: string
+  readonly version: string
+}
+
 export interface LlmCompleteArgs {
+  /** The model id the agent asked for. Absent when the agent leaves it to the adapter. */
   model?: string
+  /** The agent this call is made for. */
+  agent: LlmAgentRef
+  /** The agent's turn, from 1. */
+  turn: number
+  /** The agent run's input. */
+  input: JsonValue
   instructions: string
   messages: Message[]
   tools: ToolLike[]
@@ -57,21 +70,38 @@ export function llmFromAdapter(adapter: LlmAdapter): LlmService {
 
 export class LlmTag extends Context.Service<LlmTag, LlmService>()('looms/Llm') {}
 
+/**
+ * What a scripted model sees on each call: the agent's turn, plus what a real `llm.complete`
+ * receives about the call, so a script can tell which agent, run and model it is serving.
+ */
+export interface StubLlmContext extends AgentTurnContext {
+  /** The run the call is made for, as `LlmCompleteArgs.run`. */
+  readonly run: AgentRunContext
+  /** The agent the call is made for, as `LlmCompleteArgs.agent`. */
+  readonly agent: LlmAgentRef
+  /** The model id the agent asked for, as `LlmCompleteArgs.model`. */
+  readonly model?: string
+}
+
 export interface StubLlmPolicy {
-  toolCallsFor?: (ctx: AgentTurnContext) => ToolCall[] | undefined
+  toolCallsFor?: (ctx: StubLlmContext) => ToolCall[] | undefined
   doneAfterText?: boolean
 }
 
 export const makeStubLlm = (policy: StubLlmPolicy = {}): LlmService => ({
   complete: (args) =>
     Effect.sync(() => {
-      const ctx: AgentTurnContext = {
-        threadId: 'stub',
-        turn: 0,
+      const ctx: StubLlmContext = {
+        threadId: args.run.threadId,
+        turn: args.turn,
         messages: args.messages,
-        input: null,
+        input: args.input,
         tools: args.tools,
         instructions: args.instructions,
+        signal: args.signal,
+        run: args.run,
+        agent: args.agent,
+        model: args.model,
       }
 
       const toolCalls = policy.toolCallsFor?.(ctx)

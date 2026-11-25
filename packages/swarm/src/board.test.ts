@@ -31,6 +31,21 @@ describe('message board', () => {
     expect(failures.some((failure) => failure.startsWith('only one claim holds a task'))).toBe(true)
   })
 
+  test('a memory board made again refuses the cursors of its earlier log', async () => {
+    const before = createMemoryBoard({ logId: 'acme' })
+
+    await before.post({ by: 'ada', channel: 'ops', text: '1' })
+    await before.post({ by: 'ada', channel: 'ops', text: '2' })
+
+    const { cursor } = await before.events()
+    const again = createMemoryBoard({ logId: 'acme' })
+
+    await again.post({ by: 'ada', channel: 'ops', text: 'fresh' })
+
+    expect(again.events({ after: cursor ?? '' })).rejects.toMatchObject({ code: 'cursor_unknown' })
+    expect(createMemoryBoard().events({ after: cursor ?? '' })).rejects.toBeInstanceOf(BoardError)
+  })
+
   test('mentions ignore email addresses and repeat names once', () => {
     expect(parseMentions('mail dana@example.com, then @triage and (@Fixer) @triage')).toEqual([
       'triage',

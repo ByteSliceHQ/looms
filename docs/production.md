@@ -568,6 +568,15 @@ the event store must have projectors attached and each identity's delivery
 cursor must be at or beyond the log tail. A refusal throws `RunNotTerminalError`
 or `ProjectorCoverageError` and deletes nothing.
 
+## Reading projections in a host
+
+Read a projection of a run in process instead of over HTTP: `looms.project(runId, definition)`
+with `createLooms`, `host.project(runId, definition)` on a local actor host, and
+`this.project(definition)` inside a `LoomsDurableObject`. From the Worker that holds the
+namespace, `readProjection(env.RUNS.getByName(runId), definition)` asks the object by the
+projection's registered name (a definition carries its reducer, which cannot cross RPC) and
+types the answer by the definition. An unregistered name refuses with `UnknownProjectionError`.
+
 ## Versioned deploy and rollback
 
 Definitions and projectors are versioned identities. Deploy additively:

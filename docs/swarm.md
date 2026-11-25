@@ -41,7 +41,7 @@ const looms = createLooms({
 await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })
 ```
 
-`ensureSwarm` starts the swarm under a fixed run id, or does nothing when that run already exists. Call it on boot or when you provision a tenant.
+`ensureSwarm` starts the swarm under a fixed run id, does nothing when it is already running, and starts it again when it was stopped or halted. Call it on boot or when you provision a tenant. See [Pause, stop and restart](#pause-stop-and-restart).
 
 A member's `name` is how it signs its messages and how others mention it, so it must be lowercase letters, digits, and hyphens. `memberTools` gives the agent the board tools, bound to its own name and board. Any startable definition can be a member's `agent`, including a workflow.
 
@@ -55,7 +55,7 @@ The swarm reads the board's event log and wakes a member when:
 
 `channels: ['support']` listens to one channel. `channels: ['support/']` listens to `support` and everything below it. A member with no channels is woken only by mentions and assigned tasks. A member is never woken by its own writes.
 
-Each wake is one **activation**: a separate run of the member's agent. Its run id is derived from the swarm's run id, the member, and the activation number, in the host's id format: `activationRunId(swarmRunId, member, n)` returns it. The agent's first message lists what happened on the board and names the other members. A member runs one activation at a time. Events that arrive while it is running are queued and delivered together in the next activation.
+Each wake is one **activation**: a separate run of the member's agent. Its run id is derived from the swarm's run id, its generation, the member, and the activation number, in the host's id format: `activationRunId({ swarmRunId, member, activation, generation })` returns it. `generation` defaults to 1. The agent's first message lists what happened on the board and names the other members. A member runs one activation at a time. Events that arrive while it is running are queued and delivered together in the next activation.
 
 Members keep no memory between activations. Whatever should outlive a turn belongs on the board.
 
@@ -158,7 +158,37 @@ A member with `restMs` is not woken again until that long after its last run end
 { name: 'triage', agent: triage, channels: ['support/'], restMs: 60_000 }
 ```
 
-`stop()` ends a swarm. It stops waking members and completes once the members that are mid-run have finished.
+## Pause, stop and restart
+
+A swarm's run stays open for as long as the swarm exists, so a host can keep one run id per tenant for good. Four signals change what it does:
+
+| Signal                      | What the swarm does                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pause()`                   | Wakes nobody and reads nothing. Keeps its cursor and every member's inbox                                            |
+| `resume()`                  | Carries on from where it paused: reads from its cursor and wakes whoever has something waiting                       |
+| `stop()`                    | Wakes nobody and reads nothing, and drops what is waiting in the inboxes                                             |
+| `restart({ board, after })` | Starts a new generation: clean member state, and reading from `after` (a cursor, or `null` for the start of the log) |
+
+Members that are mid-run when the swarm pauses or stops finish their run. `restart` works on a running, paused, stopped or halted swarm. It keeps the swarm's cursor unless `after` is given, or reads from the start when `board` names a different board. A member still running from the earlier generation finishes before the new generation wakes it.
+
+```ts
+import { pause, restart, resume, stop } from '@swirls/looms/swarm'
+
+await looms.signal('swarm_acme', [pause()])
+await looms.signal('swarm_acme', [resume()])
+await looms.signal('swarm_acme', [stop()])
+await looms.signal('swarm_acme', [restart({ after: null })]) // read the board again from the start
+```
+
+Each generation numbers its activations from 1, and its activation run ids include the generation, so a restarted swarm never starts a run an earlier generation already used. The first generation's ids are the ones swarms had before generations.
+
+`ensureSwarm` restarts a stopped or halted swarm from its cursor, on the board in its `config` (or its current board), and answers `'restarted'`. It leaves a paused swarm paused and answers `'paused'`: resume it on purpose. Pass `{ restart: { after: null } }` to restart from the start of the log, or `{ restart: false }` to leave a stopped swarm as it is. Two hosts that ensure the same stopped swarm at once start one generation.
+
+A swarm **halts** when it cannot go on: its board refuses it (`BoardError`), or its definition is unknown. It records why, wakes nobody, and waits for a restart. To end a swarm for good, cancel its run; a cancelled run id cannot be used again.
+
+### A board that was reset
+
+A board's log can start again from empty, such as when its storage is replaced. The swarm's cursor then names a position the new log never issued. The board refuses that cursor with `cursor_unknown`, and the swarm reads the new log from its start. Members keep their state, and `swarmStatus.resets` counts how often it happened. To start the members over as well, `restart()` the swarm.
 
 ## Tenants
 
@@ -198,7 +228,7 @@ swarm({
 })
 ```
 
-A swarm whose own board is refused fails. A member's or a workflow's call to a refused board comes back as a tool error or a failed step.
+A swarm whose own board is refused halts until it is restarted. A member's or a workflow's call to a refused board comes back as a tool error or a failed step.
 
 Three more things to know:
 
@@ -214,8 +244,25 @@ The `swarmStatus` projection shows where the swarm is on the board and what each
 import { swarmStatus } from '@swirls/looms/swarm'
 
 const view = await looms.project('swarm_acme', swarmStatus)
+// view.status → 'running', view.generation → 1
 // view.members.fixer → { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }
 ```
+
+`status` is one of:
+
+| Status      | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
+| `running`   | Following the board and waking members                  |
+| `paused`    | Waiting for `resume()`                                  |
+| `stopping`  | Stopped, with members still mid-run                     |
+| `stopped`   | Waiting for `restart()`                                 |
+| `halted`    | Cannot go on; `error` says why. Waiting for `restart()` |
+| `failed`    | The run itself failed. Its run id cannot be used again  |
+| `cancelled` | The run was cancelled. Its run id cannot be used again  |
+
+`generation` counts the swarm's starts in its run, `error` says why it halted or failed, and `resets` counts the times its board's log was reset under it.
+
+Inside a Durable Object, or from the Worker that holds its namespace, read the projection without the HTTP API: `this.project(swarmStatus)` in the object, or `readProjection(env.RUNS.getByName(runId), swarmStatus)` from the Worker.
 
 ## Bring your own board
 
@@ -247,6 +294,7 @@ export function createPostgresBoard(sql: Sql, boardId: string): MessageBoard {
 The rules a board keeps:
 
 - Every write appends to one ordered event log. Cursors are opaque strings.
+- `events({ after })` refuses with `cursor_unknown` a cursor its current log did not issue: one past the end of the log, one from another board, or one from before the log was reset. It never answers such a cursor with an empty page, or the swarm would wait on it forever. A board whose log can start again should put something in its cursors that names the log, such as a log id or epoch, so an old cursor is not mistaken for a position in the new log.
 - `post`, `reply`, and `createTask` are idempotent on `key`.
 - A message returns the attachments it was written with, in order, and an empty list when it had none. More than 10 is refused with `invalid_input`.
 - `messages({ id })` returns the one message with that id, whether it is a root or a reply.
@@ -255,7 +303,7 @@ The rules a board keeps:
 - Completing a task readies every waiting task whose needs are now all completed.
 - Reject a request the board refuses with `BoardError` and a code. The swarm reports it to the calling agent and does not retry. Any other rejection is treated as a fault and retried.
 
-`boardConformance` checks those rules. It calls your factory for a fresh board before each check and returns one line per failure. The board must read time from the clock it is given, because the suite advances that clock to expire leases:
+`boardConformance` checks those rules. It calls your factory for a fresh board before each check, and for a second one where a check needs it (boards from separate calls must be separate logs), and returns one line per failure. The board must read time from the clock it is given, because the suite advances that clock to expire leases:
 
 ```ts
 import { boardConformance } from '@swirls/looms/swarm'

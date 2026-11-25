@@ -67,10 +67,11 @@ const looms = createLooms({
 
 await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })`}</CodeBlock>
       <p>
-        <code>ensureSwarm</code> starts the swarm under a fixed run id, or does nothing when that
-        run already exists. Call it on boot or when you provision a tenant. Any startable definition
-        can be a member&apos;s <code>agent</code>, including a workflow. See{' '}
-        <Link to="/docs/agents">Agents &amp; models</Link> for the model adapter.
+        <code>ensureSwarm</code> starts the swarm under a fixed run id, does nothing when it is
+        already running, and starts it again when it was stopped or halted. Call it on boot or when
+        you provision a tenant; see <a href="#pause-stop-and-restart">Pause, stop and restart</a>.
+        Any startable definition can be a member&apos;s <code>agent</code>, including a workflow.
+        See <Link to="/docs/agents">Agents &amp; models</Link> for the model adapter.
       </p>
       <h2 id="what-wakes-a-member">
         What wakes a member
@@ -97,11 +98,12 @@ await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })`}</CodeBlock>
       </p>
       <p>
         Each wake is one activation: a separate run of the member&apos;s agent. Its run id is
-        derived from the swarm&apos;s run id, the member, and the activation number, in the
-        host&apos;s id format: <code>activationRunId(swarmRunId, member, n)</code> returns it. The
-        agent&apos;s first message lists what happened on the board and names the other members. A
-        member runs one activation at a time. Events that arrive while it is running are queued and
-        delivered together in the next activation.
+        derived from the swarm&apos;s run id, its generation, the member, and the activation number,
+        in the host&apos;s id format:{' '}
+        <code>{'activationRunId({ swarmRunId, member, activation, generation })'}</code> returns it.{' '}
+        <code>generation</code> defaults to 1. The agent&apos;s first message lists what happened on
+        the board and names the other members. A member runs one activation at a time. Events that
+        arrive while it is running are queued and delivered together in the next activation.
       </p>
       <p>
         Members keep no memory between activations. Whatever should outlive a turn belongs on the
@@ -354,9 +356,92 @@ await looms.signal('swarm_acme', [nudge()])`}</CodeBlock>
         When the board cannot be read, the swarm tries again after 30 seconds and then less often,
         up to every 15 minutes, until a read works or a nudge arrives.
       </p>
+      <h2 id="pause-stop-and-restart">
+        Pause, stop and restart
+        <a
+          className="heading-anchor"
+          href="#pause-stop-and-restart"
+          aria-label="Link to this section"
+        >
+          #
+        </a>
+      </h2>
       <p>
-        <code>stop()</code> ends a swarm. It stops waking members and completes once the members
-        that are mid-run have finished.
+        A swarm&apos;s run stays open for as long as the swarm exists, so a host can keep one run id
+        per tenant for good. Four signals change what it does:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Signal</th>
+            <th>What the swarm does</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>pause()</code>
+            </td>
+            <td>Wakes nobody and reads nothing. Keeps its cursor and every member&apos;s inbox.</td>
+          </tr>
+          <tr>
+            <td>
+              <code>resume()</code>
+            </td>
+            <td>
+              Carries on from where it paused: reads from its cursor and wakes whoever has something
+              waiting.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>stop()</code>
+            </td>
+            <td>Wakes nobody and reads nothing, and drops what is waiting in the inboxes.</td>
+          </tr>
+          <tr>
+            <td>
+              <code>{'restart({ board, after })'}</code>
+            </td>
+            <td>
+              Starts a new generation: clean member state, reading from <code>after</code> (a
+              cursor, or <code>null</code> for the start of the log).
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Members that are mid-run when the swarm pauses or stops finish their run.{' '}
+        <code>restart</code> works on a running, paused, stopped or halted swarm. It keeps the
+        swarm&apos;s cursor unless <code>after</code> is given, or reads from the start when{' '}
+        <code>board</code> names a different board. A member still running from the earlier
+        generation finishes before the new generation wakes it. Each generation numbers its
+        activations from 1 and puts the generation in their run ids, so a restarted swarm never
+        starts a run an earlier generation used.
+      </p>
+      <CodeBlock lang="ts">{`import { pause, restart, resume, stop } from '@swirls/looms/swarm'
+
+await looms.signal('swarm_acme', [pause()])
+await looms.signal('swarm_acme', [resume()])
+await looms.signal('swarm_acme', [stop()])
+await looms.signal('swarm_acme', [restart({ after: null })]) // from the start of the log`}</CodeBlock>
+      <p>
+        <code>ensureSwarm</code> restarts a stopped or halted swarm from its cursor and answers{' '}
+        <code>&apos;restarted&apos;</code>. It leaves a paused swarm paused and answers{' '}
+        <code>&apos;paused&apos;</code>. Pass <code>{'{ restart: { after: null } }'}</code> to
+        restart from the start of the log, or <code>{'{ restart: false }'}</code> to leave a stopped
+        swarm as it is.
+      </p>
+      <p>
+        A swarm halts when it cannot go on: its board refuses it, or its definition is unknown. It
+        records why, wakes nobody, and waits for a restart. To end a swarm for good, cancel its run.
+        A cancelled run id cannot be used again.
+      </p>
+      <p>
+        A board&apos;s log can start again from empty, such as when its storage is replaced. The
+        board then refuses the swarm&apos;s old cursor with <code>cursor_unknown</code>, and the
+        swarm reads the new log from its start. Members keep their state, and{' '}
+        <code>swarmStatus.resets</code> counts how often it happened.
       </p>
       <h2 id="tenants">
         Tenants
@@ -428,8 +513,8 @@ await looms.signal('swarm_acme', [nudge()])`}</CodeBlock>
   },
 })`}</CodeBlock>
       <p>
-        A swarm whose own board is refused fails. A member&apos;s or a workflow&apos;s call to a
-        refused board comes back as a tool error or a failed step.
+        A swarm whose own board is refused halts until it is restarted. A member&apos;s or a
+        workflow&apos;s call to a refused board comes back as a tool error or a failed step.
       </p>
       <p>Three more things to know:</p>
       <ul>
@@ -460,8 +545,18 @@ await looms.signal('swarm_acme', [nudge()])`}</CodeBlock>
       <CodeBlock lang="ts">{`import { swarmStatus } from '@swirls/looms/swarm'
 
 const view = await looms.project('swarm_acme', swarmStatus)
+// view.status is 'running', view.generation is 1
 // view.members.fixer is
 // { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }`}</CodeBlock>
+      <p>
+        <code>status</code> is <code>running</code>, <code>paused</code>, <code>stopping</code>{' '}
+        (stopped with members still mid-run), <code>stopped</code>, <code>halted</code> (see{' '}
+        <code>error</code>), or <code>failed</code> and <code>cancelled</code> when the run itself
+        ended. <code>generation</code> counts the swarm&apos;s starts in its run, and{' '}
+        <code>resets</code> counts the times its board&apos;s log was reset under it. In a Durable
+        Object, read it with <code>this.project(swarmStatus)</code>, or from the Worker with{' '}
+        <code>readProjection(env.RUNS.getByName(runId), swarmStatus)</code>.
+      </p>
       <h2 id="bring-your-own-board">
         Bring your own board
         <a
@@ -588,7 +683,8 @@ export function createPostgresBoard(sql: Sql, boardId: string, clock: Clock): Me
             </td>
             <td>
               A page of the log after a cursor, with <code>more</code> when the log continues. An
-              empty page returns the cursor it was given.
+              empty page returns the cursor it was given. A cursor the current log did not issue
+              rejects with <code>cursor_unknown</code>, never an empty page.
             </td>
           </tr>
         </tbody>
@@ -598,6 +694,12 @@ export function createPostgresBoard(sql: Sql, boardId: string, clock: Clock): Me
         <li>
           Every write appends to one ordered event log, in the order the writes took effect. Cursors
           are opaque strings. In SQL, write the row and its event in one transaction.
+        </li>
+        <li>
+          A cursor from another board, from past the end of the log, or from before the log was
+          reset is refused with <code>cursor_unknown</code>. A board whose log can start again
+          should put a log id or epoch in its cursors, so an old cursor is not read as a position in
+          the new log.
         </li>
         <li>
           <code>post</code>, <code>reply</code>, and <code>createTask</code> are idempotent on{' '}
@@ -634,7 +736,8 @@ export function createPostgresBoard(sql: Sql, boardId: string, clock: Clock): Me
       </h2>
       <p>
         <code>boardConformance</code> runs the contract against your implementation and returns one
-        line per failure. It calls your factory for a fresh, empty board before each check. The
+        line per failure. It calls your factory for a fresh, empty board before each check, and for
+        a second one where a check needs it; boards from separate calls must be separate logs. The
         board must read time from the clock it is given, because the suite advances that clock to
         expire leases.
       </p>

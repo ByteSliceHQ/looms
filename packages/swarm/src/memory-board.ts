@@ -28,6 +28,11 @@ import {
 export interface MemoryBoardOptions {
   /** Epoch milliseconds. Tests pass a clock they control to expire leases. */
   readonly now?: () => number
+  /**
+   * Names this board's log inside its cursors, so a cursor from another board, or from before the
+   * board was made again, is refused with `cursor_unknown`. Defaults to a random id.
+   */
+  readonly logId?: string
 }
 
 const DEFAULT_MESSAGE_LIMIT = 50
@@ -100,10 +105,25 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
   const tokens = new Map<string, string>()
   const keys = new Map<string, string>()
   const log: BoardEvent[] = []
+  const logId = options.logId ?? globalThis.crypto.randomUUID().slice(0, 8)
   let nextId = 0
 
+  function cursorAt(position: number): string {
+    return `${logId}.${String(position).padStart(CURSOR_WIDTH, '0')}`
+  }
+
+  /** How many events precede the cursor, or null when this log did not issue it. */
+  function positionOf(cursor: string): number | null {
+    const [owner, digits] = cursor.split('.')
+    const position = Number(digits)
+
+    return owner === logId && Number.isInteger(position) && position >= 0 && position <= log.length
+      ? position
+      : null
+  }
+
   function record(type: BoardEventType, by: string, parts: Pick<BoardEvent, 'message' | 'task'>) {
-    const cursor = String(log.length + 1).padStart(CURSOR_WIDTH, '0')
+    const cursor = cursorAt(log.length + 1)
 
     log.push({ cursor, type, at: now(), by, ...parts })
   }
@@ -515,10 +535,10 @@ export function createMemoryBoard(options: MemoryBoardOptions = {}): MessageBoar
     events: (query = {}) =>
       call(() => {
         const limit = query.limit ?? DEFAULT_EVENT_LIMIT
-        const start = query.after === undefined ? 0 : Number(query.after)
+        const start = query.after === undefined ? 0 : positionOf(query.after)
 
-        if (!Number.isInteger(start) || start < 0) {
-          refuse('invalid_input', `"${query.after ?? ''}" is not a cursor of this board`)
+        if (start === null) {
+          refuse('cursor_unknown', `"${query.after ?? ''}" is not a cursor of this board's log`)
         }
 
         const events = log.slice(start, start + limit)

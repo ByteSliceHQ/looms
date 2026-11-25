@@ -23,6 +23,7 @@ import { activationRunId } from './effects'
 import { ensureSwarm } from './ensure'
 import { createMemoryBoard } from './memory-board'
 import { swarm } from './module'
+import { swarmStatus } from './projections'
 import { nudge } from './signals'
 import { createSwarmThread, type SwarmState } from './threads'
 import { memberTools } from './tools'
@@ -149,7 +150,11 @@ describe('swarm tenancy', () => {
         'the helper replied',
       )
 
-      const memberRun = activationRunId('swarm_biz_1', 'helper', 1)
+      const memberRun = activationRunId({
+        swarmRunId: 'swarm_biz_1',
+        member: 'helper',
+        activation: 1,
+      })
 
       expect((await looms.getRun(memberRun)).attributes).toEqual(tenant)
 
@@ -164,12 +169,12 @@ describe('swarm tenancy', () => {
         modelRuns.every((run) => run.runId === memberRun && run.attributes.orgId === 'org_1'),
       ).toBe(true)
 
-      // A swarm started for one business on another business's board fails instead of reading it.
+      // A swarm started for one business on another business's board halts instead of reading it.
       await ensureSwarm(looms, desk, 'swarm_stray', { board: 'biz_2' }, { attributes: tenant })
 
       await until(
-        () => looms.getRun('swarm_stray').then((state) => state.status === 'failed'),
-        'the stray swarm failed',
+        () => looms.project('swarm_stray', swarmStatus).then((view) => view.status === 'halted'),
+        'the stray swarm halted',
       )
 
       expect(await boards.open('biz_2').events()).toMatchObject({ events: [] })
@@ -184,6 +189,7 @@ describe('swarm tenancy', () => {
     const ctx = { runId: 'swarm_1', threadId: 'thread_1', parentThreadId: null, ids: typeIds }
 
     const start: SwarmState = {
+      generation: 1,
       definitionName: 'desk',
       definitionVersion: desk.version,
       board: 'biz_1',
@@ -194,8 +200,10 @@ describe('swarm tenancy', () => {
       nextPullAt: null,
       dirty: false,
       members: {},
+      paused: false,
       stopped: false,
       invalid: null,
+      halted: false,
     }
 
     const failed = (state: SwarmState, ts: number, nonRetryable: boolean): EventEnvelope => ({
@@ -224,6 +232,9 @@ describe('swarm tenancy', () => {
 
     const refused = thread.step(start, failed(start, 1_000, true), ctx)
 
-    expect(thread.effects(refused, ctx)).toMatchObject([{ type: 'runtime.fail' }])
+    // A refusal halts the swarm: its run stays open for a restart.
+    expect(thread.effects(refused, ctx)).toMatchObject([
+      { type: 'runtime.emit', event: { type: 'swarm.halted' }, tag: 'halt:1' },
+    ])
   })
 })

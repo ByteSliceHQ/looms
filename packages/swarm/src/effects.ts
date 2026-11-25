@@ -39,6 +39,8 @@ const ActivateInputSchema = Schema.Struct({
   board: Schema.String,
   member: Schema.String,
   activation: Schema.Finite,
+  /** Absent on activations decided before generations, which belong to the first. */
+  generation: Schema.optional(Schema.Finite),
   events: Schema.Array(BoardEventSchema),
 })
 
@@ -55,16 +57,25 @@ export const pullEffect = swarmModule.effect({
 
       const definition = yield* definitions.resolve(input.definitionName, input.definitionVersion)
 
-      const page = yield* boards
-        .call(input.board, ctx, (board) =>
-          board.events({ after: input.after ?? undefined, limit: PULL_LIMIT }),
-        )
-        .pipe(
-          // The board will refuse the next attempt too, so fail now and let the swarm fail.
-          Effect.catchTag('BoardError', (refusal) =>
-            failEffect({ error: `${refusal.code}: ${refusal.message}`, nonRetryable: true }),
-          ),
-        )
+      const read = (after: string | undefined) =>
+        boards.call(input.board, ctx, (board) => board.events({ after, limit: PULL_LIMIT }))
+
+      // A cursor the board does not recognise belongs to a log that is gone, such as a board
+      // that was reset. Waiting on it would wait forever, so read the new log from its start.
+      const { page, reset } = yield* read(input.after ?? undefined).pipe(
+        Effect.map((found) => ({ page: found, reset: false })),
+        Effect.catchIf(
+          (refusal) =>
+            refusal instanceof BoardError &&
+            refusal.code === 'cursor_unknown' &&
+            input.after !== null,
+          () => read(undefined).pipe(Effect.map((found) => ({ page: found, reset: true }))),
+        ),
+        // The board will refuse the next attempt too, so fail now and let the swarm halt.
+        Effect.catchTag('BoardError', (refusal) =>
+          failEffect({ error: `${refusal.code}: ${refusal.message}`, nonRetryable: true }),
+        ),
+      )
 
       const interval = definition?.pollIntervalMs ?? null
 
@@ -78,6 +89,7 @@ export const pullEffect = swarmModule.effect({
             events: page.events,
             more: page.more,
             nextPullAt: interval === null ? null : now + interval,
+            reset,
           },
           { threadId: ctx.threadId },
         ),
@@ -85,17 +97,26 @@ export const pullEffect = swarmModule.effect({
     }),
 })
 
+export interface ActivationRef {
+  readonly swarmRunId: string
+  readonly member: string
+  /** The member's activation within its generation, from 1. */
+  readonly activation: number
+  /** The swarm generation, from 1. Default 1. */
+  readonly generation?: number
+}
+
 /**
  * The run id of a member's activation, in the host's id format. Derived from the swarm's run id,
- * so a retried activation starts the same run and a host can find a member's run.
+ * its generation, the member and the activation, so a retried activation starts the same run, a
+ * host can find a member's run, and a restarted swarm never reuses an earlier generation's ids.
+ * The first generation's ids are the ones swarms had before generations.
  */
-export function activationRunId(
-  swarmRunId: string,
-  member: string,
-  activation: number,
-  ids: LoomsIds = typeIds,
-): string {
-  return ids.derive('run', [swarmRunId, member, activation])
+export function activationRunId(ref: ActivationRef, ids: LoomsIds = typeIds): string {
+  const generation = ref.generation ?? 1
+  const parts = [ref.swarmRunId, ref.member, ref.activation]
+
+  return ids.derive('run', generation > 1 ? [...parts, generation] : parts)
 }
 
 export const activateEffect = swarmModule.effect({
@@ -119,7 +140,12 @@ export const activateEffect = swarmModule.effect({
         })
       }
 
-      const runId = activationRunId(ctx.runId, member.name, input.activation, ctx.ids)
+      const generation = input.generation ?? 1
+
+      const runId = activationRunId(
+        { swarmRunId: ctx.runId, member: member.name, activation: input.activation, generation },
+        ctx.ids,
+      )
 
       const attachments = activationAttachments(input.events)
 
@@ -155,6 +181,7 @@ export const activateEffect = swarmModule.effect({
             runId,
             events: input.events.length,
             at: now,
+            generation,
           },
           { threadId: ctx.threadId },
         ),

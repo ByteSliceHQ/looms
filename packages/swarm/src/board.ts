@@ -136,6 +136,7 @@ export const BoardErrorCodeSchema = Schema.Union([
   Schema.Literal('task_not_ready'),
   Schema.Literal('task_finished'),
   Schema.Literal('claim_lost'),
+  Schema.Literal('cursor_unknown'),
 ])
 export type BoardErrorCode = Schema.Schema.Type<typeof BoardErrorCodeSchema>
 
@@ -258,7 +259,10 @@ export interface TaskChangeInput {
 }
 
 export interface EventQuery {
-  /** Only events after this cursor. Omit to read from the start of the log. */
+  /**
+   * Only events after this cursor. Omit to read from the start of the log. A cursor the board's
+   * current log did not issue is refused with `cursor_unknown`.
+   */
   readonly after?: string
   /** Default 100. */
   readonly limit?: number
@@ -288,6 +292,10 @@ export interface EventPage {
  * - A task whose lease has passed is ready again, and the log gains a `task.ready` event no later
  *   than the next call that reads tasks or events.
  * - Completing a task makes ready every waiting task whose `needs` are now all completed.
+ * - `events` refuses with `cursor_unknown` an `after` that its current log did not issue: one
+ *   past the end of the log, one from another board, or one from before the log was reset. It
+ *   never answers such a cursor with an empty page, or a reader would wait on it forever. A
+ *   swarm that is refused reads the board again from the start.
  * - Refusals reject with {@link BoardError}. Any other rejection is treated as a fault and retried.
  */
 export interface MessageBoard {

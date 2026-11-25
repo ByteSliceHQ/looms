@@ -15,6 +15,7 @@ export {
   durableObjectLauncher,
   durableObjectScheduleHost,
   LoomsDurableObject,
+  readProjection,
   type DurableObjectRunStub,
   type LoomsDurableObjectConfig,
 } from './durable-object'

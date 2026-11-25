@@ -1,8 +1,7 @@
 import { Option, Schema } from 'effect'
 
 import {
-  complete,
-  fail,
+  emit,
   invoke,
   parseEffectId,
   type DefinitionStore,
@@ -35,6 +34,8 @@ export interface SwarmMemberState {
 }
 
 export interface SwarmState {
+  /** Counts the swarm's starts in this run, from 1. `restart()` begins the next one. */
+  readonly generation: number
   readonly definitionName: string
   readonly definitionVersion: string
   readonly board: string
@@ -51,8 +52,14 @@ export interface SwarmState {
   /** Something may have been written while a pull was in flight, so pull once more after it. */
   readonly dirty: boolean
   readonly members: { readonly [name: string]: SwarmMemberState }
+  /** Wakes nobody and reads nothing until resumed, keeping its cursor and inboxes. */
+  readonly paused: boolean
+  /** Wakes nobody and reads nothing until restarted. */
   readonly stopped: boolean
+  /** Why the swarm cannot go on, such as a board that refused it. It waits for a restart. */
   readonly invalid: string | null
+  /** `swarm.halted` has recorded `invalid`. */
+  readonly halted: boolean
 }
 
 const decodeStart = Schema.decodeUnknownOption(SwarmStartSchema)
@@ -149,7 +156,7 @@ function nextRestEnd(state: SwarmState): number | null {
  * reducer, so the activation effect has the same input however often its thread is asked for it.
  */
 function cutBatches(state: SwarmState, now: number): SwarmState {
-  if (state.stopped) {
+  if (state.stopped || state.paused || state.invalid !== null) {
     return state
   }
 
@@ -189,8 +196,56 @@ function pullTag(state: SwarmState, when: string): string {
   return `pull:${state.pulls}:${state.pullFailures}:${when}`
 }
 
-function activationTag(member: string, activation: number): string {
-  return `activate:${member}:${activation}`
+/** Activation tags of the first generation keep the form they had before generations. */
+function activationTag(generation: number, member: string, activation: number): string {
+  const tag = `activate:${member}:${activation}`
+
+  return generation > 1 ? `${tag}@${generation}` : tag
+}
+
+function unknownDefinition(name: string, version: string): string {
+  return `Unknown swarm definition "${name}@${version}"`
+}
+
+/**
+ * The next generation. Members still mid-run keep their run, so they are not woken again before
+ * it ends; everything else about them starts over.
+ */
+function nextGeneration(
+  state: SwarmState,
+  restart: { readonly board?: string; readonly after?: string | null },
+  known: boolean,
+): SwarmState {
+  const board = restart.board ?? state.board
+
+  const after =
+    restart.after === undefined ? (board === state.board ? state.cursor : null) : restart.after
+
+  const members: { [name: string]: SwarmMemberState } = {}
+
+  for (const [name, member] of Object.entries(state.members)) {
+    if (member.runId !== null) {
+      members[name] = { ...EMPTY_MEMBER, runId: member.runId }
+    }
+  }
+
+  return {
+    ...state,
+    generation: state.generation + 1,
+    board,
+    cursor: after,
+    // A pull still in flight answers for the earlier generation, so it is ignored.
+    pulls: state.pulls + 1,
+    pullFailures: 0,
+    pullNow: true,
+    nextPullAt: null,
+    dirty: false,
+    members,
+    paused: false,
+    stopped: false,
+    invalid: known ? null : unknownDefinition(state.definitionName, state.definitionVersion),
+    halted: false,
+  }
 }
 
 export function createSwarmThread(
@@ -206,6 +261,7 @@ export function createSwarmThread(
       const config = start && start !== null ? start : {}
 
       return {
+        generation: 1,
         definitionName: ctx.definitionName,
         definitionVersion: ctx.definitionVersion,
         board: config.board ?? ctx.runId,
@@ -216,10 +272,10 @@ export function createSwarmThread(
         nextPullAt: null,
         dirty: false,
         members: {},
+        paused: false,
         stopped: false,
-        invalid: definition
-          ? null
-          : `Unknown swarm definition "${ctx.definitionName}@${ctx.definitionVersion}"`,
+        invalid: definition ? null : unknownDefinition(ctx.definitionName, ctx.definitionVersion),
+        halted: false,
       }
     },
     step(state, event, ctx) {
@@ -251,7 +307,11 @@ export function createSwarmThread(
         case 'swarm.member.activated': {
           const member = state.members[event.payload.member]
 
-          if (!member || member.activations !== event.payload.activation) {
+          if (
+            !member ||
+            member.activations !== event.payload.activation ||
+            (event.payload.generation ?? 1) !== state.generation
+          ) {
             return state
           }
 
@@ -309,7 +369,11 @@ export function createSwarmThread(
             // A board that refuses the swarm will refuse it again, so the swarm fails where
             // someone will see it. An unreachable board is tried again, less and less often.
             if (event.payload.nonRetryable) {
-              return { ...state, invalid: event.payload.error || 'the board refused the swarm' }
+              return {
+                ...state,
+                invalid: event.payload.error || 'the board refused the swarm',
+                halted: false,
+              }
             }
 
             const backoff = Math.min(PULL_BACKOFF_MS * 2 ** state.pullFailures, MAX_PULL_BACKOFF_MS)
@@ -324,7 +388,8 @@ export function createSwarmThread(
 
           const entry = Object.entries(state.members).find(
             ([name, member]) =>
-              member.batch !== null && tag === activationTag(name, member.activations),
+              member.batch !== null &&
+              tag === activationTag(state.generation, name, member.activations),
           )
 
           if (!entry || event.threadId !== ctx.threadId) {
@@ -352,39 +417,65 @@ export function createSwarmThread(
         }
 
         case 'swarm.nudged':
-          return state.stopped ? state : requestPull(state)
+          return state.stopped || state.invalid !== null ? state : requestPull(state)
+
+        case 'swarm.paused':
+          return state.stopped || state.invalid !== null ? state : { ...state, paused: true }
+
+        case 'swarm.resumed':
+          return state.paused
+            ? cutBatches(requestPull({ ...state, paused: false }), event.ts)
+            : state
 
         case 'swarm.stopped': {
+          if (state.invalid !== null) {
+            return state
+          }
+
           const members: { [name: string]: SwarmMemberState } = {}
 
           for (const [name, member] of Object.entries(state.members)) {
             members[name] = { ...member, batch: null, inbox: [] }
           }
 
-          return { ...state, stopped: true, members }
+          return { ...state, stopped: true, paused: false, members }
         }
+
+        case 'swarm.restarted': {
+          const known = definitions.get(state.definitionName, state.definitionVersion) !== undefined
+
+          return nextGeneration(state, event.payload, known)
+        }
+
+        case 'swarm.halted':
+          return event.payload.generation === state.generation ? { ...state, halted: true } : state
 
         default:
           return state
       }
     },
     effects(state): RuntimeEffect[] {
-      if (state.invalid) {
-        return [fail(state.invalid)]
+      // A halted, stopped or paused swarm keeps its run open and waits for a signal. Members
+      // that are mid-run finish on their own.
+      if (state.invalid !== null) {
+        return state.halted
+          ? []
+          : [
+              emit(
+                swarmModule.input('halted', {
+                  error: state.invalid,
+                  generation: state.generation,
+                }),
+                `halt:${state.generation}`,
+              ),
+            ]
+      }
+
+      if (state.stopped || state.paused) {
+        return []
       }
 
       const members = Object.entries(state.members)
-
-      if (state.stopped) {
-        // Let members that are mid-run finish before the swarm completes.
-        return members.some(([, member]) => member.runId !== null)
-          ? []
-          : [
-              complete({
-                activations: members.reduce((total, [, member]) => total + member.activations, 0),
-              }),
-            ]
-      }
 
       const definition = {
         definitionName: state.definitionName,
@@ -416,9 +507,10 @@ export function createSwarmThread(
                 board: state.board,
                 member: name,
                 activation: member.activations,
+                generation: state.generation,
                 events: member.batch,
               },
-              activationTag(name, member.activations),
+              activationTag(state.generation, name, member.activations),
             ),
           )
         }
