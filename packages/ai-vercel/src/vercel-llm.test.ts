@@ -225,6 +225,9 @@ describe('vercelLlm', () => {
 
     const result = await adapter.complete({
       run,
+      agent: { name: 'helper', version: '1' },
+      turn: 1,
+      input: null,
       instructions: 'help',
       messages: [{ role: 'user', content: 'greet Ada' }],
       tools: [],
@@ -270,6 +273,9 @@ describe('vercelLlm', () => {
 
     const result = await adapter.complete({
       run,
+      agent: { name: 'helper', version: '1' },
+      turn: 1,
+      input: null,
       instructions: 'help',
       messages: [{ role: 'user', content: 'hi' }],
       tools: [],

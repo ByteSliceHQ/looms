@@ -206,11 +206,14 @@ describe('swarm module', () => {
       expect(view.members.fixer).toMatchObject({
         activations: 1,
         lastOutcome: 'completed',
-        runId: activationRunId('swarm_acme', 'fixer', 1),
+        runId: activationRunId({ swarmRunId: 'swarm_acme', member: 'fixer', activation: 1 }),
       })
 
       // The member's own run records what it did on the board.
-      const fixerEvents = await looms.getEvents(activationRunId('swarm_acme', 'fixer', 1))
+      const fixerEvents = await looms.getEvents(
+        activationRunId({ swarmRunId: 'swarm_acme', member: 'fixer', activation: 1 }),
+      )
+
       const types = fixerEvents.map((event) => event.type)
 
       expect(types).toContain('swarm.task.claimed')
@@ -226,9 +229,13 @@ describe('swarm module', () => {
       await looms.signal('swarm_acme', [stop()])
 
       await until(
-        () => looms.getRun('swarm_acme').then((state) => state.status === 'completed'),
-        'the swarm completed',
+        () =>
+          looms.project('swarm_acme', swarmStatus).then((current) => current.status === 'stopped'),
+        'the swarm stopped',
       )
+
+      // A stopped swarm keeps its run open, so the same run id can start again.
+      expect((await looms.getRun('swarm_acme')).status).toBe('running')
     } finally {
       await looms.stop()
     }
@@ -319,7 +326,10 @@ describe('swarm module', () => {
         { role: 'tool', files: ['files/login'] },
       ])
 
-      const run = await looms.getEvents(activationRunId('swarm_desk', 'viewer', 1))
+      const run = await looms.getEvents(
+        activationRunId({ swarmRunId: 'swarm_desk', member: 'viewer', activation: 1 }),
+      )
+
       const start = readActivation(run[0]?.payload.input)
 
       expect(start?.attachments).toEqual([shot])
@@ -357,7 +367,10 @@ describe('swarm module', () => {
         'the poll woke the member',
       )
 
-      const run = await looms.getRun(activationRunId('swarm_polling', 'poller', 1))
+      const run = await looms.getRun(
+        activationRunId({ swarmRunId: 'swarm_polling', member: 'poller', activation: 1 }),
+      )
+
       const input = readActivation(run.threads[run.rootThreadId ?? '']?.input)
 
       expect(input?.swarm).toMatchObject({ board: 'swarm_polling', member: 'poller' })
@@ -441,9 +454,11 @@ describe('swarm module', () => {
         'the keeper finished',
       )
 
-      const types = (await looms.getEvents(activationRunId('swarm_tending', 'keeper', 1))).map(
-        (event) => event.type,
-      )
+      const types = (
+        await looms.getEvents(
+          activationRunId({ swarmRunId: 'swarm_tending', member: 'keeper', activation: 1 }),
+        )
+      ).map((event) => event.type)
 
       expect(types).toContain('swarm.task.renewed')
       expect(types).toContain('swarm.task.canceled')
@@ -505,7 +520,10 @@ describe('swarm module', () => {
         'the rest ended',
       )
 
-      const run = await looms.getRun(activationRunId('swarm_resting', 'calm', 2))
+      const run = await looms.getRun(
+        activationRunId({ swarmRunId: 'swarm_resting', member: 'calm', activation: 2 }),
+      )
+
       const input = readActivation(run.threads[run.rootThreadId ?? '']?.input)
 
       expect(input?.events.map((event) => event.message?.text)).toEqual(['second', 'third'])
@@ -544,7 +562,7 @@ describe('swarm module', () => {
       await board.post({ by: 'dana', channel: 'inbox', text: 'anyone there?' })
       await looms.start(solo, null, { runId: 'swarm_solo' })
 
-      const memberRun = activationRunId('swarm_solo', 'lone', 1)
+      const memberRun = activationRunId({ swarmRunId: 'swarm_solo', member: 'lone', activation: 1 })
 
       await until(
         () => looms.getRun(memberRun).then((state) => state.status === 'completed'),

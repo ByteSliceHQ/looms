@@ -1,4 +1,9 @@
-export { createActorCell, type ActorCell, type ActorCellOptions } from './cell'
+export {
+  createActorCell,
+  UnknownProjectionError,
+  type ActorCell,
+  type ActorCellOptions,
+} from './cell'
 export {
   crossRunResponse,
   definitionsResponse,

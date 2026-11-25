@@ -1,7 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Option, Schema } from 'effect'
 
-import { JsonValueSchema, isJsonObject, type JsonObject, type JsonValue } from '@looms/core'
+import {
+  JsonValueSchema,
+  isJsonObject,
+  isJsonString,
+  type JsonObject,
+  type JsonValue,
+} from '@looms/core'
 
 import { defineTool, type AgentRunContext, type FunctionTool } from './definitions'
 
@@ -27,10 +33,15 @@ export interface McpToolsOptions {
     run: AgentRunContext,
   ) => Record<string, string> | Promise<Record<string, string>>
   /**
-   * Arguments the host supplies on every call, such as the tenant the run belongs to. They are
-   * removed from each tool's schema, so the model neither sees nor sets them.
+   * Arguments the host supplies, such as the tenant the run belongs to. Each is sent only to
+   * tools whose input schema declares it, and removed from those tools' schemas, so the model
+   * neither sees nor sets it. A tool that does not declare a bound field never receives it.
+   *
+   * A field set to `undefined` is bound with no value for this run: it is still hidden from the
+   * model and not sent. A tool that requires such a field is left out of the run's tools, since
+   * neither the host nor the model could make a valid call to it.
    */
-  readonly bind?: (run: AgentRunContext) => JsonObject
+  readonly bind?: (run: AgentRunContext) => McpBoundArguments
   /** Only these tools, by the server's names. Without it, every tool the server lists. */
   readonly only?: readonly string[]
   /** Put before each tool's name, to keep two servers' tools apart. */
@@ -39,6 +50,11 @@ export interface McpToolsOptions {
   readonly cacheMs?: number
   /** Epoch milliseconds. Defaults to `Date.now`. */
   readonly now?: () => number
+}
+
+/** Arguments a host binds. `undefined` binds a field with no value for this run. */
+export interface McpBoundArguments {
+  readonly [name: string]: JsonValue | undefined
 }
 
 const DEFAULT_CACHE_MS = 60_000
@@ -91,6 +107,27 @@ function replyTexts(contentType: string, body: string): string[] {
         .join('\n'),
     )
     .filter((data) => data !== '')
+}
+
+/** The argument names a tool's schema declares, and those it requires. */
+interface DeclaredFields {
+  readonly properties: readonly string[]
+  readonly required: readonly string[]
+}
+
+function declaredFields(schema: JsonValue | undefined): DeclaredFields {
+  if (!isJsonObject(schema)) {
+    return { properties: [], required: [] }
+  }
+
+  const { properties, required } = schema
+
+  return {
+    properties: isJsonObject(properties) ? Object.keys(properties) : [],
+    required: Array.isArray(required)
+      ? required.flatMap((key) => (isJsonString(key) ? [key] : []))
+      : [],
+  }
 }
 
 /** A tool's schema without the arguments the host binds. */
@@ -220,44 +257,69 @@ export function mcpTools(
     return tools
   }
 
+  function bindTool(
+    tool: ListedTool,
+    hidden: readonly string[],
+    supplied: JsonObject,
+  ): FunctionTool {
+    return defineTool({
+      name: `${prefix}${tool.name}`,
+      description: tool.description ?? tool.name,
+      input: passThrough(withoutBound(tool.inputSchema, hidden)),
+      handler: async (input, ctx) => {
+        const given = isJsonObject(input)
+          ? Object.fromEntries(Object.entries(input).filter(([key]) => !hidden.includes(key)))
+          : {}
+
+        const result = Option.getOrUndefined(
+          decodeCall(
+            await rpc(ctx, 'tools/call', {
+              name: tool.name,
+              arguments: { ...given, ...supplied },
+            }),
+          ),
+        )
+
+        if (!result) {
+          throw new Error(`The MCP server gave an unreadable result for ${tool.name}`)
+        }
+
+        const text = (result.content ?? []).flatMap((part) => part.text ?? []).join('\n')
+
+        if (result.isError) {
+          throw new Error(text || `${tool.name} failed`)
+        }
+
+        return result.structuredContent ?? text
+      },
+    })
+  }
+
   return async (run) => {
     const bound = options.bind?.(run) ?? {}
-    const boundKeys = Object.keys(bound)
     const listed = await list(run)
     const wanted = options.only
 
     return listed
       .filter((tool) => wanted === undefined || wanted.includes(tool.name))
-      .map((tool) =>
-        defineTool({
-          name: `${prefix}${tool.name}`,
-          description: tool.description ?? tool.name,
-          input: passThrough(withoutBound(tool.inputSchema, boundKeys)),
-          handler: async (input, ctx) => {
-            const given = isJsonObject(input) ? input : {}
+      .flatMap((tool) => {
+        const fields = declaredFields(tool.inputSchema)
+        const hidden = fields.properties.filter((key) => Object.hasOwn(bound, key))
 
-            const result = Option.getOrUndefined(
-              decodeCall(
-                await rpc(ctx, 'tools/call', {
-                  name: tool.name,
-                  arguments: { ...given, ...bound },
-                }),
-              ),
-            )
+        // A required field the host binds without a value cannot be filled by anyone.
+        if (hidden.some((key) => bound[key] === undefined && fields.required.includes(key))) {
+          return []
+        }
 
-            if (!result) {
-              throw new Error(`The MCP server gave an unreadable result for ${tool.name}`)
-            }
+        const supplied: JsonObject = Object.fromEntries(
+          hidden.flatMap((key) => {
+            const value = bound[key]
 
-            const text = (result.content ?? []).flatMap((part) => part.text ?? []).join('\n')
+            return value === undefined ? [] : [[key, value] as const]
+          }),
+        )
 
-            if (result.isError) {
-              throw new Error(text || `${tool.name} failed`)
-            }
-
-            return result.structuredContent ?? text
-          },
-        }),
-      )
+        return [bindTool(tool, hidden, supplied)]
+      })
   }
 }

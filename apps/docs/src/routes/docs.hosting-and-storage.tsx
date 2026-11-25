@@ -140,6 +140,26 @@ Bun.serve({ hostname: '127.0.0.1', port: 8791, fetch: (request) => host.fetch(re
         startup. Maintain a run index and reopen runs at boot for unattended timer recovery. Durable
         Objects provide host-managed alarms.
       </p>
+      <h2 id="read-a-projection">
+        Read a projection
+        <a className="heading-anchor" href="#read-a-projection" aria-label="Link to this section">
+          #
+        </a>
+      </h2>
+      <p>
+        Code in the same process reads a projection of a run without the HTTP API. With{' '}
+        <code>createLooms</code>, call <code>looms.project(runId, definition)</code>; with a local
+        actor host, <code>host.project(runId, definition)</code>. Inside a{' '}
+        <code>LoomsDurableObject</code>, <code>this.project(definition)</code> folds it over the
+        object&apos;s run. From the Worker that holds the namespace, a definition cannot cross RPC,
+        so <code>readProjection</code> asks the object by the projection&apos;s name and types the
+        answer by the definition. Either refuses with <code>UnknownProjectionError</code> when no
+        module registered a projection of that name.
+      </p>
+      <CodeBlock lang="ts">{`import { readProjection } from '@swirls/looms/cloudflare'
+import { swarmStatus } from '@swirls/looms/swarm'
+
+const status = await readProjection(env.RUNS.getByName(runId), swarmStatus)`}</CodeBlock>
       <h2 id="recovery">
         Snapshots, recovery, and retention
         <a className="heading-anchor" href="#recovery" aria-label="Link to this section">

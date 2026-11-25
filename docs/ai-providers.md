@@ -121,7 +121,7 @@ const records = mcpTools({
 const clerk = defineAgent({ name: 'clerk', instructions, resolveTools: (ctx) => records(ctx) })
 ```
 
-`bind` supplies arguments on every call and removes them from each tool's schema, so the model neither sees nor sets them. `only` keeps a subset of the server's tools and `prefix` renames them. The tool list is reused for `cacheMs` (one minute by default). A result with `isError` fails the tool call with the server's text, and `structuredContent` is returned in preference to text.
+`bind` supplies arguments the host owns, such as the tenant. Each bound field goes only to the tools whose input schema declares it, and is removed from those tools' schemas, so the model neither sees nor sets it. A tool that does not declare a bound field never receives it, so a server that refuses unknown arguments works too. A field bound to `undefined` has no value for this run: it stays hidden and is not sent, and a tool that _requires_ it is left out of the run's tools, because neither the host nor the model could make a valid call to it. `only` keeps a subset of the server's tools and `prefix` renames them. The tool list is reused for `cacheMs` (one minute by default). A result with `isError` fails the tool call with the server's text, and `structuredContent` is returned in preference to text.
 
 ### Gates and usage
 
@@ -186,7 +186,28 @@ vercelEvaluator({
 })
 ```
 
+## Scripted models in tests
+
+Without an `llm`, the agent module answers with a scripted model: it echoes the last user message, or makes the tool calls `llmPolicy.toolCallsFor` returns. The callback sees the agent's turn and what a real `llm.complete` receives about the call, so a script can tell which agent, run and model it serves without parsing the instructions:
+
+```ts
+agent({
+  definitions: [triage, fixer],
+  llmPolicy: {
+    toolCallsFor: (ctx) => {
+      // ctx.agent → { name: 'triage', version: '1' }, ctx.model → the agent's model id
+      // ctx.run → { runId, threadId, attributes, secrets }, ctx.turn, ctx.input, ctx.messages
+      return ctx.agent.name === 'triage' && ctx.turn === 1
+        ? [{ id: 'call_1', name: 'board_post', arguments: { channel: 'eng', text: 'fix it' } }]
+        : undefined
+    },
+  },
+})
+```
+
 ## Custom adapter
+
+Implement `complete` for one model call. Besides the messages and tools, it receives `agent` (the agent's name and version), `model` (the agent's model id, when it set one), `turn`, `input`, and `run` (the run id, thread id, attributes and secrets of the call).
 
 Implement `complete` for one model call: map Looms messages and tool specs into your SDK, return an assistant message plus optional `{ id, name, arguments }` tool calls. Do not execute tools in the adapter — Looms does that so results are on the log.
 

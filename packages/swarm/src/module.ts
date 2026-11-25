@@ -21,7 +21,7 @@ import {
 import { swarmStatus } from './projections'
 import { swarmModule } from './scope'
 import { SwarmServicesLive, memoryBoards } from './services'
-import { nudge, stop } from './signals'
+import { nudge, pause, restart, resume, stop } from './signals'
 import { createTask, post } from './steps'
 import { createSwarmThread } from './threads'
 
@@ -62,7 +62,7 @@ export function swarm(options: SwarmModuleOptions = {}) {
       cancelTask: cancelTaskEffect,
     },
     projections: { swarmStatus },
-    signals: { nudge, stop },
+    signals: { nudge, pause, resume, stop, restart },
     steps: { post, createTask },
     examples: [
       {
@@ -106,6 +106,9 @@ export function swarm(options: SwarmModuleOptions = {}) {
         projections: {
           swarmStatus: {
             status: 'running',
+            generation: 1,
+            error: null,
+            resets: 0,
             board: 'acme',
             cursor: '000000000001',
             eventsRead: 1,

@@ -43,6 +43,14 @@ function server(calls: Call[], stream = false) {
                 },
               },
               { name: 'drop' },
+              {
+                name: 'note',
+                inputSchema: {
+                  type: 'object',
+                  properties: { text: { type: 'string' }, tenant: { type: 'string' } },
+                  required: ['text'],
+                },
+              },
             ],
           }
         : JSON.stringify(body.params).includes('"boom"')
@@ -97,6 +105,62 @@ describe('mcp tools', () => {
       method: 'tools/call',
       params: { name: 'find', arguments: { query: 'late invoices', tenant: 'acme' } },
     })
+  })
+
+  test('binds an argument only to the tools that declare it', async () => {
+    const calls: Call[] = []
+
+    const tools = mcpTools({
+      url: 'http://mcp.test/',
+      fetch: server(calls),
+      bind: () => ({ tenant: 'acme' }),
+    })
+
+    const [find, drop, note] = await tools(run)
+
+    expect(jsonSchemaOfInput(drop?.input)).toEqual({ type: 'object' })
+
+    expect(jsonSchemaOfInput(note?.input)).toEqual({
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+    })
+
+    await find?.handler({ query: 'x' }, { ...run, turn: 1 })
+    await drop?.handler({}, { ...run, turn: 1 })
+    await note?.handler({ text: 'hi' }, { ...run, turn: 1 })
+
+    expect(calls.slice(1).map((call) => call.params)).toEqual([
+      { name: 'find', arguments: { query: 'x', tenant: 'acme' } },
+      { name: 'drop', arguments: {} },
+      { name: 'note', arguments: { text: 'hi', tenant: 'acme' } },
+    ])
+  })
+
+  test('a field bound with no value leaves out the tools that require it', async () => {
+    const calls: Call[] = []
+
+    const tools = mcpTools({
+      url: 'http://mcp.test/',
+      fetch: server(calls),
+      bind: () => ({ tenant: undefined }),
+    })
+
+    const listed = await tools(run)
+    const note = listed.find((tool) => tool.name === 'note')
+
+    expect(listed.map((tool) => tool.name)).toEqual(['drop', 'note'])
+
+    expect(jsonSchemaOfInput(note?.input)).toEqual({
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+    })
+
+    // The model cannot set a bound field either.
+    await note?.handler({ text: 'hi', tenant: 'other' }, { ...run, turn: 1 })
+
+    expect(calls[1]?.params).toEqual({ name: 'note', arguments: { text: 'hi' } })
   })
 
   test('reads an event stream answer and reports a tool error as a failure', async () => {

@@ -9,6 +9,8 @@ import {
   type EventInput,
   type BlobStore,
   type EventStoreTrimCoverage,
+  type JsonValue,
+  type ProjectionDefinition,
   type LaunchRunArgs,
   type RunAttributeFields,
   type RunLauncher,
@@ -252,6 +254,24 @@ export abstract class LoomsDurableObject<Env = unknown> extends DurableObject<En
   }
 
   /**
+   * Fold a projection a module registered over this object's run, typed by its definition. For
+   * code inside the object, such as a subclass's own RPC method. Rejects with
+   * `UnknownProjectionError` when no module registered a projection of that name.
+   */
+  project<S>(definition: ProjectionDefinition<S>): Promise<S> {
+    return this.getCell().then((cell) => cell.project(definition))
+  }
+
+  /**
+   * The same by the projection's registered name, as JSON, for a caller holding a stub: a
+   * definition carries its reducer, which cannot cross RPC. Call it through
+   * {@link readProjection} to get the definition's type back.
+   */
+  projection(name: string): Promise<JsonValue> {
+    return this.getCell().then((cell) => cell.projection(name))
+  }
+
+  /**
    * Wipes this object's SQLite once the run is terminal and optional projector
    * checkpoints cover the log tail. Clears the cached cell so the next request
    * rebuilds an empty store.
@@ -313,7 +333,29 @@ export interface DurableObjectRunStub {
   accept(events: ReadonlyArray<EventInput>, options?: RunSignalOptions): Promise<RunState>
   cancel(): Promise<void>
   getRun(): Promise<RunState>
+  projection(name: string): Promise<JsonValue>
   deleteTerminalRunStorage?(options?: DeleteTerminalRunStorageOptions): Promise<void>
+}
+
+/**
+ * Read a registered projection of the run a Looms Durable Object holds, from a Worker or another
+ * object, typed by the projection's definition. The object folds its own registered projection
+ * of that name, so pass the same definition the object's modules register.
+ *
+ * ```ts
+ * const status = await readProjection(env.RUNS.getByName(runId), swarmStatus)
+ * ```
+ */
+export function readProjection<S>(
+  stub: { projection(name: string): Promise<JsonValue> },
+  definition: ProjectionDefinition<S>,
+): Promise<S> {
+  return stub.projection(definition.name).then((value) => {
+    // SAFETY: the object folded the projection registered under this definition's name, whose
+    // state is S; RPC only carried it as JSON.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return value as S
+  })
 }
 
 /**

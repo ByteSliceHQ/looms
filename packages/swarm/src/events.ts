@@ -21,6 +21,11 @@ export const BoardPulledPayloadSchema = Schema.Struct({
   more: Schema.Boolean,
   /** When to poll next, or null when the swarm only pulls on a nudge. */
   nextPullAt: Schema.NullOr(Schema.Finite),
+  /**
+   * The board refused the swarm's cursor as one its log never issued, so this page reads the log
+   * from the start. Absent on events written before boards could say so.
+   */
+  reset: Schema.optional(Schema.Boolean),
 })
 
 export const MemberActivatedPayloadSchema = Schema.Struct({
@@ -33,6 +38,24 @@ export const MemberActivatedPayloadSchema = Schema.Struct({
   /** How many board events the member was woken for. */
   events: Schema.Finite,
   at: Schema.Finite,
+  /** The swarm generation that woke the member. Absent means the first. */
+  generation: Schema.optional(Schema.Finite),
+})
+
+export const SwarmRestartedPayloadSchema = Schema.Struct({
+  /** Follow this board from now on. Omit to keep the current one. */
+  board: Schema.optional(Schema.String),
+  /**
+   * Where the new generation starts reading: a board cursor, or null for the start of the log.
+   * Omit to carry on from the swarm's cursor, or from the start when `board` changes.
+   */
+  after: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+export const SwarmHaltedPayloadSchema = Schema.Struct({
+  /** Why the swarm stopped waking members. */
+  error: Schema.String,
+  generation: Schema.Finite,
 })
 
 export const SwarmEmptyPayloadSchema = Schema.Struct({})
@@ -43,6 +66,10 @@ export const swarmCatalog = defineEventCatalog('swarm', {
   'member.activated': MemberActivatedPayloadSchema,
   nudged: SwarmEmptyPayloadSchema,
   stopped: SwarmEmptyPayloadSchema,
+  paused: SwarmEmptyPayloadSchema,
+  resumed: SwarmEmptyPayloadSchema,
+  restarted: SwarmRestartedPayloadSchema,
+  halted: SwarmHaltedPayloadSchema,
 
   // On the run of whoever called the board: a member, or any thread that used a step.
   'message.posted': Schema.Struct({ ...CallFields, message: BoardMessageSchema }),

@@ -14,7 +14,12 @@ export interface ConformanceClock {
   readonly now: () => number
 }
 
-type Check = (board: MessageBoard, advance: (ms: number) => void) => Promise<void>
+type Check = (
+  board: MessageBoard,
+  advance: (ms: number) => void,
+  /** Another fresh, empty board from the same `make`. */
+  another: () => Promise<MessageBoard>,
+) => Promise<void>
 
 class Mismatch extends Error {}
 
@@ -207,6 +212,23 @@ const checks = {
     )
   },
 
+  'a cursor the log did not issue is refused': async (board, _advance, another) => {
+    const other = await another()
+
+    await other.post({ by: 'ada', channel: 'ops', text: '1' })
+    await other.post({ by: 'ada', channel: 'ops', text: '2' })
+    await board.post({ by: 'ada', channel: 'ops', text: 'only' })
+
+    const foreign = (await other.events()).cursor ?? ''
+
+    // Past the end of this log, and issued by another one: what a reset board sees.
+    await refused(board.events({ after: foreign }), 'cursor_unknown')
+
+    const own = await board.events()
+
+    expect(own.events.length === 1, 'a refused read must not change the log')
+  },
+
   'the event log is ordered and resumes from a cursor': async (board) => {
     await board.post({ by: 'ada', channel: 'ops', text: '1' })
     await board.post({ by: 'ada', channel: 'ops', text: '2' })
@@ -379,8 +401,9 @@ const checks = {
 
 /**
  * Runs the {@link MessageBoard} contract against a board implementation and returns one line per
- * failure. `make` is called for a fresh, empty board before each check and must read time from
- * the clock it is given.
+ * failure. `make` is called for a fresh, empty board before each check, and once more for a
+ * second board where a check needs one, and must read time from the clock it is given. Boards
+ * from separate calls must be separate logs.
  *
  * ```ts
  * expect(await boardConformance((clock) => createMemoryBoard(clock))).toEqual([])
@@ -395,11 +418,16 @@ export async function boardConformance(
     let time = 1_000_000
 
     try {
-      const board = await make({ now: () => time })
+      const clock = { now: () => time }
+      const board = await make(clock)
 
-      await check(board, (ms) => {
-        time += ms
-      })
+      await check(
+        board,
+        (ms) => {
+          time += ms
+        },
+        () => Promise.resolve(make(clock)),
+      )
     } catch (error) {
       failures.push(`${name}: ${error instanceof Error ? error.message : String(error)}`)
     }
