@@ -367,6 +367,153 @@ describe('swarm module', () => {
     }
   })
 
+  test('a member renews, cancels and reopens tasks from its tools', async () => {
+    const board = createMemoryBoard()
+
+    const keeper = defineAgent({
+      name: 'keeper',
+      instructions: 'keeper',
+      resolveTools: memberTools,
+    })
+
+    const tending = defineSwarm({
+      name: 'tending',
+      pollIntervalMs: null,
+      members: [{ name: 'keeper', agent: keeper }],
+    })
+
+    const held = await board.createTask({ by: 'dana', channel: 'eng', text: 'long job' })
+    const stale = await board.createTask({ by: 'dana', channel: 'eng', text: 'no longer wanted' })
+
+    const looms = createLooms({
+      maxWakeIterations: 2_000,
+      modules: [
+        agent({
+          definitions: [keeper],
+          llmPolicy: {
+            toolCallsFor: (ctx) => {
+              const results = ctx.messages.filter((message) => message.role === 'tool')
+              const token = /"token":"([^"]+)"/.exec(results[0]?.content ?? '')?.[1] ?? ''
+
+              const steps: ToolCall[] = [
+                {
+                  id: 'k1',
+                  name: 'board_claim_task',
+                  arguments: { task: held.id, leaseMs: 60_000 },
+                },
+                {
+                  id: 'k2',
+                  name: 'board_renew_task',
+                  arguments: { task: held.id, token, leaseMs: 3_600_000 },
+                },
+                {
+                  id: 'k3',
+                  name: 'board_cancel_task',
+                  arguments: { task: stale.id, note: 'dropped' },
+                },
+                {
+                  id: 'k4',
+                  name: 'board_reopen_task',
+                  arguments: { task: stale.id, note: 'wanted' },
+                },
+              ]
+
+              const next = steps[results.length]
+
+              return next ? [next] : undefined
+            },
+          },
+        }),
+        swarm({ definitions: [tending], board }),
+      ],
+    })
+
+    try {
+      await ensureSwarm(looms, tending, 'swarm_tending')
+      await board.post({ by: 'dana', channel: 'eng', text: '@keeper tend the queue' })
+      await looms.signal('swarm_tending', [nudge()])
+
+      await until(
+        () =>
+          looms
+            .project('swarm_tending', swarmStatus)
+            .then((view) => view.members.keeper?.lastOutcome === 'completed'),
+        'the keeper finished',
+      )
+
+      const types = (await looms.getEvents(activationRunId('swarm_tending', 'keeper', 1))).map(
+        (event) => event.type,
+      )
+
+      expect(types).toContain('swarm.task.renewed')
+      expect(types).toContain('swarm.task.canceled')
+      expect(types).toContain('swarm.task.reopened')
+
+      const [first, second] = await board.tasks()
+
+      expect(first).toMatchObject({ state: 'claimed', holder: 'keeper' })
+      expect((first?.leaseUntil ?? 0) - Date.now()).toBeGreaterThan(3_000_000)
+      expect(second).toMatchObject({ state: 'ready', note: 'wanted' })
+    } finally {
+      await looms.stop()
+    }
+  })
+
+  test('a resting member is woken once for what arrived while it rested', async () => {
+    const board = createMemoryBoard()
+    const calm = defineAgent({ name: 'calm', instructions: 'calm' })
+
+    const resting = defineSwarm({
+      name: 'resting',
+      pollIntervalMs: null,
+      members: [{ name: 'calm', agent: calm, channels: ['inbox'], restMs: 300 }],
+    })
+
+    expect(() =>
+      defineSwarm({ name: 'bad', members: [{ name: 'calm', agent: calm, restMs: 0 }] }),
+    ).toThrow('restMs')
+
+    const looms = createLooms({
+      maxWakeIterations: 2_000,
+      modules: [agent({ definitions: [calm] }), swarm({ definitions: [resting], board })],
+    })
+
+    const status = () => looms.project('swarm_resting', swarmStatus)
+
+    try {
+      await ensureSwarm(looms, resting, 'swarm_resting')
+      await board.post({ by: 'dana', channel: 'inbox', text: 'first' })
+      await looms.signal('swarm_resting', [nudge()])
+
+      await until(
+        () => status().then((view) => view.members.calm?.lastOutcome === 'completed'),
+        'the first activation finished',
+      )
+
+      await board.post({ by: 'dana', channel: 'inbox', text: 'second' })
+      await looms.signal('swarm_resting', [nudge()])
+      await board.post({ by: 'dana', channel: 'inbox', text: 'third' })
+      await looms.signal('swarm_resting', [nudge()])
+      await Bun.sleep(100)
+
+      // Still resting: the new posts wait in the inbox.
+      expect((await status()).members.calm?.activations).toBe(1)
+
+      // No nudge follows: the swarm wakes the member itself when the rest ends.
+      await until(
+        () => status().then((view) => view.members.calm?.activations === 2),
+        'the rest ended',
+      )
+
+      const run = await looms.getRun(activationRunId('swarm_resting', 'calm', 2))
+      const input = readActivation(run.threads[run.rootThreadId ?? '']?.input)
+
+      expect(input?.events.map((event) => event.message?.text)).toEqual(['second', 'third'])
+    } finally {
+      await looms.stop()
+    }
+  })
+
   test('a refused board call reaches the agent as a tool error', async () => {
     const board = createMemoryBoard()
     const lone = defineAgent({ name: 'lone', instructions: 'lone', resolveTools: memberTools })

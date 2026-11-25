@@ -1,5 +1,6 @@
 export * from './board'
 export * from './memory-board'
+export * from './remote-board'
 export * from './conformance'
 export * from './events'
 export * from './scope'

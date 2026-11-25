@@ -62,6 +62,10 @@ export const swarmCatalog = defineEventCatalog('swarm', {
   /** `claim` is null when the queue had nothing for the caller. */
   'task.claimed': Schema.Struct({ ...CallFields, claim: Schema.NullOr(TaskClaimSchema) }),
   'task.settled': Schema.Struct({ ...CallFields, task: BoardTaskSchema }),
+  /** The claim with its new lease. */
+  'task.renewed': Schema.Struct({ ...CallFields, claim: TaskClaimSchema }),
+  'task.reopened': Schema.Struct({ ...CallFields, task: BoardTaskSchema }),
+  'task.canceled': Schema.Struct({ ...CallFields, task: BoardTaskSchema }),
   /** The board refused the call. `error` makes a waiting tool call fail with this message. */
   'call.rejected': Schema.Struct({ ...CallFields, code: Schema.String, error: Schema.String }),
 })

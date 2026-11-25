@@ -27,6 +27,8 @@ export interface SwarmMemberState {
   readonly batch: readonly BoardEvent[] | null
   /** The member's run in progress. */
   readonly runId: string | null
+  /** The member is not woken again before this time. Set when a run of a resting member ends. */
+  readonly restUntil: number | null
   /** Events that overflowed the inbox. */
   readonly dropped: number
   readonly lastError: string | null
@@ -60,6 +62,7 @@ const EMPTY_MEMBER: SwarmMemberState = {
   inbox: [],
   batch: null,
   runId: null,
+  restUntil: null,
   dropped: 0,
   lastError: null,
 }
@@ -127,11 +130,25 @@ function deliver(
   return { ...state.members, ...Object.fromEntries(woken) }
 }
 
+/** Whether the member is idle with board activity it has not been woken for. */
+function waiting(member: SwarmMemberState): boolean {
+  return member.batch === null && member.runId === null && member.inbox.length > 0
+}
+
+/** When the first resting member with something in its inbox may be woken, if any is resting. */
+function nextRestEnd(state: SwarmState): number | null {
+  const ends = Object.values(state.members).flatMap((member) =>
+    waiting(member) && member.restUntil !== null ? [member.restUntil] : [],
+  )
+
+  return ends.length > 0 ? Math.min(...ends) : null
+}
+
 /**
  * Turn each idle member's inbox into its next activation. The batch is fixed here, in the
  * reducer, so the activation effect has the same input however often its thread is asked for it.
  */
-function cutBatches(state: SwarmState): SwarmState {
+function cutBatches(state: SwarmState, now: number): SwarmState {
   if (state.stopped) {
     return state
   }
@@ -140,7 +157,7 @@ function cutBatches(state: SwarmState): SwarmState {
   const members: { [name: string]: SwarmMemberState } = {}
 
   for (const [name, member] of Object.entries(state.members)) {
-    if (member.batch === null && member.runId === null && member.inbox.length > 0) {
+    if (waiting(member) && (member.restUntil === null || member.restUntil <= now)) {
       changed = true
 
       members[name] = {
@@ -148,6 +165,7 @@ function cutBatches(state: SwarmState): SwarmState {
         activations: member.activations + 1,
         batch: member.inbox,
         inbox: [],
+        restUntil: null,
       }
     } else {
       members[name] = member
@@ -213,16 +231,21 @@ export function createSwarmThread(
 
           const definition = definitions.get(state.definitionName, state.definitionVersion)
 
-          return cutBatches({
-            ...state,
-            cursor: event.payload.cursor,
-            pulls: state.pulls + 1,
-            pullFailures: 0,
-            pullNow: state.dirty || event.payload.more,
-            nextPullAt: event.payload.nextPullAt,
-            dirty: false,
-            members: definition ? deliver(state, definition, event.payload.events) : state.members,
-          })
+          return cutBatches(
+            {
+              ...state,
+              cursor: event.payload.cursor,
+              pulls: state.pulls + 1,
+              pullFailures: 0,
+              pullNow: state.dirty || event.payload.more,
+              nextPullAt: event.payload.nextPullAt,
+              dirty: false,
+              members: definition
+                ? deliver(state, definition, event.payload.events)
+                : state.members,
+            },
+            event.ts,
+          )
         }
 
         case 'swarm.member.activated': {
@@ -257,15 +280,25 @@ export function createSwarmThread(
 
           const [name, member] = entry
 
+          const rest = definitions
+            .get(state.definitionName, state.definitionVersion)
+            ?.members.find((item) => item.name === name)?.restMs
+
           // The member most likely wrote to the board, so read it again before going idle.
           return cutBatches(
             requestPull({
               ...state,
               members: {
                 ...state.members,
-                [name]: { ...member, runId: null, lastError: event.payload.error },
+                [name]: {
+                  ...member,
+                  runId: null,
+                  restUntil: rest === undefined ? null : event.ts + rest,
+                  lastError: event.payload.error,
+                },
               },
             }),
+            event.ts,
           )
         }
 
@@ -301,18 +334,21 @@ export function createSwarmThread(
           const [name, member] = entry
 
           // The activation could not start. Drop its batch so the member can be woken again.
-          return cutBatches({
-            ...state,
-            members: {
-              ...state.members,
-              [name]: {
-                ...member,
-                batch: null,
-                dropped: member.dropped + (member.batch?.length ?? 0),
-                lastError: event.payload.error || 'activation failed',
+          return cutBatches(
+            {
+              ...state,
+              members: {
+                ...state.members,
+                [name]: {
+                  ...member,
+                  batch: null,
+                  dropped: member.dropped + (member.batch?.length ?? 0),
+                  lastError: event.payload.error || 'activation failed',
+                },
               },
             },
-          })
+            event.ts,
+          )
         }
 
         case 'swarm.nudged':
@@ -358,14 +394,16 @@ export function createSwarmThread(
       const effects: RuntimeEffect[] = []
       const pull = { ...definition, board: state.board, after: state.cursor, pull: state.pulls }
 
+      // A resting member is woken by the pull that follows its rest, so one is due by then.
+      const restEnd = nextRestEnd(state)
+      const times = [state.nextPullAt, restEnd].flatMap((at) => (at === null ? [] : [at]))
+
       if (state.pullNow) {
         effects.push(invoke(pullEffect, pull, pullTag(state, 'now')))
-      } else if (state.nextPullAt !== null) {
-        effects.push(
-          invoke(pullEffect, pull, pullTag(state, String(state.nextPullAt)), {
-            at: state.nextPullAt,
-          }),
-        )
+      } else if (times.length > 0) {
+        const at = Math.min(...times)
+
+        effects.push(invoke(pullEffect, pull, pullTag(state, String(at)), { at }))
       }
 
       for (const [name, member] of members) {

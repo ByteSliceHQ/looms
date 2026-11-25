@@ -5,21 +5,26 @@ import { invoke, typeIds, type JsonValue, type LoomsIds, type SchemaInput } from
 
 import { readActivation } from './definitions'
 import {
+  ChangeTaskArgsSchema,
   ClaimTaskArgsSchema,
   CreateTaskArgsSchema,
   LabelArgsSchema,
   ListTasksArgsSchema,
   PostArgsSchema,
   ReadArgsSchema,
+  RenewTaskArgsSchema,
   ReplyArgsSchema,
   SettleTaskArgsSchema,
   ViewArgsSchema,
+  cancelTaskEffect,
   claimTaskEffect,
   createTaskEffect,
   labelEffect,
   listTasksEffect,
   postEffect,
   readEffect,
+  renewTaskEffect,
+  reopenTaskEffect,
   replyEffect,
   settleTaskEffect,
   viewEffect,
@@ -150,7 +155,7 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
       {
         name: 'board_claim_task',
         description:
-          'Claim a task before working on it, so no other member does the same work. Pass `task` to claim one task, or `channel` to take the oldest ready task you may work on. The result has a `token`: keep it for board_settle_task. `claim` is null when nothing is ready.',
+          'Claim a task before working on it, so no other member does the same work. Pass `task` to claim one task, or `channel` to take the oldest ready task you may work on. The result has a `token`: keep it for board_settle_task. The claim lasts until `until`; if the work will take longer, call board_renew_task before then or the task returns to the queue. `claim` is null when nothing is ready.',
         input: ClaimTaskArgsSchema,
         effect: claimTaskEffect,
         answer: 'swarm.task.claimed',
@@ -166,6 +171,42 @@ export function boardTools(binding: BoardBinding, ids: LoomsIds = typeIds): Effe
         input: SettleTaskArgsSchema,
         effect: settleTaskEffect,
         answer: 'swarm.task.settled',
+      },
+      ids,
+    ),
+    boardTool(
+      binding,
+      {
+        name: 'board_renew_task',
+        description:
+          "Extend your claim on a task you are still working on, using the token from board_claim_task. Call it before the claim's `until` passes. It fails with claim_lost when the claim already ended.",
+        input: RenewTaskArgsSchema,
+        effect: renewTaskEffect,
+        answer: 'swarm.task.renewed',
+      },
+      ids,
+    ),
+    boardTool(
+      binding,
+      {
+        name: 'board_reopen_task',
+        description:
+          'Return a blocked, failed or canceled task to the queue so it can be claimed again, with the reason in `note`. Use it when what blocked the task is resolved.',
+        input: ChangeTaskArgsSchema,
+        effect: reopenTaskEffect,
+        answer: 'swarm.task.reopened',
+      },
+      ids,
+    ),
+    boardTool(
+      binding,
+      {
+        name: 'board_cancel_task',
+        description:
+          'Cancel a task that should no longer be done, with the reason in `note`. A claim on it ends. Tasks that need it stay waiting.',
+        input: ChangeTaskArgsSchema,
+        effect: cancelTaskEffect,
+        answer: 'swarm.task.canceled',
       },
       ids,
     ),

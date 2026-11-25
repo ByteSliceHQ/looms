@@ -13,6 +13,9 @@ import {
   readEffect,
   replyEffect,
   settleTaskEffect,
+  renewTaskEffect,
+  reopenTaskEffect,
+  cancelTaskEffect,
   viewEffect,
 } from './effects'
 import { swarmStatus } from './projections'
@@ -54,6 +57,9 @@ export function swarm(options: SwarmModuleOptions = {}) {
       listTasks: listTasksEffect,
       claimTask: claimTaskEffect,
       settleTask: settleTaskEffect,
+      renewTask: renewTaskEffect,
+      reopenTask: reopenTaskEffect,
+      cancelTask: cancelTaskEffect,
     },
     projections: { swarmStatus },
     signals: { nudge, stop },
