@@ -105,6 +105,24 @@ When the model call fails because the prompt exceeded the context window, Looms 
 
 `resolveTools({ threadId, turn, input })` adds tools beside the static `tools`, such as integrations configured for one tenant. Looms calls it before each model turn and again when a tool runs, so it must return the same tools for the same input and turn.
 
+### Tools from an MCP server
+
+`mcpTools` turns the tools of a Model Context Protocol server into agent tools. It speaks streamable HTTP, one POST per request, so it needs only `fetch`:
+
+```ts
+import { defineAgent, mcpTools } from '@swirls/looms/agent'
+
+const records = mcpTools({
+  url: 'https://example.test/mcp',
+  headers: (run) => ({ authorization: `Bearer ${run.secrets.token}` }),
+  bind: (run) => ({ tenantId: run.attributes.tenant ?? '' }),
+})
+
+const clerk = defineAgent({ name: 'clerk', instructions, resolveTools: (ctx) => records(ctx) })
+```
+
+`bind` supplies arguments on every call and removes them from each tool's schema, so the model neither sees nor sets them. `only` keeps a subset of the server's tools and `prefix` renames them. The tool list is reused for `cacheMs` (one minute by default). A result with `isError` fails the tool call with the server's text, and `structuredContent` is returned in preference to text.
+
 ### Gates and usage
 
 Product-specific gates such as credit checks belong in **effect admission** (covers local and worker paths). Use `onAdmit(callLlmEffect, …)` with `failEffect({ error, nonRetryable: true })` before the attempt runs; see [Modules](./modules.md#effect-middleware).

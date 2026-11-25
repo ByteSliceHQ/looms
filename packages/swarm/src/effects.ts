@@ -237,6 +237,17 @@ export const SettleTaskArgsSchema = Schema.Struct({
   note: Schema.optional(Schema.String),
 })
 
+export const RenewTaskArgsSchema = Schema.Struct({
+  task: Schema.String,
+  token: Schema.String,
+  leaseMs: Schema.optional(Schema.Finite),
+})
+
+export const ChangeTaskArgsSchema = Schema.Struct({
+  task: Schema.String,
+  note: Schema.optional(Schema.String),
+})
+
 /**
  * The idempotency key of a board write. An effect id is only unique within its run, and one
  * board serves many runs, so the key names the run too.
@@ -550,6 +561,84 @@ export const settleTaskEffect = swarmModule.effect({
 
         return swarmModule.input(
           'task.settled',
+          { callId: input.callId, board: input.board, task },
+          { threadId: ctx.threadId },
+        )
+      }),
+    ),
+})
+
+/** Retried: renewing twice with a token that still holds only extends the same lease. */
+export const renewTaskEffect = swarmModule.effect({
+  type: 'swarm.renewTask',
+  placement: 'local',
+  input: Schema.Struct({ ...CallerFields, ...RenewTaskArgsSchema.fields }),
+  retry: RETRY,
+  execute: (input, ctx) =>
+    answered(
+      input,
+      ctx.threadId,
+      Effect.gen(function* () {
+        const boards = yield* BoardsTag
+
+        const claim = yield* boards.call(input.board, ctx, (board) =>
+          board.renew({ task: input.task, token: input.token, leaseMs: input.leaseMs }),
+        )
+
+        return swarmModule.input(
+          'task.renewed',
+          { callId: input.callId, board: input.board, claim },
+          { threadId: ctx.threadId },
+        )
+      }),
+    ),
+})
+
+/** Not retried: a second attempt at a reopen that took effect would be refused. */
+export const reopenTaskEffect = swarmModule.effect({
+  type: 'swarm.reopenTask',
+  placement: 'local',
+  input: Schema.Struct({ ...CallerFields, ...ChangeTaskArgsSchema.fields }),
+  retry: { maxAttempts: 1 },
+  execute: (input, ctx) =>
+    answered(
+      input,
+      ctx.threadId,
+      Effect.gen(function* () {
+        const boards = yield* BoardsTag
+
+        const task = yield* boards.call(input.board, ctx, (board) =>
+          board.reopen({ by: input.as, task: input.task, note: input.note }),
+        )
+
+        return swarmModule.input(
+          'task.reopened',
+          { callId: input.callId, board: input.board, task },
+          { threadId: ctx.threadId },
+        )
+      }),
+    ),
+})
+
+/** Not retried: a second attempt at a cancel that took effect would be refused. */
+export const cancelTaskEffect = swarmModule.effect({
+  type: 'swarm.cancelTask',
+  placement: 'local',
+  input: Schema.Struct({ ...CallerFields, ...ChangeTaskArgsSchema.fields }),
+  retry: { maxAttempts: 1 },
+  execute: (input, ctx) =>
+    answered(
+      input,
+      ctx.threadId,
+      Effect.gen(function* () {
+        const boards = yield* BoardsTag
+
+        const task = yield* boards.call(input.board, ctx, (board) =>
+          board.cancel({ by: input.as, task: input.task, note: input.note }),
+        )
+
+        return swarmModule.input(
+          'task.canceled',
           { callId: input.callId, board: input.board, task },
           { threadId: ctx.threadId },
         )

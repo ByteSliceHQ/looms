@@ -74,6 +74,9 @@ Members keep no memory between activations. Whatever should outlive a turn belon
 | `board_list_tasks`  | List tasks by channel, state, or assignee                                |
 | `board_claim_task`  | Claim one task, or the oldest ready task in a channel                    |
 | `board_settle_task` | Finish a claimed task as `completed`, `failed`, `blocked`, or `released` |
+| `board_renew_task`  | Extend the lease of a task the member still holds                        |
+| `board_reopen_task` | Return a blocked, failed or canceled task to the queue                   |
+| `board_cancel_task` | Withdraw a task that should no longer be done                            |
 
 Each call is a Looms effect, so it is recorded on the member's run as an event such as `swarm.message.posted` or `swarm.task.claimed`. Posts and new tasks carry the effect id as an idempotency key, so a retried effect does not write twice. When the board refuses a call, for example a claim on a task someone else holds, the run records `swarm.call.rejected` and the agent sees the reason as a tool error.
 
@@ -128,7 +131,7 @@ A task is a thread with state the board keeps. Its id is the id of its root mess
 | `failed`    | The holder gave up and recorded why                   |
 | `canceled`  | Withdrawn                                             |
 
-A claim is a lease, 15 minutes by default and at most an hour. When the lease passes, the task returns to `ready` and the old claim is dead: its token fails with `claim_lost`. A member that stalled therefore cannot settle a task another member has since claimed. Only one claim holds a task at a time.
+A claim is a lease, 15 minutes by default and at most an hour. When the lease passes, the task returns to `ready` and the old claim is dead: its token fails with `claim_lost`. A member that stalled therefore cannot settle a task another member has since claimed. Only one claim holds a task at a time. A member whose work outlasts the lease calls `board_renew_task` with its token before the lease passes.
 
 ## Reading the board on time
 
@@ -146,6 +149,14 @@ await looms.signal('swarm_acme', [nudge()])
 If every outside write nudges, set `pollIntervalMs: null` and the swarm stops polling. Each poll appends an event to the swarm's run, so a swarm that polls an idle board still grows its log.
 
 When the board cannot be read, the swarm tries again after 30 seconds and then less often, up to every 15 minutes, until a read works or a nudge arrives.
+
+### Resting members
+
+A member with `restMs` is not woken again until that long after its last run ended. Board activity that arrives meanwhile waits in its inbox and wakes it once, in one activation, when the rest ends. The swarm wakes it then without a nudge. Use it to bound what a busy board costs: a member with `restMs: 60_000` runs at most once a minute.
+
+```ts
+{ name: 'triage', agent: triage, channels: ['support/'], restMs: 60_000 }
+```
 
 `stop()` ends a swarm. It stops waking members and completes once the members that are mid-run have finished.
 
@@ -253,3 +264,26 @@ expect(await boardConformance((clock) => createPostgresBoard(sql, newBoardId(), 
 ```
 
 `createMemoryBoard` is the reference implementation. Read it alongside the interface when you write your own.
+
+### A board in another process
+
+On a host where each run is its own process, such as Durable Objects, the swarm and its members cannot share a board in memory. Keep the board in a database, serve it from the service that owns the database, and give the runs a remote board:
+
+```ts
+import { boardHandler, remoteBoard } from '@swirls/looms/swarm'
+
+// Where the store is. `resolve` authenticates the request and picks the caller's board.
+const handle = boardHandler((request) => boardFor(tenantOf(request)))
+
+// In the host that runs the swarm.
+swarm({
+  definitions: [ops],
+  boards: (boardId, caller) =>
+    remoteBoard({
+      url: `https://boards.example.test/${boardId}`,
+      headers: () => ({ authorization: `Bearer ${tokenFor(caller)}` }),
+    }),
+})
+```
+
+One request is one board call: a POST of `{ method, input }`, answered with `{ ok: true, value }` or `{ ok: false, code, message }`. A refusal reaches the caller as the same `BoardError` a local board throws. Any other status is a fault and the swarm retries it. `answerBoardCall(board, call)` does the same without a `Request`, for a route of your own. The remote board passes `boardConformance` over the memory board, so a board that passes locally keeps the contract when served.

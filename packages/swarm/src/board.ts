@@ -122,20 +122,22 @@ export const MAX_ATTACHMENTS = 10
 export const DEFAULT_LEASE_MS = 15 * 60_000
 export const MAX_LEASE_MS = 60 * 60_000
 
-export type BoardErrorCode =
-  | 'invalid_input'
-  | 'board_denied'
-  | 'message_not_found'
-  | 'task_not_found'
-  | 'duplicate_key'
-  | 'reserved_label'
-  | 'label_conflict'
-  | 'invalid_needs'
-  | 'task_claimed'
-  | 'task_assigned'
-  | 'task_not_ready'
-  | 'task_finished'
-  | 'claim_lost'
+export const BoardErrorCodeSchema = Schema.Union([
+  Schema.Literal('invalid_input'),
+  Schema.Literal('board_denied'),
+  Schema.Literal('message_not_found'),
+  Schema.Literal('task_not_found'),
+  Schema.Literal('duplicate_key'),
+  Schema.Literal('reserved_label'),
+  Schema.Literal('label_conflict'),
+  Schema.Literal('invalid_needs'),
+  Schema.Literal('task_claimed'),
+  Schema.Literal('task_assigned'),
+  Schema.Literal('task_not_ready'),
+  Schema.Literal('task_finished'),
+  Schema.Literal('claim_lost'),
+])
+export type BoardErrorCode = Schema.Schema.Type<typeof BoardErrorCodeSchema>
 
 /**
  * A request the board refused. Retrying the same request fails the same way, so the swarm module

@@ -40,6 +40,12 @@ export interface SwarmMember {
    * there. Without channels it is woken only when mentioned or assigned a task.
    */
   readonly channels?: readonly string[]
+  /**
+   * The least time between the end of one activation and the start of the next. Board activity
+   * that arrives meanwhile waits in the member's inbox and wakes it once, so a busy board costs
+   * at most one run per `restMs`. Without it the member is woken as soon as it is idle.
+   */
+  readonly restMs?: number
 }
 
 export interface SwarmDefinition<TName extends string = string> extends DefinitionRef {
@@ -82,6 +88,10 @@ export function defineSwarm<TName extends string>(def: {
     }
 
     names.add(member.name)
+
+    if (member.restMs !== undefined && !(member.restMs > 0)) {
+      throw new Error(`Swarm member "${member.name}" has a restMs that is not above zero`)
+    }
   }
 
   return swarmKind.define({
