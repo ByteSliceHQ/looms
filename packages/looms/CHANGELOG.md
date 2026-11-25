@@ -1,5 +1,11 @@
 # @swirls/looms
 
+## 0.28.1
+
+### Patch Changes
+
+- e0b650d: Fold a log replay in bounded pages so a cold start's memory does not grow with the length of the run log.
+
 ## 0.28.0
 
 ### Minor Changes
