@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
   cn,
@@ -16,6 +16,7 @@ import { useLiveFold, useProjection, useRunStore } from '@looms/react'
 import type { BoardEvent, BoardMessage, BoardTask } from '../board'
 import { swarmStatus, type SwarmStatus } from '../projections'
 import { boardTaskGroups, boardThreads, swarmBoard, type SwarmBoard } from './board-fold'
+import { useLiveBoard, type BoardReader } from './board-reader'
 
 export const SWARM_PANES = ['members', 'threads', 'tasks', 'timeline'] as const
 export type SwarmPane = (typeof SWARM_PANES)[number]
@@ -27,23 +28,108 @@ const paneLabels: Record<SwarmPane, string> = {
   timeline: 'Timeline',
 }
 
-/** Starts a swarm, or watches the one selected. */
-export function SwarmWorkspace(context: WorkspaceContext) {
-  return context.runId === undefined ? (
-    <StartForm {...context} />
-  ) : (
-    <SwarmView runId={context.runId} />
-  )
+export const DEFAULT_POLL_MS = 2000
+
+/** Where the board panes come from. */
+export interface SwarmBoardSource {
+  /**
+   * A reader for the swarm's whole board, by board id. With one, the board panes show every
+   * event on the board, including posts from before this run, and follow it live. Without one,
+   * they show the board as this run pulled it. Keep the function stable across renders.
+   */
+  readonly board?: (boardId: string) => BoardReader
+  /** How long to wait between reads once the board has nothing new. Default 2000. */
+  readonly pollMs?: number
 }
 
-/** A swarm run and its board, read from the run's events. */
-export function SwarmView({ runId }: { runId: string }) {
+/** A workspace that starts a swarm, or watches the one selected, reading the board from `source`. */
+export function createSwarmWorkspace(source: SwarmBoardSource) {
+  return function SwarmWorkspace(context: WorkspaceContext) {
+    return context.runId === undefined ? (
+      <StartForm {...context} />
+    ) : (
+      <SwarmView runId={context.runId} board={source.board} pollMs={source.pollMs} />
+    )
+  }
+}
+
+/** Starts a swarm, or watches the one selected. */
+export const SwarmWorkspace = createSwarmWorkspace({})
+
+/**
+ * A swarm run and its board. Members come from the run's events. The board comes from `board`
+ * when given, and otherwise from the pages the run pulled.
+ */
+export function SwarmView({
+  runId,
+  board: readBoard,
+  pollMs = DEFAULT_POLL_MS,
+}: { runId: string } & SwarmBoardSource) {
   const { openRun } = useDebugger()
   const store = useRunStore(runId)
   const status = useProjection(store, swarmStatus)
-  const board = useLiveFold(store, swarmBoard)
+  const pulled = useLiveFold(store, swarmBoard)
+  const boardId = status.board ?? pulled.board
 
-  return <SwarmPanels status={status} board={board} onOpenRun={openRun} />
+  const reader = useMemo(
+    () => (readBoard === undefined || boardId === null ? null : readBoard(boardId)),
+    [readBoard, boardId],
+  )
+
+  if (reader === null || boardId === null) {
+    return <SwarmPanels status={status} board={pulled} onOpenRun={openRun} />
+  }
+
+  return (
+    <LiveSwarmPanels
+      key={boardId}
+      reader={reader}
+      boardId={boardId}
+      pollMs={pollMs}
+      status={status}
+      pulled={pulled}
+      onOpenRun={openRun}
+    />
+  )
+}
+
+function LiveSwarmPanels({
+  reader,
+  boardId,
+  pollMs,
+  status,
+  pulled,
+  onOpenRun,
+}: {
+  reader: BoardReader
+  boardId: string
+  pollMs: number
+  status: SwarmStatus
+  pulled: SwarmBoard
+  onOpenRun?: (runId: string) => void
+}) {
+  const live = useLiveBoard(reader, boardId, pollMs)
+
+  // While the reader fails, show what the run pulled rather than a stale or empty board.
+  return live.error === null ? (
+    <SwarmPanels status={status} board={live.board} source="live" onOpenRun={onOpenRun} />
+  ) : (
+    <SwarmPanels
+      status={status}
+      board={pulled}
+      source="pulled"
+      boardError={live.error}
+      onOpenRun={onOpenRun}
+    />
+  )
+}
+
+/** `live`: the whole board, read from the board itself. `pulled`: as this run pulled it. */
+export type SwarmBoardView = 'live' | 'pulled'
+
+const sourceLabels: Record<SwarmBoardView, string> = {
+  live: 'whole board · live',
+  pulled: 'as this run pulled it',
 }
 
 export function SwarmPanels({
@@ -51,11 +137,17 @@ export function SwarmPanels({
   board,
   onOpenRun,
   initialPane = 'members',
+  source = 'pulled',
+  boardError = null,
 }: {
   status: SwarmStatus
   board: SwarmBoard
   onOpenRun?: (runId: string) => void
   initialPane?: SwarmPane
+  /** Which board `board` is, named in the header. */
+  source?: SwarmBoardView
+  /** Why the live board could not be read, shown in the header. */
+  boardError?: string | null
 }) {
   const [pane, setPane] = useState<SwarmPane>(initialPane)
 
@@ -73,10 +165,16 @@ export function SwarmPanels({
         <span className="text-muted-foreground min-w-0 truncate">
           {status.board ?? board.board ?? 'no board yet'}
         </span>
+        <span className="text-muted-foreground shrink-0">{sourceLabels[source]}</span>
         <span className="text-muted-foreground ml-auto shrink-0 font-mono tabular-nums">
           gen {status.generation} · {status.eventsRead} read
           {status.resets > 0 ? ` · ${status.resets} resets` : ''}
         </span>
+        {boardError ? (
+          <p className="text-status-failed w-full truncate" title={boardError}>
+            board unreadable: {boardError}
+          </p>
+        ) : null}
         {status.error ? (
           <p className="text-status-failed w-full truncate" title={status.error}>
             {status.error}

@@ -33,7 +33,7 @@ const SwarmBoardSchema = Schema.Struct({
 
 export type SwarmBoard = Schema.Schema.Type<typeof SwarmBoardSchema>
 
-const emptyBoard: SwarmBoard = {
+export const emptyBoard: SwarmBoard = {
   board: null,
   pulls: 0,
   events: [],
@@ -67,8 +67,16 @@ function withTask(state: SwarmBoard, task: BoardTask): SwarmBoard {
   }
 }
 
-function applyPage(state: SwarmBoard, events: readonly BoardEvent[]): SwarmBoard {
-  let next = state
+/**
+ * Fold board events into the board they came from: the latest snapshot per message or task id,
+ * each event once by cursor. Shared by the run's live fold and by a live board reader.
+ */
+export function applyEvents(
+  state: SwarmBoard,
+  boardId: string,
+  events: readonly BoardEvent[],
+): SwarmBoard {
+  let next: SwarmBoard = state.board === boardId ? state : { ...state, board: boardId }
   const fresh: BoardEvent[] = []
   const cursors = { ...state.cursors }
 
@@ -89,7 +97,7 @@ function applyPage(state: SwarmBoard, events: readonly BoardEvent[]): SwarmBoard
     }
   }
 
-  return fresh.length === 0 ? state : { ...next, cursors, events: [...state.events, ...fresh] }
+  return fresh.length === 0 ? next : { ...next, cursors, events: [...state.events, ...fresh] }
 }
 
 /**
@@ -128,7 +136,7 @@ export const swarmBoard = defineLiveFold({
         ? { ...emptyBoard, pulls: state.pulls }
         : state
 
-    return applyPage({ ...base, board: page.board, pulls: state.pulls + 1 }, page.events)
+    return applyEvents({ ...base, pulls: state.pulls + 1 }, page.board, page.events)
   },
 })
 
