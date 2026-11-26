@@ -3,6 +3,7 @@
 @source "../../workflow/src/debugger/**/*.{ts,tsx}";
 @source "../../approval/src/debugger/**/*.{ts,tsx}";
 @source "../../schedule/src/debugger/**/*.{ts,tsx}";
+@source "../../swarm/src/debugger/**/*.{ts,tsx}";
 
 @theme inline {
   --color-background: var(--background);

@@ -146,7 +146,8 @@
         "packages/agent/src/debugger/**",
         "packages/workflow/src/debugger/**",
         "packages/approval/src/debugger/**",
-        "packages/schedule/src/debugger/**"
+        "packages/schedule/src/debugger/**",
+        "packages/swarm/src/debugger/**"
       ],
       "rules": {
         "no-restricted-imports": [

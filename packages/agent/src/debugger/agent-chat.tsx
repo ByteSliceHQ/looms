@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
   shortId,
+  StartForm,
   useDebugger,
   useStartRun,
   type WorkspaceContext,
@@ -288,6 +289,7 @@ export function AgentChat(context: WorkspaceContext) {
   const { start, pending, error } = useStartRun(context)
   const session = definition.kind === 'agent-session'
   const form = inputForm(definition.inputSchema)
+  const chat = session || messageInput(form, '') !== undefined
 
   function send() {
     const content = draft.trim()
@@ -312,6 +314,11 @@ export function AgentChat(context: WorkspaceContext) {
             )
         : undefined,
     )
+  }
+
+  // An agent whose input is not one message, such as a swarm member, starts from its input form.
+  if (!runId && !chat) {
+    return <StartForm {...context} />
   }
 
   return (
