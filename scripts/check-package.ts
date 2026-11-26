@@ -126,7 +126,7 @@ try {
   const uiImport =
     /\b(?:from|import)\s*\(?\s*['"](?:react(?:\/[^'"]*)?|[^'"]*\/(?:react|debugger)(?:\/[^'"]*)?)['"]/
 
-  for (const entry of ['agent', 'approval', 'workflow']) {
+  for (const entry of ['agent', 'approval', 'schedule', 'swarm', 'workflow']) {
     const entryRoot = join(packageRoot, 'dist', entry)
 
     for (const file of new Bun.Glob('**/*.js').scanSync(entryRoot)) {

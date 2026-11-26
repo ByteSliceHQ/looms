@@ -2,41 +2,53 @@ import { cn } from './cn'
 
 export type StatusKind = 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled'
 
-export function statusClass(status: string): string {
+/** The colour a status reads as. Statuses a module names itself map onto these five. */
+function statusKind(status: string): StatusKind {
   switch (status) {
     case 'running':
-      return 'text-status-running'
+    case 'active':
+    case 'claimed':
+      return 'running'
     case 'waiting':
-      return 'text-status-waiting'
+    case 'blocked':
+    case 'paused':
+    case 'stopping':
+      return 'waiting'
     case 'completed':
     case 'approved':
     case 'authorized':
-      return 'text-status-completed'
+      return 'completed'
     case 'failed':
     case 'rejected':
     case 'declined':
-      return 'text-status-failed'
+    case 'halted':
+      return 'failed'
     default:
-      return 'text-status-cancelled'
+      return 'cancelled'
   }
 }
 
+const textClass: Record<StatusKind, string> = {
+  running: 'text-status-running',
+  waiting: 'text-status-waiting',
+  completed: 'text-status-completed',
+  failed: 'text-status-failed',
+  cancelled: 'text-status-cancelled',
+}
+
+export function statusClass(status: string): string {
+  return textClass[statusKind(status)]
+}
+
 export function statusDotClass(status: string): string {
+  const kind = statusKind(status)
+
   return cn(
     'inline-block size-1.5 shrink-0 rounded-full',
-    status === 'running' && 'bg-status-running animate-pulse',
-    status === 'waiting' && 'bg-status-waiting',
-    (status === 'completed' || status === 'approved' || status === 'authorized') &&
-      'bg-status-completed',
-    (status === 'failed' || status === 'rejected' || status === 'declined') && 'bg-status-failed',
-    status !== 'running' &&
-      status !== 'waiting' &&
-      status !== 'completed' &&
-      status !== 'approved' &&
-      status !== 'authorized' &&
-      status !== 'failed' &&
-      status !== 'rejected' &&
-      status !== 'declined' &&
-      'bg-status-cancelled',
+    kind === 'running' && 'bg-status-running animate-pulse',
+    kind === 'waiting' && 'bg-status-waiting',
+    kind === 'completed' && 'bg-status-completed',
+    kind === 'failed' && 'bg-status-failed',
+    kind === 'cancelled' && 'bg-status-cancelled',
   )
 }

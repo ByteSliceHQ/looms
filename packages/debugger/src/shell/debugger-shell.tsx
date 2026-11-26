@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useDefaultLayout } from 'react-resizable-panels'
 
 import type { DefinitionCatalog, LoomsIds } from '@looms/core'
+import { useRunStore, useRunSummary } from '@looms/react'
 
 import { DebuggerProvider, useDebugger } from '../context'
 import { errorMessage } from '../lib/cn'
@@ -50,6 +51,31 @@ function Brand() {
   )
 }
 
+/**
+ * Fills in the kind and name of a run opened by id alone, such as one `openRun` followed, so the
+ * workspace shows that run's own view.
+ */
+function RunDefinitionResolver({
+  selection,
+  runId,
+  onSelectionChange,
+}: {
+  selection: DebuggerSelection
+  runId: string
+  onSelectionChange: (selection: DebuggerSelection) => void
+}) {
+  const summary = useRunSummary(useRunStore(runId))
+  const { kind, definitionName } = summary
+
+  useEffect(() => {
+    if (kind !== undefined && definitionName !== undefined) {
+      onSelectionChange({ ...selection, kind, name: definitionName })
+    }
+  }, [kind, definitionName, onSelectionChange, selection])
+
+  return null
+}
+
 function DebuggerFrame({
   selection,
   onSelectionChange,
@@ -69,6 +95,13 @@ function DebuggerFrame({
 
   return (
     <div className="looms-debugger bg-background text-foreground flex h-full flex-col overflow-hidden font-sans antialiased">
+      {selection.run && (!kind || !name) ? (
+        <RunDefinitionResolver
+          selection={selection}
+          runId={selection.run}
+          onSelectionChange={onSelectionChange}
+        />
+      ) : null}
       <header className="border-border bg-sidebar flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Brand />
         <span className="text-border text-lg font-light select-none" aria-hidden>

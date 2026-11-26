@@ -117,6 +117,10 @@
       "types": "./dist/swarm/index.d.ts",
       "import": "./dist/swarm/index.js"
     },
+    "./swarm/debugger": {
+      "types": "./dist/swarm/debugger/index.d.ts",
+      "import": "./dist/swarm/debugger/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
