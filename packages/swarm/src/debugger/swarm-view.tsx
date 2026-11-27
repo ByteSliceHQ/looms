@@ -309,8 +309,12 @@ function MessageItem({ message, reply }: { message: BoardMessage; reply: boolean
   )
 }
 
+/** Threads a channel shows at first. A long-lived board can hold thousands. */
+export const THREADS_SHOWN = 200
+
 function ThreadsPane({ board }: { board: SwarmBoard }) {
-  const channels = boardThreads(board)
+  const channels = useMemo(() => boardThreads(board), [board])
+  const [shown, setShown] = useState(THREADS_SHOWN)
 
   if (channels.length === 0) {
     return (
@@ -321,22 +325,35 @@ function ThreadsPane({ board }: { board: SwarmBoard }) {
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="grid gap-3 p-3">
-        {channels.map(({ channel, threads }) => (
-          <section key={channel} aria-label={`#${channel}`} className="grid gap-2">
-            <h3 className="text-muted-foreground font-mono text-[11px]">#{channel}</h3>
-            {threads.map(({ root, replies }) => (
-              <article
-                key={root.id}
-                className="border-border bg-card grid gap-2 rounded-md border p-2"
-              >
-                <MessageItem message={root} reply={false} />
-                {replies.map((message) => (
-                  <MessageItem key={message.id} message={message} reply />
-                ))}
-              </article>
-            ))}
-          </section>
-        ))}
+        {channels.map(({ channel, threads }) => {
+          const hidden = Math.max(0, threads.length - shown)
+
+          return (
+            <section key={channel} aria-label={`#${channel}`} className="grid gap-2">
+              <h3 className="text-muted-foreground font-mono text-[11px]">#{channel}</h3>
+              {hidden > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShown(shown + THREADS_SHOWN)}
+                  className="text-muted-foreground hover:bg-accent rounded px-1 py-1 text-left"
+                >
+                  Show older threads ({hidden} hidden)
+                </button>
+              ) : null}
+              {threads.slice(hidden).map(({ root, replies }) => (
+                <article
+                  key={root.id}
+                  className="border-border bg-card grid gap-2 rounded-md border p-2"
+                >
+                  <MessageItem message={root} reply={false} />
+                  {replies.map((message) => (
+                    <MessageItem key={message.id} message={message} reply />
+                  ))}
+                </article>
+              ))}
+            </section>
+          )
+        })}
       </div>
     </ScrollArea>
   )

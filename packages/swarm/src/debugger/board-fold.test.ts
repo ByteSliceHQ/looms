@@ -4,9 +4,16 @@ import { Schema } from 'effect'
 
 import { foldLive } from '@looms/react'
 
-import type { BoardEvent } from '../board'
+import type { BoardEvent, BoardMessage, BoardTask } from '../board'
 import { BoardPulledPayloadSchema } from '../events'
-import { boardTaskGroups, boardThreads, swarmBoard, type SwarmBoard } from './board-fold'
+import {
+  applyEvents,
+  boardTaskGroups,
+  boardThreads,
+  emptyBoard,
+  swarmBoard,
+  type SwarmBoard,
+} from './board-fold'
 import { recordSwarmRun, type RecordedSwarmRun } from './recorded-run.fixture'
 
 const decodePulled = Schema.decodeUnknownSync(BoardPulledPayloadSchema)
@@ -118,5 +125,132 @@ describe('swarmBoard', () => {
     expect(after.events.map((event) => event.type)).toEqual(['task.completed'])
     expect(after.messageOrder).toEqual([])
     expect(after.taskOrder).toEqual(['msg_3'])
+  })
+})
+
+function message(id: number, re: number | null): BoardMessage {
+  return {
+    id: `msg_${id}`,
+    channel: `channel-${id % 3}`,
+    text: `message ${id}`,
+    by: 'dana',
+    re: re === null ? null : `msg_${re}`,
+    mentions: [],
+    labels: {},
+    attachments: [],
+    createdAt: id,
+  }
+}
+
+function task(id: number, state: BoardTask['state'], at: number): BoardTask {
+  return {
+    id: `msg_${id}`,
+    channel: `channel-${id % 3}`,
+    text: `task ${id}`,
+    by: 'dana',
+    for: null,
+    needs: [],
+    state,
+    holder: state === 'claimed' ? 'fixer' : null,
+    epoch: at,
+    leaseUntil: null,
+    note: null,
+    createdAt: id,
+    updatedAt: at,
+  }
+}
+
+/** A board log of `count` events: roots, replies, tasks that change state, and relabels. */
+function boardLog(count: number): BoardEvent[] {
+  return Array.from({ length: count }, (_, at): BoardEvent => {
+    const cursor = `c${at}`
+
+    switch (at % 5) {
+      case 0: {
+        return { cursor, type: 'message.posted', at, by: 'dana', message: message(at, null) }
+      }
+
+      case 1: {
+        return { cursor, type: 'message.posted', at, by: 'triage', message: message(at, at - 1) }
+      }
+
+      case 2: {
+        return {
+          cursor,
+          type: 'task.created',
+          at,
+          by: 'triage',
+          message: message(at, null),
+          task: task(at, 'ready', at),
+        }
+      }
+
+      case 3: {
+        return { cursor, type: 'task.claimed', at, by: 'fixer', task: task(at - 1, 'claimed', at) }
+      }
+
+      default: {
+        // Relabel a message posted earlier, so its latest snapshot comes from a later page.
+        const relabeled = { ...message(at - 4, null), labels: { seen: String(at) } }
+        return { cursor, type: 'message.labeled', at, by: 'triage', message: relabeled }
+      }
+    }
+  })
+}
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
+    items.slice(index * size, (index + 1) * size),
+  )
+}
+
+describe('applyEvents', () => {
+  test('folds a page the same as its events one at a time', () => {
+    const log = boardLog(2_000)
+
+    // Overlapping pages, with a cursor repeated inside a page, as a re-read after a retry.
+    const reads = chunks(log, 300).map((page, index) => [
+      ...(index === 0 ? [] : log.slice(index * 300 - 50, index * 300)),
+      ...page,
+      ...page.slice(0, 3),
+    ])
+
+    const paged = reads.reduce((state, page) => applyEvents(state, 'ops', page), emptyBoard)
+    const single = log.reduce((state, event) => applyEvents(state, 'ops', [event]), emptyBoard)
+
+    expect(paged).toEqual(single)
+    expect(paged.events).toEqual(log)
+    expect(paged.messageOrder.length).toBe(1_200)
+    expect(paged.messages.msg_0?.labels).toEqual({ seen: '4' })
+    expect(paged.tasks.msg_2?.state).toBe('claimed')
+  })
+
+  test('returns the same state for a page with nothing new', () => {
+    const log = boardLog(20)
+    const state = applyEvents(emptyBoard, 'ops', log)
+
+    expect(applyEvents(state, 'ops', log)).toBe(state)
+    expect(applyEvents(state, 'ops', [])).toBe(state)
+
+    const moved = applyEvents(state, 'other', log.slice(0, 2))
+
+    expect(moved).toEqual({ ...state, board: 'other' })
+  })
+
+  test('replays a long board in well under a second', () => {
+    const log = boardLog(20_000)
+    const started = performance.now()
+
+    const state = chunks(log, 1_000).reduce(
+      (folded, page) => applyEvents(folded, 'ops', page),
+      emptyBoard,
+    )
+
+    const elapsed = performance.now() - started
+
+    expect(state.events.length).toBe(20_000)
+    expect(boardThreads(state).length).toBe(3)
+    // Quadratic folding took about 4.7 s here; linear folding takes tens of milliseconds.
+    expect(elapsed).toBeLessThan(500)
   })
 })

@@ -47,57 +47,78 @@ export const emptyBoard: SwarmBoard = {
 const decodePulled = Schema.decodeUnknownOption(BoardPulledPayloadSchema)
 const decodeRestarted = Schema.decodeUnknownOption(SwarmRestartedPayloadSchema)
 
-function withMessage(state: SwarmBoard, message: BoardMessage): SwarmBoard {
-  const known = message.id in state.messages
-
-  return {
-    ...state,
-    messages: { ...state.messages, [message.id]: message },
-    messageOrder: known ? state.messageOrder : [...state.messageOrder, message.id],
-  }
-}
-
-function withTask(state: SwarmBoard, task: BoardTask): SwarmBoard {
-  const known = task.id in state.tasks
-
-  return {
-    ...state,
-    tasks: { ...state.tasks, [task.id]: task },
-    taskOrder: known ? state.taskOrder : [...state.taskOrder, task.id],
-  }
-}
-
 /**
  * Fold board events into the board they came from: the latest snapshot per message or task id,
  * each event once by cursor. Shared by the run's live fold and by a live board reader.
+ *
+ * Linear in the page: each collection is copied at most once per call and the copies are
+ * mutated in place, so replaying a long board page by page stays cheap. Returns `state` itself
+ * when the page adds nothing and names the board `state` already follows.
  */
 export function applyEvents(
   state: SwarmBoard,
   boardId: string,
   events: readonly BoardEvent[],
 ): SwarmBoard {
-  let next: SwarmBoard = state.board === boardId ? state : { ...state, board: boardId }
+  const known = state.cursors
+  const seen = new Set<string>()
   const fresh: BoardEvent[] = []
-  const cursors = { ...state.cursors }
 
   for (const event of events) {
-    if (cursors[event.cursor] === true) {
+    if (known[event.cursor] === true || seen.has(event.cursor)) {
       continue
     }
 
-    cursors[event.cursor] = true
+    seen.add(event.cursor)
     fresh.push(event)
+  }
+
+  if (fresh.length === 0) {
+    return state.board === boardId ? state : { ...state, board: boardId }
+  }
+
+  const cursors = { ...known }
+  let messages: Record<string, BoardMessage> | undefined
+  let messageOrder: string[] | undefined
+  let tasks: Record<string, BoardTask> | undefined
+  let taskOrder: string[] | undefined
+
+  for (const event of fresh) {
+    cursors[event.cursor] = true
 
     if (event.message) {
-      next = withMessage(next, event.message)
+      messages ??= { ...state.messages }
+
+      if (!(event.message.id in messages)) {
+        messageOrder ??= [...state.messageOrder]
+        messageOrder.push(event.message.id)
+      }
+
+      messages[event.message.id] = event.message
     }
 
     if (event.task) {
-      next = withTask(next, event.task)
+      tasks ??= { ...state.tasks }
+
+      if (!(event.task.id in tasks)) {
+        taskOrder ??= [...state.taskOrder]
+        taskOrder.push(event.task.id)
+      }
+
+      tasks[event.task.id] = event.task
     }
   }
 
-  return fresh.length === 0 ? next : { ...next, cursors, events: [...state.events, ...fresh] }
+  return {
+    ...state,
+    board: boardId,
+    cursors,
+    events: [...state.events, ...fresh],
+    messages: messages ?? state.messages,
+    messageOrder: messageOrder ?? state.messageOrder,
+    tasks: tasks ?? state.tasks,
+    taskOrder: taskOrder ?? state.taskOrder,
+  }
 }
 
 /**
@@ -150,6 +171,16 @@ export interface BoardChannel {
   readonly threads: readonly BoardThread[]
 }
 
+function pushTo(groups: Map<string, BoardMessage[]>, key: string, message: BoardMessage): void {
+  const group = groups.get(key)
+
+  if (group) {
+    group.push(message)
+  } else {
+    groups.set(key, [message])
+  }
+}
+
 /** Messages grouped by channel, each thread its root and then its replies, oldest first. */
 export function boardThreads(board: SwarmBoard): readonly BoardChannel[] {
   const roots = new Map<string, BoardMessage[]>()
@@ -164,9 +195,9 @@ export function boardThreads(board: SwarmBoard): readonly BoardChannel[] {
     }
 
     if (message.re === null) {
-      roots.set(message.channel, [...(roots.get(message.channel) ?? []), message])
+      pushTo(roots, message.channel, message)
     } else if (message.re in board.messages) {
-      replies.set(message.re, [...(replies.get(message.re) ?? []), message])
+      pushTo(replies, message.re, message)
     } else {
       // The board showed a reply whose root came before the swarm's cursor.
       orphans.push(message)
@@ -174,7 +205,7 @@ export function boardThreads(board: SwarmBoard): readonly BoardChannel[] {
   }
 
   for (const message of orphans) {
-    roots.set(message.channel, [...(roots.get(message.channel) ?? []), message])
+    pushTo(roots, message.channel, message)
   }
 
   return [...roots.entries()]
