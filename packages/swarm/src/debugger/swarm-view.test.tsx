@@ -4,10 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { foldLive } from '@looms/react'
 
-import { swarmBoard, type SwarmBoard } from './board-fold'
+import { applyEvents, emptyBoard, swarmBoard, type SwarmBoard } from './board-fold'
 import { followBoard, type LiveBoard } from './board-reader'
 import { recordSwarmRun, type RecordedSwarmRun } from './recorded-run.fixture'
-import { SwarmPanels, type SwarmPane } from './swarm-view'
+import { SwarmPanels, THREADS_SHOWN, type SwarmPane } from './swarm-view'
 
 let recorded: RecordedSwarmRun
 let board: SwarmBoard
@@ -147,5 +147,42 @@ describe('SwarmPanels with a board read live', () => {
     expect(html).toContain('as this run pulled it')
     expect(html).toContain('board unreadable: board offline')
     expect(html).not.toContain('board opened before this run')
+  })
+})
+
+describe('ThreadsPane on a long board', () => {
+  test('shows the newest threads of each channel and how many it left out', () => {
+    const count = THREADS_SHOWN + 50
+
+    const long = applyEvents(
+      emptyBoard,
+      'ops',
+      Array.from({ length: count }, (_, at) => ({
+        cursor: `c${at}`,
+        type: 'message.posted' as const,
+        at,
+        by: 'dana',
+        message: {
+          id: `msg_${at}`,
+          channel: 'support',
+          text: `thread number ${at}.`,
+          by: 'dana',
+          re: null,
+          mentions: [],
+          labels: {},
+          attachments: [],
+          createdAt: at,
+        },
+      })),
+    )
+
+    const html = renderToStaticMarkup(
+      <SwarmPanels status={recorded.status} board={long} initialPane="threads" />,
+    )
+
+    expect(html).toContain('Show older threads (50 hidden)')
+    expect(html).not.toContain('thread number 49.')
+    expect(html).toContain('thread number 50.')
+    expect(html).toContain(`thread number ${count - 1}.`)
   })
 })
