@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@looms/agent": "workspace:*",
+    "@looms/client": "workspace:*",
     "@looms/core": "workspace:*",
     "@looms/debugger": "workspace:*",
     "@looms/react": "workspace:*",

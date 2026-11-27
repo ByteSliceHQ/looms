@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { foldLive } from '@looms/react'
 
 import { swarmBoard, type SwarmBoard } from './board-fold'
+import { followBoard, type LiveBoard } from './board-reader'
 import { recordSwarmRun, type RecordedSwarmRun } from './recorded-run.fixture'
 import { SwarmPanels, type SwarmPane } from './swarm-view'
 
@@ -73,5 +74,78 @@ describe('SwarmPanels', () => {
 
     expect(html).toContain('aria-label="Timeline"')
     expect(html).not.toContain('No board events yet')
+  })
+})
+
+describe('SwarmPanels with a board read live', () => {
+  let live: RecordedSwarmRun
+  let whole: LiveBoard
+
+  beforeAll(async () => {
+    live = await recordSwarmRun({
+      history: [{ by: 'olu', channel: 'announcements', text: 'board opened before this run' }],
+    })
+
+    const controller = new AbortController()
+    let latest: LiveBoard | undefined
+
+    const done = followBoard(live.board, 'ops', {
+      pollMs: 60_000,
+      signal: controller.signal,
+      whenVisible: () => Promise.resolve(),
+      onChange: (next) => {
+        latest = next
+
+        if (next.board.events.length >= 6) {
+          controller.abort()
+        }
+      },
+    })
+
+    await done
+
+    if (!latest) {
+      throw new Error('the board was never read')
+    }
+
+    whole = latest
+  })
+
+  function renderLive(pane: SwarmPane): string {
+    return renderToStaticMarkup(
+      <SwarmPanels status={live.status} board={whole.board} source="live" initialPane={pane} />,
+    )
+  }
+
+  test('the run pulled only what came after it started', () => {
+    expect(foldLive(swarmBoard, live.events).events.length).toBe(5)
+  })
+
+  test('shows posts from before the run and says the board is live', () => {
+    const html = renderLive('threads')
+
+    expect(html).toContain('whole board · live')
+    expect(html).not.toContain('as this run pulled it')
+    expect(html).toContain('#announcements')
+    expect(html).toContain('board opened before this run')
+    expect(html).toContain('Looking into it')
+    expect(html).toMatch(/Threads<span[^>]*>4</)
+    expect(html).toMatch(/Timeline<span[^>]*>6</)
+  })
+
+  test('says the board is as the run pulled it, with the read error, when falling back', () => {
+    const html = renderToStaticMarkup(
+      <SwarmPanels
+        status={live.status}
+        board={foldLive(swarmBoard, live.events)}
+        source="pulled"
+        boardError="board offline"
+        initialPane="threads"
+      />,
+    )
+
+    expect(html).toContain('as this run pulled it')
+    expect(html).toContain('board unreadable: board offline')
+    expect(html).not.toContain('board opened before this run')
   })
 })

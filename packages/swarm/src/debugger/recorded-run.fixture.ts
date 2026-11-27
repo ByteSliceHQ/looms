@@ -2,6 +2,7 @@ import { agent, defineAgent, type AgentTurnContext, type ToolCall } from '@looms
 import type { EventEnvelope } from '@looms/core'
 import { createLooms } from '@looms/runtime'
 
+import type { MessageBoard, PostInput } from '../board'
 import { defineSwarm } from '../definitions'
 import { ensureSwarm } from '../ensure'
 import { createMemoryBoard } from '../memory-board'
@@ -28,13 +29,15 @@ function script(ctx: AgentTurnContext): ToolCall[] | undefined {
   const prompt = ctx.messages.find((message) => message.role === 'user')?.content ?? ''
 
   if (ctx.instructions === 'triage') {
+    const report = /\b(msg_\d+)\b/.exec(prompt)?.[1] ?? ''
+
     return results.length > 0
       ? undefined
       : [
           {
             id: 'triage_1',
             name: 'board_reply',
-            arguments: { to: 'msg_1', text: 'Looking into it' },
+            arguments: { to: report, text: 'Looking into it' },
           },
           {
             id: 'triage_2',
@@ -83,15 +86,28 @@ export interface RecordedSwarmRun {
   readonly runId: string
   readonly events: readonly EventEnvelope[]
   readonly status: SwarmStatus
+  /** The board the run used, with any history posted before it. */
+  readonly board: MessageBoard
+}
+
+export interface RecordOptions {
+  /** Posts on the board before the run starts. The swarm starts after them, so it never reads them. */
+  readonly history?: readonly PostInput[]
 }
 
 /**
  * Records a swarm run on the memory board: a person posts, triage replies and creates a task, the
  * fixer claims and completes it. The task reaches the swarm in one pull and changes in a later one.
  */
-export async function recordSwarmRun(): Promise<RecordedSwarmRun> {
+export async function recordSwarmRun(options: RecordOptions = {}): Promise<RecordedSwarmRun> {
   const runId = 'swarm_ops'
   const board = createMemoryBoard()
+
+  for (const post of options.history ?? []) {
+    await board.post(post)
+  }
+
+  const { cursor } = await board.events({ limit: 1_000 })
 
   const looms = createLooms({
     maxWakeIterations: 2_000,
@@ -102,7 +118,12 @@ export async function recordSwarmRun(): Promise<RecordedSwarmRun> {
   })
 
   try {
-    await ensureSwarm(looms, recordedSwarm, runId, { board: 'ops' })
+    await ensureSwarm(
+      looms,
+      recordedSwarm,
+      runId,
+      cursor === null ? { board: 'ops' } : { board: 'ops', after: cursor },
+    )
 
     await board.post({
       by: 'dana',
@@ -129,6 +150,7 @@ export async function recordSwarmRun(): Promise<RecordedSwarmRun> {
       runId,
       events: await looms.getEvents(runId),
       status: await looms.project(runId, swarmStatus),
+      board,
     }
   } finally {
     await looms.stop()
