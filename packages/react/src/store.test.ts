@@ -346,4 +346,140 @@ describe('createLoomsStore websocket', () => {
     await waitFor(() => FakeSocket.latest?.url.includes('fromSeq=4') === true)
     store.dispose()
   })
+
+  test('pings an idle socket so the connection is not dropped', async () => {
+    class PingSocket {
+      static latest: PingSocket | undefined
+      readonly url: string
+      readonly sent: string[] = []
+      private readonly listeners = new Map<
+        string,
+        Array<(event: { readonly data?: unknown }) => void>
+      >()
+
+      constructor(url: string) {
+        this.url = url
+        PingSocket.latest = this
+      }
+
+      addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void {
+        const current = this.listeners.get(type) ?? []
+        current.push(listener)
+        this.listeners.set(type, current)
+      }
+
+      send(data: string): void {
+        this.sent.push(data)
+      }
+
+      emit(type: string, data?: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data })
+        }
+      }
+
+      close(): void {
+        this.emit('close')
+      }
+    }
+
+    const store = createLoomsStore({
+      storeId: 'run_heartbeat',
+      endpoint: 'http://127.0.0.1:9',
+      transport: 'websocket',
+      reconnectDelayMs: 50,
+      socketHeartbeatMs: 5,
+      webSocket: PingSocket,
+    })
+
+    await waitFor(() => PingSocket.latest !== undefined)
+    const socket = PingSocket.latest
+
+    if (!socket) {
+      throw new Error('missing socket')
+    }
+
+    socket.emit('open')
+    await waitFor(() => socket.sent.length > 0)
+    expect(socket.sent[0]).toBe('ping')
+
+    socket.emit('close')
+    const sentAtClose = socket.sent.length
+    await Bun.sleep(40)
+    expect(socket.sent.length).toBe(sentAtClose)
+
+    store.dispose()
+  })
+
+  test('a replaced socket closing leaves the heartbeat of its replacement running', async () => {
+    class PingSocket {
+      static latest: PingSocket | undefined
+      readonly url: string
+      readonly sent: string[] = []
+      private readonly listeners = new Map<
+        string,
+        Array<(event: { readonly data?: unknown }) => void>
+      >()
+
+      constructor(url: string) {
+        this.url = url
+        PingSocket.latest = this
+      }
+
+      addEventListener(type: string, listener: (event: { readonly data?: unknown }) => void): void {
+        const current = this.listeners.get(type) ?? []
+        current.push(listener)
+        this.listeners.set(type, current)
+      }
+
+      send(data: string): void {
+        this.sent.push(data)
+      }
+
+      emit(type: string, data?: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data })
+        }
+      }
+
+      close(): void {
+        this.emit('close')
+      }
+    }
+
+    const store = createLoomsStore({
+      storeId: 'run_replaced',
+      endpoint: 'http://127.0.0.1:9',
+      transport: 'websocket',
+      reconnectDelayMs: 20,
+      socketHeartbeatMs: 5,
+      webSocket: PingSocket,
+    })
+
+    await waitFor(() => PingSocket.latest !== undefined)
+    const first = PingSocket.latest
+
+    if (!first) {
+      throw new Error('missing socket')
+    }
+
+    first.emit('open')
+    first.emit('message', JSON.stringify({ type: 'resync', head: 4, reason: 'trimmed' }))
+
+    await waitFor(() => PingSocket.latest !== first && PingSocket.latest !== undefined)
+    const second = PingSocket.latest
+
+    if (!second) {
+      throw new Error('missing replacement socket')
+    }
+
+    second.emit('open')
+    await waitFor(() => second.sent.length > 0)
+
+    first.emit('close')
+    const sentAtStaleClose = second.sent.length
+    await waitFor(() => second.sent.length > sentAtStaleClose)
+
+    store.dispose()
+  })
 })
