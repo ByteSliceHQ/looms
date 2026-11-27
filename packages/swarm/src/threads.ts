@@ -182,9 +182,23 @@ function cutBatches(state: SwarmState, now: number): SwarmState {
   return changed ? { ...state, members } : state
 }
 
-/** Ask for a pull now, or after the pull in flight when one may already be reading the board. */
-function requestPull(state: SwarmState): SwarmState {
-  return state.pullNow ? { ...state, dirty: true } : { ...state, pullNow: true }
+/** When the swarm reads the board next if nothing asks it to sooner, or null if it waits. */
+function nextScheduledPull(state: SwarmState): number | null {
+  const times = [state.nextPullAt, nextRestEnd(state)].flatMap((at) => (at === null ? [] : [at]))
+
+  return times.length > 0 ? Math.min(...times) : null
+}
+
+/**
+ * Ask for a pull now, and for one more after the pull in flight when one may already be reading
+ * the board: one asked for now, or a scheduled one whose time has come. That pull may have read
+ * the board before whatever prompted this request was written to it.
+ */
+function requestPull(state: SwarmState, now: number): SwarmState {
+  const scheduled = nextScheduledPull(state)
+  const inFlight = state.pullNow || (scheduled !== null && scheduled <= now)
+
+  return { ...state, pullNow: true, dirty: state.dirty || inFlight }
 }
 
 /** The longest a swarm waits before it tries an unreachable board again. */
@@ -255,6 +269,8 @@ export function createSwarmThread(
     kind: 'swarm',
     input: SwarmStartSchema,
     forgetsCompletedEffects: true,
+    // A failed activation is recorded on its member, and the swarm goes on.
+    handlesEffectFailures: true,
     initialState: (ctx): SwarmState => {
       const definition = definitions.get(ctx.definitionName, ctx.definitionVersion)
       const start = Option.getOrUndefined(decodeStart(ctx.input))
@@ -346,18 +362,21 @@ export function createSwarmThread(
 
           // The member most likely wrote to the board, so read it again before going idle.
           return cutBatches(
-            requestPull({
-              ...state,
-              members: {
-                ...state.members,
-                [name]: {
-                  ...member,
-                  runId: null,
-                  restUntil: rest === undefined ? null : event.ts + rest,
-                  lastError: event.payload.error,
+            requestPull(
+              {
+                ...state,
+                members: {
+                  ...state.members,
+                  [name]: {
+                    ...member,
+                    runId: null,
+                    restUntil: rest === undefined ? null : event.ts + rest,
+                    lastError: event.payload.error,
+                  },
                 },
               },
-            }),
+              event.ts,
+            ),
             event.ts,
           )
         }
@@ -398,7 +417,8 @@ export function createSwarmThread(
 
           const [name, member] = entry
 
-          // The activation could not start. Drop its batch so the member can be woken again.
+          // The activation could not start. Drop its batch so the member can be woken again by
+          // what reaches the board next.
           return cutBatches(
             {
               ...state,
@@ -417,14 +437,14 @@ export function createSwarmThread(
         }
 
         case 'swarm.nudged':
-          return state.stopped || state.invalid !== null ? state : requestPull(state)
+          return state.stopped || state.invalid !== null ? state : requestPull(state, event.ts)
 
         case 'swarm.paused':
           return state.stopped || state.invalid !== null ? state : { ...state, paused: true }
 
         case 'swarm.resumed':
           return state.paused
-            ? cutBatches(requestPull({ ...state, paused: false }), event.ts)
+            ? cutBatches(requestPull({ ...state, paused: false }, event.ts), event.ts)
             : state
 
         case 'swarm.stopped': {
@@ -486,14 +506,11 @@ export function createSwarmThread(
       const pull = { ...definition, board: state.board, after: state.cursor, pull: state.pulls }
 
       // A resting member is woken by the pull that follows its rest, so one is due by then.
-      const restEnd = nextRestEnd(state)
-      const times = [state.nextPullAt, restEnd].flatMap((at) => (at === null ? [] : [at]))
+      const at = nextScheduledPull(state)
 
       if (state.pullNow) {
         effects.push(invoke(pullEffect, pull, pullTag(state, 'now')))
-      } else if (times.length > 0) {
-        const at = Math.min(...times)
-
+      } else if (at !== null) {
         effects.push(invoke(pullEffect, pull, pullTag(state, String(at)), { at }))
       }
 

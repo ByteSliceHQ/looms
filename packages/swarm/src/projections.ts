@@ -1,11 +1,23 @@
 import { Schema } from 'effect'
 
+import { isWithdrawnError, parseEffectId } from '@looms/core'
+
 import { swarmModule } from './scope'
 
 const RECENT_LIMIT = 20
 
+/**
+ * - `idle`: waiting for the board to wake it.
+ * - `active`: its run is in progress.
+ * - `failed`: its latest activation could not start (see `lastError`). The swarm goes on, and the
+ *   member is woken again by what reaches the board next.
+ */
 export const SwarmMemberStatusSchema = Schema.Struct({
-  status: Schema.Union([Schema.Literal('idle'), Schema.Literal('active')]),
+  status: Schema.Union([
+    Schema.Literal('idle'),
+    Schema.Literal('active'),
+    Schema.Literal('failed'),
+  ]),
   activations: Schema.Finite,
   /** The member's latest run, in progress or finished. */
   runId: Schema.NullOr(Schema.String),
@@ -17,6 +29,8 @@ export const SwarmMemberStatusSchema = Schema.Struct({
       Schema.Literal('cancelled'),
     ]),
   ),
+  /** Why the latest activation could not start, or why the latest finished run failed. */
+  lastError: Schema.NullOr(Schema.String),
 })
 export type SwarmMemberStatus = Schema.Schema.Type<typeof SwarmMemberStatusSchema>
 
@@ -64,6 +78,26 @@ export const SwarmStatusSchema = Schema.Struct({
   recent: Schema.Array(SwarmActivationSchema),
 })
 export type SwarmStatus = Schema.Schema.Type<typeof SwarmStatusSchema>
+
+const ACTIVATION_TAG = /^activate:([a-z0-9-]+):(\d+)(?:@(\d+))?$/
+
+/** The member, activation and generation an activation effect's tag names. See `threads.ts`. */
+function parseActivation(
+  effectId: string | null | undefined,
+): { readonly member: string; readonly activation: number; readonly generation: number } | null {
+  const tag = effectId ? parseEffectId(effectId)?.tag : undefined
+  const match = tag === undefined ? null : ACTIVATION_TAG.exec(tag)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    member: match[1] ?? '',
+    activation: Number(match[2]),
+    generation: match[3] === undefined ? 1 : Number(match[3]),
+  }
+}
 
 function anyActive(members: SwarmStatus['members']): boolean {
   return Object.values(members).some((member) => member.status === 'active')
@@ -113,6 +147,7 @@ export const swarmStatus = swarmModule.projection({
               activations: activation,
               runId,
               lastOutcome: state.members[member]?.lastOutcome ?? null,
+              lastError: null,
             },
           },
           recent: recent.slice(Math.max(0, recent.length - RECENT_LIMIT)),
@@ -132,13 +167,46 @@ export const swarmStatus = swarmModule.projection({
 
         const members: SwarmStatus['members'] = {
           ...state.members,
-          [name]: { ...member, status: 'idle', lastOutcome: event.payload.status },
+          [name]: {
+            ...member,
+            status: 'idle',
+            lastOutcome: event.payload.status,
+            lastError: event.payload.error,
+          },
         }
 
         return {
           ...state,
           status: state.status === 'stopping' && !anyActive(members) ? 'stopped' : state.status,
           members,
+        }
+      }
+
+      case 'runtime.effect.failed': {
+        const failed = parseActivation(event.effectId)
+
+        if (
+          !failed ||
+          failed.generation !== state.generation ||
+          isWithdrawnError(event.payload.error)
+        ) {
+          return state
+        }
+
+        const member = state.members[failed.member]
+
+        return {
+          ...state,
+          members: {
+            ...state.members,
+            [failed.member]: {
+              status: 'failed',
+              activations: failed.activation,
+              runId: member?.runId ?? null,
+              lastOutcome: member?.lastOutcome ?? null,
+              lastError: event.payload.error || 'activation failed',
+            },
+          },
         }
       }
 

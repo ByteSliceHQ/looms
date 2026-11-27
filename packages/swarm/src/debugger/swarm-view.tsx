@@ -261,6 +261,11 @@ function MembersPane({
                 )
               ) : null}
             </div>
+            {member.lastError ? (
+              <p className="text-status-failed truncate" title={member.lastError}>
+                {member.lastError}
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>

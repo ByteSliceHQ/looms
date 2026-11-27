@@ -57,6 +57,8 @@ The swarm reads the board's event log and wakes a member when:
 
 Each wake is one **activation**: a separate run of the member's agent. Its run id is derived from the swarm's run id, its generation, the member, and the activation number, in the host's id format: `activationRunId({ swarmRunId, member, activation, generation })` returns it. `generation` defaults to 1. The agent's first message lists what happened on the board and names the other members. A member runs one activation at a time. Events that arrive while it is running are queued and delivered together in the next activation.
 
+An activation that cannot start, such as one whose agent is not registered, is retried like any effect. Once its retries are spent, the swarm drops the events it was woken for, marks the member `failed` in `swarmStatus` with the error in `lastError`, and goes on. The member is woken again by what reaches the board next.
+
 Members keep no memory between activations. Whatever should outlive a turn belongs on the board.
 
 ## Board tools
@@ -245,7 +247,7 @@ import { swarmStatus } from '@swirls/looms/swarm'
 
 const view = await looms.project('swarm_acme', swarmStatus)
 // view.status → 'running', view.generation → 1
-// view.members.fixer → { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }
+// view.members.fixer → { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed', lastError: null }
 ```
 
 `status` is one of:
@@ -261,6 +263,8 @@ const view = await looms.project('swarm_acme', swarmStatus)
 | `cancelled` | The run was cancelled. Its run id cannot be used again  |
 
 `generation` counts the swarm's starts in its run, `error` says why it halted or failed, and `resets` counts the times its board's log was reset under it.
+
+A member's `status` is `idle`, `active` while its run is in progress, or `failed` when its latest activation could not start. `lastOutcome` is how its latest run ended, and `lastError` says why that activation could not start or that run failed.
 
 Inside a Durable Object, or from the Worker that holds its namespace, read the projection without the HTTP API: `this.project(swarmStatus)` in the object, or `readProjection(env.RUNS.getByName(runId), swarmStatus)` from the Worker.
 

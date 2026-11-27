@@ -106,6 +106,13 @@ await ensureSwarm(looms, ops, 'swarm_acme', { board: 'acme' })`}</CodeBlock>
         arrive while it is running are queued and delivered together in the next activation.
       </p>
       <p>
+        An activation that cannot start, such as one whose agent is not registered, is retried like
+        any effect. Once its retries are spent, the swarm drops the events it was woken for, marks
+        the member <code>failed</code> in <code>swarmStatus</code> with the error in{' '}
+        <code>lastError</code>, and goes on. The member is woken again by what reaches the board
+        next.
+      </p>
+      <p>
         Members keep no memory between activations. Whatever should outlive a turn belongs on the
         board.
       </p>
@@ -547,7 +554,7 @@ await looms.signal('swarm_acme', [restart({ after: null })]) // from the start o
 const view = await looms.project('swarm_acme', swarmStatus)
 // view.status is 'running', view.generation is 1
 // view.members.fixer is
-// { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed' }`}</CodeBlock>
+// { status: 'idle', activations: 3, runId: 'run_…', lastOutcome: 'completed', lastError: null }`}</CodeBlock>
       <p>
         <code>status</code> is <code>running</code>, <code>paused</code>, <code>stopping</code>{' '}
         (stopped with members still mid-run), <code>stopped</code>, <code>halted</code> (see{' '}
@@ -556,6 +563,12 @@ const view = await looms.project('swarm_acme', swarmStatus)
         <code>resets</code> counts the times its board&apos;s log was reset under it. In a Durable
         Object, read it with <code>this.project(swarmStatus)</code>, or from the Worker with{' '}
         <code>readProjection(env.RUNS.getByName(runId), swarmStatus)</code>.
+      </p>
+      <p>
+        A member&apos;s <code>status</code> is <code>idle</code>, <code>active</code> while its run
+        is in progress, or <code>failed</code> when its latest activation could not start.{' '}
+        <code>lastOutcome</code> is how its latest run ended, and <code>lastError</code> says why
+        that activation could not start or that run failed.
       </p>
       <h2 id="bring-your-own-board">
         Bring your own board
