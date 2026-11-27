@@ -887,6 +887,12 @@ export function payments(db: DatabaseService) {
         transition state, trigger compensations, or escalate to human review.
       </p>
       <p>
+        A failure the thread does not answer with a new effect fails the thread. A thread that
+        records failures in its own state and carries on, such as one that runs a queue of jobs,
+        declares <code>handlesEffectFailures: true</code>. Its reducer then decides what every
+        failed effect means, and the thread keeps running as the reducer left it.
+      </p>
+      <p>
         When a failure ends the run, <code>looms.fork</code> can continue it by running the failed
         effect again. Set <code>deterministic: true</code> on an effect whose outcome follows from
         its input alone, such as one that only schedules work from state already folded. A fork then

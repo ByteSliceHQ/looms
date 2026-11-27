@@ -118,6 +118,7 @@ export function swarm(options: SwarmModuleOptions = {}) {
                 activations: 1,
                 runId: 'swarm_acme:triage:1',
                 lastOutcome: null,
+                lastError: null,
               },
             },
             recent: [{ member: 'triage', runId: 'swarm_acme:triage:1', events: 1, at: 1_001 }],

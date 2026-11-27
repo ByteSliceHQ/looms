@@ -164,6 +164,7 @@ export interface ModuleScope<
     readonly shape?: undefined
     readonly input?: TInputSchema
     readonly forgetsCompletedEffects?: boolean
+    readonly handlesEffectFailures?: boolean
     initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): S
     step(state: S, event: U, ctx: ThreadContext): S
     effects?(state: S, ctx: ThreadContext): RuntimeEffect[]
@@ -177,6 +178,7 @@ export interface ModuleScope<
     readonly shape: TShape
     readonly input?: TInputSchema
     readonly forgetsCompletedEffects?: boolean
+    readonly handlesEffectFailures?: boolean
     initialState(ctx: StartContext<InferDefinedSchema<TInputSchema>>): InferSchemaOutput<TShape>
     step(
       state: NoInfer<InferSchemaOutput<TShape>>,
