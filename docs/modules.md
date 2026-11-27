@@ -407,6 +407,8 @@ const billing = defineRuntimeModule({
 
 `failEffect` from admission becomes `runtime.effect.failed` the same way a handler failure does. A rejected worker admission never queues or dispatches the attempt.
 
+The thread whose effect failed sees `runtime.effect.failed`. A failure it does not answer with a new effect fails the thread. A thread that records failures in its own state and carries on, such as one that runs a queue of jobs, declares `handlesEffectFailures: true` in `defineThread` or `m.thread`. Its reducer then decides what every failed effect means, and the thread keeps running as the reducer left it.
+
 Modules may also declare **`middleware`**: functions that wrap **local** effect dispatch only. They run for every effect the host executes in the actor cell, including built-in ones such as `agent.callLLM`. `onEffect` is typed to accept only `placement: 'local'` definitions, so attaching middleware to a worker effect is a compile error. Use `admission` for shared gates, or wrap execution on the worker side (`workerHandlers`).
 
 Use middleware for concerns that need to wrap the handler itself (timing, rewriting outcomes).

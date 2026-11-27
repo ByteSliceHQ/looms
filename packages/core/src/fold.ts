@@ -815,9 +815,14 @@ function forgetCompletedEffects(
     : { ...state, completedEffectIds }
 }
 
+/**
+ * Fail the thread whose effect failed when nothing took the failure in hand: its reducer enabled
+ * no new effect, and its definition does not declare `handlesEffectFailures`.
+ */
 function failUnhandledEffect(
   state: RunState,
   event: EventEnvelope,
+  registry: FoldRegistry,
   effectIdsBeforeDeliver: ReadonlySet<string>,
 ): RunState {
   if (event.type !== 'runtime.effect.failed') {
@@ -847,7 +852,11 @@ function failUnhandledEffect(
 
   const existing = state.threads[threadId]
 
-  if (!existing || isTerminalStatus(existing.status)) {
+  if (
+    !existing ||
+    isTerminalStatus(existing.status) ||
+    registry.threads.get(existing.kind)?.handlesEffectFailures === true
+  ) {
     return state
   }
 
@@ -889,7 +898,7 @@ export function foldEvent(state: RunState, event: EventEnvelope, registry: FoldR
   next = applyProtocol(next, event, registry)
   const effectIdsBeforeDeliver = new Set(next.outstandingEffects.map((item) => item.effectId))
   next = deliver(next, event, registry, settled)
-  return failUnhandledEffect(next, event, effectIdsBeforeDeliver)
+  return failUnhandledEffect(next, event, registry, effectIdsBeforeDeliver)
 }
 
 export function foldRun(
