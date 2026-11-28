@@ -11,7 +11,7 @@ import { useRunStore, useThreadTree } from '@looms/react'
 
 import { JsonTree } from '../components/json-tree'
 import { useDebugger } from '../context'
-import { errorMessage, shortId } from '../lib/cn'
+import { cn, errorMessage, shortId } from '../lib/cn'
 import { Button } from '../ui/button'
 import {
   Command,
@@ -22,6 +22,7 @@ import {
   CommandList,
 } from '../ui/command'
 import { Kbd } from '../ui/panel'
+import { ScrollArea } from '../ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { Field, InputFields } from './form-fields'
@@ -114,15 +115,15 @@ function PreviewPanel({
           {error}
         </p>
       ) : null}
-      <div
-        className={
-          pending
-            ? 'border-border bg-card max-h-48 overflow-auto rounded-md border p-2 opacity-60'
-            : 'border-border bg-card max-h-48 overflow-auto rounded-md border p-2'
-        }
+      <ScrollArea
+        horizontal
+        className={cn('border-border bg-card rounded-md border', pending && 'opacity-60')}
+        viewportClassName="max-h-48"
       >
-        <JsonTree value={events} defaultExpandDepth={2} />
-      </div>
+        <div className="p-2">
+          <JsonTree value={events} defaultExpandDepth={2} />
+        </div>
+      </ScrollArea>
     </div>
   )
 }

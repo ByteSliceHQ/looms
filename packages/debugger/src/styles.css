@@ -65,6 +65,10 @@
   :where(.looms-debugger, .debugger-pop) ::before,
   :where(.looms-debugger, .debugger-pop) ::after {
     border-color: var(--color-border);
+    /* A list that scrolls natively (a command or menu list, as in shadcn/ui) draws a thin bar in
+       the theme's border color, like ScrollArea's, not the platform's. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
   }
 }
 
