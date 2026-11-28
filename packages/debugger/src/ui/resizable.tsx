@@ -13,8 +13,12 @@ function ResizablePanelGroup({ className, ...props }: ComponentProps<typeof Grou
   )
 }
 
-function ResizablePanel(props: ComponentProps<typeof Panel>) {
-  return <Panel data-slot="resizable-panel" {...props} />
+/**
+ * A pane of the group. It never scrolls itself: react-resizable-panels sets `overflow: auto`,
+ * which draws the browser's scrollbar, so a pane's content scrolls in its own ScrollArea.
+ */
+function ResizablePanel({ style, ...props }: ComponentProps<typeof Panel>) {
+  return <Panel data-slot="resizable-panel" style={{ overflow: 'hidden', ...style }} {...props} />
 }
 
 /** A hairline divider with a wider invisible hit area that brightens while hovered or dragged. */
